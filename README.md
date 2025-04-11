@@ -61,6 +61,9 @@ GCC
 ```
 
 #### For MacOS:
+```
+brew install go
+```
 
 Xcode Command Line Tools (And Privacy setting: [#277](https://github.com/go-vgo/robotgo/issues/277))
 
@@ -69,8 +72,15 @@ xcode-select --install
 ```
 
 #### For Windows:
+```
+winget install Golang.go
+```
 
-[MinGW-w64](https://sourceforge.net/projects/mingw-w64/files) (Use recommended) or others Mingw [llvm-mingw](https://github.com/mstorsjo/llvm-mingw);
+```
+winget install MartinStorsjo.LLVM-MinGW.UCRT
+```
+
+Or [MinGW-w64](https://sourceforge.net/projects/mingw-w64/files) (Use recommended) or others Mingw [llvm-mingw](https://github.com/mstorsjo/llvm-mingw);
 
 Download the Mingw, then set system environment variables `C:\mingw64\bin` to the Path.
 [Set environment variables to run GCC from command line](https://www.youtube.com/results?search_query=Set+environment+variables+to+run+GCC+from+command+line).
@@ -96,6 +106,9 @@ X11 with the XTest extension (the Xtst library)
 ##### Ubuntu:
 
 ```yml
+# sudo apt install golang
+sudo snap install go  --classic
+
 # gcc
 sudo apt install gcc libc6-dev
 
@@ -165,11 +178,18 @@ Note go1.10.x C file compilation cache problem, [golang #24355](https://github.c
 package main
 
 import (
+  "fmt"
   "github.com/go-vgo/robotgo"
 )
 
 func main() {
-  robotgo.MouseSleep = 100
+  robotgo.MouseSleep = 300
+
+  robotgo.Move(100, 100)
+  fmt.Println(robotgo.Location())
+  robotgo.Move(100, -200) // multi screen supported
+  robotgo.MoveSmooth(120, -150)
+  fmt.Println(robotgo.Location())
 
   robotgo.ScrollDir(10, "up")
   robotgo.ScrollDir(20, "right")
