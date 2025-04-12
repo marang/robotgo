@@ -140,8 +140,8 @@ Bounds get_client(uintptr pid, int8_t isPid) {
 		XCloseDisplay(rDisplay);
 
 		return bounds;
-	#elif defined(USE_WAYLAND)
-    	return get_bounds_wayland(pid, isPid);
+	// #elif defined(USE_WAYLAND)
+    // 	return get_bounds_wayland(pid, isPid);
 	#elif defined(IS_WINDOWS)
 		HWND hwnd = getHwnd(pid, isPid);
 
