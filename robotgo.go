@@ -15,17 +15,17 @@ Please make sure Golang, GCC is installed correctly before installing RobotGo;
 
 See Requirements:
 
-	https://github.com/go-vgo/robotgo#requirements
+	https://github.com/marang/robotgo#requirements
 
 Installation:
 
 With Go module support (Go 1.11+), just import:
 
-	import "github.com/go-vgo/robotgo"
+	import "github.com/marang/robotgo"
 
 Otherwise, to install the robotgo package, run the command:
 
-	go get -u github.com/go-vgo/robotgo
+	go get -u github.com/marang/robotgo
 */
 package robotgo
 
@@ -99,7 +99,7 @@ type (
 //
 // The common type conversion of bitmap:
 //
-//	https://github.com/go-vgo/robotgo/blob/master/docs/keys.md#type-conversion
+//	https://github.com/marang/robotgo/blob/master/docs/keys.md#type-conversion
 type Bitmap struct {
 	ImgBuf        *uint8
 	Width, Height int

@@ -1,4 +1,4 @@
-// Copyright 2016 The go-vgo Project Developers. See the COPYRIGHT
+// Copyright 2016 The marang Project Developers. See the COPYRIGHT
 // file at the top-level directory of this distribution and at
 // https://github.com/go-vgo/robotgo/blob/master/LICENSE
 //
@@ -26,7 +26,7 @@ import (
 	"unicode"
 	"unsafe"
 
-	"github.com/go-vgo/robotgo/clipboard"
+	"github.com/marang/robotgo/clipboard"
 )
 
 // Defining a bunch of constants.
@@ -484,7 +484,7 @@ func toErr(str *C.char) error {
 //
 // See keys supported:
 //
-//	https://github.com/go-vgo/robotgo/blob/master/docs/keys.md#keys
+//	https://github.com/marang/robotgo/blob/master/docs/keys.md#keys
 //
 // Examples:
 //
@@ -532,7 +532,7 @@ func KeyTap(key string, args ...interface{}) error {
 //
 // See keys:
 //
-//	https://github.com/go-vgo/robotgo/blob/master/docs/keys.md#keys
+//	https://github.com/marang/robotgo/blob/master/docs/keys.md#keys
 //
 // Examples:
 //

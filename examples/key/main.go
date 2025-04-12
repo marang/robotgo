@@ -13,8 +13,8 @@ package main
 import (
 	"fmt"
 
-	"github.com/go-vgo/robotgo"
-	// "go-vgo/robotgo"
+	"github.com/marang/robotgo"
+	// "marang/robotgo"
 )
 
 func typeStr() {
