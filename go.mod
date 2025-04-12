@@ -34,12 +34,7 @@ require (
 	golang.org/x/sys v0.33.0 // indirect
 )
 
-require github.com/otiai10/gosseract v2.2.1+incompatible
-
-require (
-	github.com/otiai10/mint v1.6.3 // indirect
-	golang.org/x/net v0.39.0 // indirect
-)
+require github.com/otiai10/gosseract/v2 v2.4.1
 
 // replace golang.org/x/sys => github.com/golang/sys v0.0.0-20190109145017-48ac38b7c8cb
 
