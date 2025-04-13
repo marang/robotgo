@@ -42,7 +42,7 @@
 		win32KeyEvent(key, flags, pid, 0); 
 		Sleep(DEADBEEF_RANDRANGE(0, 1));
 	}
-#elif defiend(IS_LINUX) 
+#elif defined(IS_LINUX) 
 	Display *XGetMainDisplay(void);
 
 	void X_KEY_EVENT(Display *display, MMKeyCode key, bool is_press) {
