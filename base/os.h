@@ -3,8 +3,6 @@
 #define OS_H
 
 #include <stdlib.h>  // For getenv()
-#include <string>   // For std::string
-
 
 #if !defined(IS_MACOSX) && defined(__APPLE__) && defined(__MACH__)
     #define IS_MACOSX
