@@ -2,7 +2,7 @@
 #ifndef OS_H
 #define OS_H
 
-#include <cstdlib>  // For getenv()
+#include <stdlib.h>  // For getenv()
 #include <string>   // For std::string
 
 
