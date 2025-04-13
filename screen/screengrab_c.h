@@ -6,7 +6,7 @@
 	#include <OpenGL/gl.h>
 	#include <ApplicationServices/ApplicationServices.h>
 	#include <ScreenCaptureKit/ScreenCaptureKit.h>
-#elif defined(USE_X11)
+#elif defined(IS_LINUX)
 	#include <X11/Xlib.h>
 	#include <X11/Xutil.h>
 	#include "../base/xdisplay_c.h"
@@ -101,7 +101,7 @@ MMBitmapRef copyMMBitmapFromDisplayInRect(MMRectInt32 rect, int32_t display_id, 
 	CGImageRelease(image);
 
 	return bitmap;
-#elif defined(USE_X11)
+#elif defined(IS_LINUX)
 	MMBitmapRef bitmap;
 	Display *display;
 	if (display_id == -1) {

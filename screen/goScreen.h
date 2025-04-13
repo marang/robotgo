@@ -58,7 +58,7 @@ MMRGBHex get_px_color(int32_t x, int32_t y, int32_t display_id) {
 }
 
 char* set_XDisplay_name(char* name) {
-	#if defined(USE_X11)
+	#if defined(IS_LINUX)
 		setXDisplay(name);
 		return "";
 	#else
@@ -67,7 +67,7 @@ char* set_XDisplay_name(char* name) {
 }
 
 char* get_XDisplay_name() {
-	#if defined(USE_X11)
+	#if defined(IS_LINUX)
 		const char* display = getXDisplay();
 		
 		char* sd = (char*)calloc(100, sizeof(char*));
@@ -79,7 +79,7 @@ char* get_XDisplay_name() {
 }
 
 void close_main_display() {
-	#if defined(USE_X11)
+	#if defined(IS_LINUX)
 		XCloseMainDisplay();
 	#else
 		// 
@@ -93,7 +93,7 @@ uint32_t get_num_displays() {
 			return count;
 		}
 		return 0;
-	#elif defined(USE_X11)
+	#elif defined(IS_LINUX)
 		return 0;
 	#elif defined(IS_WINDOWS)
 		uint32_t count = 0;

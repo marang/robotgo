@@ -18,7 +18,7 @@
 		WheelLeft  =  6,
 		WheelRight = 7,
 	} MMMouseButton;
-#elif defined(USE_X11)
+#elif defined(IS_LINUX)
 	enum _MMMouseButton {
 		LEFT_BUTTON = 1,
 		CENTER_BUTTON = 2,

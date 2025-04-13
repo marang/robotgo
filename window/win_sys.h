@@ -8,7 +8,7 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-// #if defined(USE_X11)
+// #if defined(IS_LINUX)
 // 	#include <X11/Xresource.h>
 // #endif
 
@@ -53,7 +53,7 @@ Bounds get_bounds(uintptr pid, int8_t isPid){
 		if (axs != NULL) { CFRelease(axs); }
 
 		return bounds;
-    #elif defined(USE_X11)
+    #elif defined(IS_LINUX)
         // Ignore X errors
         XDismissErrors();
         MData win;
@@ -90,7 +90,7 @@ Bounds get_client(uintptr pid, int8_t isPid) {
 
 	#if defined(IS_MACOSX)
 		return get_bounds(pid, isPid);
-	#elif defined(USE_X11)
+	#elif defined(IS_LINUX)
         Display *rDisplay = XOpenDisplay(NULL);
 
 		// Ignore X errors
@@ -128,8 +128,8 @@ Bounds get_client(uintptr pid, int8_t isPid) {
 		XCloseDisplay(rDisplay);
 		
 		return bounds;
-	// #elif defined(USE_WAYLAND)
-    // 	return get_bounds_wayland(pid, isPid);
+	#elif defined(USE_WAYLAND)
+    	return get_bounds_wayland(pid, isPid);
 	#elif defined(IS_WINDOWS)
 		HWND hwnd = getHwnd(pid, isPid);
 

@@ -26,7 +26,7 @@ void initWindow(uintptr handle){
 #if defined(IS_MACOSX)
 	pub_mData.CgID = 0;
 	pub_mData.AxID = 0;
-#elif defined(USE_X11)
+#elif defined(IS_LINUX)
 	Display *rDisplay = XOpenDisplay(NULL);
 	// If atoms loaded
 	if (WM_PID == None) {
@@ -55,7 +55,7 @@ MData set_handle_pid(uintptr pid, int8_t isPid){
 	#if defined(IS_MACOSX)
 		// Handle to a AXUIElementRef
 		win.AxID = AXUIElementCreateApplication(pid);
-	#elif defined(USE_X11)
+	#elif defined(IS_LINUX)
 		win.XWin = (Window)pid;  // Handle to an X11 window
 	#elif defined(IS_WINDOWS)
 		// win.HWnd = (HWND)pid;		// Handle to a window HWND
@@ -91,7 +91,7 @@ bool is_valid() {
 	}
 
 	return false;
-#elif defined(USE_X11)
+#elif defined(IS_LINUX)
 	pub_mData.XWin = actdata.XWin;
 	if (pub_mData.XWin == 0) { return false; }
 
@@ -164,7 +164,7 @@ bool IsAxEnabled(bool options){
 		return AXAPIEnabled() || AXIsProcessTrusted();
 		#pragma clang diagnostic pop
 	}
-#elif defined(USE_X11)
+#elif defined(IS_LINUX)
 	return true;
 #elif defined(IS_WINDOWS)
 	return true;
@@ -200,7 +200,7 @@ bool setHandle(uintptr handle){
 
 	// return 1;
 	return false;
-#elif defined(USE_X11)
+#elif defined(IS_LINUX)
 	pub_mData.XWin = (Window)handle;
 	if (handle == 0) {
 		return true;
@@ -232,7 +232,7 @@ bool IsTopMost(void){
 	if (!is_valid()) { return false; }
 #if defined(IS_MACOSX)
 	return false; // WARNING: Unavailable
-#elif defined(USE_X11)
+#elif defined(IS_LINUX)
 	// Ignore X errors
 	// XDismissErrors ();
 	// return GetState (mData.XWin, STATE_TOPMOST);
@@ -256,7 +256,7 @@ bool IsMinimized(void){
 	}
 
 	return false;
-#elif defined(USE_X11)
+#elif defined(IS_LINUX)
 	// Ignore X errors
 	// XDismissErrors();
 	// return GetState(mData.XWin, STATE_MINIMIZE);
@@ -271,7 +271,7 @@ bool IsMaximized(void){
 	if (!is_valid()) { return false; }
 #if defined(IS_MACOSX)
 	return false; // WARNING: Unavailable
-#elif defined(USE_X11)
+#elif defined(IS_LINUX)
 	// Ignore X errors
 	// XDismissErrors();
 	// return GetState(mData.XWin, STATE_MAXIMIZE);
@@ -303,7 +303,7 @@ void set_active(const MData win) {
 
 		#pragma clang diagnostic pop
 	}
-#elif defined(USE_X11)
+#elif defined(IS_LINUX)
 	// Ignore X errors
 	XDismissErrors();
 
@@ -387,7 +387,7 @@ MData get_active(void) {
 	CFRelease(focused);
 
 	return result;
-#elif defined(USE_X11)
+#elif defined(IS_LINUX)
 	MData result;
 	Display *rDisplay = XOpenDisplay(NULL);
 	// Check X-Window display
@@ -450,7 +450,7 @@ void SetTopMost(bool state){
 	if (!is_valid()) { return; }
 #if defined(IS_MACOSX)
 	// WARNING: Unavailable
-#elif defined(USE_X11)
+#elif defined(IS_LINUX)
 	// Ignore X errors
 	// XDismissErrors();
 	// SetState(pub_mData.XWin, STATE_TOPMOST, state);
@@ -485,7 +485,7 @@ void close_window_by_Id(MData m_data){
 		AXUIElementPerformAction(b, kAXPressAction);
 		CFRelease(b);
 	}
-#elif defined(USE_X11)
+#elif defined(IS_LINUX)
 	Display *rDisplay = XOpenDisplay(NULL);
 	// Ignore X errors
 	XDismissErrors();
@@ -544,7 +544,7 @@ char* get_title_by_hand(MData m_data){
 	}
 
 	return "";
-#elif defined(USE_X11)
+#elif defined(IS_LINUX)
 	void* result;
 	// Ignore X errors
 	XDismissErrors();
@@ -595,7 +595,7 @@ int32_t get_PID(void) {
 		return pid;
 	}
 	return 0;
-#elif defined(USE_X11)
+#elif defined(IS_LINUX)
 	// Ignore X errors
 	XDismissErrors();
 

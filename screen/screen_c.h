@@ -2,7 +2,7 @@
 
 #if defined(IS_MACOSX)
 	#include <ApplicationServices/ApplicationServices.h>
-#elif defined(USE_X11)
+#elif defined(IS_LINUX)
 	#include <X11/Xlib.h>
 	#include <X11/Xresource.h>
 	// #include "../base/xdisplay_c.h"
@@ -22,7 +22,7 @@ double sys_scale(int32_t display_id) {
 		double targetWidth = CGDisplayModeGetWidth(modeRef);
 	
 		return pixelWidth / targetWidth;
-	#elif defined(USE_X11)
+	#elif defined(IS_LINUX)
 		Display *dpy = XOpenDisplay(NULL);
 
 		int scr = 0; /* Screen number */
@@ -57,7 +57,7 @@ double sys_scale(int32_t display_id) {
 intptr scaleX(){
 	#if defined(IS_MACOSX)
 		return 0;
-	#elif defined(USE_X11)
+	#elif defined(IS_LINUX)
 		return 0;
 	#elif defined(IS_WINDOWS)
 		// Get desktop dc
@@ -75,7 +75,7 @@ MMSizeInt32 getMainDisplaySize(void) {
 	
 	CGSize size = displayRect.size;
 	return MMSizeInt32Make((int32_t)size.width, (int32_t)size.height);
-#elif defined(USE_X11)
+#elif defined(IS_LINUX)
 	Display *display = XGetMainDisplay();
 	const int screen = DefaultScreen(display);
 
@@ -102,7 +102,7 @@ MMRectInt32 getScreenRect(int32_t display_id) {
 	return MMRectInt32Make(
 		(int32_t)point.x, (int32_t)point.y,
 		(int32_t)size.width, (int32_t)size.height);
-#elif defined(USE_X11)
+#elif defined(IS_LINUX)
 	Display *display = XGetMainDisplay();
 	const int screen = DefaultScreen(display);
 
