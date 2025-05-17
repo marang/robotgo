@@ -58,7 +58,7 @@
 		if (pid != 0) {
 			CGEventPostToPid(pid, event);
 		} else {
-			CGEventPost(kCGSessionEventTap, event);
+			CGEventPost(kCGHIDEventTap, event);
 		}
 		
 		CFRelease(event);
@@ -179,7 +179,8 @@ void toggleKeyCode(MMKeyCode code, const bool down, MMKeyFlags flags, uintptr pi
 								NX_SYSDEFINED, loc, &event, kNXEventDataVersion, 0, FALSE);
 		assert(KERN_SUCCESS == kr);
 	} else {
-		CGEventRef keyEvent = CGEventCreateKeyboardEvent(NULL, (CGKeyCode)code, down);
+		CGEventSourceRef source = CGEventSourceCreate(kCGEventSourceStateHIDSystemState);
+		CGEventRef keyEvent = CGEventCreateKeyboardEvent(source, (CGKeyCode)code, down);
 		assert(keyEvent != NULL);
 
 		CGEventSetType(keyEvent, down ? kCGEventKeyDown : kCGEventKeyUp);
@@ -188,6 +189,7 @@ void toggleKeyCode(MMKeyCode code, const bool down, MMKeyFlags flags, uintptr pi
 		}
 		
 		SendTo(pid, keyEvent);
+		CFRelease(source);
 	}
 #elif defined(IS_WINDOWS)
 	const DWORD dwFlags = down ? 0 : KEYEVENTF_KEYUP;
@@ -273,7 +275,8 @@ void toggleKey(char c, const bool down, MMKeyFlags flags, uintptr pid) {
 		convert characters to a keycode, but does not support adding modifier flags. 
 		It is only used in typeString().
 		-- if you need modifier keys, use the above functions instead. */
-		CGEventRef keyEvent = CGEventCreateKeyboardEvent(NULL, 0, down);
+		CGEventSourceRef source = CGEventSourceCreate(kCGEventSourceStateHIDSystemState);
+		CGEventRef keyEvent = CGEventCreateKeyboardEvent(source, 0, down);
 		if (keyEvent == NULL) {
 			fputs("Could not create keyboard event.\n", stderr);
 			return;
@@ -282,6 +285,7 @@ void toggleKey(char c, const bool down, MMKeyFlags flags, uintptr pid) {
 		CGEventKeyboardSetUnicodeString(keyEvent, 1, &ch);
 
 		SendTo(pid, keyEvent);
+		CFRelease(source);
 	}
 #else
 	#define toggleUniKey(c, down) toggleKey(c, down, MOD_NONE, 0)

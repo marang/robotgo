@@ -83,13 +83,15 @@
 /* Move the mouse to a specific point. */
 void moveMouse(MMPointInt32 point){
 	#if defined(IS_MACOSX)
-		CGEventRef move = CGEventCreateMouseEvent(NULL, kCGEventMouseMoved, 
+		CGEventSourceRef source = CGEventSourceCreate(kCGEventSourceStateHIDSystemState);
+		CGEventRef move = CGEventCreateMouseEvent(source, kCGEventMouseMoved, 
 								CGPointFromMMPointInt32(point), kCGMouseButtonLeft);
 
 		calculateDeltas(&move, point);
 
-		CGEventPost(kCGSessionEventTap, move);
+		CGEventPost(kCGHIDEventTap, move);
 		CFRelease(move);
+		CFRelease(source);
 	#elif defined(USE_X11)
 		Display *display = XGetMainDisplay();
 		XWarpPointer(display, None, DefaultRootWindow(display), 0, 0, 0, 0, point.x, point.y);
@@ -103,13 +105,15 @@ void moveMouse(MMPointInt32 point){
 void dragMouse(MMPointInt32 point, const MMMouseButton button){
 	#if defined(IS_MACOSX)
 		const CGEventType dragType = MMMouseDragToCGEventType(button);
-		CGEventRef drag = CGEventCreateMouseEvent(NULL, dragType, 
+		CGEventSourceRef source = CGEventSourceCreate(kCGEventSourceStateHIDSystemState);
+		CGEventRef drag = CGEventCreateMouseEvent(source, dragType, 
 								CGPointFromMMPointInt32(point), (CGMouseButton)button);
 
 		calculateDeltas(&drag, point);
 
-		CGEventPost(kCGSessionEventTap, drag);
+		CGEventPost(kCGHIDEventTap, drag);
 		CFRelease(drag);
+		CFRelease(source);
 	#else
 		moveMouse(point);
 	#endif
@@ -145,10 +149,12 @@ void toggleMouse(bool down, MMMouseButton button) {
 	#if defined(IS_MACOSX)
 		const CGPoint currentPos = CGPointFromMMPointInt32(location());
 		const CGEventType mouseType = MMMouseToCGEventType(down, button);
-		CGEventRef event = CGEventCreateMouseEvent(NULL, mouseType, currentPos, (CGMouseButton)button);
+		CGEventSourceRef source = CGEventSourceCreate(kCGEventSourceStateHIDSystemState);
+		CGEventRef event = CGEventCreateMouseEvent(source, mouseType, currentPos, (CGMouseButton)button);
 
-		CGEventPost(kCGSessionEventTap, event);
+		CGEventPost(kCGHIDEventTap, event);
 		CFRelease(event);
+		CFRelease(source);
 	#elif defined(USE_X11)
 		Display *display = XGetMainDisplay();
 		XTestFakeButtonEvent(display, button, down ? True : False, CurrentTime);
@@ -182,7 +188,8 @@ void doubleClick(MMMouseButton button){
 		const CGEventType mouseTypeDown = MMMouseToCGEventType(true, button);
 		const CGEventType mouseTypeUP = MMMouseToCGEventType(false, button);
 
-		CGEventRef event = CGEventCreateMouseEvent(NULL, mouseTypeDown, currentPos, kCGMouseButtonLeft);
+		CGEventSourceRef source = CGEventSourceCreate(kCGEventSourceStateHIDSystemState);
+		CGEventRef event = CGEventCreateMouseEvent(source, mouseTypeDown, currentPos, kCGMouseButtonLeft);
 
 		/* Set event to double click. */
 		CGEventSetIntegerValueField(event, kCGMouseEventClickState, 2);
@@ -192,6 +199,7 @@ void doubleClick(MMMouseButton button){
 		CGEventPost(kCGHIDEventTap, event);
 
 		CFRelease(event);
+		CFRelease(source);
 	#else
 		/* Double click for everything else. */
 		clickMouse(button);
@@ -208,14 +216,13 @@ void scrollMouseXY(int x, int y) {
 		INPUT mouseScrollInputV;
 	#endif
 
-	/* Direction should only be considered based on the scrollDirection. This Should not interfere. */
-	/* Set up the OS specific solution */
-	#if defined(__APPLE__)
-		CGEventRef event;
-		event = CGEventCreateScrollWheelEvent(NULL, kCGScrollEventUnitPixel, 2, y, x);
+	#if defined(IS_MACOSX)
+		CGEventSourceRef source = CGEventSourceCreate(kCGEventSourceStateHIDSystemState);
+		CGEventRef event = CGEventCreateScrollWheelEvent(source, kCGScrollEventUnitPixel, 2, y, x);
 		CGEventPost(kCGHIDEventTap, event);
 
 		CFRelease(event);
+		CFRelease(source);
 	#elif defined(USE_X11)
 		int ydir = 4; /* Button 4 is up, 5 is down. */
 		int xdir = 6;
