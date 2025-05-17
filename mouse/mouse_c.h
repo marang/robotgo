@@ -188,7 +188,8 @@ void doubleClick(MMMouseButton button){
 		const CGEventType mouseTypeDown = MMMouseToCGEventType(true, button);
 		const CGEventType mouseTypeUP = MMMouseToCGEventType(false, button);
 
-		CGEventRef event = CGEventCreateMouseEvent(NULL, mouseTypeDown, currentPos, kCGMouseButtonLeft);
+		CGEventSourceRef source = CGEventSourceCreate(kCGEventSourceStateHIDSystemState);
+		CGEventRef event = CGEventCreateMouseEvent(source, mouseTypeDown, currentPos, kCGMouseButtonLeft);
 
 		/* Set event to double click. */
 		CGEventSetIntegerValueField(event, kCGMouseEventClickState, 2);
@@ -198,6 +199,7 @@ void doubleClick(MMMouseButton button){
 		CGEventPost(kCGHIDEventTap, event);
 
 		CFRelease(event);
+		CFRelease(source);
 	#else
 		/* Double click for everything else. */
 		clickMouse(button);
@@ -215,10 +217,12 @@ void scrollMouseXY(int x, int y) {
 	#endif
 
 	#if defined(IS_MACOSX)
-		CGEventRef event = CGEventCreateScrollWheelEvent(NULL, kCGScrollEventUnitPixel, 2, y, x);
+		CGEventSourceRef source = CGEventSourceCreate(kCGEventSourceStateHIDSystemState);
+		CGEventRef event = CGEventCreateScrollWheelEvent(source, kCGScrollEventUnitPixel, 2, y, x);
 		CGEventPost(kCGHIDEventTap, event);
 
 		CFRelease(event);
+		CFRelease(source);
 	#elif defined(USE_X11)
 		int ydir = 4; /* Button 4 is up, 5 is down. */
 		int xdir = 6;
