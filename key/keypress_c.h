@@ -194,6 +194,7 @@ void toggleKeyCode(MMKeyCode code, const bool down, MMKeyFlags flags, uintptr pi
 		}
 		
 		SendTo(pid, keyEvent);
+		CFRelease(source);
 	}
 #elif defined(IS_WINDOWS)
 	const DWORD dwFlags = down ? 0 : KEYEVENTF_KEYUP;
@@ -293,6 +294,7 @@ void toggleKey(char c, const bool down, MMKeyFlags flags, uintptr pid) {
 		CGEventKeyboardSetUnicodeString(keyEvent, 1, &ch);
 
 		SendTo(pid, keyEvent);
+		CFRelease(source);
 	}
 #else
 	#define toggleUniKey(c, down) toggleKey(c, down, MOD_NONE, 0)
