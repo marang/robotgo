@@ -91,6 +91,7 @@ void moveMouse(MMPointInt32 point){
 
 		CGEventPost(kCGHIDEventTap, move);
 		CFRelease(move);
+		CFRelease(source);
 	#elif defined(USE_X11)
 		Display *display = XGetMainDisplay();
 		XWarpPointer(display, None, DefaultRootWindow(display), 0, 0, 0, 0, point.x, point.y);
@@ -112,6 +113,7 @@ void dragMouse(MMPointInt32 point, const MMMouseButton button){
 
 		CGEventPost(kCGHIDEventTap, drag);
 		CFRelease(drag);
+		CFRelease(source);
 	#else
 		moveMouse(point);
 	#endif
@@ -152,6 +154,7 @@ void toggleMouse(bool down, MMMouseButton button) {
 
 		CGEventPost(kCGHIDEventTap, event);
 		CFRelease(event);
+		CFRelease(source);
 	#elif defined(USE_X11)
 		Display *display = XGetMainDisplay();
 		XTestFakeButtonEvent(display, button, down ? True : False, CurrentTime);
