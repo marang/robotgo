@@ -94,12 +94,8 @@ void moveMouse(MMPointInt32 point){
 
 		CGEventPost(kCGHIDEventTap, move);
 		CFRelease(move);
-<<<<<<< HEAD
-	#elif defined(IS_LINUX)
-=======
 		CFRelease(source);
-	#elif defined(USE_X11)
->>>>>>> 02c668a (Update: add CFRelease source)
+	#elif defined(IS_LINUX)
 		Display *display = XGetMainDisplay();
 		XWarpPointer(display, None, DefaultRootWindow(display), 0, 0, 0, 0, point.x, point.y);
 
@@ -163,12 +159,8 @@ void toggleMouse(bool down, MMMouseButton button) {
 
 		CGEventPost(kCGHIDEventTap, event);
 		CFRelease(event);
-<<<<<<< HEAD
-	#elif defined(IS_LINUX)
-=======
 		CFRelease(source);
-	#elif defined(USE_X11)
->>>>>>> 02c668a (Update: add CFRelease source)
+	#elif defined(IS_LINUX)
 		Display *display = XGetMainDisplay();
 		XTestFakeButtonEvent(display, button, down ? True : False, CurrentTime);
 		XSync(display, false);
@@ -235,6 +227,7 @@ void scrollMouseXY(int x, int y) {
 		CGEventPost(kCGHIDEventTap, event);
 
 		CFRelease(event);
+		CFRelease(source);
 	#elif defined(IS_LINUX)
 		int ydir = 4; /* Button 4 is up, 5 is down. */
 		int xdir = 6;
