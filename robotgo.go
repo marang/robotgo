@@ -73,7 +73,7 @@ var (
 	// MouseSleep set the mouse default millisecond sleep time
 	MouseSleep = 0
 	// KeySleep set the key default millisecond sleep time
-	KeySleep = 0
+	KeySleep = 10
 
 	// DisplayID set the screen display id
 	DisplayID = -1
