@@ -83,12 +83,13 @@
 /* Move the mouse to a specific point. */
 void moveMouse(MMPointInt32 point){
 	#if defined(IS_MACOSX)
-		CGEventRef move = CGEventCreateMouseEvent(NULL, kCGEventMouseMoved, 
+		CGEventSourceRef source = CGEventSourceCreate(kCGEventSourceStateHIDSystemState);
+		CGEventRef move = CGEventCreateMouseEvent(source, kCGEventMouseMoved, 
 								CGPointFromMMPointInt32(point), kCGMouseButtonLeft);
 
 		calculateDeltas(&move, point);
 
-		CGEventPost(kCGSessionEventTap, move);
+		CGEventPost(kCGHIDEventTap, move);
 		CFRelease(move);
 	#elif defined(USE_X11)
 		Display *display = XGetMainDisplay();
@@ -103,12 +104,13 @@ void moveMouse(MMPointInt32 point){
 void dragMouse(MMPointInt32 point, const MMMouseButton button){
 	#if defined(IS_MACOSX)
 		const CGEventType dragType = MMMouseDragToCGEventType(button);
-		CGEventRef drag = CGEventCreateMouseEvent(NULL, dragType, 
+		CGEventSourceRef source = CGEventSourceCreate(kCGEventSourceStateHIDSystemState);
+		CGEventRef drag = CGEventCreateMouseEvent(source, dragType, 
 								CGPointFromMMPointInt32(point), (CGMouseButton)button);
 
 		calculateDeltas(&drag, point);
 
-		CGEventPost(kCGSessionEventTap, drag);
+		CGEventPost(kCGHIDEventTap, drag);
 		CFRelease(drag);
 	#else
 		moveMouse(point);
@@ -145,9 +147,10 @@ void toggleMouse(bool down, MMMouseButton button) {
 	#if defined(IS_MACOSX)
 		const CGPoint currentPos = CGPointFromMMPointInt32(location());
 		const CGEventType mouseType = MMMouseToCGEventType(down, button);
-		CGEventRef event = CGEventCreateMouseEvent(NULL, mouseType, currentPos, (CGMouseButton)button);
+		CGEventSourceRef source = CGEventSourceCreate(kCGEventSourceStateHIDSystemState);
+		CGEventRef event = CGEventCreateMouseEvent(source, mouseType, currentPos, (CGMouseButton)button);
 
-		CGEventPost(kCGSessionEventTap, event);
+		CGEventPost(kCGHIDEventTap, event);
 		CFRelease(event);
 	#elif defined(USE_X11)
 		Display *display = XGetMainDisplay();
