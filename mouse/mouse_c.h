@@ -214,11 +214,8 @@ void scrollMouseXY(int x, int y) {
 		INPUT mouseScrollInputV;
 	#endif
 
-	/* Direction should only be considered based on the scrollDirection. This Should not interfere. */
-	/* Set up the OS specific solution */
-	#if defined(__APPLE__)
-		CGEventRef event;
-		event = CGEventCreateScrollWheelEvent(NULL, kCGScrollEventUnitPixel, 2, y, x);
+	#if defined(IS_MACOSX)
+		CGEventRef event = CGEventCreateScrollWheelEvent(NULL, kCGScrollEventUnitPixel, 2, y, x);
 		CGEventPost(kCGHIDEventTap, event);
 
 		CFRelease(event);
