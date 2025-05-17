@@ -416,7 +416,7 @@ func keyTaps(k string, keyArr []string, pid int) error {
 	return nil
 }
 
-func keyToggles(k string, keyArr []string, pid int, args ...interface{}) error {
+func keyToggles(k string, keyArr []string, pid int) error {
 	if len(keyArr) <= 0 {
 		keyArr = append(keyArr, "down")
 	}
@@ -437,9 +437,7 @@ func keyToggles(k string, keyArr []string, pid int, args ...interface{}) error {
 	}
 
 	C.toggleKeyCode(key, C.bool(down), flags, C.uintptr(pid))
-	if len(args) > 0 {
-		MilliSleep(KeySleep)
-	}
+	MilliSleep(KeySleep)
 	return nil
 }
 
