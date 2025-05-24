@@ -14,7 +14,7 @@
 package robotgo
 
 import (
-	"github.com/otiai10/gosseract"
+	"github.com/otiai10/gosseract/v2"
 )
 
 // GetText get the image text by tesseract ocr
