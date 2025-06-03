@@ -416,7 +416,7 @@ func keyTaps(k string, keyArr []string, pid int) error {
 	return nil
 }
 
-func keyToggles(k string, keyArr []string, pid int) error {
+func getKeyDown(keyArr []string) (bool, []string) {
 	if len(keyArr) <= 0 {
 		keyArr = append(keyArr, "down")
 	}
@@ -429,8 +429,11 @@ func keyToggles(k string, keyArr []string, pid int) error {
 	if keyArr[0] == "up" || keyArr[0] == "down" {
 		keyArr = keyArr[1:]
 	}
-	flags := getFlagsFromValue(keyArr)
+	return down, keyArr
+}
 
+func keyTogglesB(k string, down bool, keyArr []string, pid int) error {
+	flags := getFlagsFromValue(keyArr)
 	key, err := checkKeyCodes(k)
 	if err != nil {
 		return err
@@ -439,6 +442,11 @@ func keyToggles(k string, keyArr []string, pid int) error {
 	C.toggleKeyCode(key, C.bool(down), flags, C.uintptr(pid))
 	MilliSleep(KeySleep)
 	return nil
+}
+
+func keyToggles(k string, keyArr []string, pid int) error {
+	down, keyArr1 := getKeyDown(keyArr)
+	return keyTogglesB(k, down, keyArr1, pid)
 }
 
 /*
@@ -478,6 +486,22 @@ func toErr(str *C.char) error {
 	return errors.New(gstr)
 }
 
+func appendShift(key string, len1 int, args ...interface{}) []interface{} {
+	if len(key) > 0 && unicode.IsUpper([]rune(key)[0]) {
+		args = append(args, "shift")
+	}
+
+	key = strings.ToLower(key)
+	if _, ok := Special[key]; ok {
+		key = Special[key]
+		if len(args) <= len1 {
+			args = append(args, "shift")
+		}
+	}
+
+	return args
+}
+
 // KeyTap taps the keyboard code;
 //
 // See keys supported:
@@ -496,18 +520,7 @@ func toErr(str *C.char) error {
 //	robotgo.KeyTap("k", pid int)
 func KeyTap(key string, args ...interface{}) error {
 	var keyArr []string
-
-	if len(key) > 0 && unicode.IsUpper([]rune(key)[0]) {
-		args = append(args, "shift")
-	}
-
-	key = strings.ToLower(key)
-	if _, ok := Special[key]; ok {
-		key = Special[key]
-		if len(args) <= 0 {
-			args = append(args, "shift")
-		}
-	}
+	args = appendShift(key, 0, args...)
 
 	pid := 0
 	if len(args) > 0 {
@@ -526,6 +539,16 @@ func KeyTap(key string, args ...interface{}) error {
 	return keyTaps(key, keyArr, pid)
 }
 
+func getToggleArgs(args ...interface{}) (pid int, keyArr []string) {
+	if len(args) > 0 && reflect.TypeOf(args[0]) == reflect.TypeOf(pid) {
+		pid = args[0].(int)
+		keyArr = ToStrings(args[1:])
+	} else {
+		keyArr = ToStrings(args)
+	}
+	return
+}
+
 // KeyToggle toggles the keyboard, if there not have args default is "down"
 //
 // See keys:
@@ -540,28 +563,8 @@ func KeyTap(key string, args ...interface{}) error {
 //	robotgo.KeyToggle("a", "up", "alt", "cmd")
 //	robotgo.KeyToggle("k", pid int)
 func KeyToggle(key string, args ...interface{}) error {
-
-	if len(key) > 0 && unicode.IsUpper([]rune(key)[0]) {
-		args = append(args, "shift")
-	}
-
-	key = strings.ToLower(key)
-	if _, ok := Special[key]; ok {
-		key = Special[key]
-		if len(args) <= 1 {
-			args = append(args, "shift")
-		}
-	}
-
-	pid := 0
-	var keyArr []string
-	if len(args) > 0 && reflect.TypeOf(args[0]) == reflect.TypeOf(pid) {
-		pid = args[0].(int)
-		keyArr = ToStrings(args[1:])
-	} else {
-		keyArr = ToStrings(args)
-	}
-
+	args = appendShift(key, 1, args...)
+	pid, keyArr := getToggleArgs(args...)
 	return keyToggles(key, keyArr, pid)
 }
 
