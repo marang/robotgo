@@ -486,7 +486,7 @@ func toErr(str *C.char) error {
 	return errors.New(gstr)
 }
 
-func appendShift(key string, len1 int, args ...interface{}) []interface{} {
+func appendShift(key string, len1 int, args ...interface{}) (string, []interface{}) {
 	if len(key) > 0 && unicode.IsUpper([]rune(key)[0]) {
 		args = append(args, "shift")
 	}
@@ -499,7 +499,7 @@ func appendShift(key string, len1 int, args ...interface{}) []interface{} {
 		}
 	}
 
-	return args
+	return key, args
 }
 
 // KeyTap taps the keyboard code;
@@ -520,7 +520,7 @@ func appendShift(key string, len1 int, args ...interface{}) []interface{} {
 //	robotgo.KeyTap("k", pid int)
 func KeyTap(key string, args ...interface{}) error {
 	var keyArr []string
-	args = appendShift(key, 0, args...)
+	key, args = appendShift(key, 0, args...)
 
 	pid := 0
 	if len(args) > 0 {
@@ -563,7 +563,7 @@ func getToggleArgs(args ...interface{}) (pid int, keyArr []string) {
 //	robotgo.KeyToggle("a", "up", "alt", "cmd")
 //	robotgo.KeyToggle("k", pid int)
 func KeyToggle(key string, args ...interface{}) error {
-	args = appendShift(key, 1, args...)
+	key, args = appendShift(key, 1, args...)
 	pid, keyArr := getToggleArgs(args...)
 	return keyToggles(key, keyArr, pid)
 }
