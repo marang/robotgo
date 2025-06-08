@@ -61,6 +61,7 @@ GCC
 ```
 
 #### For MacOS:
+
 ```
 brew install go
 ```
@@ -72,6 +73,7 @@ xcode-select --install
 ```
 
 #### For Windows:
+
 ```
 winget install Golang.go
 ```
@@ -535,6 +537,6 @@ func main() {
 
 ## License
 
-Robotgo is primarily distributed under the terms of "both the MIT license and the Apache License (Version 2.0)", with portions covered by various BSD-like licenses.
+Robotgo is primarily distributed under the terms of "the Apache License (Version 2.0)", with portions covered by various BSD-like licenses.
 
-See [LICENSE-APACHE](http://www.apache.org/licenses/LICENSE-2.0), [LICENSE-MIT](https://github.com/go-vgo/robotgo/blob/master/LICENSE).
+See [LICENSE-APACHE](http://www.apache.org/licenses/LICENSE-2.0), [LICENSE](https://github.com/go-vgo/robotgo/blob/master/LICENSE).
