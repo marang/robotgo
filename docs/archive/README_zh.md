@@ -1,6 +1,6 @@
 # Robotgo
 
-## !!! Warning: this page not updated !!!
+# !!! Warning: this page not updated !!!
 
 [![Build Status](https://github.com/go-vgo/robotgo/workflows/Go/badge.svg)](https://github.com/go-vgo/robotgo/commits/master)
 [![CircleCI Status](https://circleci.com/gh/go-vgo/robotgo.svg?style=shield)](https://circleci.com/gh/go-vgo/robotgo)
@@ -20,6 +20,7 @@ RobotGo 支持 Mac, Windows, and Linux(X11).
 提 Issues 请到 [Github](https://github.com/go-vgo/robotgo), 便于统一管理和即时更新; `REDAME_zh.md 已废弃, 不再更新`
 
 ## Contents
+
 - [Docs](#docs)
 - [Binding](#binding)
 - [Requirements](#requirements)
@@ -34,6 +35,7 @@ RobotGo 支持 Mac, Windows, and Linux(X11).
 - [License](#license)
 
 ## Docs
+
 - [GoDoc](https://godoc.org/github.com/go-vgo/robotgo) <br>
 
 <!-- - [中文文档](https://github.com/go-vgo/robotgo/blob/master/docs/doc_zh.md) (弃用)
@@ -44,11 +46,13 @@ RobotGo 支持 Mac, Windows, and Linux(X11).
 [Robotn](https://github.com/vcaesar/robotn), binding JavaScript and other, support more language.
 
 ## Requirements:
+
 环境要求:
 
 在安装 RobotGo 之前, 请确保 `Golang、GCC` 被正确安装
 
 ### ALL:
+
 ```
 Golang
 
@@ -57,7 +61,7 @@ GCC
 
 #### For Mac OS X:
 
-Xcode Command Line Tools  (And Privacy setting: [#277](https://github.com/go-vgo/robotgo/issues/277) )
+Xcode Command Line Tools (And Privacy setting: [#277](https://github.com/go-vgo/robotgo/issues/277) )
 
 ```
 xcode-select --install
@@ -65,17 +69,17 @@ xcode-select --install
 
 #### For Windows:
 
-[MinGW-w64](https://sourceforge.net/projects/mingw-w64/files) (推荐使用) 
+[MinGW-w64](https://sourceforge.net/projects/mingw-w64/files) (推荐使用)
 
 ```
-Or the other GCC (But you should compile the "libpng" with yourself. 
+Or the other GCC (But you should compile the "libpng" with yourself.
 Or you can removed the bitmap.go.)
 ```
 
 #### For everything else (Linux 等其他系统):
 
 ```
-GCC, 
+GCC,
 libpng(bitmap)
 
 X11 with the XTest extension (also known as the Xtst library)
@@ -84,7 +88,7 @@ X11 with the XTest extension (also known as the Xtst library)
 
 xcb, xkb, libxkbcommon
 
-Clipboard:  
+Clipboard:
 
 xsel xclip
 ```
@@ -99,7 +103,6 @@ sudo apt install libx11-dev xorg-dev libxtst-dev libpng++-dev
 sudo apt install xcb libxcb-xkb-dev x11-xkb-utils libx11-xcb-dev libxkbcommon-x11-dev libxkbcommon-dev
 
 sudo apt install xsel xclip
-
 ```
 
 ##### Fedora:
@@ -113,6 +116,7 @@ sudo dnf install xsel xclip
 ```
 
 ## Installation:
+
 With Go module support (Go 1.11+), just import:
 
 ```go
@@ -128,13 +132,13 @@ go get github.com/go-vgo/robotgo
 png.h: No such file or directory? Please see [issues/47](https://github.com/go-vgo/robotgo/issues/47).
 
 ## Update:
+
 ```
 go get -u github.com/go-vgo/robotgo
 ```
 
 注意 go1.10.x C 文件编译缓存问题, [golang #24355](https://github.com/golang/go/issues/24355).
 `go mod vendor` problem, [golang #26366](https://github.com/golang/go/issues/26366).
-
 
 ## [Examples:](https://github.com/go-vgo/robotgo/blob/master/examples)
 
@@ -256,7 +260,7 @@ func main() {
   bitmap := robotgo.CaptureScreen(10, 20, 30, 40)
   // use `defer robotgo.FreeBitmap(bit)` to free the bitmap
   defer robotgo.FreeBitmap(bitmap)
- 
+
   fmt.Println("bitmap...", bitmap)
   img := robotgo.ToImage(bitmap)
   robotgo.SavePng(img, "test_1.png")
@@ -445,6 +449,7 @@ func main() {
 ## CrossCompiling
 
 ##### Windows64 to windows32
+
 ```Go
 SET CGO_ENABLED=1
 SET GOARCH=386
@@ -454,6 +459,7 @@ go build main.go
 #### Other to windows
 
 Install Requirements (Ubuntu):
+
 ```bash
 sudo apt install gcc-multilib
 sudo apt install gcc-mingw-w64
@@ -472,11 +478,13 @@ GOOS=windows GOARCH=amd64 CGO_ENABLED=1 CC=x86_64-w64-mingw32-gcc CXX=x86_64-w64
 ```
 
 ## Authors
-* [The author is vz](https://github.com/vcaesar)
-* [Maintainers](https://github.com/orgs/go-vgo/people)
-* [Contributors](https://github.com/go-vgo/robotgo/graphs/contributors)
+
+- [The author is vz](https://github.com/vcaesar)
+- [Maintainers](https://github.com/orgs/go-vgo/people)
+- [Contributors](https://github.com/go-vgo/robotgo/graphs/contributors)
 
 ## Plans
+
 - 更新 Find an image on screen, read pixels from an image
 - 更新 Window Handle
 - 尝试支持 Android, 也许支持 IOS
