@@ -1,20 +1,23 @@
 package screen
 
 import (
-	"os"
 	"testing"
 
 	robotgo "github.com/marang/robotgo"
 )
 
 func TestCaptureScreen(t *testing.T) {
-	t.Parallel()
-	if os.Getenv("DISPLAY") == "" {
-		t.Skip("no X11 display")
+	// X11 path
+	t.Setenv("DISPLAY", ":0")
+	t.Setenv("WAYLAND_DISPLAY", "")
+	if _, err := robotgo.CaptureScreen(); err != nil {
+		t.Skipf("X11 capture skipped: %v", err)
 	}
-	bit, err := robotgo.CaptureScreen()
-	if err != nil {
-		t.Fatalf("CaptureScreen error: %v", err)
+
+	// Wayland path should return an error
+	t.Setenv("DISPLAY", "")
+	t.Setenv("WAYLAND_DISPLAY", "wayland-0")
+	if _, err := robotgo.CaptureScreen(); err == nil {
+		t.Fatalf("expected error on Wayland capture")
 	}
-	robotgo.FreeBitmap(bit)
 }

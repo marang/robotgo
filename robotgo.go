@@ -52,6 +52,7 @@ import "C"
 import (
 	"errors"
 	"image"
+	"os"
 	"runtime"
 	"time"
 	"unsafe"
@@ -83,6 +84,31 @@ var (
 	// Scale option the os screen scale
 	Scale bool
 )
+
+// DisplayServer identifies the active Linux display server.
+type DisplayServer string
+
+const (
+	// DisplayServerX11 represents an X11 display server.
+	DisplayServerX11 DisplayServer = "x11"
+	// DisplayServerWayland represents a Wayland display server.
+	DisplayServerWayland DisplayServer = "wayland"
+	// DisplayServerUnknown indicates no known display server was detected.
+	DisplayServerUnknown DisplayServer = "unknown"
+)
+
+// DetectDisplayServer inspects the environment and reports the active display server.
+// It checks the standard DISPLAY and WAYLAND_DISPLAY variables.
+// If neither is present, DisplayServerUnknown is returned.
+func DetectDisplayServer() DisplayServer {
+	if os.Getenv("WAYLAND_DISPLAY") != "" {
+		return DisplayServerWayland
+	}
+	if os.Getenv("DISPLAY") != "" {
+		return DisplayServerX11
+	}
+	return DisplayServerUnknown
+}
 
 type (
 	// Map a map[string]interface{}
@@ -334,12 +360,20 @@ func CaptureScreen(args ...int) (CBitmap, error) {
 		displayId = args[4]
 	}
 
+	ds := DetectDisplayServer()
+
 	if len(args) > 3 {
 		x = C.int32_t(args[0])
 		y = C.int32_t(args[1])
 		w = C.int32_t(args[2])
 		h = C.int32_t(args[3])
 	} else {
+		if runtime.GOOS == "linux" {
+			if ds != DisplayServerX11 || C.XGetMainDisplay() == nil {
+				return nil, errors.New("no display server found")
+			}
+		}
+
 		// Get the main screen rect.
 		rect := GetScreenRect(displayId)
 		if runtime.GOOS == "windows" {
@@ -354,6 +388,25 @@ func CaptureScreen(args ...int) (CBitmap, error) {
 	isPid := 0
 	if NotPid || len(args) > 5 {
 		isPid = 1
+	}
+
+	if runtime.GOOS == "linux" {
+		switch ds {
+		case DisplayServerWayland:
+			bit := C.capture_screen_wayland(x, y, w, h, C.int32_t(displayId), C.int8_t(isPid))
+			if bit == nil {
+				return nil, errors.New("wayland screen capture unsupported or failed")
+			}
+			return CBitmap(bit), nil
+		case DisplayServerX11:
+			bit := C.capture_screen(x, y, w, h, C.int32_t(displayId), C.int8_t(isPid))
+			if bit == nil {
+				return nil, errors.New("screen capture failed")
+			}
+			return CBitmap(bit), nil
+		default:
+			return nil, errors.New("no display server found")
+		}
 	}
 
 	bit := C.capture_screen(x, y, w, h, C.int32_t(displayId), C.int8_t(isPid))
