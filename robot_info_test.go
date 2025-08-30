@@ -13,12 +13,20 @@ package robotgo_test
 import (
 	"fmt"
 	"log"
+	"os"
 	"runtime"
 	"testing"
 
 	"github.com/marang/robotgo"
 	"github.com/vcaesar/tt"
 )
+
+func requireDisplay(t *testing.T) {
+	t.Helper()
+	if os.Getenv("DISPLAY") == "" && os.Getenv("WAYLAND_DISPLAY") == "" {
+		t.Skip("no display available")
+	}
+}
 
 func TestGetVer(t *testing.T) {
 	fmt.Println("go version: ", runtime.Version())
@@ -28,6 +36,7 @@ func TestGetVer(t *testing.T) {
 }
 
 func TestGetScreenSize(t *testing.T) {
+	requireDisplay(t)
 	x, y := robotgo.GetScreenSize()
 	log.Println("Get screen size: ", x, y)
 
@@ -39,6 +48,7 @@ func TestGetScreenSize(t *testing.T) {
 }
 
 func TestGetSysScale(t *testing.T) {
+	requireDisplay(t)
 	s := robotgo.SysScale()
 	log.Println("SysScale: ", s)
 
@@ -47,6 +57,7 @@ func TestGetSysScale(t *testing.T) {
 }
 
 func TestGetTitle(t *testing.T) {
+	requireDisplay(t)
 	// just exercise the function, it used to crash with a segfault + "Maximum
 	// number of clients reached"
 	for i := 0; i < 128; i++ {
