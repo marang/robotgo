@@ -94,8 +94,9 @@ func RGBAToBitmap(r1 *image.RGBA) (bit Bitmap) {
 	bit.Height = r1.Bounds().Size().Y
 	bit.Bytewidth = r1.Stride
 
-	src := ToUint8p(r1.Pix)
+	buf, src := ToUint8p(r1.Pix)
 	bit.ImgBuf = src
+	bit.buf = buf
 
 	bit.BitsPixel = 32
 	bit.BytesPerPixel = 32 / 8
@@ -111,16 +112,21 @@ func ImgToBitmap(m image.Image) (bit Bitmap) {
 	pix, stride, _ := imgo.EncodeImg(m)
 	bit.Bytewidth = stride
 
-	src := ToUint8p(pix)
+	buf, src := ToUint8p(pix)
 	bit.ImgBuf = src
-	//
+	bit.buf = buf
+
 	bit.BitsPixel = 32
 	bit.BytesPerPixel = 32 / 8
 	return
 }
 
-// ToUint8p convert the []uint8 to uint8 pointer
-func ToUint8p(dst []uint8) *uint8 {
+// ToUint8p convert the []uint8 to a uint8 pointer and backing slice
+func ToUint8p(dst []uint8) ([]uint8, *uint8) {
+	if len(dst) == 0 {
+		return nil, nil
+	}
+
 	src := make([]uint8, len(dst)+10)
 	for i := 0; i <= len(dst)-4; i += 4 {
 		src[i+3] = dst[i+3]
@@ -129,8 +135,7 @@ func ToUint8p(dst []uint8) *uint8 {
 		src[i+2] = dst[i]
 	}
 
-	ptr := unsafe.Pointer(&src[0])
-	return (*uint8)(ptr)
+	return src, (*uint8)(unsafe.Pointer(&src[0]))
 }
 
 // ToRGBAGo convert Bitmap to standard image.RGBA
@@ -144,9 +149,7 @@ func ToRGBAGo(bmp1 Bitmap) *image.RGBA {
 }
 
 func val(p *uint8, n int) uint8 {
-	addr := uintptr(unsafe.Pointer(p))
-	addr += uintptr(n)
-	p1 := (*uint8)(unsafe.Pointer(addr))
+	p1 := (*uint8)(unsafe.Add(unsafe.Pointer(p), n))
 	return *p1
 }
 
