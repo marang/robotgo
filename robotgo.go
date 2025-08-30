@@ -107,6 +107,8 @@ type Bitmap struct {
 	Bytewidth     int
 	BitsPixel     uint8
 	BytesPerPixel uint8
+
+	buf []uint8 // keep Go memory alive for ImgBuf
 }
 
 // Point is point struct
@@ -404,6 +406,7 @@ func ToBitmap(bit CBitmap) Bitmap {
 		Bytewidth:     int(bit.bytewidth),
 		BitsPixel:     uint8(bit.bitsPerPixel),
 		BytesPerPixel: uint8(bit.bytesPerPixel),
+		buf:           nil,
 	}
 
 	return bitmap
