@@ -14,12 +14,19 @@
         #include "../base/os.h"
 
         /* Wayland support */
-        #include <wayland-client.h>
         #include <string.h>
+        #include <wayland-client.h>
+        #include <linux/input-event-codes.h>
+        #include "wlr-virtual-pointer-unstable-v1-client-protocol.h"
+        #include "../window/get_bounds_wayland.h"
 
         static struct wl_display *rg_wl_display = NULL;
         static struct wl_seat *rg_wl_seat = NULL;
         static struct wl_pointer *rg_wl_pointer = NULL;
+        static struct zwlr_virtual_pointer_manager_v1 *rg_wl_vptr_mgr = NULL;
+        static struct zwlr_virtual_pointer_v1 *rg_wl_vptr = NULL;
+        static int rg_wl_width = 0;
+        static int rg_wl_height = 0;
         static int rg_wl_inited = 0;
 
         static void rg_wl_pointer_handle_enter(void *data, struct wl_pointer *pointer, uint32_t serial, struct wl_surface *surface, wl_fixed_t sx, wl_fixed_t sy) { }
@@ -58,6 +65,8 @@
                 if (strcmp(interface, "wl_seat") == 0) {
                         rg_wl_seat = wl_registry_bind(registry, name, &wl_seat_interface, 1);
                         wl_seat_add_listener(rg_wl_seat, &rg_wl_seat_listener, NULL);
+                } else if (strcmp(interface, "zwlr_virtual_pointer_manager_v1") == 0) {
+                        rg_wl_vptr_mgr = wl_registry_bind(registry, name, &zwlr_virtual_pointer_manager_v1_interface, 1);
                 }
         }
 
@@ -78,12 +87,16 @@
                 struct wl_registry *registry = wl_display_get_registry(rg_wl_display);
                 wl_registry_add_listener(registry, &rg_wl_registry_listener, NULL);
                 wl_display_roundtrip(rg_wl_display);
-                if (!rg_wl_pointer) {
+                if (!rg_wl_pointer && !rg_wl_vptr_mgr) {
                         wl_display_disconnect(rg_wl_display);
                         rg_wl_display = NULL;
                         return 0;
                 }
-                return 1;
+                if (rg_wl_vptr_mgr && rg_wl_seat) {
+                        rg_wl_vptr = zwlr_virtual_pointer_manager_v1_create_virtual_pointer(rg_wl_vptr_mgr, rg_wl_seat);
+                }
+                get_bounds_wayland(rg_wl_display, &rg_wl_width, &rg_wl_height);
+                return rg_wl_vptr != NULL;
         }
 #endif
 
@@ -173,7 +186,12 @@ void moveMouse(MMPointInt32 point){
                                 XWarpPointer(display, None, DefaultRootWindow(display), 0, 0, 0, 0, point.x, point.y);
                                 XSync(display, false);
                         } else {
-                                /* Wayland restricts absolute motion; fallback uses XWayland if available */
+                                if (rg_wl_width > 0 && rg_wl_height > 0) {
+                                        uint32_t sx = (uint32_t)((double)point.x * 65535.0 / rg_wl_width);
+                                        uint32_t sy = (uint32_t)((double)point.y * 65535.0 / rg_wl_height);
+                                        zwlr_virtual_pointer_v1_motion_absolute(rg_wl_vptr, 0, sx, sy, 65535, 65535);
+                                        wl_display_flush(rg_wl_display);
+                                }
                         }
                 } else {
                         Display *display = XGetMainDisplay();
@@ -245,7 +263,14 @@ void toggleMouse(bool down, MMMouseButton button) {
                                 XTestFakeButtonEvent(display, button, down ? True : False, CurrentTime);
                                 XSync(display, false);
                         } else {
-                                /* Wayland pointer injection not available, rely on XWayland if present */
+                                uint32_t code = BTN_LEFT;
+                                if (button == RIGHT_BUTTON) {
+                                        code = BTN_RIGHT;
+                                } else if (button == CENTER_BUTTON) {
+                                        code = BTN_MIDDLE;
+                                }
+                                zwlr_virtual_pointer_v1_button(rg_wl_vptr, 0, code, down ? 1 : 0);
+                                wl_display_flush(rg_wl_display);
                         }
                 } else {
                         Display *display = XGetMainDisplay();
