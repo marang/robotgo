@@ -1,11 +1,12 @@
-//go:build wayland
-// +build wayland
+//go:build linux && wayland
+// +build linux,wayland
 
 package robotgo
 
 /*
-#cgo pkg-config: wayland-client
+#cgo pkg-config: wayland-client wayland-cursor wayland-egl xkbcommon
 #cgo CFLAGS: -DUSE_WAYLAND
+#cgo LDFLAGS: -lwayland-client -lwayland-cursor -lwayland-egl -lxkbcommon
 #include "window/get_bounds_wayland_c.h"
 */
 import "C"
