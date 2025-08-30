@@ -157,7 +157,6 @@
                         return 0;
                 }
         }
-#endif
 
         static void wk_registry_global(void *data, struct wl_registry *registry,
                                        uint32_t name, const char *interface,
