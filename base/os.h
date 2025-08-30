@@ -2,8 +2,7 @@
 #ifndef OS_H
 #define OS_H
 
-#include <cstdlib>  // For getenv()
-#include <string>   // For std::string
+#include <stdlib.h>  // For getenv()
 
 #if !defined(IS_MACOSX) && defined(__APPLE__) && defined(__MACH__)
     #define IS_MACOSX
@@ -59,26 +58,26 @@
 // ---------------------
 // Display Server Detection (Runtime)
 // ---------------------
-enum class DisplayServer {
+typedef enum {
     Wayland,
     X11,
     Unknown
-};
+} DisplayServer;
 
-inline DisplayServer detectDisplayServer() {
+static inline DisplayServer detectDisplayServer(void) {
 #if defined(IS_LINUX)
-    const char* wayland = std::getenv("WAYLAND_DISPLAY");
-    const char* x11 = std::getenv("DISPLAY");
+    const char* wayland = getenv("WAYLAND_DISPLAY");
+    const char* x11 = getenv("DISPLAY");
 
     if (wayland && *wayland != '\0') {
-        return DisplayServer::Wayland;
+        return Wayland;
     } else if (x11 && *x11 != '\0') {
-        return DisplayServer::X11;
+        return X11;
     } else {
-        return DisplayServer::Unknown;
+        return Unknown;
     }
 #else
-    return DisplayServer::Unknown;
+    return Unknown;
 #endif
 }
 
