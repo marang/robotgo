@@ -2,32 +2,29 @@
 
 package base
 
-import (
-	"testing"
-)
+import "testing"
 
 func TestDetectDisplayServer(t *testing.T) {
-	t.Run("Wayland", func(t *testing.T) {
-		t.Setenv("WAYLAND_DISPLAY", "wayland-0")
-		t.Setenv("DISPLAY", "")
-		if ds := DetectDisplayServer(); ds != Wayland {
-			t.Fatalf("expected Wayland, got %v", ds)
-		}
-	})
 
-	t.Run("X11", func(t *testing.T) {
-		t.Setenv("WAYLAND_DISPLAY", "")
-		t.Setenv("DISPLAY", ":0")
-		if ds := DetectDisplayServer(); ds != X11 {
-			t.Fatalf("expected X11, got %v", ds)
-		}
-	})
+	tests := []struct {
+		name           string
+		waylandDisplay string
+		display        string
+		want           DisplayServer
+	}{
+		{name: "Wayland", waylandDisplay: "wayland-0", display: "", want: Wayland},
+		{name: "X11", waylandDisplay: "", display: ":0", want: X11},
+		{name: "Unknown", waylandDisplay: "", display: "", want: Unknown},
+	}
 
-	t.Run("Unknown", func(t *testing.T) {
-		t.Setenv("WAYLAND_DISPLAY", "")
-		t.Setenv("DISPLAY", "")
-		if ds := DetectDisplayServer(); ds != Unknown {
-			t.Fatalf("expected Unknown, got %v", ds)
-		}
-	})
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Setenv("WAYLAND_DISPLAY", tt.waylandDisplay)
+			t.Setenv("DISPLAY", tt.display)
+			if got := DetectDisplayServer(); got != tt.want {
+				t.Fatalf("expected %v, got %v", tt.want, got)
+			}
+		})
+	}
 }
