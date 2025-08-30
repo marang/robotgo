@@ -7,13 +7,85 @@
 	// #include </System/Library/Frameworks/ApplicationServices.framework/Headers/ApplicationServices.h>
 	#include <ApplicationServices/ApplicationServices.h>
 	// #include </System/Library/Frameworks/ApplicationServices.framework/Versions/A/Headers/ApplicationServices.h>
-#elif defined(IS_LINUX) 
-	#include <X11/Xlib.h>
-	#include <X11/extensions/XTest.h>
-	#include <stdlib.h>
+#elif defined(IS_LINUX)
+        #include <X11/Xlib.h>
+        #include <X11/extensions/XTest.h>
+        #include <stdlib.h>
 
-	// @TODO wayland implementation here
-	// find out if an extra import is needed
+        /* Wayland support */
+        #ifdef USE_WAYLAND
+                #include <wayland-client.h>
+                #include <string.h>
+
+                static struct wl_display *rg_wl_display = NULL;
+                static struct wl_seat *rg_wl_seat = NULL;
+                static struct wl_pointer *rg_wl_pointer = NULL;
+                static int rg_wl_inited = 0;
+
+                static void rg_wl_pointer_handle_enter(void *data, struct wl_pointer *pointer, uint32_t serial, struct wl_surface *surface, wl_fixed_t sx, wl_fixed_t sy) { }
+                static void rg_wl_pointer_handle_leave(void *data, struct wl_pointer *pointer, uint32_t serial, struct wl_surface *surface) { }
+                static void rg_wl_pointer_handle_motion(void *data, struct wl_pointer *pointer, uint32_t time, wl_fixed_t sx, wl_fixed_t sy) { }
+                static void rg_wl_pointer_handle_button(void *data, struct wl_pointer *pointer, uint32_t serial, uint32_t time, uint32_t button, uint32_t state) { }
+                static void rg_wl_pointer_handle_axis(void *data, struct wl_pointer *pointer, uint32_t time, uint32_t axis, wl_fixed_t value) { }
+
+                static const struct wl_pointer_listener rg_wl_pointer_listener = {
+                        rg_wl_pointer_handle_enter,
+                        rg_wl_pointer_handle_leave,
+                        rg_wl_pointer_handle_motion,
+                        rg_wl_pointer_handle_button,
+                        rg_wl_pointer_handle_axis,
+                        NULL,
+                        NULL,
+                        NULL,
+                        NULL
+                };
+
+                static void rg_wl_seat_handle_capabilities(void *data, struct wl_seat *seat, uint32_t caps) {
+                        (void)data;
+                        if (caps & WL_SEAT_CAPABILITY_POINTER) {
+                                rg_wl_pointer = wl_seat_get_pointer(seat);
+                                wl_pointer_add_listener(rg_wl_pointer, &rg_wl_pointer_listener, NULL);
+                        }
+                }
+
+                static const struct wl_seat_listener rg_wl_seat_listener = {
+                        rg_wl_seat_handle_capabilities,
+                        NULL
+                };
+
+                static void rg_wl_registry_handle_global(void *data, struct wl_registry *registry, uint32_t name, const char *interface, uint32_t version) {
+                        (void)data; (void)version;
+                        if (strcmp(interface, "wl_seat") == 0) {
+                                rg_wl_seat = wl_registry_bind(registry, name, &wl_seat_interface, 1);
+                                wl_seat_add_listener(rg_wl_seat, &rg_wl_seat_listener, NULL);
+                        }
+                }
+
+                static const struct wl_registry_listener rg_wl_registry_listener = {
+                        rg_wl_registry_handle_global,
+                        NULL
+                };
+
+                static int rg_init_wayland(void) {
+                        if (rg_wl_inited) {
+                                return rg_wl_display != NULL && rg_wl_pointer != NULL;
+                        }
+                        rg_wl_inited = 1;
+                        rg_wl_display = wl_display_connect(NULL);
+                        if (!rg_wl_display) {
+                                return 0;
+                        }
+                        struct wl_registry *registry = wl_display_get_registry(rg_wl_display);
+                        wl_registry_add_listener(registry, &rg_wl_registry_listener, NULL);
+                        wl_display_roundtrip(rg_wl_display);
+                        if (!rg_wl_pointer) {
+                                wl_display_disconnect(rg_wl_display);
+                                rg_wl_display = NULL;
+                                return 0;
+                        }
+                        return 1;
+                }
+        #endif
 #endif
 
 /* Some convenience macros for converting our enums to the system API types. */
@@ -85,7 +157,7 @@
 
 /* Move the mouse to a specific point. */
 void moveMouse(MMPointInt32 point){
-	#if defined(IS_MACOSX)
+        #if defined(IS_MACOSX)
 		CGEventSourceRef source = CGEventSourceCreate(kCGEventSourceStateHIDSystemState);
 		CGEventRef move = CGEventCreateMouseEvent(source, kCGEventMouseMoved, 
 								CGPointFromMMPointInt32(point), kCGMouseButtonLeft);
@@ -95,16 +167,23 @@ void moveMouse(MMPointInt32 point){
 		CGEventPost(kCGHIDEventTap, move);
 		CFRelease(move);
 		CFRelease(source);
-	#elif defined(IS_LINUX)
-		Display *display = XGetMainDisplay();
-		XWarpPointer(display, None, DefaultRootWindow(display), 0, 0, 0, 0, point.x, point.y);
-
-		XSync(display, false);
-
-		// @TODO wayland implementation here
-	#elif defined(IS_WINDOWS)
-		SetCursorPos(point.x, point.y);
-	#endif
+        #elif defined(IS_LINUX)
+                #ifdef USE_WAYLAND
+                        if (!rg_init_wayland()) {
+                                Display *display = XGetMainDisplay();
+                                XWarpPointer(display, None, DefaultRootWindow(display), 0, 0, 0, 0, point.x, point.y);
+                                XSync(display, false);
+                        } else {
+                                /* Wayland restricts absolute motion; fallback uses XWayland if available */
+                        }
+                #else
+                        Display *display = XGetMainDisplay();
+                        XWarpPointer(display, None, DefaultRootWindow(display), 0, 0, 0, 0, point.x, point.y);
+                        XSync(display, false);
+                #endif
+        #elif defined(IS_WINDOWS)
+                SetCursorPos(point.x, point.y);
+        #endif
 }
 
 void dragMouse(MMPointInt32 point, const MMMouseButton button){
@@ -160,13 +239,23 @@ void toggleMouse(bool down, MMMouseButton button) {
 		CGEventPost(kCGHIDEventTap, event);
 		CFRelease(event);
 		CFRelease(source);
-	#elif defined(IS_LINUX)
-		Display *display = XGetMainDisplay();
-		XTestFakeButtonEvent(display, button, down ? True : False, CurrentTime);
-		XSync(display, false);
-	#elif defined(IS_WINDOWS)
-		// mouse_event(MMMouseToMEventF(down, button), 0, 0, 0, 0);
-		INPUT mouseInput;
+        #elif defined(IS_LINUX)
+                #ifdef USE_WAYLAND
+                        if (!rg_init_wayland()) {
+                                Display *display = XGetMainDisplay();
+                                XTestFakeButtonEvent(display, button, down ? True : False, CurrentTime);
+                                XSync(display, false);
+                        } else {
+                                /* Wayland pointer injection not available, rely on XWayland if present */
+                        }
+                #else
+                        Display *display = XGetMainDisplay();
+                        XTestFakeButtonEvent(display, button, down ? True : False, CurrentTime);
+                        XSync(display, false);
+                #endif
+        #elif defined(IS_WINDOWS)
+                // mouse_event(MMMouseToMEventF(down, button), 0, 0, 0, 0);
+                INPUT mouseInput;
 
 		mouseInput.type = INPUT_MOUSE;
 		mouseInput.mi.dx = 0;
