@@ -110,12 +110,16 @@ MMBitmapRef copyMMBitmapFromDisplayInRect(MMRectInt32 rect, int32_t display_id, 
 		display = XGetMainDisplay();
 	}
 
-	MMPointInt32 o = rect.origin; MMSizeInt32 s = rect.size;
-	XImage *image = XGetImage(display, XDefaultRootWindow(display), 
-							(int)o.x, (int)o.y, (unsigned int)s.w, (unsigned int)s.h, 
-							AllPlanes, ZPixmap);
-	XCloseDisplay(display);
-	if (image == NULL) { return NULL; }
+       MMPointInt32 o = rect.origin; MMSizeInt32 s = rect.size;
+       unsigned long mask = (1UL << DefaultDepth(display, DefaultScreen(display))) - 1;
+       XImage *image = XGetImage(display, XDefaultRootWindow(display),
+                                                       (int)o.x, (int)o.y, (unsigned int)s.w, (unsigned int)s.h,
+                                                       mask, ZPixmap);
+       if (image == NULL) {
+               XCloseDisplay(display);
+               return NULL;
+       }
+       XCloseDisplay(display);
 
 	bitmap = createMMBitmap_c((uint8_t *)image->data, 
 				s.w, s.h, (size_t)image->bytes_per_line, 

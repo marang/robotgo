@@ -19,15 +19,23 @@ import (
 )
 
 func bitmap() {
-	bit := robotgo.CaptureScreen()
+	bit, err := robotgo.CaptureScreen()
+	if err != nil {
+		fmt.Println("CaptureScreen error:", err)
+		return
+	}
 	defer robotgo.FreeBitmap(bit)
 	fmt.Println("abitMap...", bit)
 
 	gbit := robotgo.ToBitmap(bit)
 	fmt.Println("bitmap...", gbit.Width)
 
-	gbitMap := robotgo.CaptureGo()
-	fmt.Println("Go CaptureScreen...", gbitMap.Width)
+	gbitMap, err := robotgo.CaptureGo()
+	if err != nil {
+		fmt.Println("CaptureGo error:", err)
+	} else {
+		fmt.Println("Go CaptureScreen...", gbitMap.Width)
+	}
 	// fmt.Println("...", gbitmap.Width, gbitmap.BytesPerPixel)
 	if err := robotgo.SaveCapture("saveCapture.png", 10, 20, 100, 100); err != nil {
 		fmt.Println(err)
