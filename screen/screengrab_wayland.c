@@ -1,8 +1,9 @@
 //go:build ignore
 // +build ignore
 
-#include "screen_c.h"
-#include "../base/bitmap_free_c.h"
+// This file is included from screengrab_c.h, which already provides the
+// necessary declarations and includes. Avoid including headers here to prevent
+// duplicate symbol definitions when screengrab_wayland.c is embedded.
 
 #if defined(IS_LINUX)
 // capture_screen_wayland attempts to capture the screen using a Wayland protocol.

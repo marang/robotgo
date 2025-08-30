@@ -360,12 +360,20 @@ func CaptureScreen(args ...int) (CBitmap, error) {
 		displayId = args[4]
 	}
 
+	ds := DetectDisplayServer()
+
 	if len(args) > 3 {
 		x = C.int32_t(args[0])
 		y = C.int32_t(args[1])
 		w = C.int32_t(args[2])
 		h = C.int32_t(args[3])
 	} else {
+		if runtime.GOOS == "linux" {
+			if ds != DisplayServerX11 || C.XGetMainDisplay() == nil {
+				return nil, errors.New("no display server found")
+			}
+		}
+
 		// Get the main screen rect.
 		rect := GetScreenRect(displayId)
 		if runtime.GOOS == "windows" {
@@ -383,7 +391,7 @@ func CaptureScreen(args ...int) (CBitmap, error) {
 	}
 
 	if runtime.GOOS == "linux" {
-		switch DetectDisplayServer() {
+		switch ds {
 		case DisplayServerWayland:
 			bit := C.capture_screen_wayland(x, y, w, h, C.int32_t(displayId), C.int8_t(isPid))
 			if bit == nil {
