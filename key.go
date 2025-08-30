@@ -492,13 +492,15 @@ func appendShift(key string, len1 int, args ...interface{}) (string, []interface
 	}
 
 	key = strings.ToLower(key)
-	if _, ok := Special[key]; ok {
-		key = Special[key]
-		if len(args) <= len1 {
-			args = append(args, "shift")
+	if spec := CurrentSpecialTable(); spec != nil {
+		if v, ok := spec[key]; ok {
+			key = v
+			if len(args) <= len1 {
+				args = append(args, "shift")
+			}
+			return key, args
 		}
 	}
-
 	return key, args
 }
 
