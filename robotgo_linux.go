@@ -34,7 +34,8 @@ import (
 
 var xu *xgbutil.XUtil
 
-// GetBounds get the window bounds
+// GetBounds returns the window bounds and dispatches to the appropriate
+// Wayland or X11 implementation based on DetectDisplayServer.
 func GetBounds(pid int, args ...int) (int, int, int, int) {
 	if base.DetectDisplayServer() == base.Wayland {
 		display := C.wl_display_connect(nil)
@@ -67,7 +68,8 @@ func GetBounds(pid int, args ...int) (int, int, int, int) {
 	return internalGetBounds(int(xid), isPid)
 }
 
-// GetClient get the window client bounds
+// GetClient returns the client bounds of the window and dispatches to the
+// Wayland or X11 implementation based on DetectDisplayServer.
 func GetClient(pid int, args ...int) (int, int, int, int) {
 	if base.DetectDisplayServer() == base.Wayland {
 		display := C.wl_display_connect(nil)
