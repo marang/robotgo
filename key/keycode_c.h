@@ -1,4 +1,5 @@
 #include "keycode.h"
+#include <stdlib.h>
 
 #if defined(IS_MACOSX)
 	#include <CoreFoundation/CoreFoundation.h>
@@ -57,38 +58,60 @@ MMKeyCode keyCodeForChar(const char c) {
 		}
 
 		return code;
-	#elif defined(IS_LINUX)
-		// @TODO distinguish between display servers x11/wayland
-		// current implementation is for x11
+        #elif defined(IS_LINUX)
+                const char* wayland = getenv("WAYLAND_DISPLAY");
+                const char* x11 = getenv("DISPLAY");
+#if defined(DISPLAY_SERVER_WAYLAND) || defined(USE_WAYLAND)
+                if (wayland && (!x11 || *x11 == '\0')) {
+                        char buf[2];
+                        buf[0] = c;
+                        buf[1] = '\0';
 
-		char buf[2];
-		buf[0] = c;
-		buf[1] = '\0';
+                        MMKeyCode code = xkb_utf8_to_keysym(buf);
+                        if (code == XKB_KEY_NoSymbol) {
+                                struct XSpecialCharacterMapping* xs = XSpecialCharacterTable;
+                                while (xs->name) {
+                                        if (c == xs->name) {
+                                                code = xs->code;
+                                                break;
+                                        }
+                                        xs++;
+                                }
+                        }
 
-		MMKeyCode code = XStringToKeysym(buf);
-		if (code == NoSymbol) {
-			/* Some special keys are apparently not handled properly */
-			struct XSpecialCharacterMapping* xs = XSpecialCharacterTable;
-			while (xs->name) {
-				if (c == xs->name) {
-					code = xs->code;
-					// 
-					break;
-				}
-				xs++;
-			}
-		}
+                        if (code == XKB_KEY_NoSymbol) {
+                                return K_NOT_A_KEY;
+                        }
+                        return code;
+                }
+#endif
+                {
+                        char buf[2];
+                        buf[0] = c;
+                        buf[1] = '\0';
 
-		if (code == NoSymbol) {
-			return K_NOT_A_KEY;
-		}
+                        MMKeyCode code = XStringToKeysym(buf);
+                        if (code == NoSymbol) {
+                                struct XSpecialCharacterMapping* xs = XSpecialCharacterTable;
+                                while (xs->name) {
+                                        if (c == xs->name) {
+                                                code = xs->code;
+                                                break;
+                                        }
+                                        xs++;
+                                }
+                        }
 
-		// x11 key bug
-		if (c == 60) {
-			code = 44;
-		}
-		return code;
-	#endif
+                        if (code == NoSymbol) {
+                                return K_NOT_A_KEY;
+                        }
+
+                        if (c == 60) {
+                                code = 44;
+                        }
+                        return code;
+                }
+        #endif
 }
 
 #if defined(IS_MACOSX)
