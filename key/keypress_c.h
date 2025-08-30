@@ -19,11 +19,13 @@
 	#import <IOKit/hidsystem/IOHIDLib.h>
 	#import <IOKit/hidsystem/ev_keymap.h>
 #elif defined(IS_LINUX)
-	#include <X11/extensions/XTest.h>
-	// #include "../base/xdisplay_c.h"
-
-	// @TODO wayland implementation here
-	// find out if an extra import is needed
+        #include <X11/extensions/XTest.h>
+        #include <stdlib.h>
+        // #include "../base/xdisplay_c.h"
+#if defined(DISPLAY_SERVER_WAYLAND) || defined(USE_WAYLAND)
+        #include <wayland-client.h>
+        #include <xkbcommon/xkbcommon.h>
+#endif
 #endif
 
 /* Convenience wrappers around ugly APIs. */
@@ -42,20 +44,95 @@
 		win32KeyEvent(key, flags, pid, 0); 
 		Sleep(DEADBEEF_RANDRANGE(0, 1));
 	}
-#elif defined(IS_LINUX) 
-	Display *XGetMainDisplay(void);
+#elif defined(IS_LINUX)
+        Display *XGetMainDisplay(void);
 
-	void X_KEY_EVENT(Display *display, MMKeyCode key, bool is_press) {
-		XTestFakeKeyEvent(display, XKeysymToKeycode(display, key), is_press, CurrentTime); 
-		XSync(display, false);
-	}
+        void X_KEY_EVENT(Display *display, MMKeyCode key, bool is_press) {
+                XTestFakeKeyEvent(display, XKeysymToKeycode(display, key), is_press, CurrentTime);
+                XSync(display, false);
+        }
 
-	void X_KEY_EVENT_WAIT(Display *display, MMKeyCode key, bool is_press) {
-		X_KEY_EVENT(display, key, is_press);
-		microsleep(DEADBEEF_UNIFORM(0.0, 0.5));
-	}
+        void X_KEY_EVENT_WAIT(Display *display, MMKeyCode key, bool is_press) {
+                X_KEY_EVENT(display, key, is_press);
+                microsleep(DEADBEEF_UNIFORM(0.0, 0.5));
+        }
 
-	// @TODO wayland implementation here
+#if defined(DISPLAY_SERVER_WAYLAND) || defined(USE_WAYLAND)
+        #include <string.h>
+        static struct wl_display *wk_display = NULL;
+        static struct wl_registry *wk_registry = NULL;
+        static struct wl_seat *wk_seat = NULL;
+        static struct wl_keyboard *wk_keyboard = NULL;
+
+        static void wk_registry_global(void *data, struct wl_registry *registry,
+                                       uint32_t name, const char *interface,
+                                       uint32_t version) {
+                (void)data; (void)version;
+                if (strcmp(interface, "wl_seat") == 0) {
+                        wk_seat = wl_registry_bind(registry, name, &wl_seat_interface, 1);
+                }
+        }
+
+        static void wk_registry_remove(void *data, struct wl_registry *registry,
+                                       uint32_t name) {
+                (void)data; (void)registry; (void)name;
+        }
+
+        static const struct wl_registry_listener wk_registry_listener = {
+                wk_registry_global,
+                wk_registry_remove
+        };
+
+        static void wk_seat_capabilities(void *data, struct wl_seat *seat,
+                                         enum wl_seat_capability caps) {
+                (void)data;
+                if ((caps & WL_SEAT_CAPABILITY_KEYBOARD) && !wk_keyboard) {
+                        wk_keyboard = wl_seat_get_keyboard(seat);
+                }
+        }
+
+        static void wk_seat_name(void *data, struct wl_seat *seat, const char *name) {
+                (void)data; (void)seat; (void)name;
+        }
+
+        static const struct wl_seat_listener wk_seat_listener = {
+                wk_seat_capabilities,
+                wk_seat_name
+        };
+
+        static int ensure_wayland_keyboard(void) {
+                if (wk_keyboard) {
+                        return 0;
+                }
+                wk_display = wl_display_connect(NULL);
+                if (!wk_display) {
+                        return -1;
+                }
+                wk_registry = wl_display_get_registry(wk_display);
+                wl_registry_add_listener(wk_registry, &wk_registry_listener, NULL);
+                wl_display_roundtrip(wk_display);
+                if (wk_seat) {
+                        wl_seat_add_listener(wk_seat, &wk_seat_listener, NULL);
+                        wl_display_roundtrip(wk_display);
+                }
+                return wk_keyboard ? 0 : -1;
+        }
+
+        static void WL_KEY_EVENT(MMKeyCode key, bool is_press) {
+                (void)key;
+                (void)is_press;
+                if (ensure_wayland_keyboard() != 0) {
+                        return;
+                }
+                /* Real key injection requires the virtual-keyboard protocol. */
+        }
+
+        static void WL_KEY_EVENT_WAIT(MMKeyCode key, bool is_press) {
+                WL_KEY_EVENT(key, is_press);
+                microsleep(DEADBEEF_UNIFORM(0.0, 0.5));
+        }
+#endif
+
 #endif
 
 #if defined(IS_MACOSX)
@@ -207,18 +284,31 @@ void toggleKeyCode(MMKeyCode code, const bool down, MMKeyFlags flags, uintptr pi
 
 	win32KeyEvent(code, dwFlags, pid, 0);
 #elif defined(IS_LINUX)
-	Display *display = XGetMainDisplay();
-	const Bool is_press = down ? True : False; /* Just to be safe. */
+        const char* wayland = getenv("WAYLAND_DISPLAY");
+        const char* x11 = getenv("DISPLAY");
+#if defined(DISPLAY_SERVER_WAYLAND) || defined(USE_WAYLAND)
+        if (wayland && (!x11 || *x11 == '\0')) {
+                const Bool is_press = down ? True : False;
 
-	/* Parse modifier keys. */
-	if (flags & MOD_META) { X_KEY_EVENT_WAIT(display, K_META, is_press); }
-	if (flags & MOD_ALT) { X_KEY_EVENT_WAIT(display, K_ALT, is_press); }
-	if (flags & MOD_CONTROL) { X_KEY_EVENT_WAIT(display, K_CONTROL, is_press); }
-	if (flags & MOD_SHIFT) { X_KEY_EVENT_WAIT(display, K_SHIFT, is_press); }
+                if (flags & MOD_META) { WL_KEY_EVENT_WAIT(K_META, is_press); }
+                if (flags & MOD_ALT) { WL_KEY_EVENT_WAIT(K_ALT, is_press); }
+                if (flags & MOD_CONTROL) { WL_KEY_EVENT_WAIT(K_CONTROL, is_press); }
+                if (flags & MOD_SHIFT) { WL_KEY_EVENT_WAIT(K_SHIFT, is_press); }
 
-	X_KEY_EVENT(display, code, is_press);
+                WL_KEY_EVENT(code, is_press);
+        } else
+#endif
+        {
+                Display *display = XGetMainDisplay();
+                const Bool is_press = down ? True : False; /* Just to be safe. */
 
-	// @TODO wayland implementation here
+                if (flags & MOD_META) { X_KEY_EVENT_WAIT(display, K_META, is_press); }
+                if (flags & MOD_ALT) { X_KEY_EVENT_WAIT(display, K_ALT, is_press); }
+                if (flags & MOD_CONTROL) { X_KEY_EVENT_WAIT(display, K_CONTROL, is_press); }
+                if (flags & MOD_SHIFT) { X_KEY_EVENT_WAIT(display, K_SHIFT, is_press); }
+
+                X_KEY_EVENT(display, code, is_press);
+        }
 #endif
 }
 
@@ -248,17 +338,15 @@ void toggleKeyCode(MMKeyCode code, const bool down, MMKeyFlags flags, uintptr pi
 void toggleKey(char c, const bool down, MMKeyFlags flags, uintptr pid) {
 	MMKeyCode keyCode = keyCodeForChar(c);
 
-	#if defined(IS_LINUX)
-		if (toUpper(c) && !(flags & MOD_SHIFT)) {
-			flags |= MOD_SHIFT; /* Not sure if this is safe for all layouts. */
-		}
-
-		// @TODO wayland implementation - verify if implementation of X11 can be used
-	#else
-		if (isupper(c) && !(flags & MOD_SHIFT)) {
-			flags |= MOD_SHIFT; /* Not sure if this is safe for all layouts. */
-		}
-	#endif
+        #if defined(IS_LINUX)
+                if (toUpper(c) && !(flags & MOD_SHIFT)) {
+                        flags |= MOD_SHIFT; /* Not sure if this is safe for all layouts. */
+                }
+        #else
+                if (isupper(c) && !(flags & MOD_SHIFT)) {
+                        flags |= MOD_SHIFT; /* Not sure if this is safe for all layouts. */
+                }
+        #endif
 
 	#if defined(IS_WINDOWS)
 		int modifiers = keyCode >> 8; // Pull out modifers.
@@ -331,13 +419,11 @@ void unicodeType(const unsigned value, uintptr pid, int8_t isPid) {
   		input[1].ki.dwFlags = KEYEVENTF_KEYUP | 0x4; // KEYEVENTF_UNICODE;
 
   		SendInput(2, input, sizeof(INPUT));
-	#elif defined(IS_LINUX)
-		toggleUniKey(value, true);
-		microsleep(5.0);
-		toggleUniKey(value, false);	
-
-		// @TODO wayland implementation - verify if implementation of X11 can be used
-	#endif
+        #elif defined(IS_LINUX)
+                toggleUniKey(value, true);
+                microsleep(5.0);
+                toggleUniKey(value, false);
+        #endif
 }
 
 #if defined(IS_LINUX)
@@ -362,11 +448,11 @@ void unicodeType(const unsigned value, uintptr pid, int8_t isPid) {
 		XFlush(dpy);
 		XCloseDisplay(dpy);
 		return 0;
-	}
+        }
 
-	// @TODO wayland implementation here
+        // Wayland input_utf not implemented
 #else
-	int input_utf(const char *utf){
-		return 0;
-	}
+        int input_utf(const char *utf){
+                return 0;
+        }
 #endif

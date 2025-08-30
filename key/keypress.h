@@ -18,16 +18,26 @@
 		MOD_SHIFT = kCGEventFlagMaskShift
 	} MMKeyFlags;
 #elif defined(IS_LINUX)
-	enum _MMKeyFlags {
-		MOD_NONE = 0,
-		MOD_META = Mod4Mask,
-		MOD_ALT = Mod1Mask,
-		MOD_CONTROL = ControlMask,
-		MOD_SHIFT = ShiftMask
-	};
-	typedef unsigned int MMKeyFlags;
-
-	// @TODO wayland implementation - verify if implementation of X11 can be used	
+#if defined(DISPLAY_SERVER_WAYLAND) || defined(USE_WAYLAND)
+        #include <xkbcommon/xkbcommon.h>
+        enum _MMKeyFlags {
+                MOD_NONE = 0,
+                MOD_META = XKB_MOD_MASK_LOGO,
+                MOD_ALT = XKB_MOD_MASK_ALT,
+                MOD_CONTROL = XKB_MOD_MASK_CTRL,
+                MOD_SHIFT = XKB_MOD_MASK_SHIFT
+        };
+        typedef xkb_mod_mask_t MMKeyFlags;
+#else
+        enum _MMKeyFlags {
+                MOD_NONE = 0,
+                MOD_META = Mod4Mask,
+                MOD_ALT = Mod1Mask,
+                MOD_CONTROL = ControlMask,
+                MOD_SHIFT = ShiftMask
+        };
+        typedef unsigned int MMKeyFlags;
+#endif
 #elif defined(IS_WINDOWS)
 	enum _MMKeyFlags {
 		MOD_NONE = 0,
