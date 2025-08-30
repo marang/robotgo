@@ -115,6 +115,7 @@ Run **`make help`** for live descriptions. Typical targets:
 - Integration tests live in `/test`; can use Docker services; guard with build tag `integration`.
 - Run `-race` in CI for tests; keep flakes out of main.
 - Benchmarks belong with the code; compare with previous runs on PRs if possible.
+- GUI tests are skipped when no display server is available (`DISPLAY` and `WAYLAND_DISPLAY` unset).
 
 Example test skeleton:
 
