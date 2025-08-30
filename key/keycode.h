@@ -123,173 +123,283 @@ typedef CGKeyCode MMKeyCode;
 
 #elif defined(IS_LINUX)
 
+#if defined(DISPLAY_SERVER_WAYLAND) || defined(USE_WAYLAND)
+
+#include <xkbcommon/xkbcommon.h>
+#include <xkbcommon/xkbcommon-keysyms.h>
+
+enum _MMKeyCode {
+    K_NOT_A_KEY = 9999,
+    K_BACKSPACE = XKB_KEY_BackSpace,
+    K_DELETE = XKB_KEY_Delete,
+    K_RETURN = XKB_KEY_Return,
+    K_TAB = XKB_KEY_Tab,
+    K_ESCAPE = XKB_KEY_Escape,
+    K_UP = XKB_KEY_Up,
+    K_DOWN = XKB_KEY_Down,
+    K_RIGHT = XKB_KEY_Right,
+    K_LEFT = XKB_KEY_Left,
+    K_HOME = XKB_KEY_Home,
+    K_END = XKB_KEY_End,
+    K_PAGEUP = XKB_KEY_Page_Up,
+    K_PAGEDOWN = XKB_KEY_Page_Down,
+
+    K_F1 = XKB_KEY_F1,
+    K_F2 = XKB_KEY_F2,
+    K_F3 = XKB_KEY_F3,
+    K_F4 = XKB_KEY_F4,
+    K_F5 = XKB_KEY_F5,
+    K_F6 = XKB_KEY_F6,
+    K_F7 = XKB_KEY_F7,
+    K_F8 = XKB_KEY_F8,
+    K_F9 = XKB_KEY_F9,
+    K_F10 = XKB_KEY_F10,
+    K_F11 = XKB_KEY_F11,
+    K_F12 = XKB_KEY_F12,
+    K_F13 = XKB_KEY_F13,
+    K_F14 = XKB_KEY_F14,
+    K_F15 = XKB_KEY_F15,
+    K_F16 = XKB_KEY_F16,
+    K_F17 = XKB_KEY_F17,
+    K_F18 = XKB_KEY_F18,
+    K_F19 = XKB_KEY_F19,
+    K_F20 = XKB_KEY_F20,
+    K_F21 = XKB_KEY_F21,
+    K_F22 = XKB_KEY_F22,
+    K_F23 = XKB_KEY_F23,
+    K_F24 = XKB_KEY_F24,
+
+    K_META = XKB_KEY_Super_L,
+    K_LMETA = XKB_KEY_Super_L,
+    K_RMETA = XKB_KEY_Super_R,
+    K_ALT = XKB_KEY_Alt_L,
+    K_LALT = XKB_KEY_Alt_L,
+    K_RALT = XKB_KEY_Alt_R,
+    K_CONTROL = XKB_KEY_Control_L,
+    K_LCONTROL = XKB_KEY_Control_L,
+    K_RCONTROL = XKB_KEY_Control_R,
+    K_SHIFT = XKB_KEY_Shift_L,
+    K_LSHIFT = XKB_KEY_Shift_L,
+    K_RSHIFT = XKB_KEY_Shift_R,
+    K_CAPSLOCK = XKB_KEY_Caps_Lock,
+    K_SPACE = XKB_KEY_space,
+    K_INSERT = XKB_KEY_Insert,
+    K_PRINTSCREEN = XKB_KEY_Print,
+    K_MENU = K_NOT_A_KEY,
+
+    K_NUMPAD_0 = XKB_KEY_KP_0,
+    K_NUMPAD_1 = XKB_KEY_KP_1,
+    K_NUMPAD_2 = XKB_KEY_KP_2,
+    K_NUMPAD_3 = XKB_KEY_KP_3,
+    K_NUMPAD_4 = XKB_KEY_KP_4,
+    K_NUMPAD_5 = XKB_KEY_KP_5,
+    K_NUMPAD_6 = XKB_KEY_KP_6,
+    K_NUMPAD_7 = XKB_KEY_KP_7,
+    K_NUMPAD_8 = XKB_KEY_KP_8,
+    K_NUMPAD_9 = XKB_KEY_KP_9,
+    K_NUMPAD_LOCK = XKB_KEY_Num_Lock,
+    K_NUMPAD_DECIMAL = XKB_KEY_KP_Decimal,
+    K_NUMPAD_PLUS    = XKB_KEY_KP_Add,
+    K_NUMPAD_MINUS   = XKB_KEY_KP_Subtract,
+    K_NUMPAD_MUL     = XKB_KEY_KP_Multiply,
+    K_NUMPAD_DIV     = XKB_KEY_KP_Divide,
+    K_NUMPAD_CLEAR   = K_NOT_A_KEY,
+    K_NUMPAD_ENTER   = XKB_KEY_KP_Enter,
+    K_NUMPAD_EQUAL   = XKB_KEY_equal,
+    K_NUMPAD_LB      = XKB_KEY_bracketleft,
+    K_NUMPAD_RB      = XKB_KEY_bracketright,
+    K_Backslash      = XKB_KEY_backslash,
+    K_Semicolon      = XKB_KEY_semicolon,
+    K_Quote          = XKB_KEY_apostrophe,
+    K_Slash          = XKB_KEY_slash,
+    K_Grave          = XKB_KEY_grave,
+
+    K_AUDIO_VOLUME_MUTE = XKB_KEY_XF86AudioMute,
+    K_AUDIO_VOLUME_DOWN = XKB_KEY_XF86AudioLowerVolume,
+    K_AUDIO_VOLUME_UP = XKB_KEY_XF86AudioRaiseVolume,
+    K_AUDIO_PLAY = XKB_KEY_XF86AudioPlay,
+    K_AUDIO_STOP = XKB_KEY_XF86AudioStop,
+    K_AUDIO_PAUSE = XKB_KEY_XF86AudioPause,
+    K_AUDIO_PREV = XKB_KEY_XF86AudioPrev,
+    K_AUDIO_NEXT = XKB_KEY_XF86AudioNext,
+    K_AUDIO_REWIND = XKB_KEY_XF86AudioRewind,
+    K_AUDIO_FORWARD = XKB_KEY_XF86AudioForward,
+    K_AUDIO_REPEAT = XKB_KEY_XF86AudioRepeat,
+    K_AUDIO_RANDOM = XKB_KEY_XF86AudioRandomPlay,
+
+    K_LIGHTS_MON_UP = XKB_KEY_XF86MonBrightnessUp,
+    K_LIGHTS_MON_DOWN = XKB_KEY_XF86MonBrightnessDown,
+    K_LIGHTS_KBD_TOGGLE = XKB_KEY_XF86KbdLightOnOff,
+    K_LIGHTS_KBD_UP = XKB_KEY_XF86KbdBrightnessUp,
+    K_LIGHTS_KBD_DOWN = XKB_KEY_XF86KbdBrightnessDown
+};
+
+typedef xkb_keysym_t MMKeyCode;
+
+struct XSpecialCharacterMapping {
+    char name;
+    MMKeyCode code;
+};
+
+extern struct XSpecialCharacterMapping XSpecialCharacterTable[];
+
+#else /* DISPLAY_SERVER_X11 */
+
 #include <X11/Xutil.h>
 #include <X11/XF86keysym.h>
 
-static DisplayServer displayServer = detectDisplayServer();
+enum _MMKeyCode {
+        K_NOT_A_KEY = 9999,
+        K_BACKSPACE = XK_BackSpace,
+        K_DELETE = XK_Delete,
+        K_RETURN = XK_Return,
+        K_TAB = XK_Tab,
+        K_ESCAPE = XK_Escape,
+        K_UP = XK_Up,
+        K_DOWN = XK_Down,
+        K_RIGHT = XK_Right,
+        K_LEFT = XK_Left,
+        K_HOME = XK_Home,
+        K_END = XK_End,
+        K_PAGEUP = XK_Page_Up,
+        K_PAGEDOWN = XK_Page_Down,
 
-if (displayServer == DisplayServer::X11) {
-	// Wayland-specific logic
-	enum _MMKeyCode {
-		K_NOT_A_KEY = 9999,
-		K_BACKSPACE = XK_BackSpace,
-		K_DELETE = XK_Delete,
-		K_RETURN = XK_Return,
-		K_TAB = XK_Tab,
-		K_ESCAPE = XK_Escape,
-		K_UP = XK_Up,
-		K_DOWN = XK_Down,
-		K_RIGHT = XK_Right,
-		K_LEFT = XK_Left,
-		K_HOME = XK_Home,
-		K_END = XK_End,
-		K_PAGEUP = XK_Page_Up,
-		K_PAGEDOWN = XK_Page_Down,
+        K_F1 = XK_F1,
+        K_F2 = XK_F2,
+        K_F3 = XK_F3,
+        K_F4 = XK_F4,
+        K_F5 = XK_F5,
+        K_F6 = XK_F6,
+        K_F7 = XK_F7,
+        K_F8 = XK_F8,
+        K_F9 = XK_F9,
+        K_F10 = XK_F10,
+        K_F11 = XK_F11,
+        K_F12 = XK_F12,
+        K_F13 = XK_F13,
+        K_F14 = XK_F14,
+        K_F15 = XK_F15,
+        K_F16 = XK_F16,
+        K_F17 = XK_F17,
+        K_F18 = XK_F18,
+        K_F19 = XK_F19,
+        K_F20 = XK_F20,
+        K_F21 = XK_F21,
+        K_F22 = XK_F22,
+        K_F23 = XK_F23,
+        K_F24 = XK_F24,
 
-		K_F1 = XK_F1,
-		K_F2 = XK_F2,
-		K_F3 = XK_F3,
-		K_F4 = XK_F4,
-		K_F5 = XK_F5,
-		K_F6 = XK_F6,
-		K_F7 = XK_F7,
-		K_F8 = XK_F8,
-		K_F9 = XK_F9,
-		K_F10 = XK_F10,
-		K_F11 = XK_F11,
-		K_F12 = XK_F12,
-		K_F13 = XK_F13,
-		K_F14 = XK_F14,
-		K_F15 = XK_F15,
-		K_F16 = XK_F16,
-		K_F17 = XK_F17,
-		K_F18 = XK_F18,
-		K_F19 = XK_F19,
-		K_F20 = XK_F20,
-		K_F21 = XK_F21,
-		K_F22 = XK_F22,
-		K_F23 = XK_F23,
-		K_F24 = XK_F24,
+        K_META = XK_Super_L,
+        K_LMETA = XK_Super_L,
+        K_RMETA = XK_Super_R,
+        K_ALT = XK_Alt_L,
+        K_LALT = XK_Alt_L,
+        K_RALT = XK_Alt_R,
+        K_CONTROL = XK_Control_L,
+        K_LCONTROL = XK_Control_L,
+        K_RCONTROL = XK_Control_R,
+        K_SHIFT = XK_Shift_L,
+        K_LSHIFT = XK_Shift_L,
+        K_RSHIFT = XK_Shift_R,
+        K_CAPSLOCK = XK_Caps_Lock,
+        K_SPACE = XK_space,
+        K_INSERT = XK_Insert,
+        K_PRINTSCREEN = XK_Print,
+        K_MENU = K_NOT_A_KEY,
 
-		K_META = XK_Super_L,
-		K_LMETA = XK_Super_L,
-		K_RMETA = XK_Super_R,
-		K_ALT = XK_Alt_L,
-		K_LALT = XK_Alt_L,
-		K_RALT = XK_Alt_R,
-		K_CONTROL = XK_Control_L,
-		K_LCONTROL = XK_Control_L,
-		K_RCONTROL = XK_Control_R,
-		K_SHIFT = XK_Shift_L,
-		K_LSHIFT = XK_Shift_L,
-		K_RSHIFT = XK_Shift_R,
-		K_CAPSLOCK = XK_Caps_Lock,
-		K_SPACE = XK_space,
-		K_INSERT = XK_Insert,
-		K_PRINTSCREEN = XK_Print,
-		K_MENU = K_NOT_A_KEY,
+        K_NUMPAD_0 = XK_KP_0,
+        K_NUMPAD_1 = XK_KP_1,
+        K_NUMPAD_2 = XK_KP_2,
+        K_NUMPAD_3 = XK_KP_3,
+        K_NUMPAD_4 = XK_KP_4,
+        K_NUMPAD_5 = XK_KP_5,
+        K_NUMPAD_6 = XK_KP_6,
+        K_NUMPAD_7 = XK_KP_7,
+        K_NUMPAD_8 = XK_KP_8,
+        K_NUMPAD_9 = XK_KP_9,
+        K_NUMPAD_LOCK = XK_Num_Lock,
+        K_NUMPAD_DECIMAL = XK_KP_Decimal,
+        K_NUMPAD_PLUS    = 78,  /* XK_KP_Add */
+        K_NUMPAD_MINUS   = 74,  /* XK_KP_Subtract */
+        K_NUMPAD_MUL     = 55,  /* XK_KP_Multiply */
+        K_NUMPAD_DIV     = 98,  /* XK_KP_Divide */
+        K_NUMPAD_CLEAR   = K_NOT_A_KEY,
+        K_NUMPAD_ENTER   = 96,  /* XK_KP_Enter */
+        K_NUMPAD_EQUAL   = XK_equal,
+        K_NUMPAD_LB      = XK_bracketleft,
+        K_NUMPAD_RB      = XK_bracketright,
+        K_Backslash      = XK_backslash,
+        K_Semicolon      = XK_semicolon,
+        K_Quote          = XK_apostrophe,
+        K_Slash          = XK_slash,
+        K_Grave          = XK_grave,
 
-		// K_NUMPAD_0 = K_NOT_A_KEY,
-		K_NUMPAD_0 = XK_KP_0,
-		K_NUMPAD_1 = XK_KP_1,
-		K_NUMPAD_2 = XK_KP_2,
-		K_NUMPAD_3 = XK_KP_3,
-		K_NUMPAD_4 = XK_KP_4,
-		K_NUMPAD_5 = XK_KP_5,
-		K_NUMPAD_6 = XK_KP_6,
-		K_NUMPAD_7 = XK_KP_7,
-		K_NUMPAD_8 = XK_KP_8,
-		K_NUMPAD_9 = XK_KP_9,
-		K_NUMPAD_LOCK = XK_Num_Lock,
-		//
-		K_NUMPAD_DECIMAL = XK_KP_Decimal,
-		K_NUMPAD_PLUS    = 78,  // XK_KP_Add
-		K_NUMPAD_MINUS   = 74,  // XK_KP_Subtract
-		K_NUMPAD_MUL     = 55,	// XK_KP_Multiply
-		K_NUMPAD_DIV     = 98,	// XK_KP_Divide
-		K_NUMPAD_CLEAR   = K_NOT_A_KEY,
-		K_NUMPAD_ENTER   = 96,	// XK_KP_Enter
-		K_NUMPAD_EQUAL   = XK_equal,
-		K_NUMPAD_LB 	 = XK_bracketleft,
-		K_NUMPAD_RB 	 = XK_bracketright,
-		K_Backslash 	 = XK_backslash,
-		K_Semicolon 	 = XK_semicolon,
-		K_Quote			 = XK_apostrophe,
-		K_Slash			 = XK_slash,
-		K_Grave			 = XK_grave,
+        K_AUDIO_VOLUME_MUTE = XF86XK_AudioMute,
+        K_AUDIO_VOLUME_DOWN = XF86XK_AudioLowerVolume,
+        K_AUDIO_VOLUME_UP = XF86XK_AudioRaiseVolume,
+        K_AUDIO_PLAY = XF86XK_AudioPlay,
+        K_AUDIO_STOP = XF86XK_AudioStop,
+        K_AUDIO_PAUSE = XF86XK_AudioPause,
+        K_AUDIO_PREV = XF86XK_AudioPrev,
+        K_AUDIO_NEXT = XF86XK_AudioNext,
+        K_AUDIO_REWIND = XF86XK_AudioRewind,
+        K_AUDIO_FORWARD = XF86XK_AudioForward,
+        K_AUDIO_REPEAT = XF86XK_AudioRepeat,
+        K_AUDIO_RANDOM = XF86XK_AudioRandomPlay,
 
-		K_AUDIO_VOLUME_MUTE = XF86XK_AudioMute,
-		K_AUDIO_VOLUME_DOWN = XF86XK_AudioLowerVolume,
-		K_AUDIO_VOLUME_UP = XF86XK_AudioRaiseVolume,
-		K_AUDIO_PLAY = XF86XK_AudioPlay,
-		K_AUDIO_STOP = XF86XK_AudioStop,
-		K_AUDIO_PAUSE = XF86XK_AudioPause,
-		K_AUDIO_PREV = XF86XK_AudioPrev,
-		K_AUDIO_NEXT = XF86XK_AudioNext,
-		K_AUDIO_REWIND = XF86XK_AudioRewind,
-		K_AUDIO_FORWARD = XF86XK_AudioForward,
-		K_AUDIO_REPEAT = XF86XK_AudioRepeat,
-		K_AUDIO_RANDOM = XF86XK_AudioRandomPlay,
+        K_LIGHTS_MON_UP = XF86XK_MonBrightnessUp,
+        K_LIGHTS_MON_DOWN = XF86XK_MonBrightnessDown,
+        K_LIGHTS_KBD_TOGGLE = XF86XK_KbdLightOnOff,
+        K_LIGHTS_KBD_UP = XF86XK_KbdBrightnessUp,
+        K_LIGHTS_KBD_DOWN = XF86XK_KbdBrightnessDown
+};
 
-		K_LIGHTS_MON_UP = XF86XK_MonBrightnessUp,
-		K_LIGHTS_MON_DOWN = XF86XK_MonBrightnessDown,
-		K_LIGHTS_KBD_TOGGLE = XF86XK_KbdLightOnOff,
-		K_LIGHTS_KBD_UP = XF86XK_KbdBrightnessUp,
-		K_LIGHTS_KBD_DOWN = XF86XK_KbdBrightnessDown
-	};
+typedef KeySym MMKeyCode;
 
-	typedef KeySym MMKeyCode;
+struct XSpecialCharacterMapping {
+        char name;
+        MMKeyCode code;
+};
 
-	/*
-	* Structs to store key mappings not handled by XStringToKeysym() on some
-	* Linux systems.
-	*/
-	struct XSpecialCharacterMapping {
-		char name;
-		MMKeyCode code;
-	};
+struct XSpecialCharacterMapping XSpecialCharacterTable[] = {
+        {'~', XK_asciitilde},
+        {'_', XK_underscore},
+        {'[', XK_bracketleft},
+        {']', XK_bracketright},
+        {'!', XK_exclam},
+        {'#', XK_numbersign},
+        {'$', XK_dollar},
+        {'%', XK_percent},
+        {'&', XK_ampersand},
+        {'*', XK_asterisk},
+        {'+', XK_plus},
+        {',', XK_comma},
+        {'-', XK_minus},
+        {'.', XK_period},
+        {'?', XK_question},
+        {'<', XK_less},
+        {'>', XK_greater},
+        {'=', XK_equal},
+        {'@', XK_at},
+        {':', XK_colon},
+        {';', XK_semicolon},
+        {'{', XK_braceleft},
+        {'}', XK_braceright},
+        {'|', XK_bar},
+        {'^', XK_asciicircum},
+        {'(', XK_parenleft},
+        {')', XK_parenright},
+        {' ', XK_space},
+        {'/', XK_slash},
+        {'\\', XK_backslash},
+        {'`', XK_grave},
+        {'"', XK_quoteright},
+        {'\'', XK_quotedbl},
+        {'\t', XK_Tab},
+        {'\n', XK_Return}
+};
 
-	struct XSpecialCharacterMapping XSpecialCharacterTable[] = {
-		{'~', XK_asciitilde},
-		{'_', XK_underscore},
-		{'[', XK_bracketleft},
-		{']', XK_bracketright},
-		{'!', XK_exclam},
-		{'#', XK_numbersign},
-		{'$', XK_dollar},
-		{'%', XK_percent},
-		{'&', XK_ampersand},
-		{'*', XK_asterisk},
-		{'+', XK_plus},
-		{',', XK_comma},
-		{'-', XK_minus},
-		{'.', XK_period},
-		{'?', XK_question},
-		{'<', XK_less},
-		{'>', XK_greater},
-		{'=', XK_equal},
-		{'@', XK_at},
-		{':', XK_colon},
-		{';', XK_semicolon},
-		{'{', XK_braceleft},
-		{'}', XK_braceright},
-		{'|', XK_bar},
-		{'^', XK_asciicircum},
-		{'(', XK_parenleft},
-		{')', XK_parenright},
-		{' ', XK_space},
-		{'/', XK_slash},
-		{'\\', XK_backslash},
-		{'`', XK_grave},
-		{'"', XK_quoteright},
-		{'\'', XK_quotedbl},
-		{'\t', XK_Tab},
-		{'\n', XK_Return}
-	};
-} else if (displayServer == DisplayServer::Wayland) {
-	// @TODO wayland implementation here, probably X11 works here too
-}
-
+#endif /* DISPLAY_SERVER_WAYLAND */
 #elif defined(IS_WINDOWS)
 
 enum _MMKeyCode {

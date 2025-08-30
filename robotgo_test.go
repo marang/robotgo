@@ -163,7 +163,7 @@ func TestKeyCode(t *testing.T) {
 	k := Keycode["1"]
 	tt.Equal(t, 2, k)
 
-	s := Special["+"]
+	s := CurrentSpecialTable()["+"]
 	tt.Equal(t, "=", s)
 
 	tt.Equal(t, "0", Key0)
