@@ -171,12 +171,15 @@ func TestKeyCode(t *testing.T) {
 }
 
 func TestImage(t *testing.T) {
-	bit := CaptureScreen()
+	bit, err := CaptureScreen()
+	if err != nil {
+		t.Skip("screen capture error: " + err.Error())
+	}
 	defer FreeBitmap(bit)
 	tt.NotNil(t, bit)
 
 	img := ToImage(bit)
-	err := SavePng(img, "robot_test.png")
+	err = SavePng(img, "robot_test.png")
 	tt.Nil(t, err)
 
 	img1, err := CaptureImg(10, 10, 20, 20)

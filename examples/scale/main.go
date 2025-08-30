@@ -12,7 +12,11 @@ func main() {
 	width, height := robotgo.GetScaleSize()
 	fmt.Println("get scale screen size: ", width, height)
 
-	bitmap := robotgo.CaptureScreen(0, 0, width, height)
+	bitmap, err := robotgo.CaptureScreen(0, 0, width, height)
+	if err != nil {
+		fmt.Println("CaptureScreen error:", err)
+		return
+	}
 	defer robotgo.FreeBitmap(bitmap)
 	// bitmap.Save(bitmap, "test.png")
 	if err := robotgo.Save(robotgo.ToImage(bitmap), "test.png"); err != nil {
