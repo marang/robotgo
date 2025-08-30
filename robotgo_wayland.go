@@ -7,15 +7,22 @@ package robotgo
 #cgo pkg-config: wayland-client wayland-cursor wayland-egl xkbcommon
 #cgo CFLAGS: -DUSE_WAYLAND
 #cgo LDFLAGS: -lwayland-client -lwayland-cursor -lwayland-egl -lxkbcommon
-#include "window/get_bounds_wayland_c.h"
+#include "window/get_bounds_wayland.h"
 */
 import "C"
 
 import "log"
 
 func GetBounds(pid int, args ...int) (int, int, int, int) {
+	display := C.wl_display_connect(nil)
+	if display == nil {
+		log.Println("wl_display_connect failed")
+		return 0, 0, 0, 0
+	}
+	defer C.wl_display_disconnect(display)
+
 	var w, h C.int
-	if C.get_bounds_wayland(&w, &h) != 0 {
+	if C.get_bounds_wayland(display, &w, &h) != 0 {
 		log.Println("get_bounds_wayland failed")
 		return 0, 0, 0, 0
 	}
