@@ -11,8 +11,7 @@
 package robotgo
 
 import (
-	"os"
-
+	"github.com/marang/robotgo/base"
 	"github.com/vcaesar/keycode"
 )
 
@@ -40,11 +39,10 @@ var Special = keycode.Special
 var specialWayland = keycode.Special
 
 // CurrentSpecialTable returns the special key map for the active
-// display server. If the environment indicates a Wayland session
-// (WAYLAND_DISPLAY is set and DISPLAY is empty) the Wayland table is
-// returned, otherwise the X11 table is used.
+// display server. DetectDisplayServer determines whether the Wayland or
+// X11 table should be returned.
 func CurrentSpecialTable() map[string]string {
-	if os.Getenv("WAYLAND_DISPLAY") != "" && os.Getenv("DISPLAY") == "" {
+	if base.DetectDisplayServer() == base.Wayland {
 		return specialWayland
 	}
 	return Special
