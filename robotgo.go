@@ -319,11 +319,11 @@ func GetScaleSize(displayId ...int) (int, int) {
 	return int(float64(x) * f), int(float64(y) * f)
 }
 
-// CaptureScreen capture the screen return bitmap(c struct),
-// use `defer robotgo.FreeBitmap(bitmap)` to free the bitmap
+// CaptureScreen capture the screen and return a bitmap (C struct).
+// Use `defer robotgo.FreeBitmap(bitmap)` to free the bitmap.
 //
 // robotgo.CaptureScreen(x, y, w, h int)
-func CaptureScreen(args ...int) CBitmap {
+func CaptureScreen(args ...int) (CBitmap, error) {
 	var x, y, w, h C.int32_t
 	displayId := -1
 	if DisplayID != -1 {
@@ -357,22 +357,28 @@ func CaptureScreen(args ...int) CBitmap {
 	}
 
 	bit := C.capture_screen(x, y, w, h, C.int32_t(displayId), C.int8_t(isPid))
-	return CBitmap(bit)
+	if bit == nil {
+		return nil, errors.New("screen capture failed")
+	}
+	return CBitmap(bit), nil
 }
 
-// CaptureGo capture the screen and return bitmap(go struct)
-func CaptureGo(args ...int) Bitmap {
-	bit := CaptureScreen(args...)
+// CaptureGo capture the screen and return a Go bitmap.
+func CaptureGo(args ...int) (Bitmap, error) {
+	bit, err := CaptureScreen(args...)
+	if err != nil {
+		return Bitmap{}, err
+	}
 	defer FreeBitmap(bit)
 
-	return ToBitmap(bit)
+	return ToBitmap(bit), nil
 }
 
 // CaptureImg capture the screen and return image.Image, error
 func CaptureImg(args ...int) (image.Image, error) {
-	bit := CaptureScreen(args...)
-	if bit == nil {
-		return nil, errors.New("capture image not found")
+	bit, err := CaptureScreen(args...)
+	if err != nil {
+		return nil, err
 	}
 	defer FreeBitmap(bit)
 
