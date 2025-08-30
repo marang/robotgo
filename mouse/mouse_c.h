@@ -167,7 +167,7 @@ void moveMouse(MMPointInt32 point){
 		CFRelease(move);
 		CFRelease(source);
         #elif defined(IS_LINUX)
-                if (detectDisplayServer() == DisplayServer::Wayland) {
+                if (detectDisplayServer() == Wayland) {
                         if (!rg_init_wayland()) {
                                 Display *display = XGetMainDisplay();
                                 XWarpPointer(display, None, DefaultRootWindow(display), 0, 0, 0, 0, point.x, point.y);
@@ -239,7 +239,7 @@ void toggleMouse(bool down, MMMouseButton button) {
 		CFRelease(event);
 		CFRelease(source);
         #elif defined(IS_LINUX)
-                if (detectDisplayServer() == DisplayServer::Wayland) {
+                if (detectDisplayServer() == Wayland) {
                         if (!rg_init_wayland()) {
                                 Display *display = XGetMainDisplay();
                                 XTestFakeButtonEvent(display, button, down ? True : False, CurrentTime);
