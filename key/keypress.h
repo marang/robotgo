@@ -18,7 +18,7 @@
 		MOD_SHIFT = kCGEventFlagMaskShift
 	} MMKeyFlags;
 #elif defined(IS_LINUX)
-#if defined(DISPLAY_SERVER_WAYLAND) || defined(USE_WAYLAND)
+#if defined(DISPLAY_SERVER_WAYLAND)
         #include <xkbcommon/xkbcommon.h>
         enum _MMKeyFlags {
                 MOD_NONE = 0,

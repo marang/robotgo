@@ -61,7 +61,7 @@ MMKeyCode keyCodeForChar(const char c) {
         #elif defined(IS_LINUX)
                 const char* wayland = getenv("WAYLAND_DISPLAY");
                 const char* x11 = getenv("DISPLAY");
-#if defined(DISPLAY_SERVER_WAYLAND) || defined(USE_WAYLAND)
+#if defined(DISPLAY_SERVER_WAYLAND)
                 if (wayland && (!x11 || *x11 == '\0')) {
                         char buf[2];
                         buf[0] = c;

@@ -1,5 +1,5 @@
-//go:build linux && wayland
-// +build linux,wayland
+//go:build linux
+// +build linux
 
 #include "window/get_bounds_wayland.h"
 #include <string.h>
