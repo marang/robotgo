@@ -8,15 +8,23 @@
 // This file may not be copied, modified, or distributed
 // except according to those terms.
 
-//go:build !darwin && !windows
-// +build !darwin,!windows
+//go:build linux
+// +build linux
 
 package robotgo
+
+/*
+#cgo pkg-config: wayland-client wayland-cursor wayland-egl xkbcommon
+#cgo LDFLAGS: -lwayland-client -lwayland-cursor -lwayland-egl -lxkbcommon
+#include "window/get_bounds_wayland.h"
+*/
+import "C"
 
 import (
 	"errors"
 	"log"
 
+	"github.com/marang/robotgo/base"
 	"github.com/robotn/xgb"
 	"github.com/robotn/xgb/xinerama"
 	"github.com/robotn/xgb/xproto"
@@ -28,6 +36,22 @@ var xu *xgbutil.XUtil
 
 // GetBounds get the window bounds
 func GetBounds(pid int, args ...int) (int, int, int, int) {
+	if base.DetectDisplayServer() == base.Wayland {
+		display := C.wl_display_connect(nil)
+		if display == nil {
+			log.Println("wl_display_connect failed")
+			return 0, 0, 0, 0
+		}
+		defer C.wl_display_disconnect(display)
+
+		var w, h C.int
+		if C.get_bounds_wayland(display, &w, &h) != 0 {
+			log.Println("get_bounds_wayland failed")
+			return 0, 0, 0, 0
+		}
+		return 0, 0, int(w), int(h)
+	}
+
 	var isPid int
 	if len(args) > 0 || NotPid {
 		isPid = 1
@@ -45,6 +69,22 @@ func GetBounds(pid int, args ...int) (int, int, int, int) {
 
 // GetClient get the window client bounds
 func GetClient(pid int, args ...int) (int, int, int, int) {
+	if base.DetectDisplayServer() == base.Wayland {
+		display := C.wl_display_connect(nil)
+		if display == nil {
+			log.Println("wl_display_connect failed")
+			return 0, 0, 0, 0
+		}
+		defer C.wl_display_disconnect(display)
+
+		var w, h C.int
+		if C.get_bounds_wayland(display, &w, &h) != 0 {
+			log.Println("get_bounds_wayland failed")
+			return 0, 0, 0, 0
+		}
+		return 0, 0, int(w), int(h)
+	}
+
 	var isPid int
 	if len(args) > 0 || NotPid {
 		isPid = 1

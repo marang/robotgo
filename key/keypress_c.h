@@ -22,7 +22,7 @@
         #include <X11/extensions/XTest.h>
         #include <stdlib.h>
         // #include "../base/xdisplay_c.h"
-#if defined(DISPLAY_SERVER_WAYLAND) || defined(USE_WAYLAND)
+#if defined(DISPLAY_SERVER_WAYLAND)
         #include <wayland-client.h>
         #include <xkbcommon/xkbcommon.h>
 #endif
@@ -57,7 +57,7 @@
                 microsleep(DEADBEEF_UNIFORM(0.0, 0.5));
         }
 
-#if defined(DISPLAY_SERVER_WAYLAND) || defined(USE_WAYLAND)
+#if defined(DISPLAY_SERVER_WAYLAND)
         #include <string.h>
         static struct wl_display *wk_display = NULL;
         static struct wl_registry *wk_registry = NULL;
@@ -286,7 +286,7 @@ void toggleKeyCode(MMKeyCode code, const bool down, MMKeyFlags flags, uintptr pi
 #elif defined(IS_LINUX)
         const char* wayland = getenv("WAYLAND_DISPLAY");
         const char* x11 = getenv("DISPLAY");
-#if defined(DISPLAY_SERVER_WAYLAND) || defined(USE_WAYLAND)
+#if defined(DISPLAY_SERVER_WAYLAND)
         if (wayland && (!x11 || *x11 == '\0')) {
                 const Bool is_press = down ? True : False;
 
