@@ -23,8 +23,16 @@
         #include <stdlib.h>
         // #include "../base/xdisplay_c.h"
 #if defined(DISPLAY_SERVER_WAYLAND)
+#define _GNU_SOURCE
         #include <wayland-client.h>
         #include <xkbcommon/xkbcommon.h>
+        #include <fcntl.h>
+        #include <sys/mman.h>
+        #include <unistd.h>
+#ifndef WL_KEYBOARD_KEY_STATE_RELEASED
+#define WL_KEYBOARD_KEY_STATE_RELEASED 0
+#define WL_KEYBOARD_KEY_STATE_PRESSED 1
+#endif
 #endif
 #endif
 
@@ -59,10 +67,96 @@
 
 #if defined(DISPLAY_SERVER_WAYLAND)
         #include <string.h>
+        struct zwp_virtual_keyboard_manager_v1;
+        struct zwp_virtual_keyboard_v1;
         static struct wl_display *wk_display = NULL;
         static struct wl_registry *wk_registry = NULL;
         static struct wl_seat *wk_seat = NULL;
         static struct wl_keyboard *wk_keyboard = NULL;
+        static struct zwp_virtual_keyboard_manager_v1 *wk_vk_manager = NULL;
+        static struct zwp_virtual_keyboard_v1 *wk_vkeyboard = NULL;
+        static struct xkb_context *wk_xkb_context = NULL;
+        static struct xkb_keymap *wk_keymap = NULL;
+        static xkb_mod_mask_t wk_modifiers = 0;
+
+        /* ------------------------------------------------------------------ */
+        /* virtual-keyboard protocol definitions                              */
+        /* ------------------------------------------------------------------ */
+
+        struct zwp_virtual_keyboard_manager_v1 { struct wl_proxy *proxy; };
+        struct zwp_virtual_keyboard_v1 { struct wl_proxy *proxy; };
+
+        static const struct wl_message zwp_virtual_keyboard_manager_v1_requests[] = {
+                {"create_virtual_keyboard", "no", &zwp_virtual_keyboard_v1_interface},
+        };
+        static const struct wl_interface zwp_virtual_keyboard_manager_v1_interface = {
+                "zwp_virtual_keyboard_manager_v1", 1,
+                1, zwp_virtual_keyboard_manager_v1_requests,
+                0, NULL
+        };
+
+        static const struct wl_message zwp_virtual_keyboard_v1_requests[] = {
+                {"keymap", "ufu", NULL},
+                {"key", "uuu", NULL},
+                {"modifiers", "uuuu", NULL},
+                {"destroy", "", NULL},
+        };
+        static const struct wl_interface zwp_virtual_keyboard_v1_interface = {
+                "zwp_virtual_keyboard_v1", 1,
+                4, zwp_virtual_keyboard_v1_requests,
+                0, NULL
+        };
+
+        static struct zwp_virtual_keyboard_v1 *
+        zwp_virtual_keyboard_manager_v1_create_virtual_keyboard(
+                struct zwp_virtual_keyboard_manager_v1 *manager,
+                struct wl_seat *seat) {
+                struct wl_proxy *id = wl_proxy_marshal_constructor((struct wl_proxy *)manager,
+                        0, &zwp_virtual_keyboard_v1_interface, NULL, seat);
+                return (struct zwp_virtual_keyboard_v1 *)id;
+        }
+
+        static void zwp_virtual_keyboard_v1_destroy(
+                struct zwp_virtual_keyboard_v1 *keyboard) {
+                wl_proxy_marshal((struct wl_proxy *)keyboard, 3);
+                wl_proxy_destroy((struct wl_proxy *)keyboard);
+        }
+
+        static void zwp_virtual_keyboard_v1_keymap(
+                struct zwp_virtual_keyboard_v1 *keyboard,
+                uint32_t format, int32_t fd, uint32_t size) {
+                wl_proxy_marshal((struct wl_proxy *)keyboard, 0, format, fd, size);
+                close(fd);
+        }
+
+        static void zwp_virtual_keyboard_v1_key(
+                struct zwp_virtual_keyboard_v1 *keyboard,
+                uint32_t time, uint32_t key, uint32_t state) {
+                wl_proxy_marshal((struct wl_proxy *)keyboard, 1, time, key, state);
+        }
+
+        static void zwp_virtual_keyboard_v1_modifiers(
+                struct zwp_virtual_keyboard_v1 *keyboard,
+                uint32_t depressed, uint32_t latched,
+                uint32_t locked, uint32_t group) {
+                wl_proxy_marshal((struct wl_proxy *)keyboard, 2,
+                                depressed, latched, locked, group);
+        }
+
+        static xkb_mod_mask_t mask_for_key(MMKeyCode key) {
+                switch (key) {
+                case K_META: case K_LMETA: case K_RMETA:
+                        return XKB_MOD_MASK_LOGO;
+                case K_ALT: case K_LALT: case K_RALT:
+                        return XKB_MOD_MASK_ALT;
+                case K_CONTROL: case K_LCONTROL: case K_RCONTROL:
+                        return XKB_MOD_MASK_CTRL;
+                case K_SHIFT: case K_LSHIFT: case K_RSHIFT:
+                        return XKB_MOD_MASK_SHIFT;
+                default:
+                        return 0;
+                }
+        }
 
         static void wk_registry_global(void *data, struct wl_registry *registry,
                                        uint32_t name, const char *interface,
@@ -70,6 +164,9 @@
                 (void)data; (void)version;
                 if (strcmp(interface, "wl_seat") == 0) {
                         wk_seat = wl_registry_bind(registry, name, &wl_seat_interface, 1);
+                } else if (strcmp(interface, "zwp_virtual_keyboard_manager_v1") == 0) {
+                        wk_vk_manager = wl_registry_bind(registry, name,
+                                &zwp_virtual_keyboard_manager_v1_interface, 1);
                 }
         }
 
@@ -101,30 +198,60 @@
         };
 
         static int ensure_wayland_keyboard(void) {
-                if (wk_keyboard) {
+                if (wk_vkeyboard) {
                         return 0;
                 }
-                wk_display = wl_display_connect(NULL);
                 if (!wk_display) {
+                        wk_display = wl_display_connect(NULL);
+                        if (!wk_display) {
+                                return -1;
+                        }
+                        wk_registry = wl_display_get_registry(wk_display);
+                        wl_registry_add_listener(wk_registry, &wk_registry_listener, NULL);
+                        wl_display_roundtrip(wk_display);
+                        if (wk_seat) {
+                                wl_seat_add_listener(wk_seat, &wk_seat_listener, NULL);
+                                wl_display_roundtrip(wk_display);
+                        }
+                }
+                if (!wk_vk_manager || !wk_seat) {
                         return -1;
                 }
-                wk_registry = wl_display_get_registry(wk_display);
-                wl_registry_add_listener(wk_registry, &wk_registry_listener, NULL);
-                wl_display_roundtrip(wk_display);
-                if (wk_seat) {
-                        wl_seat_add_listener(wk_seat, &wk_seat_listener, NULL);
-                        wl_display_roundtrip(wk_display);
+                wk_vkeyboard = zwp_virtual_keyboard_manager_v1_create_virtual_keyboard(wk_vk_manager, wk_seat);
+                wk_xkb_context = xkb_context_new(XKB_CONTEXT_NO_FLAGS);
+                wk_keymap = xkb_keymap_new_from_names(wk_xkb_context, NULL, XKB_KEYMAP_COMPILE_NO_FLAGS);
+                const char *keymap_str = xkb_keymap_get_as_string(wk_keymap, XKB_KEYMAP_FORMAT_TEXT_V1);
+                size_t size = strlen(keymap_str) + 1;
+                int fd = memfd_create("wk_keymap", MFD_CLOEXEC);
+                if (fd < 0 || write(fd, keymap_str, size) != (ssize_t)size) {
+                        if (fd >= 0) close(fd);
+                        return -1;
                 }
-                return wk_keyboard ? 0 : -1;
+                zwp_virtual_keyboard_v1_keymap(wk_vkeyboard, XKB_KEYMAP_FORMAT_TEXT_V1, fd, size);
+                return 0;
         }
 
         static void WL_KEY_EVENT(MMKeyCode key, bool is_press) {
-                (void)key;
-                (void)is_press;
                 if (ensure_wayland_keyboard() != 0) {
                         return;
                 }
-                /* Real key injection requires the virtual-keyboard protocol. */
+                xkb_keycode_t code = keysym_to_keycode(wk_keymap, key);
+                if (code == XKB_KEY_NoSymbol) {
+                        return;
+                }
+                xkb_mod_mask_t mask = mask_for_key(key);
+                if (mask) {
+                        if (is_press) {
+                                wk_modifiers |= mask;
+                        } else {
+                                wk_modifiers &= ~mask;
+                        }
+                        zwp_virtual_keyboard_v1_modifiers(wk_vkeyboard, wk_modifiers, 0, 0, 0);
+                }
+                uint32_t evdev = (uint32_t)(code - 8);
+                zwp_virtual_keyboard_v1_key(wk_vkeyboard, 0, evdev,
+                        is_press ? WL_KEYBOARD_KEY_STATE_PRESSED : WL_KEYBOARD_KEY_STATE_RELEASED);
+                wl_display_flush(wk_display);
         }
 
         static void WL_KEY_EVENT_WAIT(MMKeyCode key, bool is_press) {
