@@ -12,7 +12,7 @@
 #if defined(IS_LINUX)
 #include <X11/Xresource.h>
 #ifdef USE_WAYLAND
-#include "get_bounds_wayland_c.h"
+#include "get_bounds_wayland.h"
 #endif
 #endif
 
@@ -30,57 +30,74 @@ Bounds get_bounds(uintptr pid, int8_t isPid) {
   AXValueRef axp = NULL;
   AXValueRef axs = NULL;
   AXUIElementRef AxID = AXUIElementCreateApplication(pid);
-	AXUIElementRef AxWin = NULL;
+  AXUIElementRef AxWin = NULL;
 
   // Get the window from the application
-  if (AXUIElementCopyAttributeValue(AxID, kAXFocusedWindowAttribute, (CFTypeRef *)&AxWin)
-    != kAXErrorSuccess || AxWin == NULL) {
+  if (AXUIElementCopyAttributeValue(AxID, kAXFocusedWindowAttribute,
+                                    (CFTypeRef *)&AxWin) != kAXErrorSuccess ||
+      AxWin == NULL) {
     // If no focused window, try to get the main window
-    if (AXUIElementCopyAttributeValue(AxID, kAXMainWindowAttribute, (CFTypeRef *)&AxWin)
-      != kAXErrorSuccess || AxWin == NULL) {
+    if (AXUIElementCopyAttributeValue(AxID, kAXMainWindowAttribute,
+                                      (CFTypeRef *)&AxWin) != kAXErrorSuccess ||
+        AxWin == NULL) {
       goto exit;
     }
   }
 
   // Determine the current point of the window
-  if (AXUIElementCopyAttributeValue(AxWin, kAXPositionAttribute, (CFTypeRef*) &axp)
-    != kAXErrorSuccess || axp == NULL) {
+  if (AXUIElementCopyAttributeValue(AxWin, kAXPositionAttribute,
+                                    (CFTypeRef *)&axp) != kAXErrorSuccess ||
+      axp == NULL) {
     goto exit;
   }
 
   // Determine the current size of the window
-  if (AXUIElementCopyAttributeValue(AxWin, kAXSizeAttribute, (CFTypeRef*) &axs)
-    != kAXErrorSuccess || axs == NULL) {
+  if (AXUIElementCopyAttributeValue(AxWin, kAXSizeAttribute,
+                                    (CFTypeRef *)&axs) != kAXErrorSuccess ||
+      axs == NULL) {
     goto exit;
   }
 
-  CGPoint p; CGSize s;
+  CGPoint p;
+  CGSize s;
   // Attempt to convert both values into atomic types
   if (AXValueGetValue(axp, kAXValueCGPointType, &p) &&
-    AXValueGetValue(axs, kAXValueCGSizeType, &s)) {
+      AXValueGetValue(axs, kAXValueCGSizeType, &s)) {
     bounds.X = p.x;
     bounds.Y = p.y;
     bounds.W = s.width;
     bounds.H = s.height;
   }
 
-  // return bounds;
-  exit:
-    if (axp != NULL) { CFRelease(axp); }
-		if (axs != NULL) { CFRelease(axs); }
-		if (AxWin != NULL) { CFRelease(AxWin); }
-		if (AxID != NULL) { CFRelease(AxID); }
+// return bounds;
+exit:
+  if (axp != NULL) {
+    CFRelease(axp);
+  }
+  if (axs != NULL) {
+    CFRelease(axs);
+  }
+  if (AxWin != NULL) {
+    CFRelease(AxWin);
+  }
+  if (AxID != NULL) {
+    CFRelease(AxID);
+  }
 
   return bounds;
 #elif defined(IS_LINUX)
 #ifdef USE_WAYLAND
   if (detectDisplayServer() == DisplayServer::Wayland) {
     int width = 0, height = 0;
-    if (get_bounds_wayland(&width, &height) == 0) {
-      bounds.X = 0;
-      bounds.Y = 0;
-      bounds.W = width;
-      bounds.H = height;
+    struct wl_display *display = wl_display_connect(NULL);
+    if (display) {
+      if (get_bounds_wayland(display, &width, &height) == 0) {
+        bounds.X = 0;
+        bounds.Y = 0;
+        bounds.W = width;
+        bounds.H = height;
+      }
+      wl_display_disconnect(display);
     }
     return bounds;
   }
@@ -127,11 +144,15 @@ Bounds get_client(uintptr pid, int8_t isPid) {
 #ifdef USE_WAYLAND
   if (detectDisplayServer() == DisplayServer::Wayland) {
     int width = 0, height = 0;
-    if (get_bounds_wayland(&width, &height) == 0) {
-      bounds.X = 0;
-      bounds.Y = 0;
-      bounds.W = width;
-      bounds.H = height;
+    struct wl_display *display = wl_display_connect(NULL);
+    if (display) {
+      if (get_bounds_wayland(display, &width, &height) == 0) {
+        bounds.X = 0;
+        bounds.Y = 0;
+        bounds.W = width;
+        bounds.H = height;
+      }
+      wl_display_disconnect(display);
     }
     return bounds;
   }
@@ -176,8 +197,6 @@ Bounds get_client(uintptr pid, int8_t isPid) {
   XCloseDisplay(rDisplay);
 
   return bounds;
-#elif defined(USE_WAYLAND)
-    return get_bounds_wayland(pid, isPid);
 #elif defined(IS_WINDOWS)
   HWND hwnd = getHwnd(pid, isPid);
 
