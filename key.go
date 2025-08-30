@@ -321,8 +321,7 @@ var keyNames = map[string]C.MMKeyCode{
 	// { NULL:              C.K_NOT_A_KEY }
 }
 
-// CmdCtrl If the operating system is macOS, return the key string "cmd",
-// otherwise return the key string "ctrl
+// CmdCtrl returns "cmd" on macOS and "ctrl" on other platforms.
 func CmdCtrl() string {
 	if runtime.GOOS == "darwin" {
 		return "cmd"
@@ -337,7 +336,7 @@ func tapKeyCode(code C.MMKeyCode, flags C.MMKeyFlags, pid C.uintptr) {
 	C.toggleKeyCode(code, false, flags, pid)
 }
 
-var keyErr = errors.New("Invalid key flag specified.")
+var errInvalidKeyFlag = errors.New("invalid key flag specified")
 
 func checkKeyCodes(k string) (key C.MMKeyCode, err error) {
 	if k == "" {
@@ -350,7 +349,7 @@ func checkKeyCodes(k string) (key C.MMKeyCode, err error) {
 
 		key = C.keyCodeForChar(*val1)
 		if key == C.K_NOT_A_KEY {
-			err = keyErr
+			err = errInvalidKeyFlag
 			return
 		}
 		return
@@ -359,7 +358,7 @@ func checkKeyCodes(k string) (key C.MMKeyCode, err error) {
 	if v, ok := keyNames[k]; ok {
 		key = v
 		if key == C.K_NOT_A_KEY {
-			err = keyErr
+			err = errInvalidKeyFlag
 			return
 		}
 	}
@@ -421,10 +420,7 @@ func getKeyDown(keyArr []string) (bool, []string) {
 		keyArr = append(keyArr, "down")
 	}
 
-	down := true
-	if keyArr[0] == "up" {
-		down = false
-	}
+	down := keyArr[0] != "up"
 
 	if keyArr[0] == "up" || keyArr[0] == "down" {
 		keyArr = keyArr[1:]
@@ -640,7 +636,7 @@ func ToUC(text string) []string {
 		textQ := strconv.QuoteToASCII(string(r))
 		textUnQ := textQ[1 : len(textQ)-1]
 
-		st := strings.Replace(textUnQ, "\\u", "U", -1)
+		st := strings.ReplaceAll(textUnQ, "\\u", "U")
 		if st == "\\\\" {
 			st = "\\"
 		}

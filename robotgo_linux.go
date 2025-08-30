@@ -206,7 +206,7 @@ func GetXidFromPid(xu *xgbutil.XUtil, pid int) (xproto.Window, error) {
 		}
 	}
 
-	return 0, errors.New("failed to find a window with a matching pid.")
+	return 0, errors.New("failed to find a window with a matching pid")
 }
 
 // DisplaysNum get the count of displays
