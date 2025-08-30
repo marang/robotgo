@@ -13,6 +13,13 @@ import (
 	"github.com/marang/robotgo/base"
 )
 
+func requireDisplay(t *testing.T) {
+	t.Helper()
+	if os.Getenv("DISPLAY") == "" && os.Getenv("WAYLAND_DISPLAY") == "" {
+		t.Skip("no display available")
+	}
+}
+
 // startHeadlessWeston launches a headless Wayland compositor using weston.
 // It returns a cleanup function to stop the compositor and remove temp files.
 func startHeadlessWeston(t *testing.T) func() {
@@ -48,6 +55,7 @@ func startHeadlessWeston(t *testing.T) func() {
 }
 
 func TestGetBoundsWayland(t *testing.T) {
+	requireDisplay(t)
 	cleanup := startHeadlessWeston(t)
 	defer cleanup()
 
@@ -62,6 +70,7 @@ func TestGetBoundsWayland(t *testing.T) {
 }
 
 func TestKeyboardRoundTripWayland(t *testing.T) {
+	requireDisplay(t)
 	cmd := exec.Command(os.Args[0], "-test.run", "TestKeyboardRoundTripHelper")
 	cmd.Env = append(os.Environ(), "GO_WAYLAND_HELPER=1")
 	if err := cmd.Run(); err != nil {
@@ -73,6 +82,7 @@ func TestKeyboardRoundTripHelper(t *testing.T) {
 	if os.Getenv("GO_WAYLAND_HELPER") != "1" {
 		t.Skip("helper process")
 	}
+	requireDisplay(t)
 	cleanup := startHeadlessWeston(t)
 	defer cleanup()
 	if err := robotgo.KeyTap("a"); err != nil {
@@ -81,6 +91,7 @@ func TestKeyboardRoundTripHelper(t *testing.T) {
 }
 
 func TestMouseRoundTripWayland(t *testing.T) {
+	requireDisplay(t)
 	cmd := exec.Command(os.Args[0], "-test.run", "TestMouseRoundTripHelper")
 	cmd.Env = append(os.Environ(), "GO_WAYLAND_HELPER=1")
 	if err := cmd.Run(); err != nil {
@@ -92,6 +103,7 @@ func TestMouseRoundTripHelper(t *testing.T) {
 	if os.Getenv("GO_WAYLAND_HELPER") != "1" {
 		t.Skip("helper process")
 	}
+	requireDisplay(t)
 	cleanup := startHeadlessWeston(t)
 	defer cleanup()
 	robotgo.Move(20, 30)
