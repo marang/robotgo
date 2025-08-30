@@ -16,8 +16,6 @@ import (
 	"github.com/vcaesar/keycode"
 )
 
-type uMap map[string]uint16
-
 // MouseMap robotgo hook mouse's code map
 var MouseMap = keycode.MouseMap
 

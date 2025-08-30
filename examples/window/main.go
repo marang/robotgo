@@ -55,11 +55,17 @@ func findIds() {
 	}
 
 	if len(fpid) > 0 {
-		robotgo.KeyTap("a", fpid[0])
+		if err := robotgo.KeyTap("a", fpid[0]); err != nil {
+			fmt.Println(err)
+		}
 		robotgo.TypeStr("Hi galaxy!", fpid[0])
 
-		robotgo.KeyToggle("a", fpid[0], "cmd")
-		robotgo.KeyToggle("a", fpid[0], "cmd", "up")
+		if err := robotgo.KeyToggle("a", fpid[0], "cmd"); err != nil {
+			fmt.Println(err)
+		}
+		if err := robotgo.KeyToggle("a", fpid[0], "cmd", "up"); err != nil {
+			fmt.Println(err)
+		}
 	}
 
 	fmt.Println("pids...", fpid)
@@ -82,16 +88,24 @@ func findIds() {
 		robotgo.MaxWindow(fpid[0])
 		robotgo.CloseWindow(fpid[0])
 
-		robotgo.Kill(fpid[0])
+		if err := robotgo.Kill(fpid[0]); err != nil {
+			fmt.Println(err)
+		}
 	}
 }
 
 func active() {
-	robotgo.ActivePid(100)
+	if err := robotgo.ActivePid(100); err != nil {
+		fmt.Println(err)
+	}
 	// robotgo.Sleep(2)
-	robotgo.ActiveName("code")
+	if err := robotgo.ActiveName("code"); err != nil {
+		fmt.Println(err)
+	}
 	robotgo.Sleep(1)
-	robotgo.ActiveName("chrome")
+	if err := robotgo.ActiveName("chrome"); err != nil {
+		fmt.Println(err)
+	}
 }
 
 func findName() {
@@ -119,7 +133,9 @@ func ps() {
 	if err == nil && isExist {
 		fmt.Println("pid exists is", isExist)
 
-		robotgo.Kill(100)
+		if err := robotgo.Kill(100); err != nil {
+			fmt.Println(err)
+		}
 	}
 
 	// get the all process id

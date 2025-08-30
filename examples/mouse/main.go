@@ -72,12 +72,20 @@ func toggleAndScroll() {
 	robotgo.Scroll(100, 10)
 	robotgo.Scroll(0, -10)
 
-	robotgo.Toggle("left")
-	robotgo.Toggle("left", "up")
+	if err := robotgo.Toggle("left"); err != nil {
+		fmt.Println(err)
+	}
+	if err := robotgo.Toggle("left", "up"); err != nil {
+		fmt.Println(err)
+	}
 
 	// toggles the right mouse button
-	robotgo.Toggle("right")
-	robotgo.Toggle("right", "up")
+	if err := robotgo.Toggle("right"); err != nil {
+		fmt.Println(err)
+	}
+	if err := robotgo.Toggle("right", "up"); err != nil {
+		fmt.Println(err)
+	}
 }
 
 func mouse() {

@@ -372,7 +372,7 @@ func CaptureGo(args ...int) Bitmap {
 func CaptureImg(args ...int) (image.Image, error) {
 	bit := CaptureScreen(args...)
 	if bit == nil {
-		return nil, errors.New("Capture image not found.")
+		return nil, errors.New("capture image not found")
 	}
 	defer FreeBitmap(bit)
 
@@ -558,10 +558,14 @@ func Drag(x, y int, args ...string) {
 //
 //	robotgo.DragSmooth(10, 10)
 func DragSmooth(x, y int, args ...interface{}) {
-	Toggle("left")
+	if err := Toggle("left"); err != nil {
+		return
+	}
 	MilliSleep(50)
 	MoveSmooth(x, y, args...)
-	Toggle("left", "up")
+	if err := Toggle("left", "up"); err != nil {
+		return
+	}
 }
 
 // MoveSmooth move the mouse smooth,
@@ -711,10 +715,7 @@ func Toggle(key ...interface{}) error {
 		button = CheckMouse(key[0].(string))
 	}
 
-	down := true
-	if len(key) > 1 && key[1].(string) == "up" {
-		down = false
-	}
+	down := len(key) <= 1 || key[1].(string) != "up"
 	C.toggleMouse(C.bool(down), button)
 	if len(key) > 2 {
 		MilliSleep(MouseSleep)
