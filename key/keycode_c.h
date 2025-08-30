@@ -1,5 +1,32 @@
 #include "keycode.h"
 #include <stdlib.h>
+#if defined(IS_LINUX) && defined(DISPLAY_SERVER_WAYLAND)
+#include <xkbcommon/xkbcommon.h>
+
+/*
+ * keysym_to_keycode converts an XKB keysym to a keycode using the
+ * supplied keymap. The function iterates over all keycodes in the
+ * keymap searching for the first entry that produces the requested
+ * keysym. It returns XKB_KEY_NoSymbol when no match is found.
+ */
+static xkb_keycode_t keysym_to_keycode(struct xkb_keymap *keymap, xkb_keysym_t keysym) {
+    if (!keymap) {
+        return XKB_KEY_NoSymbol;
+    }
+    xkb_keycode_t min = xkb_keymap_min_keycode(keymap);
+    xkb_keycode_t max = xkb_keymap_max_keycode(keymap);
+    for (xkb_keycode_t code = min; code <= max; code++) {
+        const xkb_keysym_t *syms = NULL;
+        int n = xkb_keymap_key_get_syms_by_level(keymap, code, 0, 0, &syms);
+        for (int i = 0; i < n; i++) {
+            if (syms[i] == keysym) {
+                return code;
+            }
+        }
+    }
+    return XKB_KEY_NoSymbol;
+}
+#endif
 
 #if defined(IS_MACOSX)
 	#include <CoreFoundation/CoreFoundation.h>
