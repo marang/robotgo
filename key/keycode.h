@@ -123,7 +123,7 @@ typedef CGKeyCode MMKeyCode;
 
 #elif defined(IS_LINUX)
 
-#if defined(DISPLAY_SERVER_WAYLAND) || defined(USE_WAYLAND)
+#if defined(DISPLAY_SERVER_WAYLAND)
 
 #include <xkbcommon/xkbcommon.h>
 #include <xkbcommon/xkbcommon-keysyms.h>
