@@ -19,6 +19,7 @@ import (
 )
 
 func bitmap() {
+	fmt.Println("display server:", robotgo.DetectDisplayServer())
 	bit, err := robotgo.CaptureScreen()
 	if err != nil {
 		fmt.Println("CaptureScreen error:", err)
