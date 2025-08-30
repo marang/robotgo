@@ -84,7 +84,7 @@ exit:
 
   return bounds;
 #elif defined(IS_LINUX)
-  if (detectDisplayServer() == DisplayServer::Wayland) {
+  if (detectDisplayServer() == Wayland) {
     int width = 0, height = 0;
     struct wl_display *display = wl_display_connect(NULL);
     if (display) {
@@ -137,7 +137,7 @@ Bounds get_client(uintptr pid, int8_t isPid) {
 #if defined(IS_MACOSX)
   return get_bounds(pid, isPid);
 #elif defined(IS_LINUX)
-  if (detectDisplayServer() == DisplayServer::Wayland) {
+  if (detectDisplayServer() == Wayland) {
     int width = 0, height = 0;
     struct wl_display *display = wl_display_connect(NULL);
     if (display) {
