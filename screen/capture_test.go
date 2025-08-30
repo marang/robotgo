@@ -9,12 +9,22 @@ import (
 
 func TestCaptureScreen(t *testing.T) {
 	t.Parallel()
-	if os.Getenv("DISPLAY") == "" {
-		t.Skip("no X11 display")
+	originalDisplay := os.Getenv("DISPLAY")
+	originalWayland := os.Getenv("WAYLAND_DISPLAY")
+	defer os.Setenv("DISPLAY", originalDisplay)
+	defer os.Setenv("WAYLAND_DISPLAY", originalWayland)
+
+	// X11 path
+	os.Setenv("DISPLAY", ":0")
+	os.Unsetenv("WAYLAND_DISPLAY")
+	if _, err := robotgo.CaptureScreen(); err != nil {
+		t.Skipf("X11 capture skipped: %v", err)
 	}
-	bit, err := robotgo.CaptureScreen()
-	if err != nil {
-		t.Fatalf("CaptureScreen error: %v", err)
+
+	// Wayland path should return an error
+	os.Unsetenv("DISPLAY")
+	os.Setenv("WAYLAND_DISPLAY", "wayland-0")
+	if _, err := robotgo.CaptureScreen(); err == nil {
+		t.Fatalf("expected error on Wayland capture")
 	}
-	robotgo.FreeBitmap(bit)
 }

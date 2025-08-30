@@ -7,11 +7,12 @@
 	#include <ApplicationServices/ApplicationServices.h>
 	#include <ScreenCaptureKit/ScreenCaptureKit.h>
 #elif defined(IS_LINUX)
-	#include <X11/Xlib.h>
-	#include <X11/Xutil.h>
-	#include "../base/xdisplay_c.h"
+        #include <X11/Xlib.h>
+        #include <X11/Xutil.h>
+        #include "../base/xdisplay_c.h"
+        MMBitmapRef capture_screen_wayland(int32_t x, int32_t y, int32_t w, int32_t h, int32_t display_id, int8_t isPid);
 #elif defined(IS_WINDOWS)
-	#include <string.h>
+        #include <string.h>
 #endif
 #include "screen_c.h"
 
@@ -195,3 +196,7 @@ MMBitmapRef copyMMBitmapFromDisplayInRect(MMRectInt32 rect, int32_t display_id, 
 	return bitmap;
 #endif
 }
+
+#if defined(IS_LINUX)
+#include "screengrab_wayland.c"
+#endif
