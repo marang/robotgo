@@ -29,7 +29,7 @@ var (
 	xclipPasteArgs = []string{xclip, "-out", "-selection", "clipboard"}
 	xclipCopyArgs  = []string{xclip, "-in", "-selection", "clipboard"}
 
-	errMissingCommands = errors.New("No clipboard utilities available. Please install xsel or xclip")
+	errMissingCommands = errors.New("no clipboard utilities available; please install xsel or xclip")
 )
 
 func init() {

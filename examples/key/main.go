@@ -39,12 +39,20 @@ func typeStr() {
 
 func keyTap() {
 	// press "enter"
-	robotgo.KeyTap("enter")
-	robotgo.KeyTap(robotgo.Enter)
+	if err := robotgo.KeyTap("enter"); err != nil {
+		fmt.Println(err)
+	}
+	if err := robotgo.KeyTap(robotgo.Enter); err != nil {
+		fmt.Println(err)
+	}
 	robotgo.KeySleep = 200
-	robotgo.KeyTap("a")
+	if err := robotgo.KeyTap("a"); err != nil {
+		fmt.Println(err)
+	}
 	robotgo.MilliSleep(100)
-	robotgo.KeyTap("a", "ctrl")
+	if err := robotgo.KeyTap("a", "ctrl"); err != nil {
+		fmt.Println(err)
+	}
 
 	// hide window
 	err := robotgo.KeyTap("h", "cmd")
@@ -52,45 +60,79 @@ func keyTap() {
 		fmt.Println("robotgo.KeyTap run error is: ", err)
 	}
 
-	robotgo.KeyTap("h", "cmd")
+	if err := robotgo.KeyTap("h", "cmd"); err != nil {
+		fmt.Println(err)
+	}
 
 	// press "i", "alt", "command" Key combination
-	robotgo.KeyTap(robotgo.KeyI, robotgo.Alt, robotgo.Cmd)
-	robotgo.KeyTap("i", "alt", "cmd")
+	if err := robotgo.KeyTap(robotgo.KeyI, robotgo.Alt, robotgo.Cmd); err != nil {
+		fmt.Println(err)
+	}
+	if err := robotgo.KeyTap("i", "alt", "cmd"); err != nil {
+		fmt.Println(err)
+	}
 
 	arr := []string{"alt", "cmd"}
-	robotgo.KeyTap("i", arr)
-	robotgo.KeyTap("i", arr)
+	if err := robotgo.KeyTap("i", arr); err != nil {
+		fmt.Println(err)
+	}
+	if err := robotgo.KeyTap("i", arr); err != nil {
+		fmt.Println(err)
+	}
 
-	robotgo.KeyTap("i", "cmd", " alt", "shift")
+	if err := robotgo.KeyTap("i", "cmd", " alt", "shift"); err != nil {
+		fmt.Println(err)
+	}
 
 	// close window
-	robotgo.KeyTap("w", "cmd")
+	if err := robotgo.KeyTap("w", "cmd"); err != nil {
+		fmt.Println(err)
+	}
 
 	// minimize window
-	robotgo.KeyTap("m", "cmd")
+	if err := robotgo.KeyTap("m", "cmd"); err != nil {
+		fmt.Println(err)
+	}
 
-	robotgo.KeyTap("f1", "ctrl")
-	robotgo.KeyTap("a", "control")
+	if err := robotgo.KeyTap("f1", "ctrl"); err != nil {
+		fmt.Println(err)
+	}
+	if err := robotgo.KeyTap("a", "control"); err != nil {
+		fmt.Println(err)
+	}
 }
 
 func special() {
 	robotgo.TypeStr("{}")
-	robotgo.KeyTap("[", "]")
+	if err := robotgo.KeyTap("[", "]"); err != nil {
+		fmt.Println(err)
+	}
 
-	robotgo.KeyToggle("(")
-	robotgo.KeyToggle("(", "up")
+	if err := robotgo.KeyToggle("("); err != nil {
+		fmt.Println(err)
+	}
+	if err := robotgo.KeyToggle("(", "up"); err != nil {
+		fmt.Println(err)
+	}
 }
 
 func keyToggle() {
 	// robotgo.KeySleep = 150
-	robotgo.KeyToggle(robotgo.KeyA)
-	robotgo.KeyToggle("a", "down", "alt")
+	if err := robotgo.KeyToggle(robotgo.KeyA); err != nil {
+		fmt.Println(err)
+	}
+	if err := robotgo.KeyToggle("a", "down", "alt"); err != nil {
+		fmt.Println(err)
+	}
 	robotgo.Sleep(1)
 
-	robotgo.KeyToggle("a", "up", "alt", "cmd")
+	if err := robotgo.KeyToggle("a", "up", "alt", "cmd"); err != nil {
+		fmt.Println(err)
+	}
 	robotgo.MilliSleep(100)
-	robotgo.KeyToggle("q", "up", "alt", "cmd", "shift")
+	if err := robotgo.KeyToggle("q", "up", "alt", "cmd", "shift"); err != nil {
+		fmt.Println(err)
+	}
 
 	err := robotgo.KeyToggle(robotgo.Enter)
 	if err != nil {

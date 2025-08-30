@@ -29,29 +29,43 @@ func bitmap() {
 	gbitMap := robotgo.CaptureGo()
 	fmt.Println("Go CaptureScreen...", gbitMap.Width)
 	// fmt.Println("...", gbitmap.Width, gbitmap.BytesPerPixel)
-	robotgo.SaveCapture("saveCapture.png", 10, 20, 100, 100)
+	if err := robotgo.SaveCapture("saveCapture.png", 10, 20, 100, 100); err != nil {
+		fmt.Println(err)
+	}
 
 	img, err := robotgo.CaptureImg()
 	fmt.Println("error: ", err)
-	robotgo.Save(img, "save.png")
+	if err := robotgo.Save(img, "save.png"); err != nil {
+		fmt.Println(err)
+	}
 
 	num := robotgo.DisplaysNum()
 	for i := 0; i < num; i++ {
 		robotgo.DisplayID = i
 		img1, _ := robotgo.CaptureImg()
 		path1 := "save_" + strconv.Itoa(i)
-		robotgo.Save(img1, path1+".png")
-		robotgo.SaveJpeg(img1, path1+".jpeg", 50)
+		if err := robotgo.Save(img1, path1+".png"); err != nil {
+			fmt.Println(err)
+		}
+		if err := robotgo.SaveJpeg(img1, path1+".jpeg", 50); err != nil {
+			fmt.Println(err)
+		}
 
 		img2, _ := robotgo.CaptureImg(10, 10, 20, 20)
 		path2 := "test_" + strconv.Itoa(i)
-		robotgo.Save(img2, path2+".png")
-		robotgo.SaveJpeg(img2, path2+".jpeg", 50)
+		if err := robotgo.Save(img2, path2+".png"); err != nil {
+			fmt.Println(err)
+		}
+		if err := robotgo.SaveJpeg(img2, path2+".jpeg", 50); err != nil {
+			fmt.Println(err)
+		}
 
 		x, y, w, h := robotgo.GetDisplayBounds(i)
 		img3, err := robotgo.CaptureImg(x, y, w, h)
 		fmt.Println("Capture error: ", err)
-		robotgo.Save(img3, path2+"_1.png")
+		if err := robotgo.Save(img3, path2+"_1.png"); err != nil {
+			fmt.Println(err)
+		}
 	}
 }
 
