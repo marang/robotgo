@@ -1,4 +1,4 @@
-//go:build linux && wayland
+//go:build linux && wayland && integration
 
 package window
 
