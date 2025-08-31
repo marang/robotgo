@@ -8,14 +8,15 @@
 // This file may not be copied, modified, or distributed
 // except according to those terms.
 
-//go:build linux
-// +build linux
+//go:build linux && wayland
+// +build linux,wayland
 
 package robotgo
 
 /*
 #cgo pkg-config: wayland-client wayland-cursor wayland-egl xkbcommon
 #cgo LDFLAGS: -lwayland-client -lwayland-cursor -lwayland-egl -lxkbcommon
+#cgo CFLAGS: -DROBOTGO_USE_WAYLAND
 #include "window/get_bounds_wayland.h"
 */
 import "C"
