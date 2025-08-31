@@ -18,12 +18,12 @@ import (
 	// "marang/robotgo"
 )
 
-func bitmap() {
+func bitmap() error {
 	fmt.Println("display server:", robotgo.DetectDisplayServer())
 	bit, err := robotgo.CaptureScreen()
 	if err != nil {
 		fmt.Println("CaptureScreen error:", err)
-		return
+		return err
 	}
 	defer robotgo.FreeBitmap(bit)
 	fmt.Println("abitMap...", bit)
@@ -76,17 +76,26 @@ func bitmap() {
 			fmt.Println(err)
 		}
 	}
+	return nil
 }
 
 func color() {
 	// gets the pixel color at 100, 200.
-	color := robotgo.GetPixelColor(100, 200)
-	fmt.Println("color----", color, "-----------------")
+	color, err := robotgo.GetPixelColor(100, 200)
+	if err != nil {
+		fmt.Println("GetPixelColor error:", err)
+	} else {
+		fmt.Println("color----", color, "-----------------")
+	}
 
-	clo := robotgo.GetPxColor(100, 200)
-	fmt.Println("color...", clo)
-	clostr := robotgo.PadHex(clo)
-	fmt.Println("color...", clostr)
+	clo, err := robotgo.GetPxColor(100, 200)
+	if err != nil {
+		fmt.Println("GetPxColor error:", err)
+	} else {
+		fmt.Println("color...", clo)
+		clostr := robotgo.PadHex(clo)
+		fmt.Println("color...", clostr)
+	}
 
 	rgb := robotgo.RgbToHex(255, 100, 200)
 	rgbstr := robotgo.PadHex(robotgo.U32ToHex(rgb))
@@ -98,8 +107,12 @@ func color() {
 	fmt.Println("HexToRgb...", hexh)
 
 	// gets the pixel color at 10, 20.
-	color2 := robotgo.GetPixelColor(10, 20)
-	fmt.Println("color---", color2)
+	color2, err := robotgo.GetPixelColor(10, 20)
+	if err != nil {
+		fmt.Println("GetPixelColor error:", err)
+	} else {
+		fmt.Println("color---", color2)
+	}
 }
 
 func screen() {
@@ -107,7 +120,10 @@ func screen() {
 	// Read the screen
 	////////////////////////////////////////////////////////////////////////////////
 
-	bitmap()
+	if err := bitmap(); err != nil && robotgo.DetectDisplayServer() == robotgo.DisplayServerWayland {
+		// On Wayland, exit early when capture isn't available.
+		return
+	}
 
 	// gets the screen width and height
 	sx, sy := robotgo.GetScreenSize()

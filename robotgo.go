@@ -240,23 +240,38 @@ func RgbToHex(r, g, b uint8) C.uint32_t {
 	return C.color_rgb_to_hex(C.uint8_t(r), C.uint8_t(g), C.uint8_t(b))
 }
 
-// GetPxColor get the pixel color return C.MMRGBHex
-func GetPxColor(x, y int, displayId ...int) C.MMRGBHex {
+// GetPxColor returns the pixel color at (x,y). On Wayland this function
+// falls back to capturing a 1x1 region using the Wayland backend. An error is
+// returned if capturing fails or no suitable backend is available.
+func GetPxColor(x, y int, displayId ...int) (C.MMRGBHex, error) {
+	display := displayIdx(displayId...)
+
+	if runtime.GOOS == "linux" && DetectDisplayServer() == DisplayServerWayland {
+		bit, err := CaptureScreen(x, y, 1, 1, display)
+		if err != nil {
+			return 0, err
+		}
+		defer FreeBitmap(bit)
+		return C.mmrgb_hex_at(C.MMBitmapRef(bit), 0, 0), nil
+	}
+
 	cx := C.int32_t(x)
 	cy := C.int32_t(y)
-
-	display := displayIdx(displayId...)
 	color := C.get_px_color(cx, cy, C.int32_t(display))
-	return color
+	return color, nil
 }
 
-// GetPixelColor get the pixel color return string
-func GetPixelColor(x, y int, displayId ...int) string {
-	return PadHex(GetPxColor(x, y, displayId...))
+// GetPixelColor returns the pixel color as a hex string.
+func GetPixelColor(x, y int, displayId ...int) (string, error) {
+	c, err := GetPxColor(x, y, displayId...)
+	if err != nil {
+		return "", err
+	}
+	return PadHex(c), nil
 }
 
-// GetLocationColor get the location pos's color
-func GetLocationColor(displayId ...int) string {
+// GetLocationColor gets the color of the current mouse location.
+func GetLocationColor(displayId ...int) (string, error) {
 	x, y := Location()
 	return GetPixelColor(x, y, displayId...)
 }

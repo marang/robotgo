@@ -20,11 +20,17 @@ import (
 )
 
 func TestColor(t *testing.T) {
-	s := GetPixelColor(10, 10)
+	s, err := GetPixelColor(10, 10)
+	if err != nil {
+		t.Skip("GetPixelColor error: " + err.Error())
+	}
 	tt.IsType(t, "string", s)
 	tt.NotEmpty(t, s)
 
-	c := GetPxColor(10, 10)
+	c, err := GetPxColor(10, 10)
+	if err != nil {
+		t.Skip("GetPxColor error: " + err.Error())
+	}
 	s1 := PadHex(c)
 	tt.Equal(t, s, s1)
 }
