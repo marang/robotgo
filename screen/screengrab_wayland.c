@@ -1,10 +1,11 @@
-//go:build ignore
-// +build ignore
+// go:build ignore
+//  +build ignore
 
-// This file is included from screengrab_c.h, which provides necessary declarations.
-// It implements Wayland screen capture via the wlr-screencopy protocol without
-// relying on external utilities.
+// This file is included from screengrab_c.h, which provides necessary
+// declarations. It implements Wayland screen capture via the wlr-screencopy
+// protocol without relying on external utilities.
 
+#include "../wlr-screencopy-unstable-v1-client-protocol.h"
 #include <errno.h>
 #include <fcntl.h>
 #include <stdint.h>
@@ -15,7 +16,6 @@
 #include <sys/stat.h>
 #include <unistd.h>
 #include <wayland-client.h>
-#include "../wlr-screencopy-unstable-v1-client-protocol.h"
 
 #if defined(IS_LINUX)
 
@@ -40,13 +40,20 @@ struct capture {
   int failed;
 };
 
-static void registry_global(void *data, struct wl_registry *registry, uint32_t name,
-                            const char *interface, uint32_t version) {
+static void registry_global(void *data, struct wl_registry *registry,
+                            uint32_t name, const char *interface,
+                            uint32_t version) {
   struct capture *cap = data;
   if (strcmp(interface, wl_shm_interface.name) == 0) {
     cap->shm = wl_registry_bind(registry, name, &wl_shm_interface, 1);
-  } else if (strcmp(interface, zwlr_screencopy_manager_v1_interface.name) == 0) {
-    cap->manager = wl_registry_bind(registry, name, &zwlr_screencopy_manager_v1_interface, 3);
+  } else if (strcmp(interface, zwlr_screencopy_manager_v1_interface.name) ==
+             0) {
+    uint32_t ver = version > 3 ? 3 : version;
+    if (ver > 1 && cap->shm == NULL) {
+      ver = 1;
+    }
+    cap->manager = wl_registry_bind(registry, name,
+                                    &zwlr_screencopy_manager_v1_interface, ver);
   } else if (strcmp(interface, wl_output_interface.name) == 0) {
     struct output *out = malloc(sizeof(*out));
     if (!out) {
@@ -57,7 +64,8 @@ static void registry_global(void *data, struct wl_registry *registry, uint32_t n
   }
 }
 
-static void registry_remove(void *data, struct wl_registry *registry, uint32_t name) {
+static void registry_remove(void *data, struct wl_registry *registry,
+                            uint32_t name) {
   (void)data;
   (void)registry;
   (void)name;
@@ -113,8 +121,38 @@ static void frame_flags(void *data, struct zwlr_screencopy_frame_v1 *frame,
   (void)flags;
 }
 
+static void frame_damage(void *data, struct zwlr_screencopy_frame_v1 *frame,
+                         uint32_t x, uint32_t y, uint32_t width,
+                         uint32_t height) {
+  (void)data;
+  (void)frame;
+  (void)x;
+  (void)y;
+  (void)width;
+  (void)height;
+}
+
+static void frame_linux_dmabuf(void *data,
+                               struct zwlr_screencopy_frame_v1 *frame,
+                               uint32_t format, uint32_t width,
+                               uint32_t height) {
+  (void)frame;
+  (void)format;
+  (void)width;
+  (void)height;
+  struct capture *cap = data;
+  cap->failed = 1;
+}
+
+static void frame_buffer_done(void *data,
+                              struct zwlr_screencopy_frame_v1 *frame) {
+  (void)data;
+  (void)frame;
+}
+
 static void frame_ready(void *data, struct zwlr_screencopy_frame_v1 *frame,
-                        uint32_t tv_sec_hi, uint32_t tv_sec_lo, uint32_t tv_nsec) {
+                        uint32_t tv_sec_hi, uint32_t tv_sec_lo,
+                        uint32_t tv_nsec) {
   (void)frame;
   (void)tv_sec_hi;
   (void)tv_sec_lo;
@@ -132,6 +170,9 @@ static void frame_failed(void *data, struct zwlr_screencopy_frame_v1 *frame) {
 static const struct zwlr_screencopy_frame_v1_listener frame_listener = {
     .buffer = frame_buffer,
     .flags = frame_flags,
+    .damage = frame_damage,
+    .linux_dmabuf = frame_linux_dmabuf,
+    .buffer_done = frame_buffer_done,
     .ready = frame_ready,
     .failed = frame_failed,
 };
@@ -186,8 +227,8 @@ MMBitmapRef capture_screen_wayland(int32_t x, int32_t y, int32_t w, int32_t h,
     return NULL;
   }
   struct output *out = wl_container_of(cap.outputs.next, out, link);
-  cap.frame = zwlr_screencopy_manager_v1_capture_output(cap.manager, 0,
-                                                        out->wl_output);
+  cap.frame =
+      zwlr_screencopy_manager_v1_capture_output(cap.manager, 0, out->wl_output);
   zwlr_screencopy_frame_v1_add_listener(cap.frame, &frame_listener, &cap);
 
   while (!cap.done && !cap.failed) {
@@ -199,8 +240,10 @@ MMBitmapRef capture_screen_wayland(int32_t x, int32_t y, int32_t w, int32_t h,
     return NULL;
   }
 
-  if (x < 0) x = 0;
-  if (y < 0) y = 0;
+  if (x < 0)
+    x = 0;
+  if (y < 0)
+    y = 0;
   if (x > cap.width || y > cap.height) {
     cleanup_capture(&cap);
     return NULL;
@@ -240,4 +283,4 @@ MMBitmapRef capture_screen_wayland(int32_t x, int32_t y, int32_t w, int32_t h,
   return bitmap;
 }
 
-#endif  // IS_LINUX
+#endif // IS_LINUX
