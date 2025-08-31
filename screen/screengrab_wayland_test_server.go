@@ -1,5 +1,5 @@
-//go:build cgo && linux && test
-// +build cgo,linux,test
+//go:build cgo && linux && wayland && test
+// +build cgo,linux,wayland,test
 
 package screen
 
