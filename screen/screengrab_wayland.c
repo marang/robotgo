@@ -44,15 +44,18 @@ static void registry_global(void *data, struct wl_registry *registry, uint32_t n
                             const char *interface, uint32_t version) {
   struct capture *cap = data;
   if (strcmp(interface, wl_shm_interface.name) == 0) {
-    cap->shm = wl_registry_bind(registry, name, &wl_shm_interface, 1);
+    uint32_t ver = version < 1 ? version : 1;
+    cap->shm = wl_registry_bind(registry, name, &wl_shm_interface, ver);
   } else if (strcmp(interface, zwlr_screencopy_manager_v1_interface.name) == 0) {
-    cap->manager = wl_registry_bind(registry, name, &zwlr_screencopy_manager_v1_interface, 3);
+    uint32_t ver = version < 3 ? version : 3;
+    cap->manager = wl_registry_bind(registry, name, &zwlr_screencopy_manager_v1_interface, ver);
   } else if (strcmp(interface, wl_output_interface.name) == 0) {
     struct output *out = malloc(sizeof(*out));
     if (!out) {
       return;
     }
-    out->wl_output = wl_registry_bind(registry, name, &wl_output_interface, 2);
+    uint32_t ver = version < 2 ? version : 2;
+    out->wl_output = wl_registry_bind(registry, name, &wl_output_interface, ver);
     wl_list_insert(&cap->outputs, &out->link);
   }
 }
