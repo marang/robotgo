@@ -383,21 +383,21 @@ func CaptureScreen(args ...int) (CBitmap, error) {
 		w = C.int32_t(args[2])
 		h = C.int32_t(args[3])
 	} else {
-		if runtime.GOOS == "linux" {
-			if ds != DisplayServerX11 || C.XGetMainDisplay() == nil {
+		if runtime.GOOS != "linux" || ds == DisplayServerX11 {
+			if runtime.GOOS == "linux" && C.XGetMainDisplay() == nil {
 				return nil, errors.New("no display server found")
 			}
-		}
+			// Get the main screen rect.
+			rect := GetScreenRect(displayId)
+			if runtime.GOOS == "windows" {
+				x = C.int32_t(rect.X)
+				y = C.int32_t(rect.Y)
+			}
 
-		// Get the main screen rect.
-		rect := GetScreenRect(displayId)
-		if runtime.GOOS == "windows" {
-			x = C.int32_t(rect.X)
-			y = C.int32_t(rect.Y)
+			w = C.int32_t(rect.W)
+			h = C.int32_t(rect.H)
 		}
-
-		w = C.int32_t(rect.W)
-		h = C.int32_t(rect.H)
+		// On Wayland without explicit dimensions, x,y,w,h remain 0
 	}
 
 	isPid := 0
@@ -414,6 +414,9 @@ func CaptureScreen(args ...int) (CBitmap, error) {
 			}
 			return CBitmap(bit), nil
 		case DisplayServerX11:
+			if C.XGetMainDisplay() == nil {
+				return nil, errors.New("no display server found")
+			}
 			bit := C.capture_screen(x, y, w, h, C.int32_t(displayId), C.int8_t(isPid))
 			if bit == nil {
 				return nil, errors.New("screen capture failed")
