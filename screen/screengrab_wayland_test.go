@@ -1,18 +1,29 @@
-//go:build cgo && linux
-// +build cgo,linux
+//go:build cgo && linux && wayland && test
+// +build cgo,linux,wayland,test
 
 package screen
 
 import (
 	"testing"
-
-	robotgo "github.com/marang/robotgo"
+	"time"
 )
 
-func TestScreengrabWayland(t *testing.T) {
-	t.Setenv("DISPLAY", "")
-	t.Setenv("WAYLAND_DISPLAY", "wayland-0")
-	if _, err := robotgo.CaptureScreen(); err != nil {
-		t.Skipf("Wayland capture skipped: %v", err)
+// TestScreencopyDmabuf ensures CaptureScreen handles linux_dmabuf/buffer_done events.
+func TestScreencopyDmabuf(t *testing.T) {
+	dir := t.TempDir()
+	sock := "robotgo-wl"
+	t.Setenv("XDG_RUNTIME_DIR", dir)
+	t.Setenv("WAYLAND_DISPLAY", sock)
+
+	done := make(chan struct{})
+	startMockServer(sock, done)
+
+	// Allow the server to start
+	time.Sleep(100 * time.Millisecond)
+
+	if _, err := CaptureScreen(); err == nil {
+		t.Fatalf("expected error due to unsupported dmabuf, got nil")
 	}
+
+	<-done
 }

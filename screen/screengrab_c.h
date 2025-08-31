@@ -10,8 +10,23 @@
 #include "../base/xdisplay_c.h"
 #include <X11/Xlib.h>
 #include <X11/Xutil.h>
+#ifdef ROBOTGO_USE_WAYLAND
 MMBitmapRef capture_screen_wayland(int32_t x, int32_t y, int32_t w, int32_t h,
                                    int32_t display_id, int8_t isPid);
+#else
+static inline MMBitmapRef capture_screen_wayland(int32_t x, int32_t y,
+                                                 int32_t w, int32_t h,
+                                                 int32_t display_id,
+                                                 int8_t isPid) {
+  (void)x;
+  (void)y;
+  (void)w;
+  (void)h;
+  (void)display_id;
+  (void)isPid;
+  return NULL;
+}
+#endif
 #elif defined(IS_WINDOWS)
 #include <string.h>
 #endif
@@ -225,6 +240,6 @@ MMRGBHex mmrgb_hex_at(MMBitmapRef bitmap, int32_t x, int32_t y) {
   return MMRGBHexAtPoint(bitmap, x, y);
 }
 
-#if defined(IS_LINUX)
+#if defined(IS_LINUX) && defined(ROBOTGO_USE_WAYLAND)
 #include "screengrab_wayland.c"
 #endif

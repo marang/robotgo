@@ -13,6 +13,7 @@
         #include <stdlib.h>
         #include "../base/os.h"
 
+#ifdef ROBOTGO_USE_WAYLAND
         /* Wayland support */
         #include <string.h>
         #include <wayland-client.h>
@@ -98,6 +99,7 @@
                 get_bounds_wayland(rg_wl_display, &rg_wl_width, &rg_wl_height);
                 return rg_wl_vptr != NULL;
         }
+#endif /* ROBOTGO_USE_WAYLAND */
 #endif
 
 /* Some convenience macros for converting our enums to the system API types. */
@@ -180,6 +182,7 @@ void moveMouse(MMPointInt32 point){
 		CFRelease(move);
 		CFRelease(source);
         #elif defined(IS_LINUX)
+#ifdef ROBOTGO_USE_WAYLAND
                 if (detectDisplayServer() == Wayland) {
                         if (!rg_init_wayland()) {
                                 Display *display = XGetMainDisplay();
@@ -198,6 +201,11 @@ void moveMouse(MMPointInt32 point){
                         XWarpPointer(display, None, DefaultRootWindow(display), 0, 0, 0, 0, point.x, point.y);
                         XSync(display, false);
                 }
+#else
+                Display *display = XGetMainDisplay();
+                XWarpPointer(display, None, DefaultRootWindow(display), 0, 0, 0, 0, point.x, point.y);
+                XSync(display, false);
+#endif
         #elif defined(IS_WINDOWS)
                 SetCursorPos(point.x, point.y);
         #endif
@@ -257,6 +265,7 @@ void toggleMouse(bool down, MMMouseButton button) {
 		CFRelease(event);
 		CFRelease(source);
         #elif defined(IS_LINUX)
+#ifdef ROBOTGO_USE_WAYLAND
                 if (detectDisplayServer() == Wayland) {
                         if (!rg_init_wayland()) {
                                 Display *display = XGetMainDisplay();
@@ -277,6 +286,11 @@ void toggleMouse(bool down, MMMouseButton button) {
                         XTestFakeButtonEvent(display, button, down ? True : False, CurrentTime);
                         XSync(display, false);
                 }
+#else
+                Display *display = XGetMainDisplay();
+                XTestFakeButtonEvent(display, button, down ? True : False, CurrentTime);
+                XSync(display, false);
+#endif
         #elif defined(IS_WINDOWS)
                 // mouse_event(MMMouseToMEventF(down, button), 0, 0, 0, 0);
                 INPUT mouseInput;

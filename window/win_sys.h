@@ -11,7 +11,9 @@
 #include "../base/os.h"
 #if defined(IS_LINUX)
 #include <X11/Xresource.h>
+#if defined(ROBOTGO_USE_WAYLAND)
 #include "get_bounds_wayland.h"
+#endif
 #endif
 
 Bounds get_client(uintptr pid, int8_t isPid);
@@ -84,6 +86,7 @@ exit:
 
   return bounds;
 #elif defined(IS_LINUX)
+#if defined(ROBOTGO_USE_WAYLAND)
   if (detectDisplayServer() == Wayland) {
     int width = 0, height = 0;
     struct wl_display *display = wl_display_connect(NULL);
@@ -98,6 +101,7 @@ exit:
     }
     return bounds;
   }
+#endif
   // Ignore X errors
   XDismissErrors();
   MData win;
@@ -137,6 +141,7 @@ Bounds get_client(uintptr pid, int8_t isPid) {
 #if defined(IS_MACOSX)
   return get_bounds(pid, isPid);
 #elif defined(IS_LINUX)
+#if defined(ROBOTGO_USE_WAYLAND)
   if (detectDisplayServer() == Wayland) {
     int width = 0, height = 0;
     struct wl_display *display = wl_display_connect(NULL);
@@ -151,6 +156,7 @@ Bounds get_client(uintptr pid, int8_t isPid) {
     }
     return bounds;
   }
+#endif
   Display *rDisplay = XOpenDisplay(NULL);
 
   // Ignore X errors
