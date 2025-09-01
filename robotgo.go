@@ -343,10 +343,6 @@ func displayIdx(id ...int) int {
 	return display
 }
 
-func getNumDisplays() int {
-	return int(C.get_num_displays())
-}
-
 // GetHWNDByPid get the hwnd by pid
 func GetHWNDByPid(pid int) int {
 	return int(C.get_hwnd_by_pid(C.uintptr(pid)))
@@ -996,25 +992,6 @@ func alertArgs(args ...string) (string, string) {
 	}
 
 	return defaultBtn, cancelBtn
-}
-
-func showAlert(title, msg string, args ...string) bool {
-	defaultBtn, cancelBtn := alertArgs(args...)
-
-	cTitle := C.CString(title)
-	cMsg := C.CString(msg)
-	defaultButton := C.CString(defaultBtn)
-	cancelButton := C.CString(cancelBtn)
-
-	cbool := C.showAlert(cTitle, cMsg, defaultButton, cancelButton)
-	ibool := int(cbool)
-
-	C.free(unsafe.Pointer(cTitle))
-	C.free(unsafe.Pointer(cMsg))
-	C.free(unsafe.Pointer(defaultButton))
-	C.free(unsafe.Pointer(cancelButton))
-
-	return ibool == 0
 }
 
 // IsValid valid the window
