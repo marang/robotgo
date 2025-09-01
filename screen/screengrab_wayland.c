@@ -38,6 +38,7 @@ struct capture {
   int stride;
   int done;
   int failed;
+  int dmabuf;
 };
 
 static void registry_global(void *data, struct wl_registry *registry,
@@ -141,7 +142,7 @@ static void frame_linux_dmabuf(void *data,
   (void)width;
   (void)height;
   struct capture *cap = data;
-  cap->failed = 1;
+  cap->dmabuf = 1;
 }
 
 static void frame_buffer_done(void *data,
@@ -204,25 +205,52 @@ static void cleanup_capture(struct capture *cap) {
 }
 
 MMBitmapRef capture_screen_wayland(int32_t x, int32_t y, int32_t w, int32_t h,
-                                   int32_t display_id, int8_t isPid) {
+                                   int32_t display_id, int8_t isPid,
+                                   int32_t *err) {
   (void)display_id;
   (void)isPid;
+  if (err) {
+    *err = ScreengrabOK;
+  }
   struct capture cap = {0};
   wl_list_init(&cap.outputs);
 
   cap.display = wl_display_connect(NULL);
   if (!cap.display) {
+    if (err) {
+      *err = ScreengrabErrDisplay;
+    }
     return NULL;
   }
   cap.registry = wl_display_get_registry(cap.display);
   if (!cap.registry) {
+    if (err) {
+      *err = ScreengrabErrFailed;
+    }
     cleanup_capture(&cap);
     return NULL;
   }
   wl_registry_add_listener(cap.registry, &registry_listener, &cap);
   wl_display_roundtrip(cap.display);
 
-  if (!cap.manager || !cap.shm || wl_list_empty(&cap.outputs)) {
+  if (!cap.manager) {
+    if (err) {
+      *err = ScreengrabErrNoManager;
+    }
+    cleanup_capture(&cap);
+    return NULL;
+  }
+  if (wl_list_empty(&cap.outputs)) {
+    if (err) {
+      *err = ScreengrabErrNoOutputs;
+    }
+    cleanup_capture(&cap);
+    return NULL;
+  }
+  if (!cap.shm) {
+    if (err) {
+      *err = ScreengrabErrDmabufOnly;
+    }
     cleanup_capture(&cap);
     return NULL;
   }
@@ -231,11 +259,22 @@ MMBitmapRef capture_screen_wayland(int32_t x, int32_t y, int32_t w, int32_t h,
       zwlr_screencopy_manager_v1_capture_output(cap.manager, 0, out->wl_output);
   zwlr_screencopy_frame_v1_add_listener(cap.frame, &frame_listener, &cap);
 
-  while (!cap.done && !cap.failed) {
+  while (!cap.done && !cap.failed && !cap.dmabuf) {
     wl_display_dispatch(cap.display);
   }
 
+  if (cap.dmabuf) {
+    if (err) {
+      *err = ScreengrabErrDmabufOnly;
+    }
+    cleanup_capture(&cap);
+    return NULL;
+  }
+
   if (cap.failed || !cap.data) {
+    if (err) {
+      *err = ScreengrabErrFailed;
+    }
     cleanup_capture(&cap);
     return NULL;
   }
@@ -245,6 +284,9 @@ MMBitmapRef capture_screen_wayland(int32_t x, int32_t y, int32_t w, int32_t h,
   if (y < 0)
     y = 0;
   if (x > cap.width || y > cap.height) {
+    if (err) {
+      *err = ScreengrabErrFailed;
+    }
     cleanup_capture(&cap);
     return NULL;
   }
@@ -258,6 +300,9 @@ MMBitmapRef capture_screen_wayland(int32_t x, int32_t y, int32_t w, int32_t h,
   size_t stride = (size_t)w * 4;
   uint8_t *rgba = malloc(stride * (size_t)h);
   if (!rgba) {
+    if (err) {
+      *err = ScreengrabErrFailed;
+    }
     cleanup_capture(&cap);
     return NULL;
   }
@@ -279,6 +324,10 @@ MMBitmapRef capture_screen_wayland(int32_t x, int32_t y, int32_t w, int32_t h,
   MMBitmapRef bitmap = createMMBitmap_c(rgba, w, h, stride, 32, 4);
   if (!bitmap) {
     free(rgba);
+    if (err) {
+      *err = ScreengrabErrFailed;
+    }
+    return NULL;
   }
   return bitmap;
 }
