@@ -40,7 +40,7 @@ package robotgo
 
 #cgo linux CFLAGS: -I/usr/src
 #cgo linux LDFLAGS: -L/usr/src -lm -lX11 -lXtst
-#cgo linux pkg-config: libpipewire-0.3 libportal
+#cgo linux,portal pkg-config: libpipewire-0.3 libportal
 
 #cgo windows LDFLAGS: -lgdi32 -luser32
 //
