@@ -174,6 +174,9 @@ MMBitmapRef copyMMBitmapFromDisplayInRect(MMRectInt32 rect, int32_t display_id,
   } else {
     display = XGetMainDisplay();
   }
+  if (display == NULL) {
+    return NULL;
+  }
 
   MMPointInt32 o = rect.origin;
   MMSizeInt32 s = rect.size;
@@ -183,10 +186,14 @@ MMBitmapRef copyMMBitmapFromDisplayInRect(MMRectInt32 rect, int32_t display_id,
       XGetImage(display, XDefaultRootWindow(display), (int)o.x, (int)o.y,
                 (unsigned int)s.w, (unsigned int)s.h, mask, ZPixmap);
   if (image == NULL) {
-    XCloseDisplay(display);
+    if (display_id == -1) {
+      XCloseDisplay(display);
+    }
     return NULL;
   }
-  XCloseDisplay(display);
+  if (display_id == -1) {
+    XCloseDisplay(display);
+  }
 
   bitmap = createMMBitmap_c(
       (uint8_t *)image->data, s.w, s.h, (size_t)image->bytes_per_line,
