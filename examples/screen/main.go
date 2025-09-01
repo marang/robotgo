@@ -26,6 +26,7 @@ func bitmap() error {
 		return err
 	}
 	defer robotgo.FreeBitmap(bit)
+	fmt.Println("backend:", robotgo.LastBackend())
 	fmt.Println("abitMap...", bit)
 
 	gbit := robotgo.ToBitmap(bit)
