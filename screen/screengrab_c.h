@@ -10,20 +10,53 @@
 #include "../base/xdisplay_c.h"
 #include <X11/Xlib.h>
 #include <X11/Xutil.h>
+
+typedef enum {
+  ScreengrabOK = 0,
+  ScreengrabErrDisplay,
+  ScreengrabErrNoManager,
+  ScreengrabErrNoOutputs,
+  ScreengrabErrDmabufOnly,
+  ScreengrabErrPortal,
+  ScreengrabErrFailed,
+} ScreengrabError;
+
 #ifdef ROBOTGO_USE_WAYLAND
 MMBitmapRef capture_screen_wayland(int32_t x, int32_t y, int32_t w, int32_t h,
-                                   int32_t display_id, int8_t isPid);
+                                   int32_t display_id, int8_t isPid,
+                                   int32_t *err);
+MMBitmapRef capture_screen_portal(int32_t x, int32_t y, int32_t w, int32_t h,
+                                  int32_t display_id, int8_t isPid,
+                                  int32_t *err);
 #else
 static inline MMBitmapRef capture_screen_wayland(int32_t x, int32_t y,
                                                  int32_t w, int32_t h,
                                                  int32_t display_id,
-                                                 int8_t isPid) {
+                                                 int8_t isPid, int32_t *err) {
   (void)x;
   (void)y;
   (void)w;
   (void)h;
   (void)display_id;
   (void)isPid;
+  if (err) {
+    *err = ScreengrabErrFailed;
+  }
+  return NULL;
+}
+static inline MMBitmapRef capture_screen_portal(int32_t x, int32_t y,
+                                                int32_t w, int32_t h,
+                                                int32_t display_id,
+                                                int8_t isPid, int32_t *err) {
+  (void)x;
+  (void)y;
+  (void)w;
+  (void)h;
+  (void)display_id;
+  (void)isPid;
+  if (err) {
+    *err = ScreengrabErrPortal;
+  }
   return NULL;
 }
 #endif
@@ -242,4 +275,5 @@ MMRGBHex mmrgb_hex_at(MMBitmapRef bitmap, int32_t x, int32_t y) {
 
 #if defined(IS_LINUX) && defined(ROBOTGO_USE_WAYLAND)
 #include "screengrab_wayland.c"
+#include "screengrab_portal.c"
 #endif

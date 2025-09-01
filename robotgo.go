@@ -40,6 +40,7 @@ package robotgo
 
 #cgo linux CFLAGS: -I/usr/src
 #cgo linux LDFLAGS: -L/usr/src -lm -lX11 -lXtst
+#cgo linux,portal pkg-config: libpipewire-0.3 libportal
 
 #cgo windows LDFLAGS: -lgdi32 -luser32
 //
@@ -51,6 +52,7 @@ import "C"
 
 import (
 	"errors"
+	"fmt"
 	"image"
 	"os"
 	"runtime"
@@ -108,6 +110,54 @@ func DetectDisplayServer() DisplayServer {
 		return DisplayServerX11
 	}
 	return DisplayServerUnknown
+}
+
+// CaptureBackend reports which backend handled the most recent screen capture.
+type CaptureBackend string
+
+const (
+	BackendNone       CaptureBackend = ""
+	BackendScreencopy CaptureBackend = "screencopy"
+	BackendPortal     CaptureBackend = "portal"
+	BackendX11        CaptureBackend = "x11"
+)
+
+var lastBackend CaptureBackend
+
+// LastBackend returns the backend used for the last CaptureScreen call.
+func LastBackend() CaptureBackend { return lastBackend }
+
+var (
+	ErrWaylandDisplay = errors.New("wayland connect failed")
+	ErrNoScreencopy   = errors.New("screencopy manager not available")
+	ErrNoOutputs      = errors.New("no outputs")
+	ErrDmabufOnly     = errors.New("screencopy dmabuf only")
+	ErrWaylandFailed  = errors.New("wayland capture failed")
+	ErrPortalFailed   = errors.New("portal capture failed")
+)
+
+func waylandErr(code C.int32_t) error {
+	switch code {
+	case C.ScreengrabErrDisplay:
+		return ErrWaylandDisplay
+	case C.ScreengrabErrNoManager:
+		return ErrNoScreencopy
+	case C.ScreengrabErrNoOutputs:
+		return ErrNoOutputs
+	case C.ScreengrabErrDmabufOnly:
+		return ErrDmabufOnly
+	default:
+		return ErrWaylandFailed
+	}
+}
+
+func portalErr(code C.int32_t) error {
+	switch code {
+	case C.ScreengrabErrFailed, C.ScreengrabErrPortal:
+		return ErrPortalFailed
+	default:
+		return ErrPortalFailed
+	}
 }
 
 type (
@@ -408,10 +458,21 @@ func CaptureScreen(args ...int) (CBitmap, error) {
 	if runtime.GOOS == "linux" {
 		switch ds {
 		case DisplayServerWayland:
-			bit := C.capture_screen_wayland(x, y, w, h, C.int32_t(displayId), C.int8_t(isPid))
+			var cerr C.int32_t
+			bit := C.capture_screen_wayland(x, y, w, h, C.int32_t(displayId), C.int8_t(isPid), &cerr)
 			if bit == nil {
-				return nil, errors.New("wayland screen capture unsupported or failed")
+				err := waylandErr(cerr)
+				if errors.Is(err, ErrNoScreencopy) {
+					bit = C.capture_screen_portal(x, y, w, h, C.int32_t(displayId), C.int8_t(isPid), &cerr)
+					if bit == nil {
+						return nil, fmt.Errorf("%w; %v", err, portalErr(cerr))
+					}
+					lastBackend = BackendPortal
+					return CBitmap(bit), nil
+				}
+				return nil, err
 			}
+			lastBackend = BackendScreencopy
 			return CBitmap(bit), nil
 		case DisplayServerX11:
 			if C.XGetMainDisplay() == nil {
@@ -421,6 +482,7 @@ func CaptureScreen(args ...int) (CBitmap, error) {
 			if bit == nil {
 				return nil, errors.New("screen capture failed")
 			}
+			lastBackend = BackendX11
 			return CBitmap(bit), nil
 		default:
 			return nil, errors.New("no display server found")
@@ -431,6 +493,7 @@ func CaptureScreen(args ...int) (CBitmap, error) {
 	if bit == nil {
 		return nil, errors.New("screen capture failed")
 	}
+	lastBackend = BackendNone
 	return CBitmap(bit), nil
 }
 
