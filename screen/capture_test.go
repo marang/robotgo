@@ -14,6 +14,8 @@ func TestCaptureScreen(t *testing.T) {
 		if display == "" {
 			t.Skip("DISPLAY not set")
 		}
+		// openXDisplay returns false when the X server is unavailable
+		// (including when running on platforms without X11).
 		if !openXDisplay(display) {
 			t.Skipf("cannot open DISPLAY %q", display)
 		}
