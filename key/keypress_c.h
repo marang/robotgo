@@ -21,6 +21,7 @@
 #elif defined(IS_LINUX)
         #include <X11/extensions/XTest.h>
         #include <stdlib.h>
+        #include "../base/os.h"
         // #include "../base/xdisplay_c.h"
 #if defined(DISPLAY_SERVER_WAYLAND)
 #define _GNU_SOURCE
@@ -411,10 +412,9 @@ void toggleKeyCode(MMKeyCode code, const bool down, MMKeyFlags flags, uintptr pi
 
 	win32KeyEvent(code, dwFlags, pid, 0);
 #elif defined(IS_LINUX)
-        const char* wayland = getenv("WAYLAND_DISPLAY");
-        const char* x11 = getenv("DISPLAY");
+        DisplayServer server = detectDisplayServer();
 #if defined(DISPLAY_SERVER_WAYLAND)
-        if (wayland && (!x11 || *x11 == '\0')) {
+        if (server == Wayland) {
                 const Bool is_press = down ? True : False;
 
                 if (flags & MOD_META) { WL_KEY_EVENT_WAIT(K_META, is_press); }
