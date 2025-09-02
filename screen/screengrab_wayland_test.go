@@ -22,6 +22,7 @@ func TestScreencopyDmabuf(t *testing.T) {
 	sock := "robotgo-wl"
 	t.Setenv("XDG_RUNTIME_DIR", dir)
 	t.Setenv("WAYLAND_DISPLAY", sock)
+	robotgo.SetWaylandBackend(robotgo.WaylandBackendDmabuf)
 
 	var maj, min uint32
 	found := false
@@ -56,11 +57,31 @@ func TestScreencopyDmabuf(t *testing.T) {
 	<-done
 }
 
+func TestScreencopyWlShm(t *testing.T) {
+	dir := t.TempDir()
+	sock := "robotgo-wl"
+	t.Setenv("XDG_RUNTIME_DIR", dir)
+	t.Setenv("WAYLAND_DISPLAY", sock)
+	robotgo.SetWaylandBackend(robotgo.WaylandBackendWlShm)
+
+	done := make(chan struct{})
+	startMockServer(sock, 0, 0, 0, done)
+
+	time.Sleep(100 * time.Millisecond)
+
+	if _, err := CaptureScreen(); err != nil {
+		t.Fatalf("capture failed: %v", err)
+	}
+
+	<-done
+}
+
 func TestScreencopyPortalFallback(t *testing.T) {
 	dir := t.TempDir()
 	sock := "robotgo-wl"
 	t.Setenv("XDG_RUNTIME_DIR", dir)
 	t.Setenv("WAYLAND_DISPLAY", sock)
+	robotgo.SetWaylandBackend(robotgo.WaylandBackendDmabuf)
 
 	done := make(chan struct{})
 	startMockServer(sock, 0, 0, 1, done)

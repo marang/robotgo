@@ -27,7 +27,7 @@ typedef enum {
 #ifdef ROBOTGO_USE_WAYLAND
 MMBitmapRef capture_screen_wayland(int32_t x, int32_t y, int32_t w, int32_t h,
                                    int32_t display_id, int8_t isPid,
-                                   int32_t *err);
+                                   int32_t backend, int32_t *err);
 MMBitmapRef capture_screen_portal(int32_t x, int32_t y, int32_t w, int32_t h,
                                   int32_t display_id, int8_t isPid,
                                   int32_t *err);
@@ -35,13 +35,15 @@ MMBitmapRef capture_screen_portal(int32_t x, int32_t y, int32_t w, int32_t h,
 static inline MMBitmapRef capture_screen_wayland(int32_t x, int32_t y,
                                                  int32_t w, int32_t h,
                                                  int32_t display_id,
-                                                 int8_t isPid, int32_t *err) {
+                                                 int8_t isPid, int32_t backend,
+                                                 int32_t *err) {
   (void)x;
   (void)y;
   (void)w;
   (void)h;
   (void)display_id;
   (void)isPid;
+  (void)backend;
   if (err) {
     *err = ScreengrabErrFailed;
   }
@@ -284,5 +286,6 @@ MMRGBHex mmrgb_hex_at(MMBitmapRef bitmap, int32_t x, int32_t y) {
 
 #if defined(IS_LINUX) && defined(ROBOTGO_USE_WAYLAND)
 #include "screengrab_portal.c"
+#include "screengrab_wayland_impl.c"
 #include "screengrab_wayland.c"
 #endif
