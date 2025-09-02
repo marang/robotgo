@@ -16,6 +16,8 @@ typedef enum {
   ScreengrabErrDisplay,
   ScreengrabErrNoManager,
   ScreengrabErrNoOutputs,
+  ScreengrabErrDmabufDevice,
+  ScreengrabErrDmabufModifiers,
   ScreengrabErrDmabufImport,
   ScreengrabErrDmabufMap,
   ScreengrabErrPortal,
