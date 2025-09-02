@@ -78,6 +78,10 @@ xcode-select --install
 winget install Golang.go
 ```
 
+#### For Linux:
+
+Wayland screen capture with DMA-BUF requires the `libwayland-client` and `libgbm` packages at runtime.
+
 ```
 winget install MartinStorsjo.LLVM-MinGW.UCRT
 ```
@@ -526,7 +530,7 @@ func main() {
 
 - Refactor some C code to Go (such as x11, windows)
 - Better multiscreen support
-- Wayland support
+- Wayland support including DMA-BUF screencopy
 - Update Window Handle
 - Try to support Android and IOS
 

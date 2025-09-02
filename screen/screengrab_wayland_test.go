@@ -4,8 +4,11 @@
 package screen
 
 import (
+	"errors"
 	"testing"
 	"time"
+
+	robotgo "github.com/marang/robotgo"
 )
 
 // TestScreencopyDmabuf ensures CaptureScreen handles linux_dmabuf/buffer_done events.
@@ -21,8 +24,11 @@ func TestScreencopyDmabuf(t *testing.T) {
 	// Allow the server to start
 	time.Sleep(100 * time.Millisecond)
 
-	if _, err := CaptureScreen(); err == nil {
-		t.Fatalf("expected error due to unsupported dmabuf, got nil")
+	if _, err := CaptureScreen(); err != nil {
+		if errors.Is(err, robotgo.ErrDmabufImport) || errors.Is(err, robotgo.ErrDmabufMap) {
+			t.Skip("dmabuf allocation not available")
+		}
+		t.Fatalf("capture failed: %v", err)
 	}
 
 	<-done
