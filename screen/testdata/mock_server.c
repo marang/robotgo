@@ -1,11 +1,7 @@
 //go:build cgo && linux && wayland && test
 // +build cgo,linux,wayland,test
 
-package screen
-
-/*
 #define _GNU_SOURCE
-#cgo pkg-config: wayland-server
 #include <fcntl.h>
 #include <stdint.h>
 #include <stdlib.h>
@@ -14,8 +10,8 @@ package screen
 #include <sys/sysmacros.h>
 #include <unistd.h>
 #include <wayland-server.h>
-#include "../wlr-screencopy-unstable-v1-client-protocol.h"
-#include "../linux-dmabuf-unstable-v1-server-protocol.h"
+#include "../../wlr-screencopy-unstable-v1-client-protocol.h"
+#include "../../linux-dmabuf-unstable-v1-server-protocol.h"
 
 #define ZWLR_SCREENCOPY_FRAME_V1_LINUX_DMABUF 5
 #define ZWLR_SCREENCOPY_FRAME_V1_BUFFER_DONE 6
@@ -157,15 +153,4 @@ void run_mock_server(const char *socket, uint32_t maj, uint32_t min, uint64_t mo
     wl_display_run(mock_display);
     wl_display_destroy(mock_display);
 }
-*/
-import "C"
-import "unsafe"
 
-func startMockServer(socket string, maj, min uint32, modifier uint64, done chan struct{}) {
-	csock := C.CString(socket)
-	go func() {
-		C.run_mock_server(csock, C.uint32_t(maj), C.uint32_t(min), C.uint64_t(modifier))
-		C.free(unsafe.Pointer(csock))
-		close(done)
-	}()
-}
