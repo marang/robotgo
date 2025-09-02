@@ -51,6 +51,7 @@ package robotgo
 import "C"
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"image"
@@ -59,6 +60,7 @@ import (
 	"time"
 	"unsafe"
 
+	portalcap "github.com/marang/robotgo/screen/portal"
 	"github.com/vcaesar/tt"
 )
 
@@ -157,15 +159,6 @@ func waylandErr(code C.int32_t) error {
 		return ErrDmabufMap
 	default:
 		return ErrWaylandFailed
-	}
-}
-
-func portalErr(code C.int32_t) error {
-	switch code {
-	case C.ScreengrabErrFailed, C.ScreengrabErrPortal:
-		return ErrPortalFailed
-	default:
-		return ErrPortalFailed
 	}
 }
 
@@ -468,12 +461,12 @@ func CaptureScreen(args ...int) (CBitmap, error) {
 			if bit == nil {
 				err := waylandErr(cerr)
 				if errors.Is(err, ErrNoScreencopy) {
-					bit = C.capture_screen_portal(x, y, w, h, C.int32_t(displayId), C.int8_t(isPid), &cerr)
-					if bit == nil {
-						return nil, fmt.Errorf("%w; %v", err, portalErr(cerr))
+					pbit, perr := portalcap.Capture(context.Background(), int(x), int(y), int(w), int(h))
+					if perr != nil {
+						return nil, fmt.Errorf("%w; %v", err, perr)
 					}
 					lastBackend = BackendPortal
-					return CBitmap(bit), nil
+					return CBitmap(pbit), nil
 				}
 				return nil, err
 			}
