@@ -31,7 +31,7 @@ func TestPortalFallback(t *testing.T) {
 	}
 }
 
-func TestWaylandDmabufError(t *testing.T) {
+func TestWaylandDmabufSuccess(t *testing.T) {
 	dir := t.TempDir()
 	sock := "robotgo-wl"
 	t.Setenv("XDG_RUNTIME_DIR", dir)
@@ -40,10 +40,11 @@ func TestWaylandDmabufError(t *testing.T) {
 	done := make(chan struct{})
 	startMockServer(sock, done)
 	time.Sleep(100 * time.Millisecond)
-	_, err := robotgo.CaptureScreen()
-	if !errors.Is(err, robotgo.ErrDmabufOnly) {
-		t.Fatalf("expected ErrDmabufOnly, got %v", err)
+	bit, err := robotgo.CaptureScreen()
+	if err != nil {
+		t.Fatalf("capture failed: %v", err)
 	}
+	robotgo.FreeBitmap(bit)
 	<-done
 }
 

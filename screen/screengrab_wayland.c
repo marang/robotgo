@@ -1,13 +1,16 @@
 // go:build ignore
 //  +build ignore
 
+#define _GNU_SOURCE
 // This file is included from screengrab_c.h, which provides necessary
 // declarations. It implements Wayland screen capture via the wlr-screencopy
 // protocol without relying on external utilities.
 
+#include "../linux-dmabuf-unstable-v1-client-protocol.h"
 #include "../wlr-screencopy-unstable-v1-client-protocol.h"
 #include <errno.h>
 #include <fcntl.h>
+#include <linux/memfd.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -16,6 +19,10 @@
 #include <sys/stat.h>
 #include <unistd.h>
 #include <wayland-client.h>
+
+#ifndef MFD_CLOEXEC
+#define MFD_CLOEXEC 0x0001
+#endif
 
 #if defined(IS_LINUX)
 
@@ -28,6 +35,7 @@ struct capture {
   struct wl_display *display;
   struct wl_registry *registry;
   struct wl_shm *shm;
+  struct zwp_linux_dmabuf_v1 *dmabuf;
   struct zwlr_screencopy_manager_v1 *manager;
   struct zwlr_screencopy_frame_v1 *frame;
   struct wl_buffer *buffer;
@@ -38,7 +46,9 @@ struct capture {
   int stride;
   int done;
   int failed;
-  int dmabuf;
+  int using_dmabuf;
+  uint32_t format;
+  int err_code;
 };
 
 static void registry_global(void *data, struct wl_registry *registry,
@@ -55,6 +65,9 @@ static void registry_global(void *data, struct wl_registry *registry,
     }
     cap->manager = wl_registry_bind(registry, name,
                                     &zwlr_screencopy_manager_v1_interface, ver);
+  } else if (strcmp(interface, zwp_linux_dmabuf_v1_interface.name) == 0) {
+    cap->dmabuf =
+        wl_registry_bind(registry, name, &zwp_linux_dmabuf_v1_interface, 3);
   } else if (strcmp(interface, wl_output_interface.name) == 0) {
     struct output *out = malloc(sizeof(*out));
     if (!out) {
@@ -92,6 +105,7 @@ static void frame_buffer(void *data, struct zwlr_screencopy_frame_v1 *frame,
   int fd = shm_open(shm_name, O_CREAT | O_EXCL | O_RDWR, 0600);
   if (fd < 0) {
     cap->failed = 1;
+    cap->err_code = ScreengrabErrFailed;
     return;
   }
   shm_unlink(shm_name);
@@ -99,12 +113,14 @@ static void frame_buffer(void *data, struct zwlr_screencopy_frame_v1 *frame,
   if (ftruncate(fd, (off_t)size) < 0) {
     close(fd);
     cap->failed = 1;
+    cap->err_code = ScreengrabErrFailed;
     return;
   }
   cap->data = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
   if (cap->data == MAP_FAILED) {
     close(fd);
     cap->failed = 1;
+    cap->err_code = ScreengrabErrFailed;
     return;
   }
   struct wl_shm_pool *pool = wl_shm_create_pool(cap->shm, fd, (int)size);
@@ -138,17 +154,48 @@ static void frame_linux_dmabuf(void *data,
                                uint32_t format, uint32_t width,
                                uint32_t height) {
   (void)frame;
-  (void)format;
-  (void)width;
-  (void)height;
   struct capture *cap = data;
-  cap->dmabuf = 1;
+  cap->using_dmabuf = 1;
+  cap->width = (int)width;
+  cap->height = (int)height;
+  cap->format = format;
+  cap->stride = (int)width * 4;
 }
 
 static void frame_buffer_done(void *data,
                               struct zwlr_screencopy_frame_v1 *frame) {
-  (void)data;
-  (void)frame;
+  struct capture *cap = data;
+  if (!cap->using_dmabuf) {
+    return;
+  }
+  size_t size = (size_t)cap->stride * (size_t)cap->height;
+  int fd = memfd_create("robotgo-dmabuf", MFD_CLOEXEC);
+  if (fd < 0) {
+    cap->failed = 1;
+    cap->err_code = ScreengrabErrDmabufImport;
+    return;
+  }
+  if (ftruncate(fd, (off_t)size) < 0) {
+    close(fd);
+    cap->failed = 1;
+    cap->err_code = ScreengrabErrDmabufImport;
+    return;
+  }
+  cap->data = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+  if (cap->data == MAP_FAILED) {
+    close(fd);
+    cap->failed = 1;
+    cap->err_code = ScreengrabErrDmabufMap;
+    return;
+  }
+  struct zwp_linux_buffer_params_v1 *params =
+      zwp_linux_dmabuf_v1_create_params(cap->dmabuf);
+  zwp_linux_buffer_params_v1_add(params, fd, 0, 0, (uint32_t)cap->stride, 0, 0);
+  cap->buffer = zwp_linux_buffer_params_v1_create_immed(
+      params, cap->width, cap->height, cap->format, 0);
+  zwp_linux_buffer_params_v1_destroy(params);
+  close(fd);
+  zwlr_screencopy_frame_v1_copy(frame, cap->buffer);
 }
 
 static void frame_ready(void *data, struct zwlr_screencopy_frame_v1 *frame,
@@ -166,6 +213,7 @@ static void frame_failed(void *data, struct zwlr_screencopy_frame_v1 *frame) {
   (void)frame;
   struct capture *cap = data;
   cap->failed = 1;
+  cap->err_code = ScreengrabErrFailed;
 }
 
 static const struct zwlr_screencopy_frame_v1_listener frame_listener = {
@@ -192,6 +240,9 @@ static void cleanup_capture(struct capture *cap) {
   }
   if (cap->shm) {
     wl_shm_destroy(cap->shm);
+  }
+  if (cap->dmabuf) {
+    zwp_linux_dmabuf_v1_destroy(cap->dmabuf);
   }
   if (cap->manager) {
     zwlr_screencopy_manager_v1_destroy(cap->manager);
@@ -247,9 +298,9 @@ MMBitmapRef capture_screen_wayland(int32_t x, int32_t y, int32_t w, int32_t h,
     cleanup_capture(&cap);
     return NULL;
   }
-  if (!cap.shm) {
+  if (!cap.shm && !cap.dmabuf) {
     if (err) {
-      *err = ScreengrabErrDmabufOnly;
+      *err = ScreengrabErrFailed;
     }
     cleanup_capture(&cap);
     return NULL;
@@ -259,21 +310,13 @@ MMBitmapRef capture_screen_wayland(int32_t x, int32_t y, int32_t w, int32_t h,
       zwlr_screencopy_manager_v1_capture_output(cap.manager, 0, out->wl_output);
   zwlr_screencopy_frame_v1_add_listener(cap.frame, &frame_listener, &cap);
 
-  while (!cap.done && !cap.failed && !cap.dmabuf) {
+  while (!cap.done && !cap.failed) {
     wl_display_dispatch(cap.display);
-  }
-
-  if (cap.dmabuf) {
-    if (err) {
-      *err = ScreengrabErrDmabufOnly;
-    }
-    cleanup_capture(&cap);
-    return NULL;
   }
 
   if (cap.failed || !cap.data) {
     if (err) {
-      *err = ScreengrabErrFailed;
+      *err = cap.err_code ? cap.err_code : ScreengrabErrFailed;
     }
     cleanup_capture(&cap);
     return NULL;

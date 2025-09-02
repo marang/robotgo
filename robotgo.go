@@ -131,7 +131,8 @@ var (
 	ErrWaylandDisplay = errors.New("wayland connect failed")
 	ErrNoScreencopy   = errors.New("screencopy manager not available")
 	ErrNoOutputs      = errors.New("no outputs")
-	ErrDmabufOnly     = errors.New("screencopy dmabuf only")
+	ErrDmabufImport   = errors.New("screencopy dmabuf import failed")
+	ErrDmabufMap      = errors.New("screencopy dmabuf map failed")
 	ErrWaylandFailed  = errors.New("wayland capture failed")
 	ErrPortalFailed   = errors.New("portal capture failed")
 )
@@ -144,8 +145,10 @@ func waylandErr(code C.int32_t) error {
 		return ErrNoScreencopy
 	case C.ScreengrabErrNoOutputs:
 		return ErrNoOutputs
-	case C.ScreengrabErrDmabufOnly:
-		return ErrDmabufOnly
+	case C.ScreengrabErrDmabufImport:
+		return ErrDmabufImport
+	case C.ScreengrabErrDmabufMap:
+		return ErrDmabufMap
 	default:
 		return ErrWaylandFailed
 	}
