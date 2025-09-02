@@ -517,7 +517,8 @@ MMBitmapRef capture_screen_wayland(int32_t x, int32_t y, int32_t w, int32_t h,
     cleanup_capture(&cap);
     return NULL;
   }
-  if (cap.dmabuf) {
+  if (cap.dmabuf &&
+      wl_proxy_get_version((struct wl_proxy *)cap.dmabuf) >= 4) {
     cap.fb.fb = zwp_linux_dmabuf_v1_get_default_feedback(cap.dmabuf);
     if (cap.fb.fb) {
       zwp_linux_dmabuf_feedback_v1_add_listener(cap.fb.fb, &feedback_listener,
