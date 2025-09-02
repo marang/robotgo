@@ -128,13 +128,15 @@ var lastBackend CaptureBackend
 func LastBackend() CaptureBackend { return lastBackend }
 
 var (
-	ErrWaylandDisplay = errors.New("wayland connect failed")
-	ErrNoScreencopy   = errors.New("screencopy manager not available")
-	ErrNoOutputs      = errors.New("no outputs")
-	ErrDmabufImport   = errors.New("screencopy dmabuf import failed")
-	ErrDmabufMap      = errors.New("screencopy dmabuf map failed")
-	ErrWaylandFailed  = errors.New("wayland capture failed")
-	ErrPortalFailed   = errors.New("portal capture failed")
+	ErrWaylandDisplay  = errors.New("wayland connect failed")
+	ErrNoScreencopy    = errors.New("screencopy manager not available")
+	ErrNoOutputs       = errors.New("no outputs")
+	ErrDmabufDevice    = errors.New("screencopy dmabuf device unsupported")
+	ErrDmabufModifiers = errors.New("screencopy dmabuf modifiers unsupported")
+	ErrDmabufImport    = errors.New("screencopy dmabuf import failed")
+	ErrDmabufMap       = errors.New("screencopy dmabuf map failed")
+	ErrWaylandFailed   = errors.New("wayland capture failed")
+	ErrPortalFailed    = errors.New("portal capture failed")
 )
 
 func waylandErr(code C.int32_t) error {
@@ -145,6 +147,10 @@ func waylandErr(code C.int32_t) error {
 		return ErrNoScreencopy
 	case C.ScreengrabErrNoOutputs:
 		return ErrNoOutputs
+	case C.ScreengrabErrDmabufDevice:
+		return ErrDmabufDevice
+	case C.ScreengrabErrDmabufModifiers:
+		return ErrDmabufModifiers
 	case C.ScreengrabErrDmabufImport:
 		return ErrDmabufImport
 	case C.ScreengrabErrDmabufMap:
