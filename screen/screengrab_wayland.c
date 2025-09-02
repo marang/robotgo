@@ -11,6 +11,7 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <gbm.h>
+#include <xf86drm.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -54,18 +55,35 @@ struct output {
   struct wl_output *wl_output;
 };
 
-static int open_main_device(dev_t dev) {
-  char path[64];
-  for (int i = 0; i < 256; ++i) {
-    snprintf(path, sizeof(path), "/dev/dri/renderD%d", 128 + i);
-    struct stat st;
-    if (stat(path, &st) == 0) {
-      if (major(st.st_rdev) == major(dev) && minor(st.st_rdev) == minor(dev)) {
-        return open(path, O_RDWR | O_CLOEXEC);
-      }
+int drm_find_render_node(dev_t dev) {
+  int count = drmGetDevices2(0, NULL, 0);
+  if (count <= 0) {
+    return -1;
+  }
+  drmDevicePtr *devs = calloc((size_t)count, sizeof(*devs));
+  if (!devs) {
+    return -1;
+  }
+  count = drmGetDevices2(0, devs, count);
+  if (count < 0) {
+    free(devs);
+    return -1;
+  }
+  int fd = -1;
+  for (int i = 0; i < count; ++i) {
+    drmDevicePtr d = devs[i];
+    if (d && d->dev == dev &&
+        (d->available_nodes & (1 << DRM_NODE_RENDER)) &&
+        d->nodes[DRM_NODE_RENDER]) {
+      fd = open(d->nodes[DRM_NODE_RENDER], O_RDWR | O_CLOEXEC);
+      break;
     }
   }
-  return -1;
+  for (int i = 0; i < count; ++i) {
+    drmFreeDevice(&devs[i]);
+  }
+  free(devs);
+  return fd;
 }
 
 struct capture {
@@ -313,7 +331,7 @@ static void frame_buffer_done(void *data,
   if (!cap->using_dmabuf) {
     return;
   }
-  cap->drm_fd = open_main_device(cap->fb.main_dev);
+  cap->drm_fd = drm_find_render_node(cap->fb.main_dev);
   if (cap->drm_fd < 0) {
     cap->failed = 1;
     cap->err_code = ScreengrabErrDmabufDevice;

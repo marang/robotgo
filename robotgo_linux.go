@@ -14,8 +14,8 @@
 package robotgo
 
 /*
-#cgo pkg-config: wayland-client wayland-cursor wayland-egl xkbcommon gbm
-#cgo LDFLAGS: -lwayland-client -lwayland-cursor -lwayland-egl -lxkbcommon -lgbm
+#cgo pkg-config: wayland-client wayland-cursor wayland-egl xkbcommon gbm libdrm
+#cgo LDFLAGS: -lwayland-client -lwayland-cursor -lwayland-egl -lxkbcommon -lgbm -ldrm
 #cgo CFLAGS: -DROBOTGO_USE_WAYLAND
 #include "window/get_bounds_wayland.h"
 */
