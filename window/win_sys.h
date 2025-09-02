@@ -12,7 +12,8 @@
 #if defined(IS_LINUX)
 #include <X11/Xresource.h>
 #if defined(ROBOTGO_USE_WAYLAND)
-#include "get_bounds_wayland.h"
+#include "wayland_bounds.h"
+#include "wayland_bounds.c"
 #endif
 #endif
 
@@ -88,18 +89,7 @@ exit:
 #elif defined(IS_LINUX)
 #if defined(ROBOTGO_USE_WAYLAND)
   if (detectDisplayServer() == Wayland) {
-    int width = 0, height = 0;
-    struct wl_display *display = wl_display_connect(NULL);
-    if (display) {
-      if (get_bounds_wayland(display, &width, &height) == 0) {
-        bounds.X = 0;
-        bounds.Y = 0;
-        bounds.W = width;
-        bounds.H = height;
-      }
-      wl_display_disconnect(display);
-    }
-    return bounds;
+    return wayland_get_bounds();
   }
 #endif
   // Ignore X errors
@@ -143,18 +133,7 @@ Bounds get_client(uintptr pid, int8_t isPid) {
 #elif defined(IS_LINUX)
 #if defined(ROBOTGO_USE_WAYLAND)
   if (detectDisplayServer() == Wayland) {
-    int width = 0, height = 0;
-    struct wl_display *display = wl_display_connect(NULL);
-    if (display) {
-      if (get_bounds_wayland(display, &width, &height) == 0) {
-        bounds.X = 0;
-        bounds.Y = 0;
-        bounds.W = width;
-        bounds.H = height;
-      }
-      wl_display_disconnect(display);
-    }
-    return bounds;
+    return wayland_get_bounds();
   }
 #endif
   Display *rDisplay = XOpenDisplay(NULL);
