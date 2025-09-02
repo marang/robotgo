@@ -82,6 +82,17 @@ winget install Golang.go
 
 Wayland screen capture with DMA-BUF requires the `libwayland-client` and `libgbm` packages at runtime. The compositor must expose `zwp_linux_dmabuf_v1` version 4 or newer. If DMA-BUF import or mapping fails, RobotGo automatically falls back to the portal screencast API.
 
+When the compositor does not support the `wlr-screencopy` protocol, RobotGo uses the freedesktop portal ScreenCast API and PipeWire. Ensure `xdg-desktop-portal` and an appropriate backend (e.g. `xdg-desktop-portal-gnome` or `xdg-desktop-portal-kde`) are installed and that PipeWire is running.
+
+```go
+ctx := context.Background()
+bmp, err := portal.Capture(ctx, 0, 0, 100, 100)
+if err != nil {
+    log.Fatal(err)
+}
+defer robotgo.FreeBitmap(robotgo.CBitmap(bmp))
+```
+
 ```
 winget install MartinStorsjo.LLVM-MinGW.UCRT
 ```
