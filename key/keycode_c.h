@@ -1,6 +1,8 @@
 #include "keycode.h"
 #include <stdlib.h>
-#if defined(IS_LINUX) && defined(DISPLAY_SERVER_WAYLAND)
+#if defined(IS_LINUX)
+#include "../base/os.h"
+#if defined(DISPLAY_SERVER_WAYLAND)
 #include <xkbcommon/xkbcommon.h>
 
 /*
@@ -26,6 +28,7 @@ static xkb_keycode_t keysym_to_keycode(struct xkb_keymap *keymap, xkb_keysym_t k
     }
     return XKB_KEY_NoSymbol;
 }
+#endif
 #endif
 
 #if defined(IS_MACOSX)
@@ -86,10 +89,9 @@ MMKeyCode keyCodeForChar(const char c) {
 
 		return code;
         #elif defined(IS_LINUX)
-                const char* wayland = getenv("WAYLAND_DISPLAY");
-                const char* x11 = getenv("DISPLAY");
+                DisplayServer server = detectDisplayServer();
 #if defined(DISPLAY_SERVER_WAYLAND)
-                if (wayland && (!x11 || *x11 == '\0')) {
+                if (server == Wayland) {
                         char buf[2];
                         buf[0] = c;
                         buf[1] = '\0';
@@ -110,7 +112,7 @@ MMKeyCode keyCodeForChar(const char c) {
                                 return K_NOT_A_KEY;
                         }
                         return code;
-                }
+                } else
 #endif
                 {
                         char buf[2];
