@@ -129,6 +129,21 @@ var lastBackend CaptureBackend
 // LastBackend returns the backend used for the last CaptureScreen call.
 func LastBackend() CaptureBackend { return lastBackend }
 
+// WaylandBackend selects which Wayland backend to use at runtime.
+type WaylandBackend int
+
+const (
+	WaylandBackendAuto WaylandBackend = iota
+	WaylandBackendDmabuf
+	WaylandBackendWlShm
+)
+
+var waylandBackend = WaylandBackendAuto
+
+// SetWaylandBackend allows tests and callers to force a specific Wayland
+// capture backend.
+func SetWaylandBackend(b WaylandBackend) { waylandBackend = b }
+
 var (
 	ErrWaylandDisplay  = errors.New("wayland connect failed")
 	ErrNoScreencopy    = errors.New("screencopy manager not available")
@@ -168,7 +183,7 @@ type (
 	// CHex define CHex as c rgb Hex type (C.MMRGBHex)
 	CHex C.MMRGBHex
 	// CBitmap define CBitmap as C.MMBitmapRef type
-	CBitmap C.MMBitmapRef
+	CBitmap = C.MMBitmapRef
 	// Handle define window Handle as C.MData type
 	Handle C.MData
 )
@@ -457,7 +472,7 @@ func CaptureScreen(args ...int) (CBitmap, error) {
 		switch ds {
 		case DisplayServerWayland:
 			var cerr C.int32_t
-			bit := C.capture_screen_wayland(x, y, w, h, C.int32_t(displayId), C.int8_t(isPid), &cerr)
+			bit := C.capture_screen_wayland(x, y, w, h, C.int32_t(displayId), C.int8_t(isPid), C.int32_t(waylandBackend), &cerr)
 			if bit == nil {
 				err := waylandErr(cerr)
 				if errors.Is(err, ErrNoScreencopy) {
@@ -466,12 +481,14 @@ func CaptureScreen(args ...int) (CBitmap, error) {
 						return nil, fmt.Errorf("%w; %v", err, perr)
 					}
 					lastBackend = BackendPortal
-					return CBitmap(pbit), nil
+					var cb CBitmap = pbit
+					return cb, nil
 				}
 				return nil, err
 			}
 			lastBackend = BackendScreencopy
-			return CBitmap(bit), nil
+			var cb CBitmap = bit
+			return cb, nil
 		case DisplayServerX11:
 			if C.XGetMainDisplay() == nil {
 				return nil, errors.New("no display server found")
