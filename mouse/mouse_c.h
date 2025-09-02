@@ -23,37 +23,16 @@
 
         static struct wl_display *rg_wl_display = NULL;
         static struct wl_seat *rg_wl_seat = NULL;
-        static struct wl_pointer *rg_wl_pointer = NULL;
         static struct zwlr_virtual_pointer_manager_v1 *rg_wl_vptr_mgr = NULL;
         static struct zwlr_virtual_pointer_v1 *rg_wl_vptr = NULL;
         static int rg_wl_width = 0;
         static int rg_wl_height = 0;
         static int rg_wl_inited = 0;
 
-        static void rg_wl_pointer_handle_enter(void *data, struct wl_pointer *pointer, uint32_t serial, struct wl_surface *surface, wl_fixed_t sx, wl_fixed_t sy) { }
-        static void rg_wl_pointer_handle_leave(void *data, struct wl_pointer *pointer, uint32_t serial, struct wl_surface *surface) { }
-        static void rg_wl_pointer_handle_motion(void *data, struct wl_pointer *pointer, uint32_t time, wl_fixed_t sx, wl_fixed_t sy) { }
-        static void rg_wl_pointer_handle_button(void *data, struct wl_pointer *pointer, uint32_t serial, uint32_t time, uint32_t button, uint32_t state) { }
-        static void rg_wl_pointer_handle_axis(void *data, struct wl_pointer *pointer, uint32_t time, uint32_t axis, wl_fixed_t value) { }
-
-        static const struct wl_pointer_listener rg_wl_pointer_listener = {
-                rg_wl_pointer_handle_enter,
-                rg_wl_pointer_handle_leave,
-                rg_wl_pointer_handle_motion,
-                rg_wl_pointer_handle_button,
-                rg_wl_pointer_handle_axis,
-                NULL,
-                NULL,
-                NULL,
-                NULL
-        };
-
         static void rg_wl_seat_handle_capabilities(void *data, struct wl_seat *seat, uint32_t caps) {
                 (void)data;
-                if (caps & WL_SEAT_CAPABILITY_POINTER) {
-                        rg_wl_pointer = wl_seat_get_pointer(seat);
-                        wl_pointer_add_listener(rg_wl_pointer, &rg_wl_pointer_listener, NULL);
-                }
+                (void)seat;
+                (void)caps;
         }
 
         static const struct wl_seat_listener rg_wl_seat_listener = {
@@ -78,7 +57,7 @@
 
         static int rg_init_wayland(void) {
                 if (rg_wl_inited) {
-                        return rg_wl_display != NULL && rg_wl_pointer != NULL;
+                        return rg_wl_display != NULL && rg_wl_vptr != NULL;
                 }
                 rg_wl_inited = 1;
                 rg_wl_display = wl_display_connect(NULL);
@@ -88,7 +67,7 @@
                 struct wl_registry *registry = wl_display_get_registry(rg_wl_display);
                 wl_registry_add_listener(registry, &rg_wl_registry_listener, NULL);
                 wl_display_roundtrip(rg_wl_display);
-                if (!rg_wl_pointer && !rg_wl_vptr_mgr) {
+                if (!rg_wl_seat || !rg_wl_vptr_mgr) {
                         wl_display_disconnect(rg_wl_display);
                         rg_wl_display = NULL;
                         return 0;
