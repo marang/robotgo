@@ -10,15 +10,16 @@
 #include "../wlr-screencopy-unstable-v1-client-protocol.h"
 #include <errno.h>
 #include <fcntl.h>
+#include <gbm.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/mman.h>
 #include <sys/stat.h>
+#include <sys/sysmacros.h>
 #include <unistd.h>
 #include <wayland-client.h>
-#include <gbm.h>
 
 #ifndef MFD_CLOEXEC
 #define MFD_CLOEXEC 0x0001
@@ -26,21 +27,46 @@
 
 #if defined(IS_LINUX)
 
-static int open_render_node(void) {
-  const char *paths[] = {"/dev/dri/renderD128", "/dev/dri/renderD129",
-                         "/dev/dri/card0", "/dev/dri/card1", NULL};
-  for (int i = 0; paths[i]; ++i) {
-    int fd = open(paths[i], O_RDWR | O_CLOEXEC);
-    if (fd >= 0)
-      return fd;
-  }
-  return -1;
-}
+struct fm_entry {
+  uint32_t format;
+  uint32_t pad;
+  uint64_t modifier;
+};
+
+struct format_modifier {
+  uint32_t format;
+  uint64_t modifier;
+};
+
+struct feedback {
+  struct zwp_linux_dmabuf_feedback_v1 *fb;
+  dev_t main_dev;
+  struct fm_entry *table;
+  size_t table_count;
+  int tranche_main;
+  struct format_modifier *mods;
+  size_t mods_len;
+  size_t mods_cap;
+};
 
 struct output {
   struct wl_list link;
   struct wl_output *wl_output;
 };
+
+static int open_main_device(dev_t dev) {
+  char path[64];
+  for (int i = 0; i < 256; ++i) {
+    snprintf(path, sizeof(path), "/dev/dri/renderD%d", 128 + i);
+    struct stat st;
+    if (stat(path, &st) == 0) {
+      if (major(st.st_rdev) == major(dev) && minor(st.st_rdev) == minor(dev)) {
+        return open(path, O_RDWR | O_CLOEXEC);
+      }
+    }
+  }
+  return -1;
+}
 
 struct capture {
   struct wl_display *display;
@@ -54,6 +80,7 @@ struct capture {
   struct gbm_bo *bo;
   void *map_data;
   int drm_fd;
+  struct feedback fb;
   struct wl_list outputs;
   void *data;
   int width;
@@ -81,8 +108,9 @@ static void registry_global(void *data, struct wl_registry *registry,
     cap->manager = wl_registry_bind(registry, name,
                                     &zwlr_screencopy_manager_v1_interface, ver);
   } else if (strcmp(interface, zwp_linux_dmabuf_v1_interface.name) == 0) {
+    uint32_t ver = version > 4 ? 4 : version;
     cap->dmabuf =
-        wl_registry_bind(registry, name, &zwp_linux_dmabuf_v1_interface, 3);
+        wl_registry_bind(registry, name, &zwp_linux_dmabuf_v1_interface, ver);
   } else if (strcmp(interface, wl_output_interface.name) == 0) {
     struct output *out = malloc(sizeof(*out));
     if (!out) {
@@ -103,6 +131,109 @@ static void registry_remove(void *data, struct wl_registry *registry,
 static const struct wl_registry_listener registry_listener = {
     .global = registry_global,
     .global_remove = registry_remove,
+};
+
+static void feedback_done(void *data, struct zwp_linux_dmabuf_feedback_v1 *fb) {
+  (void)fb;
+  struct capture *cap = data;
+  if (cap->fb.table) {
+    munmap(cap->fb.table, cap->fb.table_count * sizeof(struct fm_entry));
+    cap->fb.table = NULL;
+  }
+  cap->fb.table_count = 0;
+  if (cap->fb.fb) {
+    zwp_linux_dmabuf_feedback_v1_destroy(cap->fb.fb);
+    cap->fb.fb = NULL;
+  }
+}
+
+static void feedback_format_table(void *data,
+                                  struct zwp_linux_dmabuf_feedback_v1 *fb,
+                                  int32_t fd, uint32_t size) {
+  (void)fb;
+  struct capture *cap = data;
+  cap->fb.table = mmap(NULL, size, PROT_READ, MAP_PRIVATE, fd, 0);
+  if (cap->fb.table == MAP_FAILED) {
+    cap->fb.table = NULL;
+    cap->fb.table_count = 0;
+  } else {
+    cap->fb.table_count = size / sizeof(struct fm_entry);
+  }
+  close(fd);
+}
+
+static void feedback_main_device(void *data,
+                                 struct zwp_linux_dmabuf_feedback_v1 *fb,
+                                 struct wl_array *dev) {
+  (void)fb;
+  struct capture *cap = data;
+  if (dev->size >= sizeof(dev_t)) {
+    cap->fb.main_dev = *(dev_t *)dev->data;
+  }
+}
+
+static void feedback_tranche_target_device(
+    void *data, struct zwp_linux_dmabuf_feedback_v1 *fb, struct wl_array *dev) {
+  (void)fb;
+  struct capture *cap = data;
+  dev_t d = 0;
+  if (dev->size >= sizeof(dev_t)) {
+    d = *(dev_t *)dev->data;
+  }
+  cap->fb.tranche_main = (d == cap->fb.main_dev);
+}
+
+static void feedback_tranche_formats(void *data,
+                                     struct zwp_linux_dmabuf_feedback_v1 *fb,
+                                     struct wl_array *idxs) {
+  (void)fb;
+  struct capture *cap = data;
+  if (!cap->fb.tranche_main || !cap->fb.table)
+    return;
+  uint16_t *ind = idxs->data;
+  size_t count = idxs->size / sizeof(uint16_t);
+  for (size_t i = 0; i < count; ++i) {
+    uint16_t id = ind[i];
+    if (id >= cap->fb.table_count)
+      continue;
+    struct fm_entry *e = &cap->fb.table[id];
+    if (cap->fb.mods_len == cap->fb.mods_cap) {
+      size_t new_cap = cap->fb.mods_cap ? cap->fb.mods_cap * 2 : 4;
+      struct format_modifier *tmp =
+          realloc(cap->fb.mods, new_cap * sizeof(*tmp));
+      if (!tmp)
+        continue;
+      cap->fb.mods = tmp;
+      cap->fb.mods_cap = new_cap;
+    }
+    cap->fb.mods[cap->fb.mods_len].format = e->format;
+    cap->fb.mods[cap->fb.mods_len].modifier = e->modifier;
+    cap->fb.mods_len++;
+  }
+}
+
+static void feedback_tranche_done(void *data,
+                                  struct zwp_linux_dmabuf_feedback_v1 *fb) {
+  (void)data;
+  (void)fb;
+}
+
+static void feedback_tranche_flags(void *data,
+                                   struct zwp_linux_dmabuf_feedback_v1 *fb,
+                                   uint32_t flags) {
+  (void)data;
+  (void)fb;
+  (void)flags;
+}
+
+static const struct zwp_linux_dmabuf_feedback_v1_listener feedback_listener = {
+    .done = feedback_done,
+    .format_table = feedback_format_table,
+    .main_device = feedback_main_device,
+    .tranche_done = feedback_tranche_done,
+    .tranche_target_device = feedback_tranche_target_device,
+    .tranche_formats = feedback_tranche_formats,
+    .tranche_flags = feedback_tranche_flags,
 };
 
 static void frame_buffer(void *data, struct zwlr_screencopy_frame_v1 *frame,
@@ -182,10 +313,10 @@ static void frame_buffer_done(void *data,
   if (!cap->using_dmabuf) {
     return;
   }
-  cap->drm_fd = open_render_node();
+  cap->drm_fd = open_main_device(cap->fb.main_dev);
   if (cap->drm_fd < 0) {
     cap->failed = 1;
-    cap->err_code = ScreengrabErrDmabufImport;
+    cap->err_code = ScreengrabErrDmabufDevice;
     return;
   }
   cap->gbm = gbm_create_device(cap->drm_fd);
@@ -193,18 +324,42 @@ static void frame_buffer_done(void *data,
     close(cap->drm_fd);
     cap->drm_fd = -1;
     cap->failed = 1;
-    cap->err_code = ScreengrabErrDmabufImport;
+    cap->err_code = ScreengrabErrDmabufDevice;
     return;
   }
-  cap->bo = gbm_bo_create(cap->gbm, (uint32_t)cap->width, (uint32_t)cap->height,
-                          cap->format, GBM_BO_USE_LINEAR | GBM_BO_USE_RENDERING);
+  uint64_t mods[64];
+  size_t mod_count = 0;
+  for (size_t i = 0; i < cap->fb.mods_len && mod_count < 64; ++i) {
+    if (cap->fb.mods[i].format == cap->format) {
+      mods[mod_count++] = cap->fb.mods[i].modifier;
+    }
+  }
+  if (mod_count > 0) {
+    cap->bo = gbm_bo_create_with_modifiers(cap->gbm, (uint32_t)cap->width,
+                                           (uint32_t)cap->height, cap->format,
+                                           mods, mod_count);
+  } else {
+    if (!gbm_device_is_format_supported(
+            cap->gbm, cap->format, GBM_BO_USE_LINEAR | GBM_BO_USE_RENDERING)) {
+      gbm_device_destroy(cap->gbm);
+      cap->gbm = NULL;
+      close(cap->drm_fd);
+      cap->drm_fd = -1;
+      cap->failed = 1;
+      cap->err_code = ScreengrabErrDmabufModifiers;
+      return;
+    }
+    cap->bo =
+        gbm_bo_create(cap->gbm, (uint32_t)cap->width, (uint32_t)cap->height,
+                      cap->format, GBM_BO_USE_LINEAR | GBM_BO_USE_RENDERING);
+  }
   if (!cap->bo) {
     gbm_device_destroy(cap->gbm);
     cap->gbm = NULL;
     close(cap->drm_fd);
     cap->drm_fd = -1;
     cap->failed = 1;
-    cap->err_code = ScreengrabErrDmabufImport;
+    cap->err_code = ScreengrabErrDmabufModifiers;
     return;
   }
   int fd = gbm_bo_get_fd(cap->bo);
@@ -295,6 +450,15 @@ static void cleanup_capture(struct capture *cap) {
   if (cap->manager) {
     zwlr_screencopy_manager_v1_destroy(cap->manager);
   }
+  if (cap->fb.fb) {
+    if (cap->fb.table) {
+      munmap(cap->fb.table, cap->fb.table_count * sizeof(struct fm_entry));
+    }
+    zwp_linux_dmabuf_feedback_v1_destroy(cap->fb.fb);
+  }
+  if (cap->fb.mods) {
+    free(cap->fb.mods);
+  }
   if (cap->registry) {
     wl_registry_destroy(cap->registry);
   }
@@ -353,6 +517,14 @@ MMBitmapRef capture_screen_wayland(int32_t x, int32_t y, int32_t w, int32_t h,
     cleanup_capture(&cap);
     return NULL;
   }
+  if (cap.dmabuf) {
+    cap.fb.fb = zwp_linux_dmabuf_v1_get_default_feedback(cap.dmabuf);
+    if (cap.fb.fb) {
+      zwp_linux_dmabuf_feedback_v1_add_listener(cap.fb.fb, &feedback_listener,
+                                                &cap);
+      wl_display_roundtrip(cap.display);
+    }
+  }
   struct output *out = wl_container_of(cap.outputs.next, out, link);
   cap.frame =
       zwlr_screencopy_manager_v1_capture_output(cap.manager, 0, out->wl_output);
@@ -364,9 +536,9 @@ MMBitmapRef capture_screen_wayland(int32_t x, int32_t y, int32_t w, int32_t h,
 
   if (!cap.failed && cap.using_dmabuf) {
     uint32_t stride = 0;
-    cap.data = gbm_bo_map(cap.bo, 0, 0, (uint32_t)cap.width,
-                          (uint32_t)cap.height, GBM_BO_TRANSFER_READ,
-                          &stride, &cap.map_data);
+    cap.data =
+        gbm_bo_map(cap.bo, 0, 0, (uint32_t)cap.width, (uint32_t)cap.height,
+                   GBM_BO_TRANSFER_READ, &stride, &cap.map_data);
     if (!cap.data) {
       cap.failed = 1;
       cap.err_code = ScreengrabErrDmabufMap;
@@ -376,10 +548,24 @@ MMBitmapRef capture_screen_wayland(int32_t x, int32_t y, int32_t w, int32_t h,
   }
 
   if (cap.failed || !cap.data) {
-    if (err) {
-      *err = cap.err_code ? cap.err_code : ScreengrabErrFailed;
-    }
+    int32_t code = cap.err_code ? cap.err_code : ScreengrabErrFailed;
     cleanup_capture(&cap);
+    if (code == ScreengrabErrDmabufDevice ||
+        code == ScreengrabErrDmabufModifiers ||
+        code == ScreengrabErrDmabufImport || code == ScreengrabErrDmabufMap) {
+      int32_t perr = ScreengrabOK;
+      MMBitmapRef p =
+          capture_screen_portal(x, y, w, h, display_id, isPid, &perr);
+      if (p) {
+        if (err) {
+          *err = perr;
+        }
+        return p;
+      }
+    }
+    if (err) {
+      *err = code;
+    }
     return NULL;
   }
 

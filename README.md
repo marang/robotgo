@@ -80,7 +80,7 @@ winget install Golang.go
 
 #### For Linux:
 
-Wayland screen capture with DMA-BUF requires the `libwayland-client` and `libgbm` packages at runtime.
+Wayland screen capture with DMA-BUF requires the `libwayland-client` and `libgbm` packages at runtime. The compositor must expose `zwp_linux_dmabuf_v1` version 4 or newer. If DMA-BUF import or mapping fails, RobotGo automatically falls back to the portal screencast API.
 
 ```
 winget install MartinStorsjo.LLVM-MinGW.UCRT
