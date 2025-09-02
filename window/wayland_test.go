@@ -69,6 +69,41 @@ func TestGetBoundsWayland(t *testing.T) {
 	}
 }
 
+func countFDs(t *testing.T) int {
+	t.Helper()
+	entries, err := os.ReadDir("/proc/self/fd")
+	if err != nil {
+		t.Fatalf("read fds: %v", err)
+	}
+	return len(entries)
+}
+
+func TestWaylandBoundsResourceRelease(t *testing.T) {
+	requireDisplay(t)
+	cleanup := startHeadlessWeston(t)
+	defer cleanup()
+
+	if ds := base.DetectDisplayServer(); ds != base.Wayland {
+		t.Fatalf("expected Wayland, got %v", ds)
+	}
+
+	before := countFDs(t)
+	for i := 0; i < 5; i++ {
+		_, _, w, h := robotgo.GetBounds(0)
+		if w == 0 || h == 0 {
+			t.Skip("wayland compositor did not provide bounds")
+		}
+		_, _, w, h = robotgo.GetClient(0)
+		if w == 0 || h == 0 {
+			t.Skip("wayland compositor did not provide client bounds")
+		}
+	}
+	after := countFDs(t)
+	if before != after {
+		t.Fatalf("file descriptor leak: before %d after %d", before, after)
+	}
+}
+
 func TestKeyboardRoundTripWayland(t *testing.T) {
 	requireDisplay(t)
 	cmd := exec.Command(os.Args[0], "-test.run", "TestKeyboardRoundTripHelper")

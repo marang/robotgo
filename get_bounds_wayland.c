@@ -62,6 +62,7 @@ int get_bounds_wayland(struct wl_display *display, int *width, int *height) {
   struct wl_registry *registry = wl_display_get_registry(display);
   wl_registry_add_listener(registry, &registry_listener, &rdata);
   wl_display_roundtrip(display);
+  wl_registry_destroy(registry);
 
   if (!compositor || !wm_base) {
     return -1;
