@@ -21,8 +21,8 @@ func TestScreencopyDmabuf(t *testing.T) {
 	// Allow the server to start
 	time.Sleep(100 * time.Millisecond)
 
-	if _, err := CaptureScreen(); err == nil {
-		t.Fatalf("expected error due to unsupported dmabuf, got nil")
+	if _, err := CaptureScreen(); err != nil {
+		t.Fatalf("capture failed: %v", err)
 	}
 
 	<-done
