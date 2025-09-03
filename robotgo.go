@@ -51,17 +51,16 @@ package robotgo
 import "C"
 
 import (
-	"context"
-	"errors"
-	"fmt"
-	"image"
-	"os"
-	"runtime"
-	"time"
-	"unsafe"
-
-	portalcap "github.com/marang/robotgo/screen/portal"
-	"github.com/vcaesar/tt"
+    "errors"
+    "fmt"
+    "context"
+    "image"
+    "os"
+    "runtime"
+    "time"
+    "unsafe"
+    "github.com/vcaesar/tt"
+    portalpkg "github.com/marang/robotgo/screen/portal"
 )
 
 const (
@@ -313,11 +312,11 @@ func RgbToHex(r, g, b uint8) C.uint32_t {
 func GetPxColor(x, y int, displayId ...int) (C.MMRGBHex, error) {
 	display := displayIdx(displayId...)
 
-	if runtime.GOOS == "linux" && DetectDisplayServer() == DisplayServerWayland {
-		bit, err := CaptureScreen(x, y, 1, 1, display)
-		if err != nil {
-			return 0, err
-		}
+    if runtime.GOOS == "linux" && (DetectDisplayServer() == DisplayServerWayland || os.Getenv("ROBOTGO_FORCE_PORTAL") != "") {
+        bit, err := CaptureScreen(x, y, 1, 1, display)
+        if err != nil {
+            return 0, err
+        }
 		defer FreeBitmap(bit)
 		return C.mmrgb_hex_at(C.MMBitmapRef(bit), 0, 0), nil
 	}
@@ -390,8 +389,12 @@ func Scaled1(x int, f float64) int {
 
 // GetScreenSize get the screen size
 func GetScreenSize() (int, int) {
-	size := C.getMainDisplaySize()
-	return int(size.w), int(size.h)
+    if runtime.GOOS == "linux" && DetectDisplayServer() == DisplayServerWayland {
+        // Avoid X11 calls under Wayland-only sessions.
+        return 0, 0
+    }
+    size := C.getMainDisplaySize()
+    return int(size.w), int(size.h)
 }
 
 // GetScreenRect get the screen rect (x, y, w, h)
@@ -469,26 +472,43 @@ func CaptureScreen(args ...int) (CBitmap, error) {
 	}
 
 	if runtime.GOOS == "linux" {
+		// Allow tests or environments to force the portal backend regardless
+		// of the detected display server.
+		if os.Getenv("ROBOTGO_FORCE_PORTAL") != "" {
+			var perr C.int32_t
+			pbit := C.capture_screen_portal(x, y, w, h, C.int32_t(displayId), C.int8_t(isPid), &perr)
+			if pbit == nil {
+				return nil, fmt.Errorf("portal capture failed: %d", int(perr))
+			}
+			lastBackend = BackendPortal
+			return CBitmap(pbit), nil
+		}
 		switch ds {
 		case DisplayServerWayland:
 			var cerr C.int32_t
 			bit := C.capture_screen_wayland(x, y, w, h, C.int32_t(displayId), C.int8_t(isPid), C.int32_t(waylandBackend), &cerr)
 			if bit == nil {
 				err := waylandErr(cerr)
+            // Try Go portal screenshot (real pixels) when available.
+            if img, pErr := portalpkg.CaptureRegionImage(context.Background(), int(x), int(y), int(w), int(h)); pErr == nil && img != nil {
+                cb := ImgToCBitmap(img)
+                lastBackend = BackendPortal
+                return cb, nil
+            }
+            // Fallback to C stub portal (may be a stub build).
+				var perr C.int32_t
+				pbit := C.capture_screen_portal(x, y, w, h, C.int32_t(displayId), C.int8_t(isPid), &perr)
+            if pbit != nil {
+                lastBackend = BackendPortal
+                return CBitmap(pbit), nil
+            }
 				if errors.Is(err, ErrNoScreencopy) {
-					pbit, perr := portalcap.Capture(context.Background(), int(x), int(y), int(w), int(h))
-					if perr != nil {
-						return nil, fmt.Errorf("%w; %v", err, perr)
-					}
-					lastBackend = BackendPortal
-					var cb CBitmap = pbit
-					return cb, nil
+					return nil, fmt.Errorf("%w; portal capture failed: %d", err, int(perr))
 				}
 				return nil, err
 			}
 			lastBackend = BackendScreencopy
-			var cb CBitmap = bit
-			return cb, nil
+			return CBitmap(bit), nil
 		case DisplayServerX11:
 			if C.XGetMainDisplay() == nil {
 				return nil, errors.New("no display server found")
@@ -569,16 +589,29 @@ func ToBitmap(bit CBitmap) Bitmap {
 
 // ToCBitmap trans Bitmap to C.MMBitmapRef
 func ToCBitmap(bit Bitmap) CBitmap {
-	cbitmap := C.createMMBitmap_c(
-		(*C.uint8_t)(bit.ImgBuf),
-		C.int32_t(bit.Width),
-		C.int32_t(bit.Height),
-		C.int32_t(bit.Bytewidth),
-		C.uint8_t(bit.BitsPixel),
-		C.uint8_t(bit.BytesPerPixel),
-	)
-
-	return CBitmap(cbitmap)
+    total := bit.Bytewidth * bit.Height
+    var cbuf *C.uint8_t
+    if total > 0 {
+        // Allocate C-owned buffer and copy pixel data from Go memory to avoid
+        // freeing Go-allocated memory in bitmap_dealloc.
+        csize := C.size_t(total)
+        cptr := C.malloc(csize)
+        if cptr != nil {
+            // Construct a Go slice view over the source buffer.
+            src := unsafe.Slice((*byte)(unsafe.Pointer(bit.ImgBuf)), total)
+            C.memcpy(cptr, unsafe.Pointer(&src[0]), csize)
+            cbuf = (*C.uint8_t)(cptr)
+        }
+    }
+    cbitmap := C.createMMBitmap_c(
+        cbuf,
+        C.int32_t(bit.Width),
+        C.int32_t(bit.Height),
+        C.int32_t(bit.Bytewidth),
+        C.uint8_t(bit.BitsPixel),
+        C.uint8_t(bit.BytesPerPixel),
+    )
+    return CBitmap(cbitmap)
 }
 
 // ToImage convert C.MMBitmapRef to standard image.Image
@@ -777,7 +810,14 @@ func MoveArgs(x, y int) (int, int) {
 
 // MoveRelative move mouse with relative
 func MoveRelative(x, y int) {
-	Move(MoveArgs(x, y))
+    if runtime.GOOS == "linux" && DetectDisplayServer() == DisplayServerWayland {
+        dx, dy := x, y
+        dx, dy = MoveScale(dx, dy)
+        C.moveMouseRelative(C.int32_t(dx), C.int32_t(dy))
+        MilliSleep(MouseSleep)
+        return
+    }
+    Move(MoveArgs(x, y))
 }
 
 // MoveSmoothRelative move mouse smooth with relative

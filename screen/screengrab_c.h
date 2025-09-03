@@ -11,6 +11,13 @@
 #include <X11/Xlib.h>
 #include <X11/Xutil.h>
 
+// Swallow X errors (e.g., BadMatch from X_GetImage) and signal failure
+// instead of aborting the process during tests or constrained servers.
+static volatile int robotgo_xerr_flag = 0;
+static int robotgo_xerr_handler(Display* d, XErrorEvent* e) {
+  (void)d; (void)e; robotgo_xerr_flag = 1; return 0;
+}
+
 typedef enum {
   ScreengrabOK = 0,
   ScreengrabErrDisplay,
@@ -28,39 +35,21 @@ typedef enum {
 MMBitmapRef capture_screen_wayland(int32_t x, int32_t y, int32_t w, int32_t h,
                                    int32_t display_id, int8_t isPid,
                                    int32_t backend, int32_t *err);
+#endif
+// Portal capture is available on Linux regardless of Wayland build tag.
 MMBitmapRef capture_screen_portal(int32_t x, int32_t y, int32_t w, int32_t h,
                                   int32_t display_id, int8_t isPid,
                                   int32_t *err);
-#else
+
+#ifndef ROBOTGO_USE_WAYLAND
+// Provide a stub for capture_screen_wayland when Wayland is not compiled in.
 static inline MMBitmapRef capture_screen_wayland(int32_t x, int32_t y,
                                                  int32_t w, int32_t h,
                                                  int32_t display_id,
                                                  int8_t isPid, int32_t backend,
                                                  int32_t *err) {
-  (void)x;
-  (void)y;
-  (void)w;
-  (void)h;
-  (void)display_id;
-  (void)isPid;
-  (void)backend;
-  if (err) {
-    *err = ScreengrabErrFailed;
-  }
-  return NULL;
-}
-static inline MMBitmapRef capture_screen_portal(int32_t x, int32_t y, int32_t w,
-                                                int32_t h, int32_t display_id,
-                                                int8_t isPid, int32_t *err) {
-  (void)x;
-  (void)y;
-  (void)w;
-  (void)h;
-  (void)display_id;
-  (void)isPid;
-  if (err) {
-    *err = ScreengrabErrPortal;
-  }
+  (void)x; (void)y; (void)w; (void)h; (void)display_id; (void)isPid; (void)backend;
+  if (err) { *err = ScreengrabErrFailed; }
   return NULL;
 }
 #endif
@@ -186,9 +175,24 @@ MMBitmapRef copyMMBitmapFromDisplayInRect(MMRectInt32 rect, int32_t display_id,
   MMSizeInt32 s = rect.size;
   unsigned long mask =
       (1UL << DefaultDepth(display, DefaultScreen(display))) - 1;
-  XImage *image =
-      XGetImage(display, XDefaultRootWindow(display), (int)o.x, (int)o.y,
-                (unsigned int)s.w, (unsigned int)s.h, mask, ZPixmap);
+  // Install a temporary X error handler to swallow BadMatch errors on systems
+  // where XGetImage on the root window is not permitted.
+  static int robotgo_xerr_installed = 0;
+  robotgo_xerr_flag = 0;
+  if (!robotgo_xerr_installed) {
+    XSetErrorHandler(robotgo_xerr_handler);
+    robotgo_xerr_installed = 1;
+  }
+  XSync(display, False);
+  XImage *image = XGetImage(display, XDefaultRootWindow(display), (int)o.x, (int)o.y,
+                            (unsigned int)s.w, (unsigned int)s.h, mask, ZPixmap);
+  XSync(display, False);
+  if (robotgo_xerr_flag) {
+    robotgo_xerr_flag = 0;
+    if (image) { XDestroyImage(image); }
+    if (display_id == -1) { XCloseDisplay(display); }
+    return NULL;
+  }
   if (image == NULL) {
     if (display_id == -1) {
       XCloseDisplay(display);
@@ -284,8 +288,12 @@ MMRGBHex mmrgb_hex_at(MMBitmapRef bitmap, int32_t x, int32_t y) {
   return MMRGBHexAtPoint(bitmap, x, y);
 }
 
-#if defined(IS_LINUX) && defined(ROBOTGO_USE_WAYLAND)
+#if defined(IS_LINUX)
+// Always include the portal implementation on Linux so it can be used as
+// a fallback even when Wayland support is not compiled in.
 #include "screengrab_portal.c"
+#if defined(ROBOTGO_USE_WAYLAND)
 #include "screengrab_wayland_impl.c"
 #include "screengrab_wayland.c"
+#endif
 #endif

@@ -99,3 +99,5 @@ examples/bitmap/bitmapTobytes/out.jpg
 
 # CRUSH tooling
 .crush/
+
+.gocache/

@@ -63,6 +63,32 @@ func TestMouseRelativeWayland(t *testing.T) {
 	}
 }
 
+func TestMouseScrollWayland(t *testing.T) {
+    requireDisplay(t)
+    cmd := exec.Command(os.Args[0], "-test.run", "TestMouseScrollWaylandHelper")
+    cmd.Env = append(os.Environ(), "GO_WAYLAND_HELPER=1")
+    if err := cmd.Run(); err != nil {
+        t.Skipf("mouse scroll roundtrip failed: %v", err)
+    }
+}
+
+func TestMouseScrollWaylandHelper(t *testing.T) {
+    if os.Getenv("GO_WAYLAND_HELPER") != "1" {
+        t.Skip("helper process")
+    }
+    requireDisplay(t)
+    cleanup := startHeadlessWeston(t)
+    defer cleanup()
+    if ds := base.DetectDisplayServer(); ds != base.Wayland {
+        t.Fatalf("expected Wayland, got %v", ds)
+    }
+    // Exercise vertical and horizontal scroll; ensure no crash.
+    robotgo.Scroll(0, 3)
+    robotgo.Scroll(2, 0)
+    robotgo.ScrollDir(5, "down")
+    robotgo.ScrollDir(5, "right")
+}
+
 func TestMouseRelativeWaylandHelper(t *testing.T) {
 	if os.Getenv("GO_WAYLAND_HELPER") != "1" {
 		t.Skip("helper process")

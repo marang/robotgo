@@ -84,6 +84,8 @@ Wayland screen capture with DMA-BUF requires the `libwayland-client` and `libgbm
 
 When the compositor does not support the `wlr-screencopy` protocol, RobotGo uses the freedesktop portal ScreenCast API and PipeWire. Ensure `xdg-desktop-portal` and an appropriate backend (e.g. `xdg-desktop-portal-gnome` or `xdg-desktop-portal-kde`) are installed and that PipeWire is running.
 
+See `docs/wayland-tasks.md` for the current Wayland support status and remaining tasks.
+
 ```go
 ctx := context.Background()
 bmp, err := portal.Capture(ctx, 0, 0, 100, 100)

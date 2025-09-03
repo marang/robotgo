@@ -8,6 +8,10 @@
 // This file may not be copied, modified, or distributed
 // except according to those terms.
 
+// Prevent multiple inclusion across complex include graph.
+#ifndef ROBOTGO_WINDOW_PUB_H_
+#define ROBOTGO_WINDOW_PUB_H_
+
 // #include "../base/os.h"
 #if defined(IS_MACOSX)
 	#include <dlfcn.h>
@@ -286,3 +290,5 @@ typedef struct _Bounds Bounds;
         }
     }
 #endif
+
+#endif /* ROBOTGO_WINDOW_PUB_H_ */
