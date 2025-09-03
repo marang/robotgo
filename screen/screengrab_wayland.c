@@ -1,5 +1,10 @@
+//go:build ignore
+// +build ignore
+
 #include <stdint.h>
-#include "../base/bitmap_free_c.h"
+// Forward declare MMBitmapRef for standalone compilation under cgo.
+// The concrete definition lives in the capture implementation.
+typedef void* MMBitmapRef;
 
 #define WAYLAND_BACKEND_DMABUF 0
 #define WAYLAND_BACKEND_WL_SHM 1

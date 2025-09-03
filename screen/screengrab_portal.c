@@ -1,5 +1,5 @@
-//go:build ignore
-// +build ignore
+//go:build linux
+// +build linux
 
 // Placeholder implementation of a portal-based screen capture backend.
 // It currently generates a solid-color bitmap as a stand-in for an actual
@@ -62,4 +62,3 @@ MMBitmapRef capture_screen_portal(int32_t x, int32_t y, int32_t w, int32_t h,
   return bitmap;
 }
 #endif
-

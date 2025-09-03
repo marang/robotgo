@@ -28,6 +28,9 @@
         static int rg_wl_width = 0;
         static int rg_wl_height = 0;
         static int rg_wl_inited = 0;
+        static int rg_wl_last_x = 0;
+        static int rg_wl_last_y = 0;
+        #include <wayland-client-protocol.h>
 
         static void rg_wl_seat_handle_capabilities(void *data, struct wl_seat *seat, uint32_t caps) {
                 (void)data;
@@ -173,6 +176,8 @@ void moveMouse(MMPointInt32 point){
                                         uint32_t sy = (uint32_t)((double)point.y * 65535.0 / rg_wl_height);
                                         zwlr_virtual_pointer_v1_motion_absolute(rg_wl_vptr, 0, sx, sy, 65535, 65535);
                                         wl_display_flush(rg_wl_display);
+                                        rg_wl_last_x = point.x;
+                                        rg_wl_last_y = point.y;
                                 }
                         }
                 } else {
@@ -215,6 +220,11 @@ MMPointInt32 location() {
 
 		return MMPointInt32FromCGPoint(point);
 	#elif defined(IS_LINUX)
+		#ifdef ROBOTGO_USE_WAYLAND
+		if (detectDisplayServer() == Wayland) {
+			return MMPointInt32Make(rg_wl_last_x, rg_wl_last_y);
+		}
+		#endif
 		int x, y; 	/* This is all we care about. Seriously. */
 		Window garb1, garb2; 	/* Why you can't specify NULL as a parameter */
 		int garb_x, garb_y;  	/* is beyond me. */
@@ -230,6 +240,40 @@ MMPointInt32 location() {
 		GetCursorPos(&point);
 		return MMPointInt32FromPOINT(point);
 	#endif
+}
+
+/* Move the mouse by a relative delta. */
+void moveMouseRelative(int dx, int dy) {
+#if defined(IS_MACOSX)
+        MMPointInt32 pos = location();
+        pos.x += dx;
+        pos.y += dy;
+        moveMouse(pos);
+#elif defined(IS_LINUX)
+#ifdef ROBOTGO_USE_WAYLAND
+        if (detectDisplayServer() == Wayland) {
+                if (rg_init_wayland()) {
+                        wl_fixed_t fdx = wl_fixed_from_double((double)dx);
+                        wl_fixed_t fdy = wl_fixed_from_double((double)dy);
+                        zwlr_virtual_pointer_v1_motion(rg_wl_vptr, 0, fdx, fdy);
+                        zwlr_virtual_pointer_v1_frame(rg_wl_vptr);
+                        wl_display_flush(rg_wl_display);
+                        rg_wl_last_x += dx;
+                        rg_wl_last_y += dy;
+                        return;
+                }
+        }
+#endif
+        MMPointInt32 pos = location();
+        pos.x += dx;
+        pos.y += dy;
+        moveMouse(pos);
+#elif defined(IS_WINDOWS)
+        MMPointInt32 pos = location();
+        pos.x += dx;
+        pos.y += dy;
+        moveMouse(pos);
+#endif
 }
 
 /* Press down a button, or release it. */
@@ -335,24 +379,68 @@ void scrollMouseXY(int x, int y) {
 		CFRelease(event);
 		CFRelease(source);
 	#elif defined(IS_LINUX)
-		int ydir = 4; /* Button 4 is up, 5 is down. */
-		int xdir = 6;
-		Display *display = XGetMainDisplay();
-
-		if (y < 0) { ydir = 5; }
-		if (x < 0) { xdir = 7; }
-
-		int xi; int yi;
-		for (xi = 0; xi < abs(x); xi++) {
-			XTestFakeButtonEvent(display, xdir, 1, CurrentTime);
-			XTestFakeButtonEvent(display, xdir, 0, CurrentTime);
+		#ifdef ROBOTGO_USE_WAYLAND
+		if (detectDisplayServer() == Wayland) {
+			if (!rg_init_wayland()) {
+				Display *display = XGetMainDisplay();
+				int ydir = 4; /* Button 4 is up, 5 is down. */
+				int xdir = 6;
+				if (y < 0) { ydir = 5; }
+				if (x < 0) { xdir = 7; }
+				for (int xi = 0; xi < abs(x); xi++) {
+					XTestFakeButtonEvent(display, xdir, 1, CurrentTime);
+					XTestFakeButtonEvent(display, xdir, 0, CurrentTime);
+				}
+				for (int yi = 0; yi < abs(y); yi++) {
+					XTestFakeButtonEvent(display, ydir, 1, CurrentTime);
+					XTestFakeButtonEvent(display, ydir, 0, CurrentTime);
+				}
+				XSync(display, false);
+			} else {
+				/* Emulate wheel scrolling using virtual pointer axis events */
+				if (y != 0) {
+					int steps = abs(y);
+					int sign = (y > 0) ? 1 : -1; /* positive y = scroll up */
+					for (int i = 0; i < steps; i++) {
+						zwlr_virtual_pointer_v1_axis_source(rg_wl_vptr, WL_POINTER_AXIS_SOURCE_WHEEL);
+						/* Use a fixed value per discrete step */
+						wl_fixed_t val = wl_fixed_from_double(-15.0 * sign);
+						zwlr_virtual_pointer_v1_axis(rg_wl_vptr, 0, WL_POINTER_AXIS_VERTICAL_SCROLL, val);
+						zwlr_virtual_pointer_v1_axis_discrete(rg_wl_vptr, 0, WL_POINTER_AXIS_VERTICAL_SCROLL, val, -1 * sign);
+						zwlr_virtual_pointer_v1_frame(rg_wl_vptr);
+					}
+				}
+				if (x != 0) {
+					int steps = abs(x);
+					int sign = (x > 0) ? 1 : -1; /* positive x = scroll right */
+					for (int i = 0; i < steps; i++) {
+						zwlr_virtual_pointer_v1_axis_source(rg_wl_vptr, WL_POINTER_AXIS_SOURCE_WHEEL);
+						wl_fixed_t val = wl_fixed_from_double(15.0 * sign);
+						zwlr_virtual_pointer_v1_axis(rg_wl_vptr, 0, WL_POINTER_AXIS_HORIZONTAL_SCROLL, val);
+						zwlr_virtual_pointer_v1_axis_discrete(rg_wl_vptr, 0, WL_POINTER_AXIS_HORIZONTAL_SCROLL, val, 1 * sign);
+						zwlr_virtual_pointer_v1_frame(rg_wl_vptr);
+					}
+				}
+				wl_display_flush(rg_wl_display);
+			}
+		} else
+		#endif
+		{
+			Display *display = XGetMainDisplay();
+			int ydir = 4; /* Button 4 is up, 5 is down. */
+			int xdir = 6;
+			if (y < 0) { ydir = 5; }
+			if (x < 0) { xdir = 7; }
+			for (int xi = 0; xi < abs(x); xi++) {
+				XTestFakeButtonEvent(display, xdir, 1, CurrentTime);
+				XTestFakeButtonEvent(display, xdir, 0, CurrentTime);
+			}
+			for (int yi = 0; yi < abs(y); yi++) {
+				XTestFakeButtonEvent(display, ydir, 1, CurrentTime);
+				XTestFakeButtonEvent(display, ydir, 0, CurrentTime);
+			}
+			XSync(display, false);
 		}
-		for (yi = 0; yi < abs(y); yi++) {
-			XTestFakeButtonEvent(display, ydir, 1, CurrentTime);
-			XTestFakeButtonEvent(display, ydir, 0, CurrentTime);
-		}
-
-		XSync(display, false);
 	#elif defined(IS_WINDOWS)
 		mouseScrollInputH.type = INPUT_MOUSE;
 		mouseScrollInputH.mi.dx = 0;

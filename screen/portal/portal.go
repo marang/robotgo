@@ -4,13 +4,13 @@
 package portal
 
 import (
-	"context"
-	"errors"
-	"fmt"
-	"os"
-	"time"
+    "context"
+    "errors"
+    "fmt"
+    "os"
+    "time"
 
-	"github.com/godbus/dbus/v5"
+    "github.com/godbus/dbus/v5"
 )
 
 /*
@@ -50,3 +50,5 @@ func Capture(ctx context.Context, x, y, w, h int) (CBitmap, error) {
 	}
 	return bit, nil
 }
+
+// CaptureRegionImage is implemented in screenshot_portal.go.
