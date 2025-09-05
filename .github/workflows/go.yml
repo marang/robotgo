@@ -9,10 +9,19 @@ jobs:
         uses: actions/setup-go@v1
         with:
           go-version: 1.24.0
+      - name: Install system dependencies for cgo typecheck
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential pkg-config \
+            libx11-dev libxtst-dev \
+            libwayland-dev libxkbcommon-dev wayland-protocols
+      - name: Ensure GOPATH/bin on PATH
+        run: echo "${{ env.GOPATH || runner.temp }}/bin" # noop; setup-go v1 already sets PATH
       - name: Install golangci-lint
         run: go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
       - name: Run golangci-lint
-        run: golangci-lint run ./...
+        run: CGO_ENABLED=1 golangci-lint run --timeout=5m ./...
   test:
     # name: build
     strategy:
