@@ -11,8 +11,7 @@
 package robotgo
 
 import (
-	"github.com/marang/robotgo/base"
-	"github.com/vcaesar/keycode"
+    "github.com/vcaesar/keycode"
 )
 
 // MouseMap robotgo hook mouse's code map
@@ -42,8 +41,8 @@ var specialWayland = keycode.Special
 // display server. DetectDisplayServer determines whether the Wayland or
 // X11 table should be returned.
 func CurrentSpecialTable() map[string]string {
-	if base.DetectDisplayServer() == base.Wayland {
-		return specialWayland
-	}
-	return Special
+    if DetectDisplayServer() == DisplayServerWayland {
+        return specialWayland
+    }
+    return Special
 }
