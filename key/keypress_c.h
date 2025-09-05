@@ -23,8 +23,9 @@
         #include <stdlib.h>
         #include "../base/os.h"
         // #include "../base/xdisplay_c.h"
-#ifdef ROBOTGO_USE_WAYLAND
+        #ifdef ROBOTGO_USE_WAYLAND
         #include <wayland-client.h>
+        #include <wayland-client-protocol.h>
         #include <xkbcommon/xkbcommon.h>
         #include "../virtual-keyboard-unstable-v1-client-protocol.h"
 
@@ -62,7 +63,7 @@
         }
         
 /** Wayland virtual keyboard (only when ROBOTGO_USE_WAYLAND) **/
-#ifdef ROBOTGO_USE_WAYLAND
+        #ifdef ROBOTGO_USE_WAYLAND
         #include <string.h>
         #include <unistd.h>
         #include <sys/memfd.h>
@@ -258,7 +259,7 @@
                 WL_KEY_EVENT(key, is_press);
                 microsleep(DEADBEEF_UNIFORM(0.0, 0.5));
         }
-#endif
+        #endif /* ROBOTGO_USE_WAYLAND */
 
 #if defined(IS_MACOSX)
 	int SendTo(uintptr pid, CGEventRef event) {
