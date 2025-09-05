@@ -157,6 +157,10 @@
                         return 0;
                 }
         }
+<<<<<<< HEAD
+=======
+#endif
+>>>>>>> 87cfdf5 (feat(key): add Wayland keyboard injection)
 
         static void wk_registry_global(void *data, struct wl_registry *registry,
                                        uint32_t name, const char *interface,
