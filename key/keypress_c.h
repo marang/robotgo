@@ -260,6 +260,10 @@
         }
         #endif /* ROBOTGO_USE_WAYLAND */
 
+        /* End of Linux-specific keyboard helpers */
+        #endif /* defined(IS_LINUX) */
+
+        
 #if defined(IS_MACOSX)
 	int SendTo(uintptr pid, CGEventRef event) {
 		if (pid != 0) {
