@@ -23,6 +23,7 @@ static inline double sys_scale(int32_t display_id) {
 		double targetWidth = CGDisplayModeGetWidth(modeRef);
 	
 		return pixelWidth / targetWidth;
+	#elif defined(IS_LINUX)
     if (detectDisplayServer() == Wayland) {
         return 1.0; // No global DPI query; assume 1.0 scaling
     }

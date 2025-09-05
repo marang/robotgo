@@ -6,6 +6,40 @@
 #include <OpenGL/OpenGL.h>
 #include <OpenGL/gl.h>
 #include <ScreenCaptureKit/ScreenCaptureKit.h>
+// Provide shared error codes so Go can reference them cross-platform.
+typedef enum {
+  ScreengrabOK = 0,
+  ScreengrabErrDisplay,
+  ScreengrabErrNoManager,
+  ScreengrabErrNoOutputs,
+  ScreengrabErrDmabufDevice,
+  ScreengrabErrDmabufModifiers,
+  ScreengrabErrDmabufImport,
+  ScreengrabErrDmabufMap,
+  ScreengrabErrPortal,
+  ScreengrabErrFailed,
+} ScreengrabError;
+// Stubs to satisfy cgo references on non-Linux builds.
+typedef void Display;
+static inline Display* XGetMainDisplay(void) { return NULL; }
+static inline MMBitmapRef capture_screen_portal(int32_t x, int32_t y, int32_t w,
+                                                int32_t h, int32_t display_id,
+                                                int8_t isPid, int32_t *err) {
+  (void)x; (void)y; (void)w; (void)h; (void)display_id; (void)isPid;
+  if (err) { *err = ScreengrabErrFailed; }
+  return NULL;
+}
+#ifdef ROBOTGO_USE_WAYLAND
+// If Wayland is somehow enabled on macOS builds (unlikely), provide a stub.
+static inline MMBitmapRef capture_screen_wayland(int32_t x, int32_t y, int32_t w,
+                                                 int32_t h, int32_t display_id,
+                                                 int8_t isPid, int32_t backend,
+                                                 int32_t *err) {
+  (void)x; (void)y; (void)w; (void)h; (void)display_id; (void)isPid; (void)backend;
+  if (err) { *err = ScreengrabErrFailed; }
+  return NULL;
+}
+#endif
 #elif defined(IS_LINUX)
 #include "../base/xdisplay_c.h"
 #include <X11/Xlib.h>
