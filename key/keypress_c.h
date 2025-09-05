@@ -55,21 +55,11 @@
                 XTestFakeKeyEvent(display, XKeysymToKeycode(display, key), is_press, CurrentTime);
                 XSync(display, false);
         }
-<<<<<<< HEAD
-
         void X_KEY_EVENT_WAIT(Display *display, MMKeyCode key, bool is_press) {
                 X_KEY_EVENT(display, key, is_press);
                 microsleep(DEADBEEF_UNIFORM(0.0, 0.5));
         }
-
-=======
-
-        void X_KEY_EVENT_WAIT(Display *display, MMKeyCode key, bool is_press) {
-                X_KEY_EVENT(display, key, is_press);
-                microsleep(DEADBEEF_UNIFORM(0.0, 0.5));
-        }
-
-<<<<<<< HEAD
+        
 #if defined(DISPLAY_SERVER_WAYLAND)
         #include <string.h>
         struct zwp_virtual_keyboard_manager_v1;
@@ -162,10 +152,7 @@
                         return 0;
                 }
         }
-<<<<<<< HEAD
-=======
 #endif
->>>>>>> 87cfdf5 (feat(key): add Wayland keyboard injection)
 
         static void wk_registry_global(void *data, struct wl_registry *registry,
                                        uint32_t name, const char *interface,
