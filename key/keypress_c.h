@@ -24,16 +24,11 @@
         #include "../base/os.h"
         // #include "../base/xdisplay_c.h"
 #if defined(DISPLAY_SERVER_WAYLAND)
-#define _GNU_SOURCE
-        #include <wayland-client.h>
         #include <xkbcommon/xkbcommon.h>
-        #include <fcntl.h>
-        #include <sys/mman.h>
-        #include <unistd.h>
-#ifndef WL_KEYBOARD_KEY_STATE_RELEASED
-#define WL_KEYBOARD_KEY_STATE_RELEASED 0
-#define WL_KEYBOARD_KEY_STATE_PRESSED 1
-#endif
+        #include "../virtual-keyboard-unstable-v1-client-protocol.h"
+
+        void WL_KEY_EVENT(MMKeyCode key, bool is_press);
+        void WL_KEY_EVENT_WAIT(MMKeyCode key, bool is_press);
 #endif
 #endif
 
@@ -66,6 +61,7 @@
                 microsleep(DEADBEEF_UNIFORM(0.0, 0.5));
         }
 
+<<<<<<< HEAD
 #if defined(DISPLAY_SERVER_WAYLAND)
         #include <string.h>
         struct zwp_virtual_keyboard_manager_v1;
@@ -265,6 +261,8 @@
         }
 #endif
 
+=======
+>>>>>>> b23d2ce (feat: add wayland virtual keyboard support)
 #endif
 
 #if defined(IS_MACOSX)
