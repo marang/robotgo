@@ -23,7 +23,8 @@
         #include <stdlib.h>
         #include "../base/os.h"
         // #include "../base/xdisplay_c.h"
-#if defined(DISPLAY_SERVER_WAYLAND)
+#ifdef ROBOTGO_USE_WAYLAND
+        #include <wayland-client.h>
         #include <xkbcommon/xkbcommon.h>
         #include "../virtual-keyboard-unstable-v1-client-protocol.h"
 
@@ -60,8 +61,11 @@
                 microsleep(DEADBEEF_UNIFORM(0.0, 0.5));
         }
         
-#if defined(DISPLAY_SERVER_WAYLAND)
+/** Wayland virtual keyboard (only when ROBOTGO_USE_WAYLAND) **/
+#ifdef ROBOTGO_USE_WAYLAND
         #include <string.h>
+        #include <unistd.h>
+        #include <sys/memfd.h>
         struct zwp_virtual_keyboard_manager_v1;
         struct zwp_virtual_keyboard_v1;
         static struct wl_display *wk_display = NULL;
@@ -152,7 +156,7 @@
                         return 0;
                 }
         }
-#endif
+#endif /* ROBOTGO_USE_WAYLAND */
 
         static void wk_registry_global(void *data, struct wl_registry *registry,
                                        uint32_t name, const char *interface,
