@@ -22,7 +22,7 @@ jobs:
       - run: echo 'export PKG_CONFIG_PATH=/usr/lib/pkgconfig:/usr/lib/x86_64-linux-gnu/pkgconfig:$PKG_CONFIG_PATH' >> $BASH_ENV
       # Install golangci-lint and add GOPATH/bin to PATH for subsequent steps
       - run: |
-          go install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.60.1
+          go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
           echo 'export PATH=$(go env GOPATH)/bin:$PATH' >> $BASH_ENV
       #
       #  override:
