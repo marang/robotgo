@@ -269,11 +269,6 @@
         }
 #endif
 
-=======
->>>>>>> b23d2ce (feat: add wayland virtual keyboard support)
->>>>>>> go-vgo-master
-#endif
-
 #if defined(IS_MACOSX)
 	int SendTo(uintptr pid, CGEventRef event) {
 		if (pid != 0) {
