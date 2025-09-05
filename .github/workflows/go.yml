@@ -16,10 +16,10 @@ jobs:
             build-essential pkg-config \
             libx11-dev libxtst-dev \
             libwayland-dev libxkbcommon-dev wayland-protocols
-      - name: Ensure GOPATH/bin on PATH
-        run: echo "${{ env.GOPATH || runner.temp }}/bin" # noop; setup-go v1 already sets PATH
       - name: Install golangci-lint
         run: go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
+      - name: Add golangci-lint to PATH
+        run: echo "$(go env GOPATH)/bin" >> $GITHUB_PATH
       - name: Run golangci-lint
         run: CGO_ENABLED=1 golangci-lint run --timeout=5m ./...
   test:
