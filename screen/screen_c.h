@@ -9,7 +9,7 @@
     // #include "../base/xdisplay_c.h"
 #endif
 
-intptr scaleX();
+static inline intptr scaleX();
 
 static inline double sys_scale(int32_t display_id) {
 	#if defined(IS_MACOSX)
