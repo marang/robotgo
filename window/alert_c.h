@@ -10,7 +10,7 @@
 	}
 #endif
 
-int showAlert(const char *title, const char *msg, 
+static inline int showAlert(const char *title, const char *msg, 
 		const char *defaultButton, const char *cancelButton) {
 	#if defined(IS_MACOSX)
 		CFStringRef alertHeader = CFStringCreateWithUTF8String(title);
@@ -39,4 +39,3 @@ int showAlert(const char *title, const char *msg,
 		return (response == IDOK) ? 0 : 1;
 	#endif
 }
-

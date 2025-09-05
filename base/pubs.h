@@ -1,5 +1,5 @@
 #if defined(IS_WINDOWS)
-    BOOL CALLBACK MonitorEnumProc(HMONITOR hMonitor, HDC hdcMonitor, LPRECT lprcMonitor, LPARAM dwData) {
+    static BOOL CALLBACK MonitorEnumProc(HMONITOR hMonitor, HDC hdcMonitor, LPRECT lprcMonitor, LPARAM dwData) {
         uint32_t *count = (uint32_t*)dwData;
         (*count)++;
         return TRUE;
@@ -10,7 +10,7 @@
 	    DWORD dwPid;
 	}WNDINFO;
 
-	BOOL CALLBACK EnumWindowsProc(HWND hWnd, LPARAM lParam){
+    static BOOL CALLBACK EnumWindowsProc(HWND hWnd, LPARAM lParam){
 	    WNDINFO* pInfo = (WNDINFO*)lParam;
 	    DWORD dwProcessId = 0;
 	    GetWindowThreadProcessId(hWnd, &dwProcessId);
@@ -22,7 +22,7 @@
 	    return TRUE;
 	}
 
-	HWND GetHwndByPid(DWORD dwProcessId) {
+    static inline HWND GetHwndByPid(DWORD dwProcessId) {
 	    WNDINFO info = {0};
 	    info.hWnd = NULL;
 	    info.dwPid = dwProcessId;

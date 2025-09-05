@@ -11,7 +11,7 @@
 
 intptr scaleX();
 
-double sys_scale(int32_t display_id) {
+static inline double sys_scale(int32_t display_id) {
 	#if defined(IS_MACOSX)
 		CGDirectDisplayID displayID = (CGDirectDisplayID) display_id;
 		if (displayID == -1) {
@@ -58,7 +58,7 @@ double sys_scale(int32_t display_id) {
    	#endif
 }
 
-intptr scaleX(){
+static inline intptr scaleX(){
 	#if defined(IS_MACOSX)
 		return 0;
 	#elif defined(IS_LINUX)
@@ -72,7 +72,7 @@ intptr scaleX(){
 	#endif
 }
 
-MMSizeInt32 getMainDisplaySize(void) {
+static inline MMSizeInt32 getMainDisplaySize(void) {
 #if defined(IS_MACOSX)
 	CGDirectDisplayID displayID = CGMainDisplayID();
 	CGRect displayRect = CGDisplayBounds(displayID);
@@ -98,7 +98,7 @@ MMSizeInt32 getMainDisplaySize(void) {
 #endif
 }
 
-MMRectInt32 getScreenRect(int32_t display_id) {
+static inline MMRectInt32 getScreenRect(int32_t display_id) {
 #if defined(IS_MACOSX)
 	CGDirectDisplayID displayID = (CGDirectDisplayID) display_id;
 	if (display_id == -1) {
@@ -140,7 +140,7 @@ MMRectInt32 getScreenRect(int32_t display_id) {
 #endif
 }
 
-bool pointVisibleOnMainDisplay(MMPointInt32 point){
+static inline bool pointVisibleOnMainDisplay(MMPointInt32 point){
 	MMSizeInt32 displaySize = getMainDisplaySize();
 	return point.x < displaySize.w && point.y < displaySize.h;
 }
