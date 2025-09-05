@@ -55,8 +55,48 @@ static inline MMBitmapRef capture_screen_wayland(int32_t x, int32_t y,
 #endif
 #elif defined(IS_WINDOWS)
 #include <string.h>
+// Provide minimal definitions so cgo references used in cross-platform Go
+// code type-check on Windows builds.
+typedef enum {
+  ScreengrabOK = 0,
+  ScreengrabErrDisplay,
+  ScreengrabErrNoManager,
+  ScreengrabErrNoOutputs,
+  ScreengrabErrDmabufDevice,
+  ScreengrabErrDmabufModifiers,
+  ScreengrabErrDmabufImport,
+  ScreengrabErrDmabufMap,
+  ScreengrabErrPortal,
+  ScreengrabErrFailed,
+} ScreengrabError;
+
+// X11 Display stub so code paths guarded by runtime.GOOS checks still
+// type-check on Windows.
+typedef void Display;
+static inline Display* XGetMainDisplay(void) { return NULL; }
 #endif
 #include "screen_c.h"
+
+#if defined(IS_WINDOWS)
+// Windows has no portal/wayland capture; provide stubs to satisfy linking
+// when referenced from platform-gated code.
+static inline MMBitmapRef capture_screen_portal(int32_t x, int32_t y, int32_t w,
+                                                int32_t h, int32_t display_id,
+                                                int8_t isPid, int32_t *err) {
+  (void)x; (void)y; (void)w; (void)h; (void)display_id; (void)isPid;
+  if (err) { *err = ScreengrabErrFailed; }
+  return NULL;
+}
+
+static inline MMBitmapRef capture_screen_wayland(int32_t x, int32_t y, int32_t w,
+                                                 int32_t h, int32_t display_id,
+                                                 int8_t isPid, int32_t backend,
+                                                 int32_t *err) {
+  (void)x; (void)y; (void)w; (void)h; (void)display_id; (void)isPid; (void)backend;
+  if (err) { *err = ScreengrabErrFailed; }
+  return NULL;
+}
+#endif
 
 #if defined(IS_MACOSX) && __ENVIRONMENT_MAC_OS_X_VERSION_MIN_REQUIRED__ > 140400
 static CGImageRef capture15(CGDirectDisplayID id,
