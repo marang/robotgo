@@ -17,7 +17,7 @@
 		MOD_CONTROL = kCGEventFlagMaskControl,
 		MOD_SHIFT = kCGEventFlagMaskShift
 	} MMKeyFlags;
-#elif defined(USE_X11)
+#elif defined(IS_LINUX)
 	enum _MMKeyFlags {
 		MOD_NONE = 0,
 		MOD_META = Mod4Mask,
@@ -26,6 +26,8 @@
 		MOD_SHIFT = ShiftMask
 	};
 	typedef unsigned int MMKeyFlags;
+
+	// @TODO wayland implementation - verify if implementation of X11 can be used	
 #elif defined(IS_WINDOWS)
 	enum _MMKeyFlags {
 		MOD_NONE = 0,

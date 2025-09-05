@@ -18,9 +18,12 @@
 	#include <ApplicationServices/ApplicationServices.h>
 	#import <IOKit/hidsystem/IOHIDLib.h>
 	#import <IOKit/hidsystem/ev_keymap.h>
-#elif defined(USE_X11)
+#elif defined(IS_LINUX)
 	#include <X11/extensions/XTest.h>
 	// #include "../base/xdisplay_c.h"
+
+	// @TODO wayland implementation here
+	// find out if an extra import is needed
 #endif
 
 /* Convenience wrappers around ugly APIs. */
@@ -39,7 +42,7 @@
 		win32KeyEvent(key, flags, pid, 0); 
 		Sleep(DEADBEEF_RANDRANGE(0, 1));
 	}
-#elif defined(USE_X11)
+#elif defiend(IS_LINUX) 
 	Display *XGetMainDisplay(void);
 
 	void X_KEY_EVENT(Display *display, MMKeyCode key, bool is_press) {
@@ -51,6 +54,8 @@
 		X_KEY_EVENT(display, key, is_press);
 		microsleep(DEADBEEF_UNIFORM(0.0, 0.5));
 	}
+
+	// @TODO wayland implementation here
 #endif
 
 #if defined(IS_MACOSX)
@@ -201,7 +206,7 @@ void toggleKeyCode(MMKeyCode code, const bool down, MMKeyFlags flags, uintptr pi
 	if (flags & MOD_SHIFT) { WIN32_KEY_EVENT_WAIT(K_SHIFT, dwFlags, pid); }
 
 	win32KeyEvent(code, dwFlags, pid, 0);
-#elif defined(USE_X11)
+#elif defined(IS_LINUX)
 	Display *display = XGetMainDisplay();
 	const Bool is_press = down ? True : False; /* Just to be safe. */
 
@@ -212,6 +217,8 @@ void toggleKeyCode(MMKeyCode code, const bool down, MMKeyFlags flags, uintptr pi
 	if (flags & MOD_SHIFT) { X_KEY_EVENT_WAIT(display, K_SHIFT, is_press); }
 
 	X_KEY_EVENT(display, code, is_press);
+
+	// @TODO wayland implementation here
 #endif
 }
 
@@ -221,7 +228,7 @@ void toggleKeyCode(MMKeyCode code, const bool down, MMKeyFlags flags, uintptr pi
 // 	toggleKeyCode(code, false, flags);
 // }
 
-#if defined(USE_X11)
+#if defined(IS_LINUX)
 	bool toUpper(char c) {
 		if (isupper(c)) {
 			return true;
@@ -241,10 +248,12 @@ void toggleKeyCode(MMKeyCode code, const bool down, MMKeyFlags flags, uintptr pi
 void toggleKey(char c, const bool down, MMKeyFlags flags, uintptr pid) {
 	MMKeyCode keyCode = keyCodeForChar(c);
 
-	#if defined(USE_X11)
+	#if defined(IS_LINUX)
 		if (toUpper(c) && !(flags & MOD_SHIFT)) {
 			flags |= MOD_SHIFT; /* Not sure if this is safe for all layouts. */
 		}
+
+		// @TODO wayland implementation - verify if implementation of X11 can be used
 	#else
 		if (isupper(c) && !(flags & MOD_SHIFT)) {
 			flags |= MOD_SHIFT; /* Not sure if this is safe for all layouts. */
@@ -322,14 +331,16 @@ void unicodeType(const unsigned value, uintptr pid, int8_t isPid) {
   		input[1].ki.dwFlags = KEYEVENTF_KEYUP | 0x4; // KEYEVENTF_UNICODE;
 
   		SendInput(2, input, sizeof(INPUT));
-	#elif defined(USE_X11)
+	#elif defined(IS_LINUX)
 		toggleUniKey(value, true);
 		microsleep(5.0);
 		toggleUniKey(value, false);	
+
+		// @TODO wayland implementation - verify if implementation of X11 can be used
 	#endif
 }
 
-#if defined(USE_X11)
+#if defined(IS_LINUX)
 	int input_utf(const char *utf) {
 		Display *dpy = XOpenDisplay(NULL);
 		KeySym sym = XStringToKeysym(utf);
@@ -352,6 +363,8 @@ void unicodeType(const unsigned value, uintptr pid, int8_t isPid) {
 		XCloseDisplay(dpy);
 		return 0;
 	}
+
+	// @TODO wayland implementation here
 #else
 	int input_utf(const char *utf){
 		return 0;

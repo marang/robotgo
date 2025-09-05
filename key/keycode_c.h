@@ -57,7 +57,10 @@ MMKeyCode keyCodeForChar(const char c) {
 		}
 
 		return code;
-	#elif defined(USE_X11)
+	#elif defined(IS_LINUX)
+		// @TODO distinguish between display servers x11/wayland
+		// current implementation is for x11
+
 		char buf[2];
 		buf[0] = c;
 		buf[1] = '\0';

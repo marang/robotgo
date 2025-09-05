@@ -7,10 +7,13 @@
 	// #include </System/Library/Frameworks/ApplicationServices.framework/Headers/ApplicationServices.h>
 	#include <ApplicationServices/ApplicationServices.h>
 	// #include </System/Library/Frameworks/ApplicationServices.framework/Versions/A/Headers/ApplicationServices.h>
-#elif defined(USE_X11)
+#elif defined(IS_LINUX) 
 	#include <X11/Xlib.h>
 	#include <X11/extensions/XTest.h>
 	#include <stdlib.h>
+
+	// @TODO wayland implementation here
+	// find out if an extra import is needed
 #endif
 
 /* Some convenience macros for converting our enums to the system API types. */
@@ -91,12 +94,13 @@ void moveMouse(MMPointInt32 point){
 
 		CGEventPost(kCGHIDEventTap, move);
 		CFRelease(move);
-		CFRelease(source);
-	#elif defined(USE_X11)
+	#elif defined(IS_LINUX)
 		Display *display = XGetMainDisplay();
 		XWarpPointer(display, None, DefaultRootWindow(display), 0, 0, 0, 0, point.x, point.y);
 
 		XSync(display, false);
+
+		// @TODO wayland implementation here
 	#elif defined(IS_WINDOWS)
 		SetCursorPos(point.x, point.y);
 	#endif
@@ -126,7 +130,7 @@ MMPointInt32 location() {
 		CFRelease(event);
 
 		return MMPointInt32FromCGPoint(point);
-	#elif defined(USE_X11)
+	#elif defined(IS_LINUX)
 		int x, y; 	/* This is all we care about. Seriously. */
 		Window garb1, garb2; 	/* Why you can't specify NULL as a parameter */
 		int garb_x, garb_y;  	/* is beyond me. */
@@ -154,8 +158,7 @@ void toggleMouse(bool down, MMMouseButton button) {
 
 		CGEventPost(kCGHIDEventTap, event);
 		CFRelease(event);
-		CFRelease(source);
-	#elif defined(USE_X11)
+	#elif defined(IS_LINUX)
 		Display *display = XGetMainDisplay();
 		XTestFakeButtonEvent(display, button, down ? True : False, CurrentTime);
 		XSync(display, false);
@@ -222,8 +225,7 @@ void scrollMouseXY(int x, int y) {
 		CGEventPost(kCGHIDEventTap, event);
 
 		CFRelease(event);
-		CFRelease(source);
-	#elif defined(USE_X11)
+	#elif defined(IS_LINUX)
 		int ydir = 4; /* Button 4 is up, 5 is down. */
 		int xdir = 6;
 		Display *display = XGetMainDisplay();

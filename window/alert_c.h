@@ -30,7 +30,7 @@ int showAlert(const char *title, const char *msg,
 
 		if (err != 0) { return -1; }
 		return (responseFlags == kCFUserNotificationDefaultResponse) ? 0 : 1;
-	#elif defined(USE_X11)
+	#elif defined(IS_LINUX)
 		return 0;
 	#else
 		/* TODO: Display custom buttons instead of the pre-defined "OK" and "Cancel". */
