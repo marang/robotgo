@@ -411,7 +411,7 @@ void toggleKeyCode(MMKeyCode code, const bool down, MMKeyFlags flags, uintptr pi
 	win32KeyEvent(code, dwFlags, pid, 0);
 #elif defined(IS_LINUX)
         DisplayServer server = detectDisplayServer();
-#if defined(DISPLAY_SERVER_WAYLAND)
+#ifdef ROBOTGO_USE_WAYLAND
         if (server == Wayland) {
                 const Bool is_press = down ? True : False;
 
