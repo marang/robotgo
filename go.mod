@@ -5,7 +5,6 @@ go 1.23.0
 toolchain go1.23.6
 
 require (
-	github.com/otiai10/gosseract/v2 v2.4.1
 	// github.com/robotn/gohook v0.31.3
 	github.com/robotn/xgb v0.10.0
 	github.com/robotn/xgbutil v0.10.0
@@ -34,6 +33,8 @@ require (
 	golang.org/x/image v0.27.0 // indirect
 	golang.org/x/sys v0.33.0 // indirect
 )
+
+require github.com/otiai10/gosseract/v2 v2.4.1
 
 // replace golang.org/x/sys => github.com/golang/sys v0.0.0-20190109145017-48ac38b7c8cb
 
