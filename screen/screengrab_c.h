@@ -152,7 +152,7 @@ static CGImageRef capture15(CGDirectDisplayID id,
 }
 #endif
 
-MMBitmapRef copyMMBitmapFromDisplayInRect(MMRectInt32 rect, int32_t display_id,
+static inline MMBitmapRef copyMMBitmapFromDisplayInRect(MMRectInt32 rect, int32_t display_id,
                                           int8_t isPid) {
 #if defined(IS_MACOSX)
   MMBitmapRef bitmap = NULL;
@@ -324,7 +324,7 @@ MMBitmapRef copyMMBitmapFromDisplayInRect(MMRectInt32 rect, int32_t display_id,
 #endif
 }
 
-MMRGBHex mmrgb_hex_at(MMBitmapRef bitmap, int32_t x, int32_t y) {
+static inline MMRGBHex mmrgb_hex_at(MMBitmapRef bitmap, int32_t x, int32_t y) {
   return MMRGBHexAtPoint(bitmap, x, y);
 }
 

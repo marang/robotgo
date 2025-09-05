@@ -36,6 +36,7 @@
 
 /* Convenience wrappers around ugly APIs. */
 #if defined(IS_WINDOWS)
+    #include "../base/pubs.h"
 	HWND GetHwndByPid(DWORD dwProcessId);
 
 	HWND getHwnd(uintptr pid, int8_t isPid) { 
