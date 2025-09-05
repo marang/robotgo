@@ -29,8 +29,8 @@ static inline MMBitmapRef capture_screen_portal(int32_t x, int32_t y, int32_t w,
   if (err) { *err = ScreengrabErrFailed; }
   return NULL;
 }
-#ifdef ROBOTGO_USE_WAYLAND
-// If Wayland is somehow enabled on macOS builds (unlikely), provide a stub.
+// Provide a stub for capture_screen_wayland so the Go references type-check
+// even when compiling on macOS.
 static inline MMBitmapRef capture_screen_wayland(int32_t x, int32_t y, int32_t w,
                                                  int32_t h, int32_t display_id,
                                                  int8_t isPid, int32_t backend,
@@ -39,7 +39,6 @@ static inline MMBitmapRef capture_screen_wayland(int32_t x, int32_t y, int32_t w
   if (err) { *err = ScreengrabErrFailed; }
   return NULL;
 }
-#endif
 #elif defined(IS_LINUX)
 #include "../base/xdisplay_c.h"
 #include <X11/Xlib.h>
