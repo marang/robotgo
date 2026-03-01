@@ -76,6 +76,13 @@ struct output {
   uint32_t name;
 };
 
+struct int_rect {
+  int x;
+  int y;
+  int w;
+  int h;
+};
+
 static void output_logical_size(const struct output *out, int *lw, int *lh) {
   if (out->has_logical_size && out->logical_w > 0 && out->logical_h > 0) {
     if (lw) {
@@ -129,6 +136,196 @@ static void output_logical_origin(const struct output *out, int *ox, int *oy) {
   if (oy) {
     *oy = out->y;
   }
+}
+
+static long long rect_intersection_area(struct int_rect a, struct int_rect b) {
+  int x1 = a.x > b.x ? a.x : b.x;
+  int y1 = a.y > b.y ? a.y : b.y;
+  int x2a = a.x + a.w;
+  int y2a = a.y + a.h;
+  int x2b = b.x + b.w;
+  int y2b = b.y + b.h;
+  int x2 = x2a < x2b ? x2a : x2b;
+  int y2 = y2a < y2b ? y2a : y2b;
+  if (x2 <= x1 || y2 <= y1) {
+    return 0;
+  }
+  return (long long)(x2 - x1) * (long long)(y2 - y1);
+}
+
+static int transform_is_rotated(int32_t transform) {
+  return transform == WL_OUTPUT_TRANSFORM_90 ||
+         transform == WL_OUTPUT_TRANSFORM_270 ||
+         transform == WL_OUTPUT_TRANSFORM_FLIPPED_90 ||
+         transform == WL_OUTPUT_TRANSFORM_FLIPPED_270;
+}
+
+static void transform_inverse_uv(int32_t transform, double u, double v,
+                                 double *out_u, double *out_v) {
+  double x = u;
+  double y = v;
+  switch (transform) {
+  case WL_OUTPUT_TRANSFORM_90:
+    x = v;
+    y = 1.0 - u;
+    break;
+  case WL_OUTPUT_TRANSFORM_180:
+    x = 1.0 - u;
+    y = 1.0 - v;
+    break;
+  case WL_OUTPUT_TRANSFORM_270:
+    x = 1.0 - v;
+    y = u;
+    break;
+  case WL_OUTPUT_TRANSFORM_FLIPPED:
+    x = 1.0 - u;
+    y = v;
+    break;
+  case WL_OUTPUT_TRANSFORM_FLIPPED_90:
+    x = v;
+    y = u;
+    break;
+  case WL_OUTPUT_TRANSFORM_FLIPPED_180:
+    x = u;
+    y = 1.0 - v;
+    break;
+  case WL_OUTPUT_TRANSFORM_FLIPPED_270:
+    x = 1.0 - v;
+    y = 1.0 - u;
+    break;
+  case WL_OUTPUT_TRANSFORM_NORMAL:
+  default:
+    break;
+  }
+  if (x < 0.0) {
+    x = 0.0;
+  }
+  if (x > 1.0) {
+    x = 1.0;
+  }
+  if (y < 0.0) {
+    y = 0.0;
+  }
+  if (y > 1.0) {
+    y = 1.0;
+  }
+  if (out_u) {
+    *out_u = x;
+  }
+  if (out_v) {
+    *out_v = y;
+  }
+}
+
+static void map_logical_rect_to_buffer(const struct output *out, int cap_w, int cap_h,
+                                       int logical_w, int logical_h, int *x, int *y,
+                                       int *w, int *h) {
+  if (!out || !x || !y || !w || !h || cap_w <= 0 || cap_h <= 0 ||
+      logical_w <= 0 || logical_h <= 0) {
+    return;
+  }
+
+  int lx = *x;
+  int ly = *y;
+  int lw = *w;
+  int lh = *h;
+  if (lx < 0) {
+    lx = 0;
+  }
+  if (ly < 0) {
+    ly = 0;
+  }
+
+  int x2 = (lw <= 0) ? logical_w : (lx + lw);
+  int y2 = (lh <= 0) ? logical_h : (ly + lh);
+  if (x2 > logical_w) {
+    x2 = logical_w;
+  }
+  if (y2 > logical_h) {
+    y2 = logical_h;
+  }
+  if (lx > logical_w) {
+    lx = logical_w;
+  }
+  if (ly > logical_h) {
+    ly = logical_h;
+  }
+  if (x2 < lx) {
+    x2 = lx;
+  }
+  if (y2 < ly) {
+    y2 = ly;
+  }
+
+  long long direct_err = llabs((long long)cap_w * (long long)logical_h -
+                               (long long)cap_h * (long long)logical_w);
+  long long swapped_err = llabs((long long)cap_w * (long long)logical_w -
+                                (long long)cap_h * (long long)logical_h);
+  int use_transform = 0;
+  if (out->transform != WL_OUTPUT_TRANSFORM_NORMAL) {
+    if (transform_is_rotated(out->transform)) {
+      use_transform = swapped_err <= direct_err;
+    } else {
+      use_transform = 1;
+    }
+  }
+
+  if (!use_transform) {
+    double sx = (double)cap_w / (double)logical_w;
+    double sy = (double)cap_h / (double)logical_h;
+    int bx1 = (int)((double)lx * sx + 0.5);
+    int by1 = (int)((double)ly * sy + 0.5);
+    int bx2 = (int)((double)x2 * sx + 0.5);
+    int by2 = (int)((double)y2 * sy + 0.5);
+    if (bx1 < 0) bx1 = 0;
+    if (by1 < 0) by1 = 0;
+    if (bx2 > cap_w) bx2 = cap_w;
+    if (by2 > cap_h) by2 = cap_h;
+    if (bx2 < bx1) bx2 = bx1;
+    if (by2 < by1) by2 = by1;
+    *x = bx1;
+    *y = by1;
+    *w = bx2 - bx1;
+    *h = by2 - by1;
+    return;
+  }
+
+  double ux1 = (double)lx / (double)logical_w;
+  double uy1 = (double)ly / (double)logical_h;
+  double ux2 = (double)x2 / (double)logical_w;
+  double uy2 = (double)y2 / (double)logical_h;
+
+  double tu[4], tv[4];
+  transform_inverse_uv(out->transform, ux1, uy1, &tu[0], &tv[0]);
+  transform_inverse_uv(out->transform, ux2, uy1, &tu[1], &tv[1]);
+  transform_inverse_uv(out->transform, ux1, uy2, &tu[2], &tv[2]);
+  transform_inverse_uv(out->transform, ux2, uy2, &tu[3], &tv[3]);
+
+  double min_u = tu[0], max_u = tu[0];
+  double min_v = tv[0], max_v = tv[0];
+  for (int i = 1; i < 4; i++) {
+    if (tu[i] < min_u) min_u = tu[i];
+    if (tu[i] > max_u) max_u = tu[i];
+    if (tv[i] < min_v) min_v = tv[i];
+    if (tv[i] > max_v) max_v = tv[i];
+  }
+
+  int bx1 = (int)(min_u * (double)cap_w + 0.5);
+  int by1 = (int)(min_v * (double)cap_h + 0.5);
+  int bx2 = (int)(max_u * (double)cap_w + 0.5);
+  int by2 = (int)(max_v * (double)cap_h + 0.5);
+
+  if (bx1 < 0) bx1 = 0;
+  if (by1 < 0) by1 = 0;
+  if (bx2 > cap_w) bx2 = cap_w;
+  if (by2 > cap_h) by2 = cap_h;
+  if (bx2 < bx1) bx2 = bx1;
+  if (by2 < by1) by2 = by1;
+
+  *x = bx1;
+  *y = by1;
+  *w = bx2 - bx1;
+  *h = by2 - by1;
 }
 
 static void output_geometry(void *data, struct wl_output *output, int32_t x,
@@ -792,6 +989,8 @@ MMBitmapRef capture_screen_wayland_impl(int32_t x, int32_t y, int32_t w,
     }
   }
   if (!out && (x != 0 || y != 0)) {
+    struct int_rect req = {x, y, w > 0 ? w : 1, h > 0 ? h : 1};
+    long long best_area = -1;
     struct output *it;
     wl_list_for_each(it, &cap.outputs, link) {
       if (!it->has_mode || it->mode_w <= 0 || it->mode_h <= 0) {
@@ -803,9 +1002,14 @@ MMBitmapRef capture_screen_wayland_impl(int32_t x, int32_t y, int32_t w,
       int oy = 0;
       output_logical_size(it, &lw, &lh);
       output_logical_origin(it, &ox, &oy);
-      if (x >= ox && y >= oy && x < ox + lw && y < oy + lh) {
+      if (lw <= 0 || lh <= 0) {
+        continue;
+      }
+      struct int_rect out_rect = {ox, oy, lw, lh};
+      long long area = rect_intersection_area(req, out_rect);
+      if (area > best_area) {
+        best_area = area;
         out = it;
-        break;
       }
     }
   }
@@ -830,6 +1034,8 @@ MMBitmapRef capture_screen_wayland_impl(int32_t x, int32_t y, int32_t w,
 
   int crop_lx = x - out_ox;
   int crop_ly = y - out_oy;
+  int crop_lw = w;
+  int crop_lh = h;
   if (crop_lx < 0) {
     crop_lx = 0;
   }
@@ -844,6 +1050,8 @@ MMBitmapRef capture_screen_wayland_impl(int32_t x, int32_t y, int32_t w,
   }
   x = crop_lx;
   y = crop_ly;
+  w = crop_lw;
+  h = crop_lh;
 
   cap.frame =
       zwlr_screencopy_manager_v1_capture_output(cap.manager, 0, out->wl_output);
@@ -913,24 +1121,7 @@ MMBitmapRef capture_screen_wayland_impl(int32_t x, int32_t y, int32_t w,
     x = 0;
   if (y < 0)
     y = 0;
-  if (out_lw > 0 && out_lh > 0 && cap.width > 0 && cap.height > 0) {
-    double sx = (double)cap.width / (double)out_lw;
-    double sy = (double)cap.height / (double)out_lh;
-    x = (int)((double)x * sx + 0.5);
-    y = (int)((double)y * sy + 0.5);
-    if (w > 0) {
-      w = (int)((double)w * sx + 0.5);
-      if (w == 0) {
-        w = 1;
-      }
-    }
-    if (h > 0) {
-      h = (int)((double)h * sy + 0.5);
-      if (h == 0) {
-        h = 1;
-      }
-    }
-  }
+  map_logical_rect_to_buffer(out, cap.width, cap.height, out_lw, out_lh, &x, &y, &w, &h);
   if (x > cap.width || y > cap.height) {
     if (err) {
       *err = ScreengrabErrFailed;
