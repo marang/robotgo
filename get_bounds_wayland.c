@@ -3,6 +3,7 @@
 
 #include "window/get_bounds_wayland.h"
 #include <limits.h>
+#include <stdlib.h>
 #include <string.h>
 
 struct registry_data {
@@ -18,9 +19,37 @@ struct output_info {
   int32_t y;
   int32_t mode_w;
   int32_t mode_h;
+  int32_t transform;
   int32_t scale;
   int has_mode;
 };
+
+static void output_logical_size(const struct output_info *oi, int *lw, int *lh) {
+  int s = oi->scale > 0 ? oi->scale : 1;
+  int w = oi->mode_w > 0 ? oi->mode_w / s : 0;
+  int h = oi->mode_h > 0 ? oi->mode_h / s : 0;
+
+  switch (oi->transform) {
+  case WL_OUTPUT_TRANSFORM_90:
+  case WL_OUTPUT_TRANSFORM_270:
+  case WL_OUTPUT_TRANSFORM_FLIPPED_90:
+  case WL_OUTPUT_TRANSFORM_FLIPPED_270: {
+    int t = w;
+    w = h;
+    h = t;
+    break;
+  }
+  default:
+    break;
+  }
+
+  if (lw) {
+    *lw = w;
+  }
+  if (lh) {
+    *lh = h;
+  }
+}
 
 static void output_geometry(void *data, struct wl_output *output,
                             int32_t x, int32_t y, int32_t physical_width,
@@ -37,6 +66,7 @@ static void output_geometry(void *data, struct wl_output *output,
   struct output_info *oi = data;
   oi->x = x;
   oi->y = y;
+  oi->transform = transform;
 }
 
 static void output_mode(void *data, struct wl_output *output, uint32_t flags,
@@ -153,9 +183,9 @@ int get_bounds_wayland(struct wl_display *display, int *width, int *height) {
     if (!oi->has_mode || oi->mode_w <= 0 || oi->mode_h <= 0) {
       continue;
     }
-    int s = oi->scale > 0 ? oi->scale : 1;
-    int lw = oi->mode_w / s;
-    int lh = oi->mode_h / s;
+    int lw = 0;
+    int lh = 0;
+    output_logical_size(oi, &lw, &lh);
     if (lw <= 0 || lh <= 0) {
       continue;
     }

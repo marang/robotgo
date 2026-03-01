@@ -30,8 +30,8 @@
         #include <xkbcommon/xkbcommon.h>
         #include "../virtual-keyboard-unstable-v1-client-protocol.h"
 
-        void WL_KEY_EVENT(MMKeyCode key, bool is_press);
-        void WL_KEY_EVENT_WAIT(MMKeyCode key, bool is_press);
+        static void WL_KEY_EVENT(MMKeyCode key, bool is_press);
+        static void WL_KEY_EVENT_WAIT(MMKeyCode key, bool is_press);
 #endif
 #endif
 
@@ -99,83 +99,56 @@
         static struct xkb_keymap *wk_keymap = NULL;
         static xkb_mod_mask_t wk_modifiers = 0;
 
-        /* ------------------------------------------------------------------ */
-        /* virtual-keyboard protocol definitions                              */
-        /* ------------------------------------------------------------------ */
-
-        struct zwp_virtual_keyboard_manager_v1 { struct wl_proxy *proxy; };
-        struct zwp_virtual_keyboard_v1 { struct wl_proxy *proxy; };
-
-        static const struct wl_message zwp_virtual_keyboard_manager_v1_requests[] = {
-                {"create_virtual_keyboard", "no", &zwp_virtual_keyboard_v1_interface},
-        };
-        static const struct wl_interface zwp_virtual_keyboard_manager_v1_interface = {
-                "zwp_virtual_keyboard_manager_v1", 1,
-                1, zwp_virtual_keyboard_manager_v1_requests,
-                0, NULL
-        };
-
-        static const struct wl_message zwp_virtual_keyboard_v1_requests[] = {
-                {"keymap", "ufu", NULL},
-                {"key", "uuu", NULL},
-                {"modifiers", "uuuu", NULL},
-                {"destroy", "", NULL},
-        };
-        static const struct wl_interface zwp_virtual_keyboard_v1_interface = {
-                "zwp_virtual_keyboard_v1", 1,
-                4, zwp_virtual_keyboard_v1_requests,
-                0, NULL
-        };
-
-        static struct zwp_virtual_keyboard_v1 *
-        zwp_virtual_keyboard_manager_v1_create_virtual_keyboard(
-                struct zwp_virtual_keyboard_manager_v1 *manager,
-                struct wl_seat *seat) {
-                struct wl_proxy *id = wl_proxy_marshal_constructor((struct wl_proxy *)manager,
-                        0, &zwp_virtual_keyboard_v1_interface, NULL, seat);
-                return (struct zwp_virtual_keyboard_v1 *)id;
-        }
-
-        static void zwp_virtual_keyboard_v1_destroy(
-                struct zwp_virtual_keyboard_v1 *keyboard) {
-                wl_proxy_marshal((struct wl_proxy *)keyboard, 3);
-                wl_proxy_destroy((struct wl_proxy *)keyboard);
-        }
-
-        static void zwp_virtual_keyboard_v1_keymap(
-                struct zwp_virtual_keyboard_v1 *keyboard,
-                uint32_t format, int32_t fd, uint32_t size) {
-                wl_proxy_marshal((struct wl_proxy *)keyboard, 0, format, fd, size);
-                close(fd);
-        }
-
-        static void zwp_virtual_keyboard_v1_key(
-                struct zwp_virtual_keyboard_v1 *keyboard,
-                uint32_t time, uint32_t key, uint32_t state) {
-                wl_proxy_marshal((struct wl_proxy *)keyboard, 1, time, key, state);
-        }
-
-        static void zwp_virtual_keyboard_v1_modifiers(
-                struct zwp_virtual_keyboard_v1 *keyboard,
-                uint32_t depressed, uint32_t latched,
-                uint32_t locked, uint32_t group) {
-                wl_proxy_marshal((struct wl_proxy *)keyboard, 2,
-                                depressed, latched, locked, group);
+        static xkb_mod_mask_t mod_mask_for_name(struct xkb_keymap *keymap, const char *name) {
+                if (!keymap || !name) {
+                        return 0;
+                }
+                xkb_mod_index_t idx = xkb_keymap_mod_get_index(keymap, name);
+                if (idx == XKB_MOD_INVALID) {
+                        return 0;
+                }
+                return ((xkb_mod_mask_t)1) << idx;
         }
 
         static xkb_mod_mask_t mask_for_key(MMKeyCode key) {
-                switch (key) {
-                case K_META: case K_LMETA: case K_RMETA:
-                        return XKB_MOD_MASK_LOGO;
-                case K_ALT: case K_LALT: case K_RALT:
-                        return XKB_MOD_MASK_ALT;
-                case K_CONTROL: case K_LCONTROL: case K_RCONTROL:
-                        return XKB_MOD_MASK_CTRL;
-                case K_SHIFT: case K_LSHIFT: case K_RSHIFT:
-                        return XKB_MOD_MASK_SHIFT;
-                default:
+                if (!wk_keymap) {
                         return 0;
                 }
+                if (key == K_META || key == K_LMETA || key == K_RMETA) {
+                        return mod_mask_for_name(wk_keymap, XKB_MOD_NAME_LOGO);
+                }
+                if (key == K_ALT || key == K_LALT || key == K_RALT) {
+                        return mod_mask_for_name(wk_keymap, XKB_MOD_NAME_ALT);
+                }
+                if (key == K_CONTROL || key == K_LCONTROL || key == K_RCONTROL) {
+                        return mod_mask_for_name(wk_keymap, XKB_MOD_NAME_CTRL);
+                }
+                if (key == K_SHIFT || key == K_LSHIFT || key == K_RSHIFT) {
+                        return mod_mask_for_name(wk_keymap, XKB_MOD_NAME_SHIFT);
+                }
+                return 0;
+        }
+
+        static xkb_keycode_t keysym_to_keycode(struct xkb_keymap *keymap, xkb_keysym_t sym) {
+                if (!keymap || sym == XKB_KEY_NoSymbol) {
+                        return XKB_KEY_NoSymbol;
+                }
+                xkb_keycode_t min = xkb_keymap_min_keycode(keymap);
+                xkb_keycode_t max = xkb_keymap_max_keycode(keymap);
+                for (xkb_keycode_t c = min; c <= max; c++) {
+                        if (!xkb_keymap_key_repeats(keymap, c) &&
+                            xkb_keymap_num_levels_for_key(keymap, c, 0) == 0) {
+                                continue;
+                        }
+                        const xkb_keysym_t *syms = NULL;
+                        int n = xkb_keymap_key_get_syms_by_level(keymap, c, 0, 0, &syms);
+                        for (int i = 0; i < n; i++) {
+                                if (syms[i] == sym) {
+                                        return c;
+                                }
+                        }
+                }
+                return XKB_KEY_NoSymbol;
         }
 
         static void wk_registry_global(void *data, struct wl_registry *registry,
@@ -301,13 +274,13 @@
                                 for (int i = 0; i < n; i++) {
                                         if (syms[i] == sym) {
                                                 code = c;
-                                                size_t num_mods = 0;
-                                                const xkb_mod_mask_t *level_mods =
-                                                        xkb_keymap_key_get_mods_for_level(wk_keymap, c, 0, level, &num_mods);
-                                                if (num_mods > 0 && level_mods != NULL) {
+                                                xkb_mod_mask_t level_mods[8] = {0};
+                                                int num_mods = xkb_keymap_key_get_mods_for_level(
+                                                        wk_keymap, c, 0, level, level_mods, 8);
+                                                if (num_mods > 0) {
                                                         mods = level_mods[0];
                                                 } else if (level == 1) {
-                                                        mods = XKB_MOD_MASK_SHIFT;
+                                                        mods = mod_mask_for_name(wk_keymap, XKB_MOD_NAME_SHIFT);
                                                 }
                                                 break;
                                         }
@@ -351,6 +324,31 @@
                 if ((c & 0xF0) == 0xE0) return 3;
                 if ((c & 0xF8) == 0xF0) return 4;
                 return 1;
+        }
+
+        static uint32_t utf8_decode_one(const unsigned char *p, size_t n) {
+                if (!p || n == 0) {
+                        return 0;
+                }
+                if (n == 1) {
+                        return p[0];
+                }
+                if (n == 2) {
+                        return ((uint32_t)(p[0] & 0x1F) << 6) |
+                               (uint32_t)(p[1] & 0x3F);
+                }
+                if (n == 3) {
+                        return ((uint32_t)(p[0] & 0x0F) << 12) |
+                               ((uint32_t)(p[1] & 0x3F) << 6) |
+                               (uint32_t)(p[2] & 0x3F);
+                }
+                if (n == 4) {
+                        return ((uint32_t)(p[0] & 0x07) << 18) |
+                               ((uint32_t)(p[1] & 0x3F) << 12) |
+                               ((uint32_t)(p[2] & 0x3F) << 6) |
+                               (uint32_t)(p[3] & 0x3F);
+                }
+                return 0;
         }
         #endif /* ROBOTGO_USE_WAYLAND */
 
@@ -669,7 +667,8 @@ void unicodeType(const unsigned value, uintptr pid, int8_t isPid) {
                                         buf[i] = (char)p[i];
                                 }
 
-                                xkb_keysym_t sym = xkb_utf8_to_keysym(buf);
+                                uint32_t cp = utf8_decode_one((const unsigned char *)buf, n);
+                                xkb_keysym_t sym = xkb_utf32_to_keysym(cp);
                                 if (sym == XKB_KEY_NoSymbol || WL_SEND_KEYSYM(sym) != 0) {
                                         return -1;
                                 }

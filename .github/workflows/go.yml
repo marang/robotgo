@@ -20,7 +20,8 @@ jobs:
           sudo apt-get install -y --no-install-recommends \
             build-essential pkg-config \
             libx11-dev libxtst-dev \
-            libwayland-dev libxkbcommon-dev wayland-protocols
+            libwayland-dev libxkbcommon-dev wayland-protocols \
+            libgbm-dev libdrm-dev
       - name: Install golangci-lint
         run: go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
       - name: Add golangci-lint to PATH
@@ -68,7 +69,8 @@ jobs:
           sudo apt-get install -y --no-install-recommends \
             build-essential pkg-config weston \
             libx11-dev libxtst-dev libxkbcommon-dev \
-            libwayland-dev wayland-protocols
+            libwayland-dev wayland-protocols \
+            libgbm-dev libdrm-dev
       - name: Run Wayland integration tests
         env:
           XDG_RUNTIME_DIR: /tmp

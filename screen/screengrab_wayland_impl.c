@@ -62,10 +62,38 @@ struct output {
   int32_t y;
   int32_t mode_w;
   int32_t mode_h;
+  int32_t transform;
   int32_t scale;
   int has_mode;
   uint32_t name;
 };
+
+static void output_logical_size(const struct output *out, int *lw, int *lh) {
+  int s = out->scale > 0 ? out->scale : 1;
+  int w = out->mode_w > 0 ? out->mode_w / s : 0;
+  int h = out->mode_h > 0 ? out->mode_h / s : 0;
+
+  switch (out->transform) {
+  case WL_OUTPUT_TRANSFORM_90:
+  case WL_OUTPUT_TRANSFORM_270:
+  case WL_OUTPUT_TRANSFORM_FLIPPED_90:
+  case WL_OUTPUT_TRANSFORM_FLIPPED_270: {
+    int t = w;
+    w = h;
+    h = t;
+    break;
+  }
+  default:
+    break;
+  }
+
+  if (lw) {
+    *lw = w;
+  }
+  if (lh) {
+    *lh = h;
+  }
+}
 
 static void output_geometry(void *data, struct wl_output *output, int32_t x,
                             int32_t y, int32_t physical_width,
@@ -82,6 +110,7 @@ static void output_geometry(void *data, struct wl_output *output, int32_t x,
   struct output *out = data;
   out->x = x;
   out->y = y;
+  out->transform = transform;
 }
 
 static void output_mode(void *data, struct wl_output *output, uint32_t flags,
@@ -566,7 +595,6 @@ MMBitmapRef capture_screen_wayland_impl(int32_t x, int32_t y, int32_t w,
                                         int32_t h, int32_t display_id,
                                         int8_t isPid, int32_t backend,
                                         int32_t *err) {
-  (void)display_id;
   (void)isPid;
   if (err) {
     *err = ScreengrabOK;
@@ -655,9 +683,9 @@ MMBitmapRef capture_screen_wayland_impl(int32_t x, int32_t y, int32_t w,
       if (!it->has_mode || it->mode_w <= 0 || it->mode_h <= 0) {
         continue;
       }
-      int s = it->scale > 0 ? it->scale : 1;
-      int lw = it->mode_w / s;
-      int lh = it->mode_h / s;
+      int lw = 0;
+      int lh = 0;
+      output_logical_size(it, &lw, &lh);
       if (x >= it->x && y >= it->y && x < it->x + lw && y < it->y + lh) {
         out = it;
         break;
@@ -678,6 +706,9 @@ MMBitmapRef capture_screen_wayland_impl(int32_t x, int32_t y, int32_t w,
   // Convert global logical capture rectangle into local output coordinates.
   if (out->has_mode && out->mode_w > 0 && out->mode_h > 0) {
     int s = out->scale > 0 ? out->scale : 1;
+    int lw = 0;
+    int lh = 0;
+    output_logical_size(out, &lw, &lh);
     int local_x = x - out->x;
     int local_y = y - out->y;
     if (local_x < 0) {
@@ -685,6 +716,12 @@ MMBitmapRef capture_screen_wayland_impl(int32_t x, int32_t y, int32_t w,
     }
     if (local_y < 0) {
       local_y = 0;
+    }
+    if (lw > 0 && local_x > lw) {
+      local_x = lw;
+    }
+    if (lh > 0 && local_y > lh) {
+      local_y = lh;
     }
     x = local_x * s;
     y = local_y * s;
