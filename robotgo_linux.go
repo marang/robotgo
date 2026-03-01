@@ -1,5 +1,6 @@
-// Copyright 2016 The go-vgo Project Developers. See the COPYRIGHT
-// file at the top-level directory of this distribution and at
+// Copyright (c) 2016-2025 AtomAI, All rights reserved.
+//
+// See the COPYRIGHT file at the top-level directory of this distribution and at
 // https://github.com/go-vgo/robotgo/blob/master/LICENSE
 //
 // Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
@@ -163,7 +164,7 @@ func ActivePid(pid int, args ...int) error {
 	}
 
 	// get the xid from pid
-	xid, err := GetXidFromPid(xu, pid)
+	xid, err := GetXidByPid(xu, pid)
 	if err != nil {
 		return err
 	}
@@ -187,12 +188,19 @@ func GetXid(xu *xgbutil.XUtil, pid int) (xproto.Window, error) {
 		}
 	}
 
-	xid, err := GetXidFromPid(xu, pid)
+	xid, err := GetXidByPid(xu, pid)
 	return xid, err
 }
 
+// Deprecated: use the GetXidByPid(),
+//
 // GetXidFromPid get the xid from pid
 func GetXidFromPid(xu *xgbutil.XUtil, pid int) (xproto.Window, error) {
+	return GetXidByPid(xu, pid)
+}
+
+// GetXidByPid get the xid from pid
+func GetXidByPid(xu *xgbutil.XUtil, pid int) (xproto.Window, error) {
 	windows, err := ewmh.ClientListGet(xu)
 	if err != nil {
 		return 0, err

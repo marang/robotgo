@@ -1,5 +1,6 @@
-// Copyright 2016 The go-vgo Project Developers. See the COPYRIGHT
-// file at the top-level directory of this distribution and at
+// Copyright (c) 2016-2025 AtomAI, All rights reserved.
+//
+// See the COPYRIGHT file at the top-level directory of this distribution and at
 // https://github.com/go-vgo/robotgo/blob/master/LICENSE
 //
 // Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
@@ -116,4 +117,28 @@ Keys are supported:
 	"lights_kbd_toggle"	 Toggle keyboard backlight on/off			No Windows support
 	"lights_kbd_up"		 Turn up keyboard backlight brightness		No Windows support
 	"lights_kbd_down"	 Turn down keyboard backlight brightness	No Windows support
+*/
+
+/*
+## Type Conversion
+
+|     | type conversion	    |  func
+|-----|---------------------|----------------------
+|	*	| robotgo.Bitmap -> robotgo.CBitmap | robotgo.ToCBitmap()
+|		| robotgo.Bitmap -> *image.RGBA | robotgo.ToRGBAGo()
+|	*	| robotgo.CBitmap -> C.MMBitmapRef | robotgo.ToMMBitmapRef()
+|		| robotgo.CBitmap -> robotgo.Bitmap | robotgo.ToBitmap()
+|		| robotgo.CBitmap -> image.Image | robotgo.ToImage()
+|		| robotgo.CBitmap -> *image.RGBA | robotgo.ToRGBA()
+|	*	| C.MMBitmapRef -> robotgo.CBitmap | robotgo.CBitmap()
+|	*	| image.Image -> robotgo.Bitmap | robotgo.ImgToBitmap()
+|		| image.Image -> robotgo.CBitmap | robotgo.ImgToCBitmap()
+|		| image.Image -> []byte | robotgo.ToByteImg()
+|		| image.Image -> string | robotgo.ToStringImg()
+|	*	| *image.RGBA -> robotgo.Bitmap | robotgo.RGBAToBitmap()
+|	*	| []byte -> image.Image | robotgo.ByteToImg()
+|		| []byte-> robotgo.CBitmap | robotgo.ByteToCBitmap()
+|		| []byte -> string | string()
+|	*	| string -> image.Image | robotgo.StrToImg()
+|		| string -> byte | []byte()
 */

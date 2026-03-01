@@ -2,7 +2,10 @@
 
 ## Introduction
 
-This document explains how to contribute changes to the Robotgo project. It assumes you have followed the README.md and [API Document](https://github.com/go-vgo/robotgo/blob/master/docs/doc.md). <!--Sensitive security-related issues should be reported to [security@Robotgo.io](mailto:security@Robotgo.io.)-->
+This document explains how to contribute changes to the Robotgo project. It assumes you have followed the README.md and [API Document](https://github.com/go-vgo/robotgo/blob/master/docs/doc.md).
+Sensitive security-related issues should be reported to [info@atomai.cc](info@atomaicc).
+
+<!-- [security@Robotgo.io](mailto:security@Robotgo.io.) -->
 
 ## Bug reports
 
@@ -53,8 +56,9 @@ Since the `master` branch is a tip version, if you wish to use Robotgo in produc
 Code that you contribute should use the standard copyright header:
 
 ```
-// Copyright 2016 The go-vgo Project Developers. See the COPYRIGHT
-// file at the top-level directory of this distribution and at
+// Copyright (c) 2016-2025 AtomAI, All rights reserved.
+//
+// See the COPYRIGHT file at the top-level directory of this distribution and at
 // https://github.com/go-vgo/robotgo/blob/master/LICENSE
 //
 // Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or

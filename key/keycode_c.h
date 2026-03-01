@@ -69,8 +69,12 @@ MMKeyCode keyCodeForChar(const char c) {
 
 		charStr = CFStringCreateWithCharacters(kCFAllocatorDefault, &character, 1);
 		/* Our values may be NULL (0), so we need to use this function. */
-		if (!CFDictionaryGetValueIfPresent(charToCodeDict, charStr, (const void **)&code)) {
+		/* Use pointer-sized variable to avoid stack overflow on 64-bit systems */
+		const void *codePtr = NULL;
+		if (!CFDictionaryGetValueIfPresent(charToCodeDict, charStr, &codePtr)) {
 			code = UINT16_MAX; /* Error */
+		} else {
+			code = (CGKeyCode)(uintptr_t)codePtr;
 		}
 		CFRelease(charStr);
 
@@ -147,10 +151,17 @@ MMKeyCode keyCodeForChar(const char c) {
 	CFStringRef createStringForKey(CGKeyCode keyCode){
 		// TISInputSourceRef currentKeyboard = TISCopyCurrentASCIICapableKeyboardInputSource();
 		TISInputSourceRef currentKeyboard = TISCopyCurrentKeyboardLayoutInputSource();
+
+		/* Check if currentKeyboard is NULL to avoid crash */
+		if (currentKeyboard == NULL) { return NULL; }
+
 		CFDataRef layoutData = (CFDataRef) TISGetInputSourceProperty(
 			currentKeyboard, kTISPropertyUnicodeKeyLayoutData);
 
-		if (layoutData == nil) { return 0; }
+		if (layoutData == nil) {
+			CFRelease(currentKeyboard);  /* Fix memory leak */
+			return NULL;
+		}
 
 		const UCKeyboardLayout *keyboardLayout = (const UCKeyboardLayout *) CFDataGetBytePtr(layoutData);
 		UInt32 keysDown = 0;
