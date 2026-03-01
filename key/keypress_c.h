@@ -68,7 +68,25 @@
         #ifdef ROBOTGO_USE_WAYLAND
         #include <string.h>
         #include <unistd.h>
-        #include <sys/memfd.h>
+        #if defined(__has_include)
+                #if __has_include(<sys/memfd.h>)
+                        #include <sys/memfd.h>
+                #elif __has_include(<linux/memfd.h>)
+                        #include <linux/memfd.h>
+                        #include <sys/syscall.h>
+                        static int rg_memfd_create(const char *name, unsigned int flags) {
+                                return (int)syscall(SYS_memfd_create, name, flags);
+                        }
+                        #define memfd_create rg_memfd_create
+                #endif
+        #else
+                #include <linux/memfd.h>
+                #include <sys/syscall.h>
+                static int rg_memfd_create(const char *name, unsigned int flags) {
+                        return (int)syscall(SYS_memfd_create, name, flags);
+                }
+                #define memfd_create rg_memfd_create
+        #endif
         struct zwp_virtual_keyboard_manager_v1;
         struct zwp_virtual_keyboard_v1;
         static struct wl_display *wk_display = NULL;
@@ -259,6 +277,80 @@
         static void WL_KEY_EVENT_WAIT(MMKeyCode key, bool is_press) {
                 WL_KEY_EVENT(key, is_press);
                 microsleep(DEADBEEF_UNIFORM(0.0, 0.5));
+        }
+
+        static int WL_SEND_KEYSYM(xkb_keysym_t sym) {
+                if (ensure_wayland_keyboard() != 0 || sym == XKB_KEY_NoSymbol) {
+                        return -1;
+                }
+
+                xkb_keycode_t code = XKB_KEY_NoSymbol;
+                xkb_mod_mask_t mods = 0;
+
+                xkb_keycode_t min = xkb_keymap_min_keycode(wk_keymap);
+                xkb_keycode_t max = xkb_keymap_max_keycode(wk_keymap);
+                for (xkb_keycode_t c = min; c <= max && code == XKB_KEY_NoSymbol; c++) {
+                        xkb_level_index_t levels = xkb_keymap_num_levels_for_key(wk_keymap, c, 0);
+                        if (levels == 0) {
+                                levels = 1;
+                        }
+
+                        for (xkb_level_index_t level = 0; level < levels; level++) {
+                                const xkb_keysym_t *syms = NULL;
+                                int n = xkb_keymap_key_get_syms_by_level(wk_keymap, c, 0, level, &syms);
+                                for (int i = 0; i < n; i++) {
+                                        if (syms[i] == sym) {
+                                                code = c;
+                                                size_t num_mods = 0;
+                                                const xkb_mod_mask_t *level_mods =
+                                                        xkb_keymap_key_get_mods_for_level(wk_keymap, c, 0, level, &num_mods);
+                                                if (num_mods > 0 && level_mods != NULL) {
+                                                        mods = level_mods[0];
+                                                } else if (level == 1) {
+                                                        mods = XKB_MOD_MASK_SHIFT;
+                                                }
+                                                break;
+                                        }
+                                }
+                                if (code != XKB_KEY_NoSymbol) {
+                                        break;
+                                }
+                        }
+                }
+
+                if (code == XKB_KEY_NoSymbol) {
+                        code = keysym_to_keycode(wk_keymap, sym);
+                }
+                if (code == XKB_KEY_NoSymbol || code < 8) {
+                        return -1;
+                }
+
+                xkb_mod_mask_t prev_mods = wk_modifiers;
+                xkb_mod_mask_t send_mods = prev_mods | mods;
+                if (send_mods != prev_mods) {
+                        wk_modifiers = send_mods;
+                        zwp_virtual_keyboard_v1_modifiers(wk_vkeyboard, wk_modifiers, 0, 0, 0);
+                }
+
+                uint32_t evdev = (uint32_t)(code - 8);
+                zwp_virtual_keyboard_v1_key(wk_vkeyboard, 0, evdev, WL_KEYBOARD_KEY_STATE_PRESSED);
+                zwp_virtual_keyboard_v1_key(wk_vkeyboard, 0, evdev, WL_KEYBOARD_KEY_STATE_RELEASED);
+
+                if (send_mods != prev_mods) {
+                        wk_modifiers = prev_mods;
+                        zwp_virtual_keyboard_v1_modifiers(wk_vkeyboard, wk_modifiers, 0, 0, 0);
+                }
+
+                wl_display_flush(wk_display);
+                return 0;
+        }
+
+        static size_t utf8_char_len(unsigned char c) {
+                if ((c & 0x80) == 0x00) return 1;
+                if ((c & 0xE0) == 0xC0) return 2;
+                if ((c & 0xF0) == 0xE0) return 3;
+                if ((c & 0xF8) == 0xF0) return 4;
+                return 1;
         }
         #endif /* ROBOTGO_USE_WAYLAND */
 
@@ -558,6 +650,38 @@ void unicodeType(const unsigned value, uintptr pid, int8_t isPid) {
 
 #if defined(IS_LINUX)
 	int input_utf(const char *utf) {
+#ifdef ROBOTGO_USE_WAYLAND
+                if (detectDisplayServer() == Wayland) {
+                        if (utf == NULL || *utf == '\0') {
+                                return -1;
+                        }
+
+                        xkb_keysym_t named = xkb_keysym_from_name(utf, XKB_KEYSYM_CASE_INSENSITIVE);
+                        if (named != XKB_KEY_NoSymbol) {
+                                return WL_SEND_KEYSYM(named);
+                        }
+
+                        const unsigned char *p = (const unsigned char *)utf;
+                        while (*p) {
+                                size_t n = utf8_char_len(*p);
+                                char buf[5] = {0};
+                                for (size_t i = 0; i < n && p[i] != '\0' && i < sizeof(buf)-1; i++) {
+                                        buf[i] = (char)p[i];
+                                }
+
+                                xkb_keysym_t sym = xkb_utf8_to_keysym(buf);
+                                if (sym == XKB_KEY_NoSymbol || WL_SEND_KEYSYM(sym) != 0) {
+                                        return -1;
+                                }
+
+                                p += n;
+                                microsleep(DEADBEEF_UNIFORM(0.0, 0.5));
+                        }
+
+                        return 0;
+                }
+#endif
+
 		Display *dpy = XOpenDisplay(NULL);
 		KeySym sym = XStringToKeysym(utf);
 		// KeySym sym = XKeycodeToKeysym(dpy, utf);
@@ -579,8 +703,6 @@ void unicodeType(const unsigned value, uintptr pid, int8_t isPid) {
 		XCloseDisplay(dpy);
 		return 0;
         }
-
-        // Wayland input_utf not implemented
 #else
         int input_utf(const char *utf){
                 return 0;

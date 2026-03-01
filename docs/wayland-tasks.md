@@ -1,13 +1,20 @@
 Wayland Support — Remaining Tasks
 
+Current implementation baseline:
+
+- Display server detection (`x11`/`wayland`) is in place.
+- Mouse and key input have Wayland backends.
+- Screen capture prefers Wayland screencopy and falls back to portal.
+- `ROBOTGO_FORCE_PORTAL=1` is supported for forcing portal capture.
+
 - Screen Capture:
   - Validate on wlroots, GNOME and KDE.
   - Handle fractional scaling and output transforms.
   - Add multi-output selection using `xdg-output`; choose target output.
   - Region-crop correctness tests across backends.
 - Portal Path:
-  - Finalize docs/troubleshooting for xdg-desktop-portal requirements and prompts.
-  - Consider optional screencast (PipeWire) path if needed (beyond Screenshot API).
+  - Expand troubleshooting for xdg-desktop-portal backend selection and consent prompts.
+  - Decide whether to add a full screencast/PipeWire stream path in addition to current screenshot fallback.
 - Keyboard Input:
   - Add Unicode typing via xkbcommon compose/keysyms.
   - Verify modifier synchronization and layout handling under various layouts.
@@ -17,7 +24,7 @@ Wayland Support — Remaining Tasks
   - Add resource‑leak checks for Wayland window helpers.
 - Build/Tooling:
   - Document pkg-config deps and `wayland-scanner` generation steps; ensure protocol headers are vendored.
-  - Keep build tags consistent (`linux,wayland` for native; pure-Go portal on linux).
+  - Keep build tags consistent (`linux,wayland` for native capture and `linux,portal` for explicit portal package path).
 - CI/Testing:
   - Add CI jobs with headless Weston for screencopy (dmabuf + wl_shm) and portal.
   - Tests for dmabuf vs wl_shm selection; bounds across outputs.
