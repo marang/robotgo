@@ -134,7 +134,7 @@ func ps() {
 		fmt.Println("pid exists is", isExist)
 
 		if err := robotgo.Kill(100); err != nil {
-			fmt.Println(err)
+			fmt.Println("failed to kill process, err:", err)
 		}
 	}
 
@@ -155,20 +155,31 @@ func window() {
 	////////////////////////////////////////////////////////////////////////////////
 	// Window Handle
 	////////////////////////////////////////////////////////////////////////////////
-
+	fmt.Println("\n1. alert")
 	alert()
+
 	//
+	fmt.Println("\n2. get")
 	get()
 
+	fmt.Println("\n3. findIds")
 	findIds()
+
+	fmt.Println("\n4. active")
 	active()
 
+	fmt.Println("\n5. findName")
 	findName()
+
 	//
+	fmt.Println("\n6. ps")
 	ps()
 
 	// close current Window
-	robotgo.CloseWindow()
+	pid := robotgo.GetPid()
+	fmt.Println("\n7. close window and kill process in 10 seconds", pid)
+	robotgo.Sleep(10)
+	robotgo.CloseWindowKill(pid)
 }
 
 func main() {

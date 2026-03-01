@@ -51,16 +51,17 @@ package robotgo
 import "C"
 
 import (
-    "errors"
-    "fmt"
-    "context"
-    "image"
-    "os"
-    "runtime"
-    "time"
-    "unsafe"
-    "github.com/vcaesar/tt"
-    portalpkg "github.com/marang/robotgo/screen/portal"
+	"context"
+	"errors"
+	"fmt"
+	"image"
+	"os"
+	"runtime"
+	"time"
+	"unsafe"
+
+	portalpkg "github.com/marang/robotgo/screen/portal"
+	"github.com/vcaesar/tt"
 )
 
 const (
@@ -312,11 +313,11 @@ func RgbToHex(r, g, b uint8) C.uint32_t {
 func GetPxColor(x, y int, displayId ...int) (C.MMRGBHex, error) {
 	display := displayIdx(displayId...)
 
-    if runtime.GOOS == "linux" && (DetectDisplayServer() == DisplayServerWayland || os.Getenv("ROBOTGO_FORCE_PORTAL") != "") {
-        bit, err := CaptureScreen(x, y, 1, 1, display)
-        if err != nil {
-            return 0, err
-        }
+	if runtime.GOOS == "linux" && (DetectDisplayServer() == DisplayServerWayland || os.Getenv("ROBOTGO_FORCE_PORTAL") != "") {
+		bit, err := CaptureScreen(x, y, 1, 1, display)
+		if err != nil {
+			return 0, err
+		}
 		defer FreeBitmap(bit)
 		return C.mmrgb_hex_at(C.MMBitmapRef(bit), 0, 0), nil
 	}
@@ -389,12 +390,12 @@ func Scaled1(x int, f float64) int {
 
 // GetScreenSize get the screen size
 func GetScreenSize() (int, int) {
-    if runtime.GOOS == "linux" && DetectDisplayServer() == DisplayServerWayland {
-        // Avoid X11 calls under Wayland-only sessions.
-        return 0, 0
-    }
-    size := C.getMainDisplaySize()
-    return int(size.w), int(size.h)
+	if runtime.GOOS == "linux" && DetectDisplayServer() == DisplayServerWayland {
+		// Avoid X11 calls under Wayland-only sessions.
+		return 0, 0
+	}
+	size := C.getMainDisplaySize()
+	return int(size.w), int(size.h)
 }
 
 // GetScreenRect get the screen rect (x, y, w, h)
@@ -489,19 +490,19 @@ func CaptureScreen(args ...int) (CBitmap, error) {
 			bit := C.capture_screen_wayland(x, y, w, h, C.int32_t(displayId), C.int8_t(isPid), C.int32_t(waylandBackend), &cerr)
 			if bit == nil {
 				err := waylandErr(cerr)
-            // Try Go portal screenshot (real pixels) when available.
-            if img, pErr := portalpkg.CaptureRegionImage(context.Background(), int(x), int(y), int(w), int(h)); pErr == nil && img != nil {
-                cb := ImgToCBitmap(img)
-                lastBackend = BackendPortal
-                return cb, nil
-            }
-            // Fallback to C stub portal (may be a stub build).
+				// Try Go portal screenshot (real pixels) when available.
+				if img, pErr := portalpkg.CaptureRegionImage(context.Background(), int(x), int(y), int(w), int(h)); pErr == nil && img != nil {
+					cb := ImgToCBitmap(img)
+					lastBackend = BackendPortal
+					return cb, nil
+				}
+				// Fallback to C stub portal (may be a stub build).
 				var perr C.int32_t
 				pbit := C.capture_screen_portal(x, y, w, h, C.int32_t(displayId), C.int8_t(isPid), &perr)
-            if pbit != nil {
-                lastBackend = BackendPortal
-                return CBitmap(pbit), nil
-            }
+				if pbit != nil {
+					lastBackend = BackendPortal
+					return CBitmap(pbit), nil
+				}
 				if errors.Is(err, ErrNoScreencopy) {
 					return nil, fmt.Errorf("%w; portal capture failed: %d", err, int(perr))
 				}
@@ -589,29 +590,29 @@ func ToBitmap(bit CBitmap) Bitmap {
 
 // ToCBitmap trans Bitmap to C.MMBitmapRef
 func ToCBitmap(bit Bitmap) CBitmap {
-    total := bit.Bytewidth * bit.Height
-    var cbuf *C.uint8_t
-    if total > 0 {
-        // Allocate C-owned buffer and copy pixel data from Go memory to avoid
-        // freeing Go-allocated memory in bitmap_dealloc.
-        csize := C.size_t(total)
-        cptr := C.malloc(csize)
-        if cptr != nil {
-            // Construct a Go slice view over the source buffer.
-            src := unsafe.Slice((*byte)(unsafe.Pointer(bit.ImgBuf)), total)
-            C.memcpy(cptr, unsafe.Pointer(&src[0]), csize)
-            cbuf = (*C.uint8_t)(cptr)
-        }
-    }
-    cbitmap := C.createMMBitmap_c(
-        cbuf,
-        C.int32_t(bit.Width),
-        C.int32_t(bit.Height),
-        C.int32_t(bit.Bytewidth),
-        C.uint8_t(bit.BitsPixel),
-        C.uint8_t(bit.BytesPerPixel),
-    )
-    return CBitmap(cbitmap)
+	total := bit.Bytewidth * bit.Height
+	var cbuf *C.uint8_t
+	if total > 0 {
+		// Allocate C-owned buffer and copy pixel data from Go memory to avoid
+		// freeing Go-allocated memory in bitmap_dealloc.
+		csize := C.size_t(total)
+		cptr := C.malloc(csize)
+		if cptr != nil {
+			// Construct a Go slice view over the source buffer.
+			src := unsafe.Slice((*byte)(unsafe.Pointer(bit.ImgBuf)), total)
+			C.memcpy(cptr, unsafe.Pointer(&src[0]), csize)
+			cbuf = (*C.uint8_t)(cptr)
+		}
+	}
+	cbitmap := C.createMMBitmap_c(
+		cbuf,
+		C.int32_t(bit.Width),
+		C.int32_t(bit.Height),
+		C.int32_t(bit.Bytewidth),
+		C.uint8_t(bit.BitsPixel),
+		C.uint8_t(bit.BytesPerPixel),
+	)
+	return CBitmap(cbitmap)
 }
 
 // ToImage convert C.MMBitmapRef to standard image.Image
@@ -810,14 +811,14 @@ func MoveArgs(x, y int) (int, int) {
 
 // MoveRelative move mouse with relative
 func MoveRelative(x, y int) {
-    if runtime.GOOS == "linux" && DetectDisplayServer() == DisplayServerWayland {
-        dx, dy := x, y
-        dx, dy = MoveScale(dx, dy)
-        C.moveMouseRelative(C.int32_t(dx), C.int32_t(dy))
-        MilliSleep(MouseSleep)
-        return
-    }
-    Move(MoveArgs(x, y))
+	if runtime.GOOS == "linux" && DetectDisplayServer() == DisplayServerWayland {
+		dx, dy := x, y
+		dx, dy = MoveScale(dx, dy)
+		C.moveMouseRelative(C.int32_t(dx), C.int32_t(dy))
+		MilliSleep(MouseSleep)
+		return
+	}
+	Move(MoveArgs(x, y))
 }
 
 // MoveSmoothRelative move mouse smooth with relative
@@ -1132,6 +1133,62 @@ func CloseWindow(args ...int) {
 	}
 
 	C.close_window_by_PId(C.uintptr(pid), C.int8_t(isPid))
+}
+
+// CloseWindowKill closes the target window and ensures the owning process
+// terminates. If no arguments are provided, it targets the currently selected
+// window (same as CloseWindow()). If a PID (or handle when NotPid is set) is
+// provided, it targets that window. After issuing a normal close, it waits a
+// short time for graceful shutdown and, if the process is still alive, it will
+// force-kill it.
+//
+// Usage:
+//
+//	CloseWindowKill()           // close current window and kill if needed
+//	CloseWindowKill(pid)        // close by pid and kill if needed
+//	CloseWindowKill(pid, 1)     // on Windows, treat first arg as handle
+func CloseWindowKill(args ...int) error {
+	// Determine target pid and whether argument represents pid or handle.
+	var (
+		pid   int
+		isPid int
+	)
+
+	if len(args) <= 0 {
+		// Capture pid of the currently selected window before closing it.
+		pid = GetPid()
+		C.close_main_window()
+	} else {
+		pid = args[0]
+		if len(args) > 1 || NotPid {
+			isPid = 1
+		}
+		// If the argument represents a handle (Windows/X11 path), resolve its PID
+		// before closing so we can verify/kill the correct process afterward.
+		if isPid == 1 {
+			SetHandle(pid)
+			pid = GetPid()
+		}
+		C.close_window_by_PId(C.uintptr(args[0]), C.int8_t(isPid))
+	}
+
+	if pid <= 0 {
+		// Nothing more we can do.
+		return nil
+	}
+
+	// Give the process a short opportunity to exit cleanly.
+	deadline := time.Now().Add(1500 * time.Millisecond)
+	for time.Now().Before(deadline) {
+		exist, _ := PidExists(pid)
+		if !exist {
+			return nil
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+
+	// Force terminate if still running.
+	return Kill(pid)
 }
 
 // SetHandle set the window handle
