@@ -12,6 +12,7 @@
 #include <fcntl.h>
 #include <gbm.h>
 #include <xf86drm.h>
+#include <limits.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -57,6 +58,62 @@ struct feedback {
 struct output {
   struct wl_list link;
   struct wl_output *wl_output;
+  int32_t x;
+  int32_t y;
+  int32_t mode_w;
+  int32_t mode_h;
+  int32_t scale;
+  int has_mode;
+  uint32_t name;
+};
+
+static void output_geometry(void *data, struct wl_output *output, int32_t x,
+                            int32_t y, int32_t physical_width,
+                            int32_t physical_height, int32_t subpixel,
+                            const char *make, const char *model,
+                            int32_t transform) {
+  (void)output;
+  (void)physical_width;
+  (void)physical_height;
+  (void)subpixel;
+  (void)make;
+  (void)model;
+  (void)transform;
+  struct output *out = data;
+  out->x = x;
+  out->y = y;
+}
+
+static void output_mode(void *data, struct wl_output *output, uint32_t flags,
+                        int32_t width, int32_t height, int32_t refresh) {
+  (void)output;
+  (void)refresh;
+  struct output *out = data;
+  if (flags & WL_OUTPUT_MODE_CURRENT) {
+    out->mode_w = width;
+    out->mode_h = height;
+    out->has_mode = 1;
+  }
+}
+
+static void output_done(void *data, struct wl_output *output) {
+  (void)data;
+  (void)output;
+}
+
+static void output_scale(void *data, struct wl_output *output, int32_t factor) {
+  (void)output;
+  struct output *out = data;
+  if (factor > 0) {
+    out->scale = factor;
+  }
+}
+
+static const struct wl_output_listener output_listener = {
+    .geometry = output_geometry,
+    .mode = output_mode,
+    .done = output_done,
+    .scale = output_scale,
 };
 
 int drm_find_render_node(dev_t dev) {
@@ -143,7 +200,14 @@ static void registry_global(void *data, struct wl_registry *registry,
     if (!out) {
       return;
     }
-    out->wl_output = wl_registry_bind(registry, name, &wl_output_interface, 2);
+    memset(out, 0, sizeof(*out));
+    out->scale = 1;
+    out->name = name;
+    uint32_t ver = version > 2 ? 2 : version;
+    out->wl_output = wl_registry_bind(registry, name, &wl_output_interface, ver);
+    if (out->wl_output) {
+      wl_output_add_listener(out->wl_output, &output_listener, out);
+    }
     wl_list_insert(&cap->outputs, &out->link);
   }
 }
@@ -527,6 +591,8 @@ MMBitmapRef capture_screen_wayland_impl(int32_t x, int32_t y, int32_t w,
   }
   wl_registry_add_listener(cap.registry, &registry_listener, &cap);
   wl_display_roundtrip(cap.display);
+  // Drain output listeners so geometry/mode/scale metadata is populated.
+  wl_display_roundtrip(cap.display);
 
   if (backend == WAYLAND_BACKEND_WL_SHM) {
     if (cap.dmabuf) {
@@ -571,7 +637,65 @@ MMBitmapRef capture_screen_wayland_impl(int32_t x, int32_t y, int32_t w,
       wl_display_roundtrip(cap.display);
     }
   }
-  struct output *out = wl_container_of(cap.outputs.next, out, link);
+  struct output *out = NULL;
+  if (display_id >= 0) {
+    int idx = 0;
+    struct output *it;
+    wl_list_for_each(it, &cap.outputs, link) {
+      if (idx == display_id) {
+        out = it;
+        break;
+      }
+      idx++;
+    }
+  }
+  if (!out && (x != 0 || y != 0)) {
+    struct output *it;
+    wl_list_for_each(it, &cap.outputs, link) {
+      if (!it->has_mode || it->mode_w <= 0 || it->mode_h <= 0) {
+        continue;
+      }
+      int s = it->scale > 0 ? it->scale : 1;
+      int lw = it->mode_w / s;
+      int lh = it->mode_h / s;
+      if (x >= it->x && y >= it->y && x < it->x + lw && y < it->y + lh) {
+        out = it;
+        break;
+      }
+    }
+  }
+  if (!out) {
+    out = wl_container_of(cap.outputs.next, out, link);
+  }
+  if (!out) {
+    if (err) {
+      *err = ScreengrabErrNoOutputs;
+    }
+    cleanup_capture(&cap);
+    return NULL;
+  }
+
+  // Convert global logical capture rectangle into local output coordinates.
+  if (out->has_mode && out->mode_w > 0 && out->mode_h > 0) {
+    int s = out->scale > 0 ? out->scale : 1;
+    int local_x = x - out->x;
+    int local_y = y - out->y;
+    if (local_x < 0) {
+      local_x = 0;
+    }
+    if (local_y < 0) {
+      local_y = 0;
+    }
+    x = local_x * s;
+    y = local_y * s;
+    if (w > 0) {
+      w = w * s;
+    }
+    if (h > 0) {
+      h = h * s;
+    }
+  }
+
   cap.frame =
       zwlr_screencopy_manager_v1_capture_output(cap.manager, 0, out->wl_output);
   zwlr_screencopy_frame_v1_add_listener(cap.frame, &frame_listener, &cap);
