@@ -96,6 +96,10 @@ Status:
   - Must be set for Wayland socket creation.
 - `ROBOTGO_FORCE_PORTAL=1`
   - Forces portal capture path for Linux capture tests.
+- `ROBOTGO_WAYLAND_BACKEND`
+  - Overrides Linux capture backend selection (`auto|dmabuf|wl_shm|portal`).
+- `ROBOTGO_CAPTURE_DEBUG=1`
+  - Enables backend/fallback diagnostic logs for capture flow.
 
 ## Recommended Local Sequence
 

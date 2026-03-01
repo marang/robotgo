@@ -43,14 +43,16 @@ func GetBounds(pid int, args ...int) (int, int, int, int) {
 		display := C.wl_display_connect(nil)
 		if display == nil {
 			log.Println("wl_display_connect failed")
-			return 0, 0, 0, 0
+			rect := GetScreenRect(-1)
+			return rect.X, rect.Y, rect.W, rect.H
 		}
 		defer C.wl_display_disconnect(display)
 
 		var w, h C.int
 		if C.get_bounds_wayland(display, &w, &h) != 0 {
 			log.Println("get_bounds_wayland failed")
-			return 0, 0, 0, 0
+			rect := GetScreenRect(-1)
+			return rect.X, rect.Y, rect.W, rect.H
 		}
 		return 0, 0, int(w), int(h)
 	}
@@ -77,14 +79,16 @@ func GetClient(pid int, args ...int) (int, int, int, int) {
 		display := C.wl_display_connect(nil)
 		if display == nil {
 			log.Println("wl_display_connect failed")
-			return 0, 0, 0, 0
+			rect := GetScreenRect(-1)
+			return rect.X, rect.Y, rect.W, rect.H
 		}
 		defer C.wl_display_disconnect(display)
 
 		var w, h C.int
 		if C.get_bounds_wayland(display, &w, &h) != 0 {
 			log.Println("get_bounds_wayland failed")
-			return 0, 0, 0, 0
+			rect := GetScreenRect(-1)
+			return rect.X, rect.Y, rect.W, rect.H
 		}
 		return 0, 0, int(w), int(h)
 	}
@@ -124,6 +128,10 @@ func internalGetTitle(pid int, args ...int) string {
 // ActivePidC active the window by Pid,
 // If args[0] > 0 on the unix platform via a xid to active
 func ActivePidC(pid int, args ...int) error {
+	if base.DetectDisplayServer() == base.Wayland {
+		return waylandWindowNotSupported("activate window")
+	}
+
 	var isPid int
 	if len(args) > 0 || NotPid {
 		isPid = 1
@@ -146,6 +154,10 @@ func ActivePidC(pid int, args ...int) error {
 // If args[0] > 0 on the Windows platform via a window handle to active,
 // If args[0] > 0 on the unix platform via a xid to active
 func ActivePid(pid int, args ...int) error {
+	if base.DetectDisplayServer() == base.Wayland {
+		return waylandWindowNotSupported("activate window")
+	}
+
 	if xu == nil {
 		var err error
 		xu, err = xgbutil.NewConn()

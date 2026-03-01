@@ -6,7 +6,36 @@
     #include <X11/Xlib.h>
     #include <X11/Xresource.h>
     #include "../base/os.h"
+    #if defined(ROBOTGO_USE_WAYLAND)
+        #include <wayland-client.h>
+        #include "../window/get_bounds_wayland.h"
+    #endif
     // #include "../base/xdisplay_c.h"
+#endif
+
+#if defined(IS_LINUX) && defined(ROBOTGO_USE_WAYLAND)
+static inline int wayland_main_bounds(int32_t *w, int32_t *h) {
+    struct wl_display *display = wl_display_connect(NULL);
+    if (!display) {
+        return -1;
+    }
+
+    int ww = 0;
+    int hh = 0;
+    int rc = get_bounds_wayland(display, &ww, &hh);
+    wl_display_disconnect(display);
+    if (rc != 0 || ww <= 0 || hh <= 0) {
+        return -1;
+    }
+
+    if (w) {
+        *w = (int32_t)ww;
+    }
+    if (h) {
+        *h = (int32_t)hh;
+    }
+    return 0;
+}
 #endif
 
 static inline intptr scaleX();
@@ -83,6 +112,13 @@ static inline MMSizeInt32 getMainDisplaySize(void) {
 #elif defined(IS_LINUX)
     // debug: log which display server branch we take
     if (detectDisplayServer() == Wayland) {
+        int32_t w = 0;
+        int32_t h = 0;
+#if defined(ROBOTGO_USE_WAYLAND)
+        if (wayland_main_bounds(&w, &h) == 0) {
+            return MMSizeInt32Make(w, h);
+        }
+#endif
         return MMSizeInt32Make(0, 0);
     }
     Display *display = XGetMainDisplay();
@@ -114,6 +150,13 @@ static inline MMRectInt32 getScreenRect(int32_t display_id) {
 		(int32_t)size.width, (int32_t)size.height);
 #elif defined(IS_LINUX)
     if (detectDisplayServer() == Wayland) {
+        int32_t w = 0;
+        int32_t h = 0;
+#if defined(ROBOTGO_USE_WAYLAND)
+        if (wayland_main_bounds(&w, &h) == 0) {
+            return MMRectInt32Make(0, 0, w, h);
+        }
+#endif
         return MMRectInt32Make(0, 0, 0, 0);
     }
     Display *display = XGetMainDisplay();

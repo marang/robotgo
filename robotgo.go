@@ -55,8 +55,10 @@ import (
 	"errors"
 	"fmt"
 	"image"
+	"log"
 	"os"
 	"runtime"
+	"strings"
 	"time"
 	"unsafe"
 
@@ -154,7 +156,37 @@ var (
 	ErrDmabufMap       = errors.New("screencopy dmabuf map failed")
 	ErrWaylandFailed   = errors.New("wayland capture failed")
 	ErrPortalFailed    = errors.New("portal capture failed")
+	ErrNotSupported    = errors.New("operation not supported on current platform/backend")
 )
+
+func waylandWindowNotSupported(op string) error {
+	return fmt.Errorf("%w: %s on Wayland", ErrNotSupported, op)
+}
+
+func isWaylandSession() bool {
+	return runtime.GOOS == "linux" && DetectDisplayServer() == DisplayServerWayland
+}
+
+func captureDebugf(format string, args ...interface{}) {
+	if os.Getenv("ROBOTGO_CAPTURE_DEBUG") != "" {
+		log.Printf("robotgo capture: "+format, args...)
+	}
+}
+
+func waylandBackendFromEnv() (WaylandBackend, bool) {
+	switch strings.ToLower(strings.TrimSpace(os.Getenv("ROBOTGO_WAYLAND_BACKEND"))) {
+	case "":
+		return WaylandBackendAuto, false
+	case "auto":
+		return WaylandBackendAuto, true
+	case "dmabuf":
+		return WaylandBackendDmabuf, true
+	case "wl_shm", "wlshm":
+		return WaylandBackendWlShm, true
+	default:
+		return WaylandBackendAuto, false
+	}
+}
 
 func waylandErr(code C.int32_t) error {
 	switch code {
@@ -475,24 +507,32 @@ func CaptureScreen(args ...int) (CBitmap, error) {
 	if runtime.GOOS == "linux" {
 		// Allow tests or environments to force the portal backend regardless
 		// of the detected display server.
-		if os.Getenv("ROBOTGO_FORCE_PORTAL") != "" {
+		forcePortal := os.Getenv("ROBOTGO_FORCE_PORTAL") != "" || strings.EqualFold(strings.TrimSpace(os.Getenv("ROBOTGO_WAYLAND_BACKEND")), "portal")
+		if forcePortal {
 			var perr C.int32_t
 			pbit := C.capture_screen_portal(x, y, w, h, C.int32_t(displayId), C.int8_t(isPid), &perr)
 			if pbit == nil {
 				return nil, fmt.Errorf("portal capture failed: %d", int(perr))
 			}
+			captureDebugf("forced portal backend (display=%d, rect=%d,%d %dx%d)", displayId, int(x), int(y), int(w), int(h))
 			lastBackend = BackendPortal
 			return CBitmap(pbit), nil
 		}
 		switch ds {
 		case DisplayServerWayland:
+			backend := waylandBackend
+			if envBackend, ok := waylandBackendFromEnv(); ok {
+				backend = envBackend
+			}
 			var cerr C.int32_t
-			bit := C.capture_screen_wayland(x, y, w, h, C.int32_t(displayId), C.int8_t(isPid), C.int32_t(waylandBackend), &cerr)
+			bit := C.capture_screen_wayland(x, y, w, h, C.int32_t(displayId), C.int8_t(isPid), C.int32_t(backend), &cerr)
 			if bit == nil {
 				err := waylandErr(cerr)
+				captureDebugf("wayland screencopy failed: %v", err)
 				// Try Go portal screenshot (real pixels) when available.
 				if img, pErr := portalpkg.CaptureRegionImage(context.Background(), int(x), int(y), int(w), int(h)); pErr == nil && img != nil {
 					cb := ImgToCBitmap(img)
+					captureDebugf("fallback to Go portal screenshot backend")
 					lastBackend = BackendPortal
 					return cb, nil
 				}
@@ -500,6 +540,7 @@ func CaptureScreen(args ...int) (CBitmap, error) {
 				var perr C.int32_t
 				pbit := C.capture_screen_portal(x, y, w, h, C.int32_t(displayId), C.int8_t(isPid), &perr)
 				if pbit != nil {
+					captureDebugf("fallback to C portal backend")
 					lastBackend = BackendPortal
 					return CBitmap(pbit), nil
 				}
@@ -1063,7 +1104,17 @@ func IsValid() bool {
 
 // SetActive set the window active
 func SetActive(win Handle) {
+	_ = SetActiveE(win)
+}
+
+// SetActiveE sets the active window and returns an explicit unsupported error
+// for Wayland sessions where global window activation is not available.
+func SetActiveE(win Handle) error {
+	if isWaylandSession() {
+		return waylandWindowNotSupported("set active window")
+	}
 	SetActiveC(C.MData(win))
+	return nil
 }
 
 // SetActiveC set the window active
@@ -1085,6 +1136,16 @@ func GetActiveC() C.MData {
 
 // MinWindow set the window min
 func MinWindow(pid int, args ...interface{}) {
+	_ = MinWindowE(pid, args...)
+}
+
+// MinWindowE sets the window min state and returns an explicit unsupported
+// error on Wayland sessions.
+func MinWindowE(pid int, args ...interface{}) error {
+	if isWaylandSession() {
+		return waylandWindowNotSupported("minimize window")
+	}
+
 	var (
 		state = true
 		isPid int
@@ -1098,10 +1159,21 @@ func MinWindow(pid int, args ...interface{}) {
 	}
 
 	C.min_window(C.uintptr(pid), C.bool(state), C.int8_t(isPid))
+	return nil
 }
 
 // MaxWindow set the window max
 func MaxWindow(pid int, args ...interface{}) {
+	_ = MaxWindowE(pid, args...)
+}
+
+// MaxWindowE sets the window max state and returns an explicit unsupported
+// error on Wayland sessions.
+func MaxWindowE(pid int, args ...interface{}) error {
+	if isWaylandSession() {
+		return waylandWindowNotSupported("maximize window")
+	}
+
 	var (
 		state = true
 		isPid int
@@ -1115,13 +1187,24 @@ func MaxWindow(pid int, args ...interface{}) {
 	}
 
 	C.max_window(C.uintptr(pid), C.bool(state), C.int8_t(isPid))
+	return nil
 }
 
 // CloseWindow close the window
 func CloseWindow(args ...int) {
+	_ = CloseWindowE(args...)
+}
+
+// CloseWindowE closes the target window and returns an explicit unsupported
+// error on Wayland sessions.
+func CloseWindowE(args ...int) error {
+	if isWaylandSession() {
+		return waylandWindowNotSupported("close window")
+	}
+
 	if len(args) <= 0 {
 		C.close_main_window()
-		return
+		return nil
 	}
 
 	var pid, isPid int
@@ -1133,6 +1216,7 @@ func CloseWindow(args ...int) {
 	}
 
 	C.close_window_by_PId(C.uintptr(pid), C.int8_t(isPid))
+	return nil
 }
 
 // CloseWindowKill closes the target window and ensures the owning process
@@ -1275,17 +1359,28 @@ func cgetTitle(pid, isPid int) string {
 //	ids, _ := robotgo.FindIds()
 //	robotgo.GetTitle(ids[0])
 func GetTitle(args ...int) string {
+	title, _ := GetTitleE(args...)
+	return title
+}
+
+// GetTitleE gets the window title and returns an explicit unsupported error
+// on Wayland sessions.
+func GetTitleE(args ...int) (string, error) {
+	if isWaylandSession() {
+		return "", waylandWindowNotSupported("get window title")
+	}
+
 	if len(args) <= 0 {
 		title := C.get_main_title()
 		gtitle := C.GoString(title)
-		return gtitle
+		return gtitle, nil
 	}
 
 	if len(args) > 1 {
-		return internalGetTitle(args[0], args[1])
+		return internalGetTitle(args[0], args[1]), nil
 	}
 
-	return internalGetTitle(args[0])
+	return internalGetTitle(args[0]), nil
 }
 
 // GetPid get the process id return int32

@@ -88,6 +88,9 @@ freedesktop portal screenshot path.
 Portal fallback requires `xdg-desktop-portal` and a desktop backend (for
 example `xdg-desktop-portal-gnome` or `xdg-desktop-portal-kde`).
 You can force portal capture with `ROBOTGO_FORCE_PORTAL=1`.
+You can also override backend selection with `ROBOTGO_WAYLAND_BACKEND`:
+`auto`, `dmabuf`, `wl_shm`, or `portal`.
+Set `ROBOTGO_CAPTURE_DEBUG=1` to log capture backend decisions.
 
 See `docs/wayland-tasks.md` for the current Wayland support status and remaining tasks.
 

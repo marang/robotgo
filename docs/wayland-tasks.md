@@ -6,6 +6,11 @@ Current implementation baseline:
 - Mouse and key input have Wayland backends.
 - Screen capture prefers Wayland screencopy and falls back to portal.
 - `ROBOTGO_FORCE_PORTAL=1` is supported for forcing portal capture.
+- `ROBOTGO_WAYLAND_BACKEND` (`auto|dmabuf|wl_shm|portal`) is supported.
+- `ROBOTGO_CAPTURE_DEBUG=1` logs backend selection/fallback details.
+- Window-control APIs now expose explicit Wayland NotSupported errors via
+  error-returning variants (`SetActiveE`, `MinWindowE`, `MaxWindowE`,
+  `CloseWindowE`, `GetTitleE`).
 
 - Screen Capture:
   - Validate on wlroots, GNOME and KDE.
@@ -26,7 +31,7 @@ Current implementation baseline:
   - Document pkg-config deps and `wayland-scanner` generation steps; ensure protocol headers are vendored.
   - Keep build tags consistent (`linux,wayland` for native capture and `linux,portal` for explicit portal package path).
 - CI/Testing:
-  - Add CI jobs with headless Weston for screencopy (dmabuf + wl_shm) and portal.
+  - Stabilize CI jobs with headless Weston for screencopy (dmabuf + wl_shm) and portal.
   - Tests for dmabuf vs wl_shm selection; bounds across outputs.
 - Examples/Docs:
   - Add backend selection flags in examples (dmabuf, wl_shm, portal).
