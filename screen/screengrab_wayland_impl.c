@@ -8,6 +8,7 @@
 
 #include "../linux-dmabuf-unstable-v1-client-protocol.h"
 #include "../wlr-screencopy-unstable-v1-client-protocol.h"
+#include "../xdg-output-unstable-v1-client-protocol.h"
 #include <errno.h>
 #include <fcntl.h>
 #include <gbm.h>
@@ -58,17 +59,34 @@ struct feedback {
 struct output {
   struct wl_list link;
   struct wl_output *wl_output;
+  struct zxdg_output_v1 *xdg_output;
   int32_t x;
   int32_t y;
+  int32_t logical_x;
+  int32_t logical_y;
+  int32_t logical_w;
+  int32_t logical_h;
   int32_t mode_w;
   int32_t mode_h;
   int32_t transform;
   int32_t scale;
   int has_mode;
+  int has_logical_pos;
+  int has_logical_size;
   uint32_t name;
 };
 
 static void output_logical_size(const struct output *out, int *lw, int *lh) {
+  if (out->has_logical_size && out->logical_w > 0 && out->logical_h > 0) {
+    if (lw) {
+      *lw = out->logical_w;
+    }
+    if (lh) {
+      *lh = out->logical_h;
+    }
+    return;
+  }
+
   int s = out->scale > 0 ? out->scale : 1;
   int w = out->mode_w > 0 ? out->mode_w / s : 0;
   int h = out->mode_h > 0 ? out->mode_h / s : 0;
@@ -92,6 +110,24 @@ static void output_logical_size(const struct output *out, int *lw, int *lh) {
   }
   if (lh) {
     *lh = h;
+  }
+}
+
+static void output_logical_origin(const struct output *out, int *ox, int *oy) {
+  if (out->has_logical_pos) {
+    if (ox) {
+      *ox = out->logical_x;
+    }
+    if (oy) {
+      *oy = out->logical_y;
+    }
+    return;
+  }
+  if (ox) {
+    *ox = out->x;
+  }
+  if (oy) {
+    *oy = out->y;
   }
 }
 
@@ -145,6 +181,51 @@ static const struct wl_output_listener output_listener = {
     .scale = output_scale,
 };
 
+static void xdg_output_logical_position(void *data, struct zxdg_output_v1 *zxdg_output_v1,
+                                        int32_t x, int32_t y) {
+  (void)zxdg_output_v1;
+  struct output *out = data;
+  out->logical_x = x;
+  out->logical_y = y;
+  out->has_logical_pos = 1;
+}
+
+static void xdg_output_logical_size(void *data, struct zxdg_output_v1 *zxdg_output_v1,
+                                    int32_t width, int32_t height) {
+  (void)zxdg_output_v1;
+  struct output *out = data;
+  out->logical_w = width;
+  out->logical_h = height;
+  out->has_logical_size = 1;
+}
+
+static void xdg_output_done(void *data, struct zxdg_output_v1 *zxdg_output_v1) {
+  (void)data;
+  (void)zxdg_output_v1;
+}
+
+static void xdg_output_name(void *data, struct zxdg_output_v1 *zxdg_output_v1,
+                            const char *name) {
+  (void)data;
+  (void)zxdg_output_v1;
+  (void)name;
+}
+
+static void xdg_output_description(void *data, struct zxdg_output_v1 *zxdg_output_v1,
+                                   const char *description) {
+  (void)data;
+  (void)zxdg_output_v1;
+  (void)description;
+}
+
+static const struct zxdg_output_v1_listener xdg_output_listener = {
+    .logical_position = xdg_output_logical_position,
+    .logical_size = xdg_output_logical_size,
+    .done = xdg_output_done,
+    .name = xdg_output_name,
+    .description = xdg_output_description,
+};
+
 int drm_find_render_node(dev_t dev) {
   int count = drmGetDevices2(0, NULL, 0);
   if (count <= 0) {
@@ -186,6 +267,7 @@ struct capture {
   struct wl_registry *registry;
   struct wl_shm *shm;
   struct zwp_linux_dmabuf_v1 *dmabuf;
+  struct zxdg_output_manager_v1 *xdg_output_manager;
   struct zwlr_screencopy_manager_v1 *manager;
   struct zwlr_screencopy_frame_v1 *frame;
   struct wl_buffer *buffer;
@@ -206,6 +288,17 @@ struct capture {
   int err_code;
 };
 
+static void attach_xdg_output(struct capture *cap, struct output *out) {
+  if (!cap || !out || !cap->xdg_output_manager || !out->wl_output || out->xdg_output) {
+    return;
+  }
+  out->xdg_output =
+      zxdg_output_manager_v1_get_xdg_output(cap->xdg_output_manager, out->wl_output);
+  if (out->xdg_output) {
+    zxdg_output_v1_add_listener(out->xdg_output, &xdg_output_listener, out);
+  }
+}
+
 static void registry_global(void *data, struct wl_registry *registry,
                             uint32_t name, const char *interface,
                             uint32_t version) {
@@ -224,6 +317,16 @@ static void registry_global(void *data, struct wl_registry *registry,
     uint32_t ver = version > 4 ? 4 : version;
     cap->dmabuf =
         wl_registry_bind(registry, name, &zwp_linux_dmabuf_v1_interface, ver);
+  } else if (strcmp(interface, zxdg_output_manager_v1_interface.name) == 0) {
+    uint32_t ver = version > 3 ? 3 : version;
+    cap->xdg_output_manager =
+        wl_registry_bind(registry, name, &zxdg_output_manager_v1_interface, ver);
+    if (cap->xdg_output_manager) {
+      struct output *it;
+      wl_list_for_each(it, &cap->outputs, link) {
+        attach_xdg_output(cap, it);
+      }
+    }
   } else if (strcmp(interface, wl_output_interface.name) == 0) {
     struct output *out = malloc(sizeof(*out));
     if (!out) {
@@ -236,6 +339,7 @@ static void registry_global(void *data, struct wl_registry *registry,
     out->wl_output = wl_registry_bind(registry, name, &wl_output_interface, ver);
     if (out->wl_output) {
       wl_output_add_listener(out->wl_output, &output_listener, out);
+      attach_xdg_output(cap, out);
     }
     wl_list_insert(&cap->outputs, &out->link);
   }
@@ -559,6 +663,9 @@ static void cleanup_capture(struct capture *cap) {
   }
   struct output *out, *tmp;
   wl_list_for_each_safe(out, tmp, &cap->outputs, link) {
+    if (out->xdg_output) {
+      zxdg_output_v1_destroy(out->xdg_output);
+    }
     wl_output_destroy(out->wl_output);
     free(out);
   }
@@ -567,6 +674,9 @@ static void cleanup_capture(struct capture *cap) {
   }
   if (cap->dmabuf) {
     zwp_linux_dmabuf_v1_destroy(cap->dmabuf);
+  }
+  if (cap->xdg_output_manager) {
+    zxdg_output_manager_v1_destroy(cap->xdg_output_manager);
   }
   if (cap->manager) {
     zwlr_screencopy_manager_v1_destroy(cap->manager);
@@ -596,6 +706,10 @@ MMBitmapRef capture_screen_wayland_impl(int32_t x, int32_t y, int32_t w,
                                         int8_t isPid, int32_t backend,
                                         int32_t *err) {
   (void)isPid;
+  int32_t global_x = x;
+  int32_t global_y = y;
+  int32_t global_w = w;
+  int32_t global_h = h;
   if (err) {
     *err = ScreengrabOK;
   }
@@ -685,8 +799,11 @@ MMBitmapRef capture_screen_wayland_impl(int32_t x, int32_t y, int32_t w,
       }
       int lw = 0;
       int lh = 0;
+      int ox = 0;
+      int oy = 0;
       output_logical_size(it, &lw, &lh);
-      if (x >= it->x && y >= it->y && x < it->x + lw && y < it->y + lh) {
+      output_logical_origin(it, &ox, &oy);
+      if (x >= ox && y >= oy && x < ox + lw && y < oy + lh) {
         out = it;
         break;
       }
@@ -703,35 +820,30 @@ MMBitmapRef capture_screen_wayland_impl(int32_t x, int32_t y, int32_t w,
     return NULL;
   }
 
-  // Convert global logical capture rectangle into local output coordinates.
-  if (out->has_mode && out->mode_w > 0 && out->mode_h > 0) {
-    int s = out->scale > 0 ? out->scale : 1;
-    int lw = 0;
-    int lh = 0;
-    output_logical_size(out, &lw, &lh);
-    int local_x = x - out->x;
-    int local_y = y - out->y;
-    if (local_x < 0) {
-      local_x = 0;
-    }
-    if (local_y < 0) {
-      local_y = 0;
-    }
-    if (lw > 0 && local_x > lw) {
-      local_x = lw;
-    }
-    if (lh > 0 && local_y > lh) {
-      local_y = lh;
-    }
-    x = local_x * s;
-    y = local_y * s;
-    if (w > 0) {
-      w = w * s;
-    }
-    if (h > 0) {
-      h = h * s;
-    }
+  // Convert global logical capture rectangle to output-local logical coords.
+  int out_ox = 0;
+  int out_oy = 0;
+  int out_lw = 0;
+  int out_lh = 0;
+  output_logical_origin(out, &out_ox, &out_oy);
+  output_logical_size(out, &out_lw, &out_lh);
+
+  int crop_lx = x - out_ox;
+  int crop_ly = y - out_oy;
+  if (crop_lx < 0) {
+    crop_lx = 0;
   }
+  if (crop_ly < 0) {
+    crop_ly = 0;
+  }
+  if (out_lw > 0 && crop_lx > out_lw) {
+    crop_lx = out_lw;
+  }
+  if (out_lh > 0 && crop_ly > out_lh) {
+    crop_ly = out_lh;
+  }
+  x = crop_lx;
+  y = crop_ly;
 
   cap.frame =
       zwlr_screencopy_manager_v1_capture_output(cap.manager, 0, out->wl_output);
@@ -783,7 +895,8 @@ MMBitmapRef capture_screen_wayland_impl(int32_t x, int32_t y, int32_t w,
     cleanup_capture(&cap);
     // Try portal fallback for any failure case
     int32_t perr = ScreengrabOK;
-    MMBitmapRef p = capture_screen_portal(x, y, w, h, display_id, isPid, &perr);
+    MMBitmapRef p = capture_screen_portal(global_x, global_y, global_w, global_h,
+                                          display_id, isPid, &perr);
     if (p) {
       if (err) {
         *err = perr;
@@ -800,6 +913,24 @@ MMBitmapRef capture_screen_wayland_impl(int32_t x, int32_t y, int32_t w,
     x = 0;
   if (y < 0)
     y = 0;
+  if (out_lw > 0 && out_lh > 0 && cap.width > 0 && cap.height > 0) {
+    double sx = (double)cap.width / (double)out_lw;
+    double sy = (double)cap.height / (double)out_lh;
+    x = (int)((double)x * sx + 0.5);
+    y = (int)((double)y * sy + 0.5);
+    if (w > 0) {
+      w = (int)((double)w * sx + 0.5);
+      if (w == 0) {
+        w = 1;
+      }
+    }
+    if (h > 0) {
+      h = (int)((double)h * sy + 0.5);
+      if (h == 0) {
+        h = 1;
+      }
+    }
+  }
   if (x > cap.width || y > cap.height) {
     if (err) {
       *err = ScreengrabErrFailed;

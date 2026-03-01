@@ -2,6 +2,7 @@
 // +build linux,wayland
 
 #include "window/get_bounds_wayland.h"
+#include "xdg-output-unstable-v1-client-protocol.h"
 #include <limits.h>
 #include <stdlib.h>
 #include <string.h>
@@ -9,22 +10,40 @@
 struct registry_data {
   struct wl_compositor **compositor;
   struct xdg_wm_base **wm_base;
+  struct zxdg_output_manager_v1 **xdg_output_manager;
   struct wl_list *outputs;
 };
 
 struct output_info {
   struct wl_list link;
   struct wl_output *output;
+  struct zxdg_output_v1 *xdg_output;
   int32_t x;
   int32_t y;
+  int32_t logical_x;
+  int32_t logical_y;
+  int32_t logical_w;
+  int32_t logical_h;
   int32_t mode_w;
   int32_t mode_h;
   int32_t transform;
   int32_t scale;
   int has_mode;
+  int has_logical_pos;
+  int has_logical_size;
 };
 
 static void output_logical_size(const struct output_info *oi, int *lw, int *lh) {
+  if (oi->has_logical_size && oi->logical_w > 0 && oi->logical_h > 0) {
+    if (lw) {
+      *lw = oi->logical_w;
+    }
+    if (lh) {
+      *lh = oi->logical_h;
+    }
+    return;
+  }
+
   int s = oi->scale > 0 ? oi->scale : 1;
   int w = oi->mode_w > 0 ? oi->mode_w / s : 0;
   int h = oi->mode_h > 0 ? oi->mode_h / s : 0;
@@ -48,6 +67,24 @@ static void output_logical_size(const struct output_info *oi, int *lw, int *lh) 
   }
   if (lh) {
     *lh = h;
+  }
+}
+
+static void output_logical_origin(const struct output_info *oi, int *ox, int *oy) {
+  if (oi->has_logical_pos) {
+    if (ox) {
+      *ox = oi->logical_x;
+    }
+    if (oy) {
+      *oy = oi->logical_y;
+    }
+    return;
+  }
+  if (ox) {
+    *ox = oi->x;
+  }
+  if (oy) {
+    *oy = oi->y;
   }
 }
 
@@ -101,6 +138,62 @@ static const struct wl_output_listener output_listener = {
     .scale = output_scale,
 };
 
+static void xdg_output_logical_position(void *data, struct zxdg_output_v1 *zxdg_output_v1,
+                                        int32_t x, int32_t y) {
+  (void)zxdg_output_v1;
+  struct output_info *oi = data;
+  oi->logical_x = x;
+  oi->logical_y = y;
+  oi->has_logical_pos = 1;
+}
+
+static void xdg_output_logical_size(void *data, struct zxdg_output_v1 *zxdg_output_v1,
+                                    int32_t width, int32_t height) {
+  (void)zxdg_output_v1;
+  struct output_info *oi = data;
+  oi->logical_w = width;
+  oi->logical_h = height;
+  oi->has_logical_size = 1;
+}
+
+static void xdg_output_done(void *data, struct zxdg_output_v1 *zxdg_output_v1) {
+  (void)data;
+  (void)zxdg_output_v1;
+}
+
+static void xdg_output_name(void *data, struct zxdg_output_v1 *zxdg_output_v1,
+                            const char *name) {
+  (void)data;
+  (void)zxdg_output_v1;
+  (void)name;
+}
+
+static void xdg_output_description(void *data, struct zxdg_output_v1 *zxdg_output_v1,
+                                   const char *description) {
+  (void)data;
+  (void)zxdg_output_v1;
+  (void)description;
+}
+
+static const struct zxdg_output_v1_listener xdg_output_listener = {
+    .logical_position = xdg_output_logical_position,
+    .logical_size = xdg_output_logical_size,
+    .done = xdg_output_done,
+    .name = xdg_output_name,
+    .description = xdg_output_description,
+};
+
+static void attach_xdg_output(struct output_info *oi,
+                              struct zxdg_output_manager_v1 *manager) {
+  if (!oi || !manager || !oi->output || oi->xdg_output) {
+    return;
+  }
+  oi->xdg_output = zxdg_output_manager_v1_get_xdg_output(manager, oi->output);
+  if (oi->xdg_output) {
+    zxdg_output_v1_add_listener(oi->xdg_output, &xdg_output_listener, oi);
+  }
+}
+
 static void registry_handle_global(void *data, struct wl_registry *registry,
                                    uint32_t name, const char *interface,
                                    uint32_t version) {
@@ -111,6 +204,16 @@ static void registry_handle_global(void *data, struct wl_registry *registry,
   } else if (strcmp(interface, "xdg_wm_base") == 0) {
     *rdata->wm_base =
         wl_registry_bind(registry, name, &xdg_wm_base_interface, 1);
+  } else if (strcmp(interface, zxdg_output_manager_v1_interface.name) == 0) {
+    uint32_t ver = version > 3 ? 3 : version;
+    *rdata->xdg_output_manager =
+        wl_registry_bind(registry, name, &zxdg_output_manager_v1_interface, ver);
+    if (rdata->outputs && *rdata->xdg_output_manager) {
+      struct output_info *it;
+      wl_list_for_each(it, rdata->outputs, link) {
+        attach_xdg_output(it, *rdata->xdg_output_manager);
+      }
+    }
   } else if (strcmp(interface, "wl_output") == 0 && rdata->outputs) {
     struct output_info *oi = calloc(1, sizeof(*oi));
     if (!oi) {
@@ -124,6 +227,9 @@ static void registry_handle_global(void *data, struct wl_registry *registry,
       return;
     }
     wl_output_add_listener(oi->output, &output_listener, oi);
+    if (rdata->xdg_output_manager && *rdata->xdg_output_manager) {
+      attach_xdg_output(oi, *rdata->xdg_output_manager);
+    }
     wl_list_insert(rdata->outputs, &oi->link);
   }
 }
@@ -163,9 +269,10 @@ int get_bounds_wayland(struct wl_display *display, int *width, int *height) {
 
   struct wl_compositor *compositor = NULL;
   struct xdg_wm_base *wm_base = NULL;
+  struct zxdg_output_manager_v1 *xdg_output_manager = NULL;
   struct wl_list outputs;
   wl_list_init(&outputs);
-  struct registry_data rdata = {&compositor, &wm_base, &outputs};
+  struct registry_data rdata = {&compositor, &wm_base, &xdg_output_manager, &outputs};
 
   struct wl_registry *registry = wl_display_get_registry(display);
   wl_registry_add_listener(registry, &registry_listener, &rdata);
@@ -185,25 +292,31 @@ int get_bounds_wayland(struct wl_display *display, int *width, int *height) {
     }
     int lw = 0;
     int lh = 0;
+    int ox = 0;
+    int oy = 0;
     output_logical_size(oi, &lw, &lh);
+    output_logical_origin(oi, &ox, &oy);
     if (lw <= 0 || lh <= 0) {
       continue;
     }
-    if (oi->x < min_x) {
-      min_x = oi->x;
+    if (ox < min_x) {
+      min_x = ox;
     }
-    if (oi->y < min_y) {
-      min_y = oi->y;
+    if (oy < min_y) {
+      min_y = oy;
     }
-    if (oi->x + lw > max_x) {
-      max_x = oi->x + lw;
+    if (ox + lw > max_x) {
+      max_x = ox + lw;
     }
-    if (oi->y + lh > max_y) {
-      max_y = oi->y + lh;
+    if (oy + lh > max_y) {
+      max_y = oy + lh;
     }
   }
 
   wl_list_for_each_safe(oi, tmp, &outputs, link) {
+    if (oi->xdg_output) {
+      zxdg_output_v1_destroy(oi->xdg_output);
+    }
     if (oi->output) {
       wl_output_destroy(oi->output);
     }
@@ -221,6 +334,9 @@ int get_bounds_wayland(struct wl_display *display, int *width, int *height) {
     if (wm_base) {
       xdg_wm_base_destroy(wm_base);
     }
+    if (xdg_output_manager) {
+      zxdg_output_manager_v1_destroy(xdg_output_manager);
+    }
     if (compositor) {
       wl_compositor_destroy(compositor);
     }
@@ -230,6 +346,9 @@ int get_bounds_wayland(struct wl_display *display, int *width, int *height) {
   if (!compositor || !wm_base) {
     if (wm_base) {
       xdg_wm_base_destroy(wm_base);
+    }
+    if (xdg_output_manager) {
+      zxdg_output_manager_v1_destroy(xdg_output_manager);
     }
     if (compositor) {
       wl_compositor_destroy(compositor);
@@ -260,6 +379,9 @@ int get_bounds_wayland(struct wl_display *display, int *width, int *height) {
   xdg_surface_destroy(xdg_surface);
   wl_surface_destroy(surface);
   xdg_wm_base_destroy(wm_base);
+  if (xdg_output_manager) {
+    zxdg_output_manager_v1_destroy(xdg_output_manager);
+  }
   wl_compositor_destroy(compositor);
 
   if (width && *width <= 0) {
