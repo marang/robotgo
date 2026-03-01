@@ -1,6 +1,5 @@
-// Copyright (c) 2016-2025 AtomAI, All rights reserved.
-//
-// See the COPYRIGHT file at the top-level directory of this distribution and at
+// Copyright 2016 The marang Project Developers. See the COPYRIGHT
+// file at the top-level directory of this distribution and at
 // https://github.com/go-vgo/robotgo/blob/master/LICENSE
 //
 // Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
@@ -27,7 +26,7 @@ import (
 	"unicode"
 	"unsafe"
 
-	"github.com/go-vgo/robotgo/clipboard"
+	"github.com/marang/robotgo/clipboard"
 )
 
 // Defining a bunch of constants.
@@ -322,8 +321,7 @@ var keyNames = map[string]C.MMKeyCode{
 	// { NULL:              C.K_NOT_A_KEY }
 }
 
-// CmdCtrl If the operating system is macOS, return the key string "cmd",
-// otherwise return the key string "ctrl
+// CmdCtrl returns "cmd" on macOS and "ctrl" on other platforms.
 func CmdCtrl() string {
 	if runtime.GOOS == "darwin" {
 		return "cmd"
@@ -338,7 +336,7 @@ func tapKeyCode(code C.MMKeyCode, flags C.MMKeyFlags, pid C.uintptr) {
 	C.toggleKeyCode(code, false, flags, pid)
 }
 
-var keyErr = errors.New("Invalid key flag specified.")
+var errInvalidKeyFlag = errors.New("invalid key flag specified")
 
 func checkKeyCodes(k string) (key C.MMKeyCode, err error) {
 	if k == "" {
@@ -351,7 +349,7 @@ func checkKeyCodes(k string) (key C.MMKeyCode, err error) {
 
 		key = C.keyCodeForChar(*val1)
 		if key == C.K_NOT_A_KEY {
-			err = keyErr
+			err = errInvalidKeyFlag
 			return
 		}
 		return
@@ -360,7 +358,7 @@ func checkKeyCodes(k string) (key C.MMKeyCode, err error) {
 	if v, ok := keyNames[k]; ok {
 		key = v
 		if key == C.K_NOT_A_KEY {
-			err = keyErr
+			err = errInvalidKeyFlag
 			return
 		}
 	}
@@ -405,13 +403,6 @@ func getFlagsFromValue(value []string) (flags C.MMKeyFlags) {
 	return
 }
 
-func upKeyArr(keyArr []string, pid int) {
-	for i := 0; i < len(keyArr); i++ {
-		key1, _ := checkKeyCodes(keyArr[i])
-		C.toggleKeyCode(key1, false, C.MOD_NONE, C.uintptr(pid))
-	}
-}
-
 func keyTaps(k string, keyArr []string, pid int) error {
 	flags := getFlagsFromValue(keyArr)
 	key, err := checkKeyCodes(k)
@@ -421,7 +412,6 @@ func keyTaps(k string, keyArr []string, pid int) error {
 
 	tapKeyCode(key, flags, C.uintptr(pid))
 	MilliSleep(KeySleep)
-	upKeyArr(keyArr, pid)
 	return nil
 }
 
@@ -430,10 +420,7 @@ func getKeyDown(keyArr []string) (bool, []string) {
 		keyArr = append(keyArr, "down")
 	}
 
-	down := true
-	if keyArr[0] == "up" {
-		down = false
-	}
+	down := keyArr[0] != "up"
 
 	if keyArr[0] == "up" || keyArr[0] == "down" {
 		keyArr = keyArr[1:]
@@ -450,9 +437,6 @@ func keyTogglesB(k string, down bool, keyArr []string, pid int) error {
 
 	C.toggleKeyCode(key, C.bool(down), flags, C.uintptr(pid))
 	MilliSleep(KeySleep)
-	if !down {
-		upKeyArr(keyArr, pid)
-	}
 	return nil
 }
 
@@ -504,13 +488,15 @@ func appendShift(key string, len1 int, args ...interface{}) (string, []interface
 	}
 
 	key = strings.ToLower(key)
-	if _, ok := Special[key]; ok {
-		key = Special[key]
-		if len(args) <= len1 {
-			args = append(args, "shift")
+	if spec := CurrentSpecialTable(); spec != nil {
+		if v, ok := spec[key]; ok {
+			key = v
+			if len(args) <= len1 {
+				args = append(args, "shift")
+			}
+			return key, args
 		}
 	}
-
 	return key, args
 }
 
@@ -518,7 +504,7 @@ func appendShift(key string, len1 int, args ...interface{}) (string, []interface
 //
 // See keys supported:
 //
-//	https://github.com/go-vgo/robotgo/blob/master/docs/keys.md#keys
+//	https://github.com/marang/robotgo/blob/master/docs/keys.md#keys
 //
 // Examples:
 //
@@ -565,7 +551,7 @@ func getToggleArgs(args ...interface{}) (pid int, keyArr []string) {
 //
 // See keys:
 //
-//	https://github.com/go-vgo/robotgo/blob/master/docs/keys.md#keys
+//	https://github.com/marang/robotgo/blob/master/docs/keys.md#keys
 //
 // Examples:
 //
@@ -650,7 +636,7 @@ func ToUC(text string) []string {
 		textQ := strconv.QuoteToASCII(string(r))
 		textUnQ := textQ[1 : len(textQ)-1]
 
-		st := strings.Replace(textUnQ, "\\u", "U", -1)
+		st := strings.ReplaceAll(textUnQ, "\\u", "U")
 		if st == "\\\\" {
 			st = "\\"
 		}
@@ -670,22 +656,15 @@ func inputUTF(str string) {
 	C.free(unsafe.Pointer(cstr))
 }
 
-// TypeStr tap a string
+// TypeStr send a string (supported UTF-8)
 //
-// Deprecated: use the Type()
-func TypeStr(str string, args ...int) {
-	Type(str, args...)
-}
-
-// Type type a string (supported UTF-8)
-//
-// robotgo.Type(string: "The string to send", int: pid, "milli_sleep time", "x11 option")
+// robotgo.TypeStr(string: "The string to send", int: pid, "milli_sleep time", "x11 option")
 //
 // Examples:
 //
-//	robotgo.Type("abc@123, Hi galaxy, こんにちは")
-//	robotgo.Type("To be or not to be, this is questions.", pid int)
-func Type(str string, args ...int) {
+//	robotgo.TypeStr("abc@123, Hi galaxy, こんにちは")
+//	robotgo.TypeStr("To be or not to be, this is questions.", pid int)
+func TypeStr(str string, args ...int) {
 	var tm, tm1 = 0, 7
 
 	if len(args) > 1 {
@@ -726,25 +705,14 @@ func Type(str string, args ...int) {
 	MilliSleep(KeySleep)
 }
 
-// PasteStr paste a string
-//
-// Deprecated: use the Paste()
-func PasteStr(str string) error {
-	return Paste(str)
-}
-
-// Paste paste a string (supported UTF-8),
+// PasteStr paste a string (support UTF-8),
 // write the string to clipboard and tap `cmd + v`
-func Paste(str string) error {
+func PasteStr(str string) error {
 	err := clipboard.WriteAll(str)
 	if err != nil {
 		return err
 	}
-	return CmdV()
-}
 
-// CmdV tap key command + v or control + v
-func CmdV() error {
 	if runtime.GOOS == "darwin" {
 		return KeyTap("v", "command")
 	}
@@ -752,16 +720,9 @@ func CmdV() error {
 	return KeyTap("v", "control")
 }
 
-// TypeStrDelay type string width delay
-//
-// Deprecated: use the TypeDelay()
-func TypeStrDelay(str string, delay int) {
-	TypeDelay(str, delay)
-}
-
-// TypeDelay type string with delayed
+// TypeStrDelay type string with delayed
 // And you can use robotgo.KeySleep = 100 to delayed not this function
-func TypeDelay(str string, delay int) {
+func TypeStrDelay(str string, delay int) {
 	TypeStr(str)
 	MilliSleep(delay)
 }

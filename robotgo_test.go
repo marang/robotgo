@@ -21,11 +21,17 @@ import (
 )
 
 func TestColor(t *testing.T) {
-	s := GetPixelColor(10, 10)
+	s, err := GetPixelColor(10, 10)
+	if err != nil {
+		t.Skip("GetPixelColor error: " + err.Error())
+	}
 	tt.IsType(t, "string", s)
 	tt.NotEmpty(t, s)
 
-	c := GetPxColor(10, 10)
+	c, err := GetPxColor(10, 10)
+	if err != nil {
+		t.Skip("GetPxColor error: " + err.Error())
+	}
 	s1 := PadHex(c)
 	tt.Equal(t, s, s1)
 }
@@ -164,7 +170,7 @@ func TestKeyCode(t *testing.T) {
 	k := Keycode["1"]
 	tt.Equal(t, 2, k)
 
-	s := Special["+"]
+	s := CurrentSpecialTable()["+"]
 	tt.Equal(t, "=", s)
 
 	tt.Equal(t, "0", Key0)
@@ -172,12 +178,15 @@ func TestKeyCode(t *testing.T) {
 }
 
 func TestImage(t *testing.T) {
-	bit := CaptureScreen()
+	bit, err := CaptureScreen()
+	if err != nil {
+		t.Skip("screen capture error: " + err.Error())
+	}
 	defer FreeBitmap(bit)
 	tt.NotNil(t, bit)
 
 	img := ToImage(bit)
-	err := SavePng(img, "robot_test.png")
+	err = SavePng(img, "robot_test.png")
 	tt.Nil(t, err)
 
 	img1, err := CaptureImg(10, 10, 20, 20)

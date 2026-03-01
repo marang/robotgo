@@ -1,6 +1,5 @@
-// Copyright (c) 2016-2025 AtomAI, All rights reserved.
-//
-// See the COPYRIGHT file at the top-level directory of this distribution and at
+// Copyright 2016 The go-vgo Project Developers. See the COPYRIGHT
+// file at the top-level directory of this distribution and at
 // https://github.com/go-vgo/robotgo/blob/master/LICENSE
 //
 // Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
@@ -12,10 +11,8 @@
 package robotgo
 
 import (
-	"github.com/vcaesar/keycode"
+    "github.com/vcaesar/keycode"
 )
-
-type uMap map[string]uint16
 
 // MouseMap robotgo hook mouse's code map
 var MouseMap = keycode.MouseMap
@@ -36,3 +33,16 @@ var Keycode = keycode.Keycode
 
 // Special is the special key map
 var Special = keycode.Special
+
+// specialWayland holds the special key map for Wayland displays.
+var specialWayland = keycode.Special
+
+// CurrentSpecialTable returns the special key map for the active
+// display server. DetectDisplayServer determines whether the Wayland or
+// X11 table should be returned.
+func CurrentSpecialTable() map[string]string {
+    if DetectDisplayServer() == DisplayServerWayland {
+        return specialWayland
+    }
+    return Special
+}

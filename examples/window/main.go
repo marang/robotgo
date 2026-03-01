@@ -14,8 +14,8 @@ package main
 import (
 	"fmt"
 
-	"github.com/go-vgo/robotgo"
-	// "go-vgo/robotgo"
+	"github.com/marang/robotgo"
+	// "marang/robotgo"
 )
 
 func alert() {
@@ -56,11 +56,17 @@ func findIds() {
 	}
 
 	if len(fpid) > 0 {
-		robotgo.KeyTap("a", fpid[0])
+		if err := robotgo.KeyTap("a", fpid[0]); err != nil {
+			fmt.Println(err)
+		}
 		robotgo.TypeStr("Hi galaxy!", fpid[0])
 
-		robotgo.KeyToggle("a", fpid[0], "cmd")
-		robotgo.KeyToggle("a", fpid[0], "cmd", "up")
+		if err := robotgo.KeyToggle("a", fpid[0], "cmd"); err != nil {
+			fmt.Println(err)
+		}
+		if err := robotgo.KeyToggle("a", fpid[0], "cmd", "up"); err != nil {
+			fmt.Println(err)
+		}
 	}
 
 	fmt.Println("pids...", fpid)
@@ -83,16 +89,24 @@ func findIds() {
 		robotgo.MaxWindow(fpid[0])
 		robotgo.CloseWindow(fpid[0])
 
-		robotgo.Kill(fpid[0])
+		if err := robotgo.Kill(fpid[0]); err != nil {
+			fmt.Println(err)
+		}
 	}
 }
 
 func active() {
-	robotgo.ActivePid(100)
+	if err := robotgo.ActivePid(100); err != nil {
+		fmt.Println(err)
+	}
 	// robotgo.Sleep(2)
-	robotgo.ActiveName("code")
+	if err := robotgo.ActiveName("code"); err != nil {
+		fmt.Println(err)
+	}
 	robotgo.Sleep(1)
-	robotgo.ActiveName("chrome")
+	if err := robotgo.ActiveName("chrome"); err != nil {
+		fmt.Println(err)
+	}
 }
 
 func findName() {
@@ -120,7 +134,9 @@ func ps() {
 	if err == nil && isExist {
 		fmt.Println("pid exists is", isExist)
 
-		robotgo.Kill(100)
+		if err := robotgo.Kill(100); err != nil {
+			fmt.Println("failed to kill process, err:", err)
+		}
 	}
 
 	// get the all process id
@@ -140,20 +156,31 @@ func window() {
 	////////////////////////////////////////////////////////////////////////////////
 	// Window Handle
 	////////////////////////////////////////////////////////////////////////////////
-
+	fmt.Println("\n1. alert")
 	alert()
+
 	//
+	fmt.Println("\n2. get")
 	get()
 
+	fmt.Println("\n3. findIds")
 	findIds()
+
+	fmt.Println("\n4. active")
 	active()
 
+	fmt.Println("\n5. findName")
 	findName()
+
 	//
+	fmt.Println("\n6. ps")
 	ps()
 
 	// close current Window
-	robotgo.CloseWindow()
+	pid := robotgo.GetPid()
+	fmt.Println("\n7. close window and kill process in 10 seconds", pid)
+	robotgo.Sleep(10)
+	robotgo.CloseWindowKill(pid)
 }
 
 func main() {

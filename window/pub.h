@@ -9,10 +9,14 @@
 // This file may not be copied, modified, or distributed
 // except according to those terms.
 
+// Prevent multiple inclusion across complex include graph.
+#ifndef ROBOTGO_WINDOW_PUB_H_
+#define ROBOTGO_WINDOW_PUB_H_
+
 // #include "../base/os.h"
 #if defined(IS_MACOSX)
 	#include <dlfcn.h>
-#elif defined(USE_X11)
+#elif defined(IS_LINUX)
 	#include <X11/Xatom.h>
 #endif
 
@@ -20,7 +24,7 @@ struct _MData{
 	#if defined(IS_MACOSX)
 		CGWindowID		CgID;		// Handle to a CGWindowID
 		AXUIElementRef	AxID;		// Handle to a AXUIElementRef
-	#elif defined(USE_X11)
+	#elif defined(IS_LINUX)
 		Window		XWin;		// Handle to an X11 window
 	#elif defined(IS_WINDOWS)
 		HWND			HWnd;		// Handle to a window HWND
@@ -107,7 +111,7 @@ typedef struct _Bounds Bounds;
 		CFRelease(application);
 		return result;
 	}
-#elif defined(USE_X11)
+#elif defined(IS_LINUX)
 	// Error Handling
 	typedef int (*XErrorHandler) (Display*, XErrorEvent*);
 
@@ -287,3 +291,5 @@ typedef struct _Bounds Bounds;
         }
     }
 #endif
+
+#endif /* ROBOTGO_WINDOW_PUB_H_ */

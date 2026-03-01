@@ -19,7 +19,7 @@ void min_window(uintptr pid, bool state, int8_t isPid){
 		AXUIElementRef axID = AXUIElementCreateApplication(pid);
 		AXUIElementSetAttributeValue(axID, kAXMinimizedAttribute, 
 										state ? kCFBooleanTrue : kCFBooleanFalse);
-	#elif defined(USE_X11)
+	#elif defined(IS_LINUX)
 		// Ignore X errors
 		XDismissErrors();
 		// SetState((Window)pid, STATE_MINIMIZE, state);
@@ -32,7 +32,7 @@ void min_window(uintptr pid, bool state, int8_t isPid){
 void max_window(uintptr pid, bool state, int8_t isPid){
 	#if defined(IS_MACOSX)
 		// return 0;
-	#elif defined(USE_X11)
+	#elif defined(IS_LINUX)
 		XDismissErrors();
 		// SetState((Window)pid, STATE_MINIMIZE, false);
 		// SetState((Window)pid, STATE_MAXIMIZE, state);
@@ -47,7 +47,7 @@ uintptr get_handle(){
 
 	#if defined(IS_MACOSX)
 		return (uintptr)mData.CgID;
-	#elif defined(USE_X11)
+	#elif defined(IS_LINUX)
 		return (uintptr)mData.XWin;
 	#elif defined(IS_WINDOWS)
 		return (uintptr)mData.HWnd;
@@ -57,7 +57,7 @@ uintptr get_handle(){
 uintptr b_get_handle() {
 	#if defined(IS_MACOSX)
 		return (uintptr)pub_mData.CgID;
-	#elif defined(USE_X11)
+	#elif defined(IS_LINUX)
 		return (uintptr)pub_mData.XWin;
 	#elif defined(IS_WINDOWS)
 		return (uintptr)pub_mData.HWnd;

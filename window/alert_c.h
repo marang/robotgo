@@ -4,19 +4,21 @@
 #endif
 
 #if defined(IS_MACOSX)
-	CFStringRef CFStringCreateWithUTF8String(const char *title) {
-		if (title == NULL) { return NULL; }
-		return CFStringCreateWithCString(NULL, title, kCFStringEncodingUTF8);
-	}
+// Use a static inline helper to avoid duplicate symbol definitions when this
+// header is included by multiple translation units.
+static inline CFStringRef robotgo_CFStringCreateWithUTF8String(const char *title) {
+	if (title == NULL) { return NULL; }
+	return CFStringCreateWithCString(NULL, title, kCFStringEncodingUTF8);
+}
 #endif
 
-int showAlert(const char *title, const char *msg, 
+static inline int showAlert(const char *title, const char *msg, 
 		const char *defaultButton, const char *cancelButton) {
 	#if defined(IS_MACOSX)
-		CFStringRef alertHeader = CFStringCreateWithUTF8String(title);
-		CFStringRef alertMessage = CFStringCreateWithUTF8String(msg);
-		CFStringRef defaultButtonTitle = CFStringCreateWithUTF8String(defaultButton);
-		CFStringRef cancelButtonTitle = CFStringCreateWithUTF8String(cancelButton);
+		CFStringRef alertHeader = robotgo_CFStringCreateWithUTF8String(title);
+		CFStringRef alertMessage = robotgo_CFStringCreateWithUTF8String(msg);
+		CFStringRef defaultButtonTitle = robotgo_CFStringCreateWithUTF8String(defaultButton);
+		CFStringRef cancelButtonTitle = robotgo_CFStringCreateWithUTF8String(cancelButton);
 		CFOptionFlags responseFlags;
 		
 		SInt32 err = CFUserNotificationDisplayAlert(
@@ -30,7 +32,7 @@ int showAlert(const char *title, const char *msg,
 
 		if (err != 0) { return -1; }
 		return (responseFlags == kCFUserNotificationDefaultResponse) ? 0 : 1;
-	#elif defined(USE_X11)
+	#elif defined(IS_LINUX)
 		return 0;
 	#else
 		/* TODO: Display custom buttons instead of the pre-defined "OK" and "Cancel". */
@@ -39,4 +41,3 @@ int showAlert(const char *title, const char *msg,
 		return (response == IDOK) ? 0 : 1;
 	#endif
 }
-

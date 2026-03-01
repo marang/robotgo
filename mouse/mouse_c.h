@@ -1,14 +1,3 @@
-// Copyright (c) 2016-2025 AtomAI, All rights reserved.
-//
-// See the COPYRIGHT file at the top-level directory of this distribution and at
-// https://github.com/go-vgo/robotgo/blob/master/LICENSE
-//
-// Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
-// http://www.apache.org/licenses/LICENSE-2.0>
-//
-// This file may not be copied, modified, or distributed
-// except according to those terms.
-
 #include "mouse.h"
 #include "../base/deadbeef_rand.h"
 #include "../base/microsleep.h"
@@ -18,10 +7,81 @@
 	// #include </System/Library/Frameworks/ApplicationServices.framework/Headers/ApplicationServices.h>
 	#include <ApplicationServices/ApplicationServices.h>
 	// #include </System/Library/Frameworks/ApplicationServices.framework/Versions/A/Headers/ApplicationServices.h>
-#elif defined(USE_X11)
-	#include <X11/Xlib.h>
-	#include <X11/extensions/XTest.h>
-	#include <stdlib.h>
+#elif defined(IS_LINUX)
+        #include <X11/Xlib.h>
+        #include <X11/extensions/XTest.h>
+        #include <stdlib.h>
+        #include "../base/os.h"
+
+#ifdef ROBOTGO_USE_WAYLAND
+        /* Wayland support */
+        #include <string.h>
+        #include <wayland-client.h>
+        #include <linux/input-event-codes.h>
+        #include "wlr-virtual-pointer-unstable-v1-client-protocol.h"
+        #include "../window/get_bounds_wayland.h"
+
+        static struct wl_display *rg_wl_display = NULL;
+        static struct wl_seat *rg_wl_seat = NULL;
+        static struct zwlr_virtual_pointer_manager_v1 *rg_wl_vptr_mgr = NULL;
+        static struct zwlr_virtual_pointer_v1 *rg_wl_vptr = NULL;
+        static int rg_wl_width = 0;
+        static int rg_wl_height = 0;
+        static int rg_wl_inited = 0;
+        static int rg_wl_last_x = 0;
+        static int rg_wl_last_y = 0;
+        #include <wayland-client-protocol.h>
+
+        static void rg_wl_seat_handle_capabilities(void *data, struct wl_seat *seat, uint32_t caps) {
+                (void)data;
+                (void)seat;
+                (void)caps;
+        }
+
+        static const struct wl_seat_listener rg_wl_seat_listener = {
+                rg_wl_seat_handle_capabilities,
+                NULL
+        };
+
+        static void rg_wl_registry_handle_global(void *data, struct wl_registry *registry, uint32_t name, const char *interface, uint32_t version) {
+                (void)data; (void)version;
+                if (strcmp(interface, "wl_seat") == 0) {
+                        rg_wl_seat = wl_registry_bind(registry, name, &wl_seat_interface, 1);
+                        wl_seat_add_listener(rg_wl_seat, &rg_wl_seat_listener, NULL);
+                } else if (strcmp(interface, "zwlr_virtual_pointer_manager_v1") == 0) {
+                        rg_wl_vptr_mgr = wl_registry_bind(registry, name, &zwlr_virtual_pointer_manager_v1_interface, 1);
+                }
+        }
+
+        static const struct wl_registry_listener rg_wl_registry_listener = {
+                rg_wl_registry_handle_global,
+                NULL
+        };
+
+        static int rg_init_wayland(void) {
+                if (rg_wl_inited) {
+                        return rg_wl_display != NULL && rg_wl_vptr != NULL;
+                }
+                rg_wl_inited = 1;
+                rg_wl_display = wl_display_connect(NULL);
+                if (!rg_wl_display) {
+                        return 0;
+                }
+                struct wl_registry *registry = wl_display_get_registry(rg_wl_display);
+                wl_registry_add_listener(registry, &rg_wl_registry_listener, NULL);
+                wl_display_roundtrip(rg_wl_display);
+                if (!rg_wl_seat || !rg_wl_vptr_mgr) {
+                        wl_display_disconnect(rg_wl_display);
+                        rg_wl_display = NULL;
+                        return 0;
+                }
+                if (rg_wl_vptr_mgr && rg_wl_seat) {
+                        rg_wl_vptr = zwlr_virtual_pointer_manager_v1_create_virtual_pointer(rg_wl_vptr_mgr, rg_wl_seat);
+                }
+                get_bounds_wayland(rg_wl_display, &rg_wl_width, &rg_wl_height);
+                return rg_wl_vptr != NULL;
+        }
+#endif /* ROBOTGO_USE_WAYLAND */
 #endif
 
 /* Some convenience macros for converting our enums to the system API types. */
@@ -54,6 +114,7 @@
 	}
 
 #elif defined(IS_WINDOWS)
+ 
 	DWORD MMMouseUpToMEventF(MMMouseButton button) {
 		if (button == LEFT_BUTTON) { return MOUSEEVENTF_LEFTUP; }
 		if (button == RIGHT_BUTTON) { return MOUSEEVENTF_RIGHTUP; } 
@@ -92,23 +153,46 @@
 
 /* Move the mouse to a specific point. */
 void moveMouse(MMPointInt32 point){
-	#if defined(IS_MACOSX)
+        #if defined(IS_MACOSX)
 		CGEventSourceRef source = CGEventSourceCreate(kCGEventSourceStateHIDSystemState);
 		CGEventRef move = CGEventCreateMouseEvent(source, kCGEventMouseMoved, 
 								CGPointFromMMPointInt32(point), kCGMouseButtonLeft);
 
 		calculateDeltas(&move, point);
+
 		CGEventPost(kCGHIDEventTap, move);
 		CFRelease(move);
 		CFRelease(source);
-	#elif defined(USE_X11)
-		Display *display = XGetMainDisplay();
-		XWarpPointer(display, None, DefaultRootWindow(display), 0, 0, 0, 0, point.x, point.y);
-
-		XSync(display, false);
-	#elif defined(IS_WINDOWS)
-		SetCursorPos(point.x, point.y);
-	#endif
+        #elif defined(IS_LINUX)
+#ifdef ROBOTGO_USE_WAYLAND
+                if (detectDisplayServer() == Wayland) {
+                        if (!rg_init_wayland()) {
+                                Display *display = XGetMainDisplay();
+                                XWarpPointer(display, None, DefaultRootWindow(display), 0, 0, 0, 0, point.x, point.y);
+                                XSync(display, false);
+                        } else {
+                                if (rg_wl_width > 0 && rg_wl_height > 0) {
+                                        uint32_t sx = (uint32_t)((double)point.x * 65535.0 / rg_wl_width);
+                                        uint32_t sy = (uint32_t)((double)point.y * 65535.0 / rg_wl_height);
+                                        zwlr_virtual_pointer_v1_motion_absolute(rg_wl_vptr, 0, sx, sy, 65535, 65535);
+                                        wl_display_flush(rg_wl_display);
+                                        rg_wl_last_x = point.x;
+                                        rg_wl_last_y = point.y;
+                                }
+                        }
+                } else {
+                        Display *display = XGetMainDisplay();
+                        XWarpPointer(display, None, DefaultRootWindow(display), 0, 0, 0, 0, point.x, point.y);
+                        XSync(display, false);
+                }
+#else
+                Display *display = XGetMainDisplay();
+                XWarpPointer(display, None, DefaultRootWindow(display), 0, 0, 0, 0, point.x, point.y);
+                XSync(display, false);
+#endif
+        #elif defined(IS_WINDOWS)
+                SetCursorPos(point.x, point.y);
+        #endif
 }
 
 void dragMouse(MMPointInt32 point, const MMMouseButton button){
@@ -135,7 +219,12 @@ MMPointInt32 location() {
 		CFRelease(event);
 
 		return MMPointInt32FromCGPoint(point);
-	#elif defined(USE_X11)
+	#elif defined(IS_LINUX)
+		#ifdef ROBOTGO_USE_WAYLAND
+		if (detectDisplayServer() == Wayland) {
+			return MMPointInt32Make(rg_wl_last_x, rg_wl_last_y);
+		}
+		#endif
 		int x, y; 	/* This is all we care about. Seriously. */
 		Window garb1, garb2; 	/* Why you can't specify NULL as a parameter */
 		int garb_x, garb_y;  	/* is beyond me. */
@@ -153,30 +242,81 @@ MMPointInt32 location() {
 	#endif
 }
 
+/* Move the mouse by a relative delta. */
+void moveMouseRelative(int dx, int dy) {
+#if defined(IS_MACOSX)
+        MMPointInt32 pos = location();
+        pos.x += dx;
+        pos.y += dy;
+        moveMouse(pos);
+#elif defined(IS_LINUX)
+#ifdef ROBOTGO_USE_WAYLAND
+        if (detectDisplayServer() == Wayland) {
+                if (rg_init_wayland()) {
+                        wl_fixed_t fdx = wl_fixed_from_double((double)dx);
+                        wl_fixed_t fdy = wl_fixed_from_double((double)dy);
+                        zwlr_virtual_pointer_v1_motion(rg_wl_vptr, 0, fdx, fdy);
+                        zwlr_virtual_pointer_v1_frame(rg_wl_vptr);
+                        wl_display_flush(rg_wl_display);
+                        rg_wl_last_x += dx;
+                        rg_wl_last_y += dy;
+                        return;
+                }
+        }
+#endif
+        MMPointInt32 pos = location();
+        pos.x += dx;
+        pos.y += dy;
+        moveMouse(pos);
+#elif defined(IS_WINDOWS)
+        MMPointInt32 pos = location();
+        pos.x += dx;
+        pos.y += dy;
+        moveMouse(pos);
+#endif
+}
+
 /* Press down a button, or release it. */
-int toggleMouse(bool down, MMMouseButton button) {
+void toggleMouse(bool down, MMMouseButton button) {
 	#if defined(IS_MACOSX)
 		const CGPoint currentPos = CGPointFromMMPointInt32(location());
 		const CGEventType mouseType = MMMouseToCGEventType(down, button);
 		CGEventSourceRef source = CGEventSourceCreate(kCGEventSourceStateHIDSystemState);
 		CGEventRef event = CGEventCreateMouseEvent(source, mouseType, currentPos, (CGMouseButton)button);
 
-		if (event == NULL) {
-			CFRelease(source);
-			return (int)kCGErrorCannotComplete;
-		}
-	
 		CGEventPost(kCGHIDEventTap, event);
 		CFRelease(event);
 		CFRelease(source);
-		return 0;
-	#elif defined(USE_X11)
-		Display *display = XGetMainDisplay();
-		Status status = XTestFakeButtonEvent(display, button, down ? True : False, CurrentTime);
-		XSync(display, false);
-		return status ? 0 : 1;
-	#elif defined(IS_WINDOWS)
-		INPUT mouseInput;
+        #elif defined(IS_LINUX)
+#ifdef ROBOTGO_USE_WAYLAND
+                if (detectDisplayServer() == Wayland) {
+                        if (!rg_init_wayland()) {
+                                Display *display = XGetMainDisplay();
+                                XTestFakeButtonEvent(display, button, down ? True : False, CurrentTime);
+                                XSync(display, false);
+                        } else {
+                                uint32_t code = BTN_LEFT;
+                                if (button == RIGHT_BUTTON) {
+                                        code = BTN_RIGHT;
+                                } else if (button == CENTER_BUTTON) {
+                                        code = BTN_MIDDLE;
+                                }
+                                zwlr_virtual_pointer_v1_button(rg_wl_vptr, 0, code, down ? 1 : 0);
+                                wl_display_flush(rg_wl_display);
+                        }
+                } else {
+                        Display *display = XGetMainDisplay();
+                        XTestFakeButtonEvent(display, button, down ? True : False, CurrentTime);
+                        XSync(display, false);
+                }
+#else
+                Display *display = XGetMainDisplay();
+                XTestFakeButtonEvent(display, button, down ? True : False, CurrentTime);
+                XSync(display, false);
+#endif
+        #elif defined(IS_WINDOWS)
+                // mouse_event(MMMouseToMEventF(down, button), 0, 0, 0, 0);
+                INPUT mouseInput;
 
 		mouseInput.type = INPUT_MOUSE;
 		mouseInput.mi.dx = 0;
@@ -185,23 +325,18 @@ int toggleMouse(bool down, MMMouseButton button) {
 		mouseInput.mi.time = 0;
 		mouseInput.mi.dwExtraInfo = 0;
 		mouseInput.mi.mouseData = 0;
-		UINT sent = SendInput(1, &mouseInput, sizeof(mouseInput));
-		return sent == 1 ? 0 : (int)GetLastError();
+		SendInput(1, &mouseInput, sizeof(mouseInput));
 	#endif
 }
 
-int clickMouse(MMMouseButton button){
-	int err = toggleMouse(true, button);
-	if (err != 0) {
-		return err;
-	}
-
+void clickMouse(MMMouseButton button){
+	toggleMouse(true, button);
 	microsleep(5.0);
-	return toggleMouse(false, button);
+	toggleMouse(false, button);
 }
 
 /* Special function for sending double clicks, needed for MacOS. */
-int doubleClick(MMMouseButton button, int count){
+void doubleClick(MMMouseButton button){
 	#if defined(IS_MACOSX)
 		/* Double click for Mac. */
 		const CGPoint currentPos = CGPointFromMMPointInt32(location());
@@ -210,13 +345,9 @@ int doubleClick(MMMouseButton button, int count){
 
 		CGEventSourceRef source = CGEventSourceCreate(kCGEventSourceStateHIDSystemState);
 		CGEventRef event = CGEventCreateMouseEvent(source, mouseTypeDown, currentPos, kCGMouseButtonLeft);
-		if (event == NULL) {
-			CFRelease(source);
-			return (int)kCGErrorCannotComplete;
-		}
 
 		/* Set event to double click. */
-		CGEventSetIntegerValueField(event, kCGMouseEventClickState, count);
+		CGEventSetIntegerValueField(event, kCGMouseEventClickState, 2);
 		CGEventPost(kCGHIDEventTap, event);
 
 		CGEventSetType(event, mouseTypeUP);
@@ -224,15 +355,11 @@ int doubleClick(MMMouseButton button, int count){
 
 		CFRelease(event);
 		CFRelease(source);
-		return 0;
 	#else
 		/* Double click for everything else. */
-		int err = clickMouse(button);
-		if (err != 0) {
-			return err;
-		}
+		clickMouse(button);
 		microsleep(200);
-		return clickMouse(button);
+		clickMouse(button);
 	#endif
 }
 
@@ -246,30 +373,74 @@ void scrollMouseXY(int x, int y) {
 
 	#if defined(IS_MACOSX)
 		CGEventSourceRef source = CGEventSourceCreate(kCGEventSourceStateHIDSystemState);
-		CGEventRef event = CGEventCreateScrollWheelEvent(source, kCGScrollEventUnitPixel, 2, y, x);	
+		CGEventRef event = CGEventCreateScrollWheelEvent(source, kCGScrollEventUnitPixel, 2, y, x);
 		CGEventPost(kCGHIDEventTap, event);
 
 		CFRelease(event);
 		CFRelease(source);
-	#elif defined(USE_X11)
-		int ydir = 4; /* Button 4 is up, 5 is down. */
-		int xdir = 6;
-		Display *display = XGetMainDisplay();
-
-		if (y < 0) { ydir = 5; }
-		if (x < 0) { xdir = 7; }
-
-		int xi; int yi;
-		for (xi = 0; xi < abs(x); xi++) {
-			XTestFakeButtonEvent(display, xdir, 1, CurrentTime);
-			XTestFakeButtonEvent(display, xdir, 0, CurrentTime);
+	#elif defined(IS_LINUX)
+		#ifdef ROBOTGO_USE_WAYLAND
+		if (detectDisplayServer() == Wayland) {
+			if (!rg_init_wayland()) {
+				Display *display = XGetMainDisplay();
+				int ydir = 4; /* Button 4 is up, 5 is down. */
+				int xdir = 6;
+				if (y < 0) { ydir = 5; }
+				if (x < 0) { xdir = 7; }
+				for (int xi = 0; xi < abs(x); xi++) {
+					XTestFakeButtonEvent(display, xdir, 1, CurrentTime);
+					XTestFakeButtonEvent(display, xdir, 0, CurrentTime);
+				}
+				for (int yi = 0; yi < abs(y); yi++) {
+					XTestFakeButtonEvent(display, ydir, 1, CurrentTime);
+					XTestFakeButtonEvent(display, ydir, 0, CurrentTime);
+				}
+				XSync(display, false);
+			} else {
+				/* Emulate wheel scrolling using virtual pointer axis events */
+				if (y != 0) {
+					int steps = abs(y);
+					int sign = (y > 0) ? 1 : -1; /* positive y = scroll up */
+					for (int i = 0; i < steps; i++) {
+						zwlr_virtual_pointer_v1_axis_source(rg_wl_vptr, WL_POINTER_AXIS_SOURCE_WHEEL);
+						/* Use a fixed value per discrete step */
+						wl_fixed_t val = wl_fixed_from_double(-15.0 * sign);
+						zwlr_virtual_pointer_v1_axis(rg_wl_vptr, 0, WL_POINTER_AXIS_VERTICAL_SCROLL, val);
+						zwlr_virtual_pointer_v1_axis_discrete(rg_wl_vptr, 0, WL_POINTER_AXIS_VERTICAL_SCROLL, val, -1 * sign);
+						zwlr_virtual_pointer_v1_frame(rg_wl_vptr);
+					}
+				}
+				if (x != 0) {
+					int steps = abs(x);
+					int sign = (x > 0) ? 1 : -1; /* positive x = scroll right */
+					for (int i = 0; i < steps; i++) {
+						zwlr_virtual_pointer_v1_axis_source(rg_wl_vptr, WL_POINTER_AXIS_SOURCE_WHEEL);
+						wl_fixed_t val = wl_fixed_from_double(15.0 * sign);
+						zwlr_virtual_pointer_v1_axis(rg_wl_vptr, 0, WL_POINTER_AXIS_HORIZONTAL_SCROLL, val);
+						zwlr_virtual_pointer_v1_axis_discrete(rg_wl_vptr, 0, WL_POINTER_AXIS_HORIZONTAL_SCROLL, val, 1 * sign);
+						zwlr_virtual_pointer_v1_frame(rg_wl_vptr);
+					}
+				}
+				wl_display_flush(rg_wl_display);
+			}
+		} else
+		#endif
+		{
+			Display *display = XGetMainDisplay();
+			int ydir = 4; /* Button 4 is up, 5 is down. */
+			int xdir = 6;
+			if (y < 0) { ydir = 5; }
+			if (x < 0) { xdir = 7; }
+			for (int xi = 0; xi < abs(x); xi++) {
+				XTestFakeButtonEvent(display, xdir, 1, CurrentTime);
+				XTestFakeButtonEvent(display, xdir, 0, CurrentTime);
+			}
+			for (int yi = 0; yi < abs(y); yi++) {
+				XTestFakeButtonEvent(display, ydir, 1, CurrentTime);
+				XTestFakeButtonEvent(display, ydir, 0, CurrentTime);
+			}
+			XSync(display, false);
 		}
-		for (yi = 0; yi < abs(y); yi++) {
-			XTestFakeButtonEvent(display, ydir, 1, CurrentTime);
-			XTestFakeButtonEvent(display, ydir, 0, CurrentTime);
-		}
-
-		XSync(display, false);
 	#elif defined(IS_WINDOWS)
 		mouseScrollInputH.type = INPUT_MOUSE;
 		mouseScrollInputH.mi.dx = 0;
@@ -310,8 +481,7 @@ static double crude_hypot(double x, double y){
 	return ((M_SQRT2 - 1.0) * small) + big;
 }
 
-static bool smoothlyMoveMouseImpl(MMPointInt32 endPoint, double lowSpeed, double highSpeed,
-		bool drag, MMMouseButton button){
+bool smoothlyMoveMouse(MMPointInt32 endPoint, double lowSpeed, double highSpeed){
 	MMPointInt32 pos = location();
 	// MMSizeInt32 screenSize = getMainDisplaySize();
 	double velo_x = 0.0, velo_y = 0.0;
@@ -330,30 +500,18 @@ static bool smoothlyMoveMouseImpl(MMPointInt32 endPoint, double lowSpeed, double
 		velo_y /= veloDistance;
 
 		pos.x += floor(velo_x + 0.5);
-		pos.y += floor(velo_y + 0.5); 
+		pos.y += floor(velo_y + 0.5);
 
-		/* Make sure we are in the screen boundaries! */
-		// if (pos.x >= screenSize.w || pos.y >= screenSize.h) { 
+		/* Make sure we are in the screen boundaries! (Strange things will happen if we are not.) */
+		// if (pos.x >= screenSize.w || pos.y >= screenSize.h) {
 		// 	return false;
 		// }
-		if (drag) {
-			dragMouse(pos, button);
-		} else {
-			moveMouse(pos);
-		}
+		moveMouse(pos);
 
 		/* Wait 1 - 3 milliseconds. */
 		microsleep(DEADBEEF_UNIFORM(lowSpeed, highSpeed));
 		// microsleep(DEADBEEF_UNIFORM(1.0, 3.0));
 	}
+
 	return true;
-}
-
-bool smoothlyMoveMouse(MMPointInt32 endPoint, double lowSpeed, double highSpeed){
-	return smoothlyMoveMouseImpl(endPoint, lowSpeed, highSpeed, false, LEFT_BUTTON);
-}
-
-bool smoothlyDragMouse(MMPointInt32 endPoint, double lowSpeed, double highSpeed,
-		MMMouseButton button){
-	return smoothlyMoveMouseImpl(endPoint, lowSpeed, highSpeed, true, button);
 }

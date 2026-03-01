@@ -14,6 +14,14 @@
 
 package robotgo
 
+/*
+#include "screen/goScreen.h"
+#include "window/alert_c.h"
+*/
+import "C"
+
+import "unsafe"
+
 // GetBounds get the window bounds
 func GetBounds(pid int, args ...int) (int, int, int, int) {
 	var isPid int
@@ -65,7 +73,7 @@ func ActivePid(pid int, args ...int) error {
 
 // DisplaysNum get the count of displays
 func DisplaysNum() int {
-	return getNumDisplays()
+    return int(C.get_num_displays())
 }
 
 // Alert show a alert window
@@ -76,5 +84,19 @@ func DisplaysNum() int {
 //
 //	robotgo.Alert("hi", "window", "ok", "cancel")
 func Alert(title, msg string, args ...string) bool {
-	return showAlert(title, msg, args...)
+    var defBtn, cancelBtn *C.char
+    ct := C.CString(title)
+    cm := C.CString(msg)
+    defer C.free(unsafe.Pointer(ct))
+    defer C.free(unsafe.Pointer(cm))
+    if len(args) > 0 {
+        defBtn = C.CString(args[0])
+        defer C.free(unsafe.Pointer(defBtn))
+    }
+    if len(args) > 1 {
+        cancelBtn = C.CString(args[1])
+        defer C.free(unsafe.Pointer(cancelBtn))
+    }
+    r := C.showAlert(ct, cm, defBtn, cancelBtn)
+    return int(r) == 0
 }

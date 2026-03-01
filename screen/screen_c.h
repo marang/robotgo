@@ -2,15 +2,16 @@
 
 #if defined(IS_MACOSX)
 	#include <ApplicationServices/ApplicationServices.h>
-#elif defined(USE_X11)
-	#include <X11/Xlib.h>
-	#include <X11/Xresource.h>
-	// #include "../base/xdisplay_c.h"
+#elif defined(IS_LINUX)
+    #include <X11/Xlib.h>
+    #include <X11/Xresource.h>
+    #include "../base/os.h"
+    // #include "../base/xdisplay_c.h"
 #endif
 
-intptr scaleX();
+static inline intptr scaleX();
 
-double sys_scale(int32_t display_id) {
+static inline double sys_scale(int32_t display_id) {
 	#if defined(IS_MACOSX)
 		CGDirectDisplayID displayID = (CGDirectDisplayID) display_id;
 		if (displayID == -1) {
@@ -22,42 +23,46 @@ double sys_scale(int32_t display_id) {
 		double targetWidth = CGDisplayModeGetWidth(modeRef);
 	
 		return pixelWidth / targetWidth;
-	#elif defined(USE_X11)
-		Display *dpy = XOpenDisplay(NULL);
+	#elif defined(IS_LINUX)
+    if (detectDisplayServer() == Wayland) {
+        return 1.0; // No global DPI query; assume 1.0 scaling
+    }
+    Display *dpy = XOpenDisplay(NULL);
+    if (!dpy) { return 1.0; }
 
-		int scr = 0; /* Screen number */
-		double xres = ((((double) DisplayWidth(dpy, scr)) * 25.4) /
-			((double) DisplayWidthMM(dpy, scr)));
+    int scr = 0; /* Screen number */
+    double xres = ((((double) DisplayWidth(dpy, scr)) * 25.4) /
+            ((double) DisplayWidthMM(dpy, scr)));
 
-		char *rms = XResourceManagerString(dpy);
-		if (rms) {
-			XrmDatabase db = XrmGetStringDatabase(rms);
-			if (db) {
-				XrmValue value;
-				char *type = NULL;
+    char *rms = XResourceManagerString(dpy);
+    if (rms) {
+        XrmDatabase db = XrmGetStringDatabase(rms);
+        if (db) {
+            XrmValue value;
+            char *type = NULL;
 
-				if (XrmGetResource(db, "Xft.dpi", "String", &type, &value)) {
-					if (value.addr) {
-						xres = atof(value.addr);
-					}
-				}
+            if (XrmGetResource(db, "Xft.dpi", "String", &type, &value)) {
+                if (value.addr) {
+                    xres = atof(value.addr);
+                }
+            }
 
-				XrmDestroyDatabase(db);
-			}
-		}
-		XCloseDisplay (dpy);
+            XrmDestroyDatabase(db);
+        }
+    }
+    XCloseDisplay (dpy);
 
-		return xres / 96.0;
+    return xres / 96.0;
    	#elif defined(IS_WINDOWS)
    		double s = scaleX() / 96.0;
    		return s;
    	#endif
 }
 
-intptr scaleX(){
+static inline intptr scaleX(){
 	#if defined(IS_MACOSX)
 		return 0;
-	#elif defined(USE_X11)
+	#elif defined(IS_LINUX)
 		return 0;
 	#elif defined(IS_WINDOWS)
 		// Get desktop dc
@@ -68,20 +73,25 @@ intptr scaleX(){
 	#endif
 }
 
-MMSizeInt32 getMainDisplaySize(void) {
+static inline MMSizeInt32 getMainDisplaySize(void) {
 #if defined(IS_MACOSX)
 	CGDirectDisplayID displayID = CGMainDisplayID();
 	CGRect displayRect = CGDisplayBounds(displayID);
 	
 	CGSize size = displayRect.size;
 	return MMSizeInt32Make((int32_t)size.width, (int32_t)size.height);
-#elif defined(USE_X11)
-	Display *display = XGetMainDisplay();
-	const int screen = DefaultScreen(display);
+#elif defined(IS_LINUX)
+    // debug: log which display server branch we take
+    if (detectDisplayServer() == Wayland) {
+        return MMSizeInt32Make(0, 0);
+    }
+    Display *display = XGetMainDisplay();
+    if (!display) { return MMSizeInt32Make(0, 0); }
+    const int screen = DefaultScreen(display);
 
-	return MMSizeInt32Make(
-						(int32_t)DisplayWidth(display, screen),
-	                	(int32_t)DisplayHeight(display, screen));
+    return MMSizeInt32Make(
+                            (int32_t)DisplayWidth(display, screen),
+                            (int32_t)DisplayHeight(display, screen));
 #elif defined(IS_WINDOWS)
 	return MMSizeInt32Make(
  						(int32_t)GetSystemMetrics(SM_CXSCREEN),
@@ -89,7 +99,7 @@ MMSizeInt32 getMainDisplaySize(void) {
 #endif
 }
 
-MMRectInt32 getScreenRect(int32_t display_id) {
+static inline MMRectInt32 getScreenRect(int32_t display_id) {
 #if defined(IS_MACOSX)
 	CGDirectDisplayID displayID = (CGDirectDisplayID) display_id;
 	if (display_id == -1) {
@@ -102,14 +112,17 @@ MMRectInt32 getScreenRect(int32_t display_id) {
 	return MMRectInt32Make(
 		(int32_t)point.x, (int32_t)point.y,
 		(int32_t)size.width, (int32_t)size.height);
-#elif defined(USE_X11)
-	Display *display = XGetMainDisplay();
-	const int screen = DefaultScreen(display);
+#elif defined(IS_LINUX)
+    if (detectDisplayServer() == Wayland) {
+        return MMRectInt32Make(0, 0, 0, 0);
+    }
+    Display *display = XGetMainDisplay();
+    const int screen = DefaultScreen(display);
 
-	return MMRectInt32Make(
-					(int32_t)0, (int32_t)0,
-					(int32_t)DisplayWidth(display, screen),
-	                (int32_t)DisplayHeight(display, screen));
+    return MMRectInt32Make(
+                    (int32_t)0, (int32_t)0,
+                    (int32_t)DisplayWidth(display, screen),
+                    (int32_t)DisplayHeight(display, screen));
 #elif defined(IS_WINDOWS)
 	if (GetSystemMetrics(SM_CMONITORS) == 1 
 			|| display_id == -1 || display_id == 0) {
@@ -128,7 +141,7 @@ MMRectInt32 getScreenRect(int32_t display_id) {
 #endif
 }
 
-bool pointVisibleOnMainDisplay(MMPointInt32 point){
+static inline bool pointVisibleOnMainDisplay(MMPointInt32 point){
 	MMSizeInt32 displaySize = getMainDisplaySize();
 	return point.x < displaySize.w && point.y < displaySize.h;
 }

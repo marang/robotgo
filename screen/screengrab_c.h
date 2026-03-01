@@ -2,192 +2,371 @@
 #include <stdlib.h> /* malloc() */
 
 #if defined(IS_MACOSX)
-	#include <OpenGL/OpenGL.h>
-	#include <OpenGL/gl.h>
-	#include <ApplicationServices/ApplicationServices.h>
-	#include <ScreenCaptureKit/ScreenCaptureKit.h>
-#elif defined(USE_X11)
-	#include <X11/Xlib.h>
-	#include <X11/Xutil.h>
-	#include "../base/xdisplay_c.h"
+#include <ApplicationServices/ApplicationServices.h>
+#include <OpenGL/OpenGL.h>
+#include <OpenGL/gl.h>
+#include <ScreenCaptureKit/ScreenCaptureKit.h>
+// Provide shared error codes so Go can reference them cross-platform.
+typedef enum {
+  ScreengrabOK = 0,
+  ScreengrabErrDisplay,
+  ScreengrabErrNoManager,
+  ScreengrabErrNoOutputs,
+  ScreengrabErrDmabufDevice,
+  ScreengrabErrDmabufModifiers,
+  ScreengrabErrDmabufImport,
+  ScreengrabErrDmabufMap,
+  ScreengrabErrPortal,
+  ScreengrabErrFailed,
+} ScreengrabError;
+// Stubs to satisfy cgo references on non-Linux builds.
+typedef void Display;
+static inline Display* XGetMainDisplay(void) { return NULL; }
+static inline MMBitmapRef capture_screen_portal(int32_t x, int32_t y, int32_t w,
+                                                int32_t h, int32_t display_id,
+                                                int8_t isPid, int32_t *err) {
+  (void)x; (void)y; (void)w; (void)h; (void)display_id; (void)isPid;
+  if (err) { *err = ScreengrabErrFailed; }
+  return NULL;
+}
+// Provide a stub for capture_screen_wayland so the Go references type-check
+// even when compiling on macOS.
+static inline MMBitmapRef capture_screen_wayland(int32_t x, int32_t y, int32_t w,
+                                                 int32_t h, int32_t display_id,
+                                                 int8_t isPid, int32_t backend,
+                                                 int32_t *err) {
+  (void)x; (void)y; (void)w; (void)h; (void)display_id; (void)isPid; (void)backend;
+  if (err) { *err = ScreengrabErrFailed; }
+  return NULL;
+}
+#elif defined(IS_LINUX)
+#include "../base/xdisplay_c.h"
+#include <X11/Xlib.h>
+#include <X11/Xutil.h>
+
+// Swallow X errors (e.g., BadMatch from X_GetImage) and signal failure
+// instead of aborting the process during tests or constrained servers.
+static volatile int robotgo_xerr_flag = 0;
+static int robotgo_xerr_handler(Display* d, XErrorEvent* e) {
+  (void)d; (void)e; robotgo_xerr_flag = 1; return 0;
+}
+
+typedef enum {
+  ScreengrabOK = 0,
+  ScreengrabErrDisplay,
+  ScreengrabErrNoManager,
+  ScreengrabErrNoOutputs,
+  ScreengrabErrDmabufDevice,
+  ScreengrabErrDmabufModifiers,
+  ScreengrabErrDmabufImport,
+  ScreengrabErrDmabufMap,
+  ScreengrabErrPortal,
+  ScreengrabErrFailed,
+} ScreengrabError;
+
+#ifdef ROBOTGO_USE_WAYLAND
+MMBitmapRef capture_screen_wayland(int32_t x, int32_t y, int32_t w, int32_t h,
+                                   int32_t display_id, int8_t isPid,
+                                   int32_t backend, int32_t *err);
+#endif
+// Portal capture is available on Linux regardless of Wayland build tag.
+MMBitmapRef capture_screen_portal(int32_t x, int32_t y, int32_t w, int32_t h,
+                                  int32_t display_id, int8_t isPid,
+                                  int32_t *err);
+
+#ifndef ROBOTGO_USE_WAYLAND
+// Provide a stub for capture_screen_wayland when Wayland is not compiled in.
+static inline MMBitmapRef capture_screen_wayland(int32_t x, int32_t y,
+                                                 int32_t w, int32_t h,
+                                                 int32_t display_id,
+                                                 int8_t isPid, int32_t backend,
+                                                 int32_t *err) {
+  (void)x; (void)y; (void)w; (void)h; (void)display_id; (void)isPid; (void)backend;
+  if (err) { *err = ScreengrabErrFailed; }
+  return NULL;
+}
+#endif
 #elif defined(IS_WINDOWS)
-	#include <string.h>
+#include <string.h>
+// Provide minimal definitions so cgo references used in cross-platform Go
+// code type-check on Windows builds.
+typedef enum {
+  ScreengrabOK = 0,
+  ScreengrabErrDisplay,
+  ScreengrabErrNoManager,
+  ScreengrabErrNoOutputs,
+  ScreengrabErrDmabufDevice,
+  ScreengrabErrDmabufModifiers,
+  ScreengrabErrDmabufImport,
+  ScreengrabErrDmabufMap,
+  ScreengrabErrPortal,
+  ScreengrabErrFailed,
+} ScreengrabError;
+
+// X11 Display stub so code paths guarded by runtime.GOOS checks still
+// type-check on Windows.
+typedef void Display;
+static inline Display* XGetMainDisplay(void) { return NULL; }
 #endif
 #include "screen_c.h"
 
-#if defined(IS_MACOSX) && __ENVIRONMENT_MAC_OS_X_VERSION_MIN_REQUIRED__ > 140400
-	static CGImageRef capture15(CGDirectDisplayID id, CGRect diIntersectDisplayLocal, CGColorSpaceRef colorSpace) {
-		dispatch_semaphore_t semaphore = dispatch_semaphore_create(0);
-		__block CGImageRef image1 = nil;
-		[SCShareableContent getShareableContentWithCompletionHandler:^(SCShareableContent* content, NSError* error) {
-			@autoreleasepool {
-				if (error) {
-					dispatch_semaphore_signal(semaphore);
-					return;
-				}
-				
-				SCDisplay* target = nil;
-				for (SCDisplay *display in content.displays) {
-					if (display.displayID == id) {
-						target = display;
-						break;
-					}
-				}
-				if (!target) {
-					dispatch_semaphore_signal(semaphore);
-					return;
-				}
+#if defined(IS_WINDOWS)
+// Windows has no portal/wayland capture; provide stubs to satisfy linking
+// when referenced from platform-gated code.
+static inline MMBitmapRef capture_screen_portal(int32_t x, int32_t y, int32_t w,
+                                                int32_t h, int32_t display_id,
+                                                int8_t isPid, int32_t *err) {
+  (void)x; (void)y; (void)w; (void)h; (void)display_id; (void)isPid;
+  if (err) { *err = ScreengrabErrFailed; }
+  return NULL;
+}
 
-				SCContentFilter* filter = [[SCContentFilter alloc] initWithDisplay:target excludingWindows:@[]];
-				SCStreamConfiguration* config = [[SCStreamConfiguration alloc] init];
-				config.queueDepth = 5;
-				config.sourceRect = diIntersectDisplayLocal;
-				config.width = diIntersectDisplayLocal.size.width * sys_scale(id);
-				config.height = diIntersectDisplayLocal.size.height * sys_scale(id);
-				config.scalesToFit = false;
-				config.captureResolution = 1;
-
-				[SCScreenshotManager captureImageWithFilter:filter
-					configuration:config
-					completionHandler:^(CGImageRef img, NSError* error) {
-						if (!error) {
-							image1 = CGImageCreateCopyWithColorSpace(img, colorSpace);
-						}
-						dispatch_semaphore_signal(semaphore);
-				}];
-			}
-		}];
-
-		dispatch_semaphore_wait(semaphore, DISPATCH_TIME_FOREVER);
-		dispatch_release(semaphore);
-		return image1;
-	}
+static inline MMBitmapRef capture_screen_wayland(int32_t x, int32_t y, int32_t w,
+                                                 int32_t h, int32_t display_id,
+                                                 int8_t isPid, int32_t backend,
+                                                 int32_t *err) {
+  (void)x; (void)y; (void)w; (void)h; (void)display_id; (void)isPid; (void)backend;
+  if (err) { *err = ScreengrabErrFailed; }
+  return NULL;
+}
 #endif
 
-MMBitmapRef copyMMBitmapFromDisplayInRect(MMRectInt32 rect, int32_t display_id, int8_t isPid) {
+#if defined(IS_MACOSX) && __ENVIRONMENT_MAC_OS_X_VERSION_MIN_REQUIRED__ > 140400
+static CGImageRef capture15(CGDirectDisplayID id,
+                            CGRect diIntersectDisplayLocal,
+                            CGColorSpaceRef colorSpace) {
+  dispatch_semaphore_t semaphore = dispatch_semaphore_create(0);
+  __block CGImageRef image1 = nil;
+  [SCShareableContent getShareableContentWithCompletionHandler:^(
+                          SCShareableContent *content, NSError *error) {
+    @autoreleasepool {
+      if (error) {
+        dispatch_semaphore_signal(semaphore);
+        return;
+      }
+
+      SCDisplay *target = nil;
+      for (SCDisplay *display in content.displays) {
+        if (display.displayID == id) {
+          target = display;
+          break;
+        }
+      }
+      if (!target) {
+        dispatch_semaphore_signal(semaphore);
+        return;
+      }
+
+      SCContentFilter *filter =
+          [[SCContentFilter alloc] initWithDisplay:target excludingWindows:@[]];
+      SCStreamConfiguration *config = [[SCStreamConfiguration alloc] init];
+      config.queueDepth = 5;
+      config.sourceRect = diIntersectDisplayLocal;
+      config.width = diIntersectDisplayLocal.size.width * sys_scale(id);
+      config.height = diIntersectDisplayLocal.size.height * sys_scale(id);
+      config.scalesToFit = false;
+      config.captureResolution = 1;
+
+      [SCScreenshotManager
+          captureImageWithFilter:filter
+                   configuration:config
+               completionHandler:^(CGImageRef img, NSError *error) {
+                 if (!error) {
+                   image1 = CGImageCreateCopyWithColorSpace(img, colorSpace);
+                 }
+                 dispatch_semaphore_signal(semaphore);
+               }];
+    }
+  }];
+
+  dispatch_semaphore_wait(semaphore, DISPATCH_TIME_FOREVER);
+  dispatch_release(semaphore);
+  return image1;
+}
+#endif
+
+static inline MMBitmapRef copyMMBitmapFromDisplayInRect(MMRectInt32 rect, int32_t display_id,
+                                          int8_t isPid) {
 #if defined(IS_MACOSX)
-	MMBitmapRef bitmap = NULL;
-	uint8_t *buffer = NULL;
-	size_t bufferSize = 0;
+  MMBitmapRef bitmap = NULL;
+  uint8_t *buffer = NULL;
+  size_t bufferSize = 0;
 
-	CGDirectDisplayID displayID = (CGDirectDisplayID) display_id;
-	if (displayID == -1 || displayID == 0) {
-		displayID = CGMainDisplayID();
-	}
+  CGDirectDisplayID displayID = (CGDirectDisplayID)display_id;
+  if (displayID == -1 || displayID == 0) {
+    displayID = CGMainDisplayID();
+  }
 
-	MMPointInt32 o = rect.origin; MMSizeInt32 s = rect.size;
-	#if __ENVIRONMENT_MAC_OS_X_VERSION_MIN_REQUIRED__ > 140400
-		CGColorSpaceRef color = CGColorSpaceCreateWithName(kCGColorSpaceSRGB);
-		CGImageRef image = capture15(displayID, CGRectMake(o.x, o.y, s.w, s.h), color);
-		CGColorSpaceRelease(color);
-	#else
-		// This API is deprecated in macos 15, use ScreenCaptureKit's captureScreenshot
-		CGImageRef image = CGDisplayCreateImageForRect(displayID, CGRectMake(o.x, o.y, s.w, s.h));
-	#endif
-	if (!image) { return NULL; }
-	
-	CFDataRef imageData = CGDataProviderCopyData(CGImageGetDataProvider(image));
-	if (!imageData) { return NULL; }
+  MMPointInt32 o = rect.origin;
+  MMSizeInt32 s = rect.size;
+#if __ENVIRONMENT_MAC_OS_X_VERSION_MIN_REQUIRED__ > 140400
+  CGColorSpaceRef color = CGColorSpaceCreateWithName(kCGColorSpaceSRGB);
+  CGImageRef image =
+      capture15(displayID, CGRectMake(o.x, o.y, s.w, s.h), color);
+  CGColorSpaceRelease(color);
+#else
+  // This API is deprecated in macos 15, use ScreenCaptureKit's
+  // captureScreenshot
+  CGImageRef image =
+      CGDisplayCreateImageForRect(displayID, CGRectMake(o.x, o.y, s.w, s.h));
+#endif
+  if (!image) {
+    return NULL;
+  }
 
-	bufferSize = CFDataGetLength(imageData);
-	buffer = malloc(bufferSize);
-	CFDataGetBytes(imageData, CFRangeMake(0, bufferSize), buffer);
+  CFDataRef imageData = CGDataProviderCopyData(CGImageGetDataProvider(image));
+  if (!imageData) {
+    return NULL;
+  }
 
-	bitmap = createMMBitmap_c(buffer, 
-			CGImageGetWidth(image), CGImageGetHeight(image), CGImageGetBytesPerRow(image), 
-			CGImageGetBitsPerPixel(image), CGImageGetBitsPerPixel(image) / 8);
+  bufferSize = CFDataGetLength(imageData);
+  buffer = malloc(bufferSize);
+  CFDataGetBytes(imageData, CFRangeMake(0, bufferSize), buffer);
 
-	CFRelease(imageData);
-	CGImageRelease(image);
+  bitmap = createMMBitmap_c(
+      buffer, CGImageGetWidth(image), CGImageGetHeight(image),
+      CGImageGetBytesPerRow(image), CGImageGetBitsPerPixel(image),
+      CGImageGetBitsPerPixel(image) / 8);
 
-	return bitmap;
-#elif defined(USE_X11)
-	MMBitmapRef bitmap;
-	Display *display;
-	if (display_id == -1) {
-		display = XOpenDisplay(NULL);
-	} else {
-		display = XGetMainDisplay();
-	}
+  CFRelease(imageData);
+  CGImageRelease(image);
 
-	MMPointInt32 o = rect.origin; MMSizeInt32 s = rect.size;
-	XImage *image = XGetImage(display, XDefaultRootWindow(display), 
-							(int)o.x, (int)o.y, (unsigned int)s.w, (unsigned int)s.h, 
-							AllPlanes, ZPixmap);
-	XCloseDisplay(display);
-	if (image == NULL) { return NULL; }
+  return bitmap;
+#elif defined(IS_LINUX)
+  MMBitmapRef bitmap;
+  Display *display;
+  if (display_id == -1) {
+    display = XOpenDisplay(NULL);
+  } else {
+    display = XGetMainDisplay();
+  }
+  if (display == NULL) {
+    return NULL;
+  }
 
-	bitmap = createMMBitmap_c((uint8_t *)image->data, 
-				s.w, s.h, (size_t)image->bytes_per_line, 
-				(uint8_t)image->bits_per_pixel, (uint8_t)image->bits_per_pixel / 8);
-	image->data = NULL; /* Steal ownership of bitmap data so we don't have to copy it. */
-	XDestroyImage(image);
+  MMPointInt32 o = rect.origin;
+  MMSizeInt32 s = rect.size;
+  unsigned long mask =
+      (1UL << DefaultDepth(display, DefaultScreen(display))) - 1;
+  // Install a temporary X error handler to swallow BadMatch errors on systems
+  // where XGetImage on the root window is not permitted.
+  static int robotgo_xerr_installed = 0;
+  robotgo_xerr_flag = 0;
+  if (!robotgo_xerr_installed) {
+    XSetErrorHandler(robotgo_xerr_handler);
+    robotgo_xerr_installed = 1;
+  }
+  XSync(display, False);
+  XImage *image = XGetImage(display, XDefaultRootWindow(display), (int)o.x, (int)o.y,
+                            (unsigned int)s.w, (unsigned int)s.h, mask, ZPixmap);
+  XSync(display, False);
+  if (robotgo_xerr_flag) {
+    robotgo_xerr_flag = 0;
+    if (image) { XDestroyImage(image); }
+    if (display_id == -1) { XCloseDisplay(display); }
+    return NULL;
+  }
+  if (image == NULL) {
+    if (display_id == -1) {
+      XCloseDisplay(display);
+    }
+    return NULL;
+  }
+  if (display_id == -1) {
+    XCloseDisplay(display);
+  }
 
-	return bitmap;
+  bitmap = createMMBitmap_c(
+      (uint8_t *)image->data, s.w, s.h, (size_t)image->bytes_per_line,
+      (uint8_t)image->bits_per_pixel, (uint8_t)image->bits_per_pixel / 8);
+  image->data =
+      NULL; /* Steal ownership of bitmap data so we don't have to copy it. */
+  XDestroyImage(image);
+
+  return bitmap;
 #elif defined(IS_WINDOWS)
-	MMBitmapRef bitmap;
-	void *data;
-	HDC screen = NULL, screenMem = NULL;
-	HBITMAP dib;
-	BITMAPINFO bi;
+  MMBitmapRef bitmap;
+  void *data;
+  HDC screen = NULL, screenMem = NULL;
+  HBITMAP dib;
+  BITMAPINFO bi;
 
-	int32_t x = rect.origin.x, y = rect.origin.y;
-	int32_t w = rect.size.w, h = rect.size.h;
+  int32_t x = rect.origin.x, y = rect.origin.y;
+  int32_t w = rect.size.w, h = rect.size.h;
 
-	/* Initialize bitmap info. */
-	bi.bmiHeader.biSize = sizeof(bi.bmiHeader);
-   	bi.bmiHeader.biWidth = (long) w;
-   	bi.bmiHeader.biHeight = -(long) h; /* Non-cartesian, please */
-   	bi.bmiHeader.biPlanes = 1;
-   	bi.bmiHeader.biBitCount = 32;
-   	bi.bmiHeader.biCompression = BI_RGB;
-   	bi.bmiHeader.biSizeImage = (DWORD)(4 * w * h);
-	bi.bmiHeader.biXPelsPerMeter = 0;
-	bi.bmiHeader.biYPelsPerMeter = 0;
-	bi.bmiHeader.biClrUsed = 0;
-	bi.bmiHeader.biClrImportant = 0;
+  /* Initialize bitmap info. */
+  bi.bmiHeader.biSize = sizeof(bi.bmiHeader);
+  bi.bmiHeader.biWidth = (long)w;
+  bi.bmiHeader.biHeight = -(long)h; /* Non-cartesian, please */
+  bi.bmiHeader.biPlanes = 1;
+  bi.bmiHeader.biBitCount = 32;
+  bi.bmiHeader.biCompression = BI_RGB;
+  bi.bmiHeader.biSizeImage = (DWORD)(4 * w * h);
+  bi.bmiHeader.biXPelsPerMeter = 0;
+  bi.bmiHeader.biYPelsPerMeter = 0;
+  bi.bmiHeader.biClrUsed = 0;
+  bi.bmiHeader.biClrImportant = 0;
 
-	HWND hwnd;
-	if (display_id == -1 || isPid == 0) {
-	// 	screen = GetDC(NULL); /* Get entire screen */
-		hwnd = GetDesktopWindow();
-	} else {
-		hwnd = (HWND) (uintptr) display_id;
-	}
-	screen = GetDC(hwnd);
-	
-	if (screen == NULL) { return NULL; }
+  HWND hwnd;
+  if (display_id == -1 || isPid == 0) {
+    // 	screen = GetDC(NULL); /* Get entire screen */
+    hwnd = GetDesktopWindow();
+  } else {
+    hwnd = (HWND)(uintptr)display_id;
+  }
+  screen = GetDC(hwnd);
 
-	// Todo: Use DXGI
-	screenMem = CreateCompatibleDC(screen);
-	/* Get screen data in display device context. */
-   	dib = CreateDIBSection(screen, &bi, DIB_RGB_COLORS, &data, NULL, 0);
+  if (screen == NULL) {
+    return NULL;
+  }
 
-	/* Copy the data into a bitmap struct. */
-	BOOL b = (screenMem == NULL) || 
-		SelectObject(screenMem, dib) == NULL ||
-	    !BitBlt(screenMem, (int)0, (int)0, (int)w, (int)h, screen, x, y, SRCCOPY);
-	if (b) {
-		/* Error copying data. */
-		ReleaseDC(hwnd, screen);
-		DeleteObject(dib);
-		if (screenMem != NULL) { DeleteDC(screenMem); }
+  // Todo: Use DXGI
+  screenMem = CreateCompatibleDC(screen);
+  /* Get screen data in display device context. */
+  dib = CreateDIBSection(screen, &bi, DIB_RGB_COLORS, &data, NULL, 0);
 
-		return NULL;
-	}
+  /* Copy the data into a bitmap struct. */
+  BOOL b =
+      (screenMem == NULL) || SelectObject(screenMem, dib) == NULL ||
+      !BitBlt(screenMem, (int)0, (int)0, (int)w, (int)h, screen, x, y, SRCCOPY);
+  if (b) {
+    /* Error copying data. */
+    ReleaseDC(hwnd, screen);
+    DeleteObject(dib);
+    if (screenMem != NULL) {
+      DeleteDC(screenMem);
+    }
 
-	bitmap = createMMBitmap_c(NULL, w, h, 4 * w, (uint8_t)bi.bmiHeader.biBitCount, 4);
+    return NULL;
+  }
 
-	/* Copy the data to our pixel buffer. */
-	if (bitmap != NULL) {
-		bitmap->imageBuffer = malloc(bitmap->bytewidth * bitmap->height);
-		memcpy(bitmap->imageBuffer, data, bitmap->bytewidth * bitmap->height);
-	}
+  bitmap =
+      createMMBitmap_c(NULL, w, h, 4 * w, (uint8_t)bi.bmiHeader.biBitCount, 4);
 
-	ReleaseDC(hwnd, screen);
-	DeleteObject(dib);
-	DeleteDC(screenMem);
+  /* Copy the data to our pixel buffer. */
+  if (bitmap != NULL) {
+    bitmap->imageBuffer = malloc(bitmap->bytewidth * bitmap->height);
+    memcpy(bitmap->imageBuffer, data, bitmap->bytewidth * bitmap->height);
+  }
 
-	return bitmap;
+  ReleaseDC(hwnd, screen);
+  DeleteObject(dib);
+  DeleteDC(screenMem);
+
+  return bitmap;
 #endif
 }
+
+static inline MMRGBHex mmrgb_hex_at(MMBitmapRef bitmap, int32_t x, int32_t y) {
+  return MMRGBHexAtPoint(bitmap, x, y);
+}
+
+#if defined(IS_LINUX)
+// Always include the portal implementation on Linux so it can be used as
+// a fallback even when Wayland support is not compiled in.
+#include "screengrab_portal.c"
+#if defined(ROBOTGO_USE_WAYLAND)
+#include "screengrab_wayland_impl.c"
+#include "screengrab_wayland.c"
+#endif
+#endif

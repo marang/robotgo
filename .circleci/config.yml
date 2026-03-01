@@ -5,8 +5,8 @@ jobs:
     docker:
       # using custom image, see .circleci/images/primary/Dockerfile
       # - image: govgo/robotgoci:1.10.3
-      - image: golang:1.25.0
-    working_directory: /gopath/src/github.com/go-vgo/robotgo
+      - image: golang:1.24.0
+    working_directory: /gopath/src/github.com/marang/robotgo
     steps:
       - checkout
       # specify any bash command here prefixed with `run: `
@@ -15,12 +15,20 @@ jobs:
           apt -y install gcc libc6-dev
           libx11-dev xorg-dev libxtst-dev
           xsel xclip
+          pkg-config libwayland-dev libwayland-cursor0 libwayland-egl1-mesa libxkbcommon-dev wayland-protocols
           # libpng++-dev
-          # xcb libxcb-xkb-dev x11-xkb-utils libx11-xcb-dev libxkbcommon-x11-dev libxkbcommon-dev
+          # xcb libxcb-xkb-dev x11-xkb-utils libx11-xcb-dev libxkbcommon-x11-dev
       - run: apt -y install xvfb
+      - run: echo 'export PKG_CONFIG_PATH=/usr/lib/pkgconfig:/usr/lib/x86_64-linux-gnu/pkgconfig:$PKG_CONFIG_PATH' >> $BASH_ENV
+      # Install golangci-lint and add GOPATH/bin to PATH for subsequent steps
+      - run: |
+          go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
+          echo 'export PATH=$(go env GOPATH)/bin:$PATH' >> $BASH_ENV
       #
       #  override:
       - run: go get -v -t -d ./...
+      - run: golangci-lint version
+      - run: CGO_ENABLED=1 golangci-lint run --timeout=5m ./...
       - run: xvfb-run go test -v ./...
       #
       # codecov.io

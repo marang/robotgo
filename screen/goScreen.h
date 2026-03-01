@@ -1,6 +1,5 @@
-// Copyright (c) 2016-2025 AtomAI, All rights reserved.
-// 
-// See the COPYRIGHT file at the top-level directory of this distribution and at
+// Copyright 2016 The go-vgo Project Developers. See the COPYRIGHT
+// file at the top-level directory of this distribution and at
 // https://github.com/go-vgo/robotgo/blob/master/LICENSE
 //
 // Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
@@ -15,12 +14,12 @@
 #include "screengrab_c.h"
 #include <stdio.h>
 
-void padHex(MMRGBHex color, char* hex) {
+static inline void padHex(MMRGBHex color, char* hex) {
 	// Length needs to be 7 because snprintf includes a terminating null.
 	snprintf(hex, 7, "%06x", color);
 }
 
-char* pad_hex(MMRGBHex color) {
+static inline char* pad_hex(MMRGBHex color) {
 	char hex[7];
 	padHex(color, hex);
 	// destroyMMBitmap(bitmap);
@@ -32,18 +31,18 @@ char* pad_hex(MMRGBHex color) {
 
 static uint8_t rgb[3];
 
-uint8_t* color_hex_to_rgb(uint32_t h) {
+static inline uint8_t* color_hex_to_rgb(uint32_t h) {
 	rgb[0] = RED_FROM_HEX(h);
 	rgb[1] = GREEN_FROM_HEX(h);
 	rgb[2] = BLUE_FROM_HEX(h);
 	return rgb;
 }
 
-uint32_t color_rgb_to_hex(uint8_t r, uint8_t g, uint8_t b) {
+static inline uint32_t color_rgb_to_hex(uint8_t r, uint8_t g, uint8_t b) {
 	return RGB_TO_HEX(r, g, b);
 }
 
-MMRGBHex get_px_color(int32_t x, int32_t y, int32_t display_id) {
+static inline MMRGBHex get_px_color(int32_t x, int32_t y, int32_t display_id) {
 	MMBitmapRef bitmap;
 	MMRGBHex color;
 
@@ -58,8 +57,8 @@ MMRGBHex get_px_color(int32_t x, int32_t y, int32_t display_id) {
 	return color;
 }
 
-char* set_XDisplay_name(char* name) {
-	#if defined(USE_X11)
+static inline char* set_XDisplay_name(char* name) {
+	#if defined(IS_LINUX)
 		setXDisplay(name);
 		return "";
 	#else
@@ -67,8 +66,8 @@ char* set_XDisplay_name(char* name) {
 	#endif
 }
 
-char* get_XDisplay_name() {
-	#if defined(USE_X11)
+static inline char* get_XDisplay_name() {
+	#if defined(IS_LINUX)
 		const char* display = getXDisplay();
 		
 		char* sd = (char*)calloc(100, sizeof(char*));
@@ -79,22 +78,22 @@ char* get_XDisplay_name() {
 	#endif
 }
 
-void close_main_display() {
-	#if defined(USE_X11)
+static inline void close_main_display() {
+	#if defined(IS_LINUX)
 		XCloseMainDisplay();
 	#else
 		// 
 	#endif
 }
 
-uint32_t get_num_displays() {
+static inline uint32_t get_num_displays() {
 	#if defined(IS_MACOSX)
 		uint32_t count = 0;
 		if (CGGetActiveDisplayList(0, nil, &count) == kCGErrorSuccess) {
 			return count;
 		}
 		return 0;
-	#elif defined(USE_X11)
+	#elif defined(IS_LINUX)
 		return 0;
 	#elif defined(IS_WINDOWS)
 		uint32_t count = 0;
@@ -105,7 +104,7 @@ uint32_t get_num_displays() {
 	#endif
 }
 
-uintptr get_hwnd_by_pid(uintptr pid) {
+static inline uintptr get_hwnd_by_pid(uintptr pid) {
 	#if defined(IS_WINDOWS)
 		HWND hwnd = GetHwndByPid(pid);
 		return (uintptr)hwnd;
@@ -114,7 +113,7 @@ uintptr get_hwnd_by_pid(uintptr pid) {
 	#endif
 }
 
-void bitmap_dealloc(MMBitmapRef bitmap) {
+static inline void bitmap_dealloc(MMBitmapRef bitmap) {
 	if (bitmap != NULL) {
 		destroyMMBitmap(bitmap);
 		bitmap = NULL;
@@ -122,8 +121,7 @@ void bitmap_dealloc(MMBitmapRef bitmap) {
 }
 
 // capture_screen capture screen
-MMBitmapRef capture_screen(int32_t x, int32_t y, int32_t w, int32_t h, int32_t display_id, int8_t isPid) {
+static inline MMBitmapRef capture_screen(int32_t x, int32_t y, int32_t w, int32_t h, int32_t display_id, int8_t isPid) {
 	MMBitmapRef bitmap = copyMMBitmapFromDisplayInRect(MMRectInt32Make(x, y, w, h), display_id, isPid);
 	return bitmap;
 }
-

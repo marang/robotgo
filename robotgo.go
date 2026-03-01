@@ -1,6 +1,5 @@
-// Copyright (c) 2016-2025 AtomAI, All rights reserved.
-//
-// See the COPYRIGHT file at the top-level directory of this distribution and at
+// Copyright 2016 The go-vgo Project Developers. See the COPYRIGHT
+// file at the top-level directory of this distribution and at
 // https://github.com/go-vgo/robotgo/blob/master/LICENSE
 //
 // Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
@@ -16,17 +15,17 @@ Please make sure Golang, GCC is installed correctly before installing RobotGo;
 
 See Requirements:
 
-	https://github.com/go-vgo/robotgo#requirements
+	https://github.com/marang/robotgo#requirements
 
 Installation:
 
 With Go module support (Go 1.11+), just import:
 
-	import "github.com/go-vgo/robotgo"
+	import "github.com/marang/robotgo"
 
 Otherwise, to install the robotgo package, run the command:
 
-	go get -u github.com/go-vgo/robotgo
+	go get -u github.com/marang/robotgo
 */
 package robotgo
 
@@ -41,6 +40,7 @@ package robotgo
 
 #cgo linux CFLAGS: -I/usr/src
 #cgo linux LDFLAGS: -L/usr/src -lm -lX11 -lXtst
+#cgo linux,portal pkg-config: libpipewire-0.3 libportal
 
 #cgo windows LDFLAGS: -lgdi32 -luser32
 //
@@ -51,14 +51,16 @@ package robotgo
 import "C"
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"image"
+	"os"
 	"runtime"
-	"syscall"
 	"time"
 	"unsafe"
 
+	portalpkg "github.com/marang/robotgo/screen/portal"
 	"github.com/vcaesar/tt"
 )
 
@@ -87,13 +89,101 @@ var (
 	Scale bool
 )
 
+// DisplayServer identifies the active Linux display server.
+type DisplayServer string
+
+const (
+	// DisplayServerX11 represents an X11 display server.
+	DisplayServerX11 DisplayServer = "x11"
+	// DisplayServerWayland represents a Wayland display server.
+	DisplayServerWayland DisplayServer = "wayland"
+	// DisplayServerUnknown indicates no known display server was detected.
+	DisplayServerUnknown DisplayServer = "unknown"
+)
+
+// DetectDisplayServer inspects the environment and reports the active display server.
+// It checks the standard DISPLAY and WAYLAND_DISPLAY variables.
+// If neither is present, DisplayServerUnknown is returned.
+func DetectDisplayServer() DisplayServer {
+	if os.Getenv("WAYLAND_DISPLAY") != "" {
+		return DisplayServerWayland
+	}
+	if os.Getenv("DISPLAY") != "" {
+		return DisplayServerX11
+	}
+	return DisplayServerUnknown
+}
+
+// CaptureBackend reports which backend handled the most recent screen capture.
+type CaptureBackend string
+
+const (
+	BackendNone       CaptureBackend = ""
+	BackendScreencopy CaptureBackend = "screencopy"
+	BackendPortal     CaptureBackend = "portal"
+	BackendX11        CaptureBackend = "x11"
+)
+
+var lastBackend CaptureBackend
+
+// LastBackend returns the backend used for the last CaptureScreen call.
+func LastBackend() CaptureBackend { return lastBackend }
+
+// WaylandBackend selects which Wayland backend to use at runtime.
+type WaylandBackend int
+
+const (
+	WaylandBackendAuto WaylandBackend = iota
+	WaylandBackendDmabuf
+	WaylandBackendWlShm
+)
+
+var waylandBackend = WaylandBackendAuto
+
+// SetWaylandBackend allows tests and callers to force a specific Wayland
+// capture backend.
+func SetWaylandBackend(b WaylandBackend) { waylandBackend = b }
+
+var (
+	ErrWaylandDisplay  = errors.New("wayland connect failed")
+	ErrNoScreencopy    = errors.New("screencopy manager not available")
+	ErrNoOutputs       = errors.New("no outputs")
+	ErrDmabufDevice    = errors.New("screencopy dmabuf device unsupported")
+	ErrDmabufModifiers = errors.New("screencopy dmabuf modifiers unsupported")
+	ErrDmabufImport    = errors.New("screencopy dmabuf import failed")
+	ErrDmabufMap       = errors.New("screencopy dmabuf map failed")
+	ErrWaylandFailed   = errors.New("wayland capture failed")
+	ErrPortalFailed    = errors.New("portal capture failed")
+)
+
+func waylandErr(code C.int32_t) error {
+	switch code {
+	case C.ScreengrabErrDisplay:
+		return ErrWaylandDisplay
+	case C.ScreengrabErrNoManager:
+		return ErrNoScreencopy
+	case C.ScreengrabErrNoOutputs:
+		return ErrNoOutputs
+	case C.ScreengrabErrDmabufDevice:
+		return ErrDmabufDevice
+	case C.ScreengrabErrDmabufModifiers:
+		return ErrDmabufModifiers
+	case C.ScreengrabErrDmabufImport:
+		return ErrDmabufImport
+	case C.ScreengrabErrDmabufMap:
+		return ErrDmabufMap
+	default:
+		return ErrWaylandFailed
+	}
+}
+
 type (
 	// Map a map[string]interface{}
 	Map map[string]interface{}
 	// CHex define CHex as c rgb Hex type (C.MMRGBHex)
 	CHex C.MMRGBHex
 	// CBitmap define CBitmap as C.MMBitmapRef type
-	CBitmap C.MMBitmapRef
+	CBitmap = C.MMBitmapRef
 	// Handle define window Handle as C.MData type
 	Handle C.MData
 )
@@ -102,7 +192,7 @@ type (
 //
 // The common type conversion of bitmap:
 //
-//	https://github.com/go-vgo/robotgo/blob/master/docs/keys.md#type-conversion
+//	https://github.com/marang/robotgo/blob/master/docs/keys.md#type-conversion
 type Bitmap struct {
 	ImgBuf        *uint8
 	Width, Height int
@@ -110,6 +200,8 @@ type Bitmap struct {
 	Bytewidth     int
 	BitsPixel     uint8
 	BytesPerPixel uint8
+
+	buf []uint8 // keep Go memory alive for ImgBuf
 }
 
 // Point is point struct
@@ -215,23 +307,38 @@ func RgbToHex(r, g, b uint8) C.uint32_t {
 	return C.color_rgb_to_hex(C.uint8_t(r), C.uint8_t(g), C.uint8_t(b))
 }
 
-// GetPxColor get the pixel color return C.MMRGBHex
-func GetPxColor(x, y int, displayId ...int) C.MMRGBHex {
+// GetPxColor returns the pixel color at (x,y). On Wayland this function
+// falls back to capturing a 1x1 region using the Wayland backend. An error is
+// returned if capturing fails or no suitable backend is available.
+func GetPxColor(x, y int, displayId ...int) (C.MMRGBHex, error) {
+	display := displayIdx(displayId...)
+
+	if runtime.GOOS == "linux" && (DetectDisplayServer() == DisplayServerWayland || os.Getenv("ROBOTGO_FORCE_PORTAL") != "") {
+		bit, err := CaptureScreen(x, y, 1, 1, display)
+		if err != nil {
+			return 0, err
+		}
+		defer FreeBitmap(bit)
+		return C.mmrgb_hex_at(C.MMBitmapRef(bit), 0, 0), nil
+	}
+
 	cx := C.int32_t(x)
 	cy := C.int32_t(y)
-
-	display := displayIdx(displayId...)
 	color := C.get_px_color(cx, cy, C.int32_t(display))
-	return color
+	return color, nil
 }
 
-// GetPixelColor get the pixel color return string
-func GetPixelColor(x, y int, displayId ...int) string {
-	return PadHex(GetPxColor(x, y, displayId...))
+// GetPixelColor returns the pixel color as a hex string.
+func GetPixelColor(x, y int, displayId ...int) (string, error) {
+	c, err := GetPxColor(x, y, displayId...)
+	if err != nil {
+		return "", err
+	}
+	return PadHex(c), nil
 }
 
-// GetLocationColor get the location pos's color
-func GetLocationColor(displayId ...int) string {
+// GetLocationColor gets the color of the current mouse location.
+func GetLocationColor(displayId ...int) (string, error) {
 	x, y := Location()
 	return GetPixelColor(x, y, displayId...)
 }
@@ -251,10 +358,6 @@ func displayIdx(id ...int) int {
 	}
 
 	return display
-}
-
-func getNumDisplays() int {
-	return int(C.get_num_displays())
 }
 
 // GetHWNDByPid get the hwnd by pid
@@ -287,6 +390,10 @@ func Scaled1(x int, f float64) int {
 
 // GetScreenSize get the screen size
 func GetScreenSize() (int, int) {
+	if runtime.GOOS == "linux" && DetectDisplayServer() == DisplayServerWayland {
+		// Avoid X11 calls under Wayland-only sessions.
+		return 0, 0
+	}
 	size := C.getMainDisplaySize()
 	return int(size.w), int(size.h)
 }
@@ -320,11 +427,11 @@ func GetScaleSize(displayId ...int) (int, int) {
 	return int(float64(x) * f), int(float64(y) * f)
 }
 
-// CaptureScreen capture the screen return bitmap(c struct),
-// use `defer robotgo.FreeBitmap(bitmap)` to free the bitmap
+// CaptureScreen capture the screen and return a bitmap (C struct).
+// Use `defer robotgo.FreeBitmap(bitmap)` to free the bitmap.
 //
 // robotgo.CaptureScreen(x, y, w, h int)
-func CaptureScreen(args ...int) CBitmap {
+func CaptureScreen(args ...int) (CBitmap, error) {
 	var x, y, w, h C.int32_t
 	displayId := -1
 	if DisplayID != -1 {
@@ -335,21 +442,29 @@ func CaptureScreen(args ...int) CBitmap {
 		displayId = args[4]
 	}
 
+	ds := DetectDisplayServer()
+
 	if len(args) > 3 {
 		x = C.int32_t(args[0])
 		y = C.int32_t(args[1])
 		w = C.int32_t(args[2])
 		h = C.int32_t(args[3])
 	} else {
-		// Get the main screen rect.
-		rect := GetScreenRect(displayId)
-		if runtime.GOOS == "windows" {
-			x = C.int32_t(rect.X)
-			y = C.int32_t(rect.Y)
-		}
+		if runtime.GOOS != "linux" || ds == DisplayServerX11 {
+			if runtime.GOOS == "linux" && C.XGetMainDisplay() == nil {
+				return nil, errors.New("no display server found")
+			}
+			// Get the main screen rect.
+			rect := GetScreenRect(displayId)
+			if runtime.GOOS == "windows" {
+				x = C.int32_t(rect.X)
+				y = C.int32_t(rect.Y)
+			}
 
-		w = C.int32_t(rect.W)
-		h = C.int32_t(rect.H)
+			w = C.int32_t(rect.W)
+			h = C.int32_t(rect.H)
+		}
+		// On Wayland without explicit dimensions, x,y,w,h remain 0
 	}
 
 	isPid := 0
@@ -357,23 +472,83 @@ func CaptureScreen(args ...int) CBitmap {
 		isPid = 1
 	}
 
+	if runtime.GOOS == "linux" {
+		// Allow tests or environments to force the portal backend regardless
+		// of the detected display server.
+		if os.Getenv("ROBOTGO_FORCE_PORTAL") != "" {
+			var perr C.int32_t
+			pbit := C.capture_screen_portal(x, y, w, h, C.int32_t(displayId), C.int8_t(isPid), &perr)
+			if pbit == nil {
+				return nil, fmt.Errorf("portal capture failed: %d", int(perr))
+			}
+			lastBackend = BackendPortal
+			return CBitmap(pbit), nil
+		}
+		switch ds {
+		case DisplayServerWayland:
+			var cerr C.int32_t
+			bit := C.capture_screen_wayland(x, y, w, h, C.int32_t(displayId), C.int8_t(isPid), C.int32_t(waylandBackend), &cerr)
+			if bit == nil {
+				err := waylandErr(cerr)
+				// Try Go portal screenshot (real pixels) when available.
+				if img, pErr := portalpkg.CaptureRegionImage(context.Background(), int(x), int(y), int(w), int(h)); pErr == nil && img != nil {
+					cb := ImgToCBitmap(img)
+					lastBackend = BackendPortal
+					return cb, nil
+				}
+				// Fallback to C stub portal (may be a stub build).
+				var perr C.int32_t
+				pbit := C.capture_screen_portal(x, y, w, h, C.int32_t(displayId), C.int8_t(isPid), &perr)
+				if pbit != nil {
+					lastBackend = BackendPortal
+					return CBitmap(pbit), nil
+				}
+				if errors.Is(err, ErrNoScreencopy) {
+					return nil, fmt.Errorf("%w; portal capture failed: %d", err, int(perr))
+				}
+				return nil, err
+			}
+			lastBackend = BackendScreencopy
+			return CBitmap(bit), nil
+		case DisplayServerX11:
+			if C.XGetMainDisplay() == nil {
+				return nil, errors.New("no display server found")
+			}
+			bit := C.capture_screen(x, y, w, h, C.int32_t(displayId), C.int8_t(isPid))
+			if bit == nil {
+				return nil, errors.New("screen capture failed")
+			}
+			lastBackend = BackendX11
+			return CBitmap(bit), nil
+		default:
+			return nil, errors.New("no display server found")
+		}
+	}
+
 	bit := C.capture_screen(x, y, w, h, C.int32_t(displayId), C.int8_t(isPid))
-	return CBitmap(bit)
+	if bit == nil {
+		return nil, errors.New("screen capture failed")
+	}
+	lastBackend = BackendNone
+	return CBitmap(bit), nil
 }
 
-// CaptureGo capture the screen and return bitmap(go struct)
-func CaptureGo(args ...int) Bitmap {
-	bit := CaptureScreen(args...)
+// CaptureGo capture the screen and return a Go bitmap.
+func CaptureGo(args ...int) (Bitmap, error) {
+	bit, err := CaptureScreen(args...)
+	if err != nil {
+		return Bitmap{}, err
+	}
 	defer FreeBitmap(bit)
 
-	return ToBitmap(bit)
+	return ToBitmap(bit), nil
 }
 
 // CaptureImg capture the screen and return image.Image, error
 func CaptureImg(args ...int) (image.Image, error) {
-	bit := CaptureScreen(args...)
-	if unsafe.Pointer(bit) == nil {
-		return nil, errors.New("Capture image not found.")
+	bit, err := CaptureScreen(args...)
+	if err != nil {
+		return nil, err
 	}
 	defer FreeBitmap(bit)
 
@@ -407,6 +582,7 @@ func ToBitmap(bit CBitmap) Bitmap {
 		Bytewidth:     int(bit.bytewidth),
 		BitsPixel:     uint8(bit.bitsPerPixel),
 		BytesPerPixel: uint8(bit.bytesPerPixel),
+		buf:           nil,
 	}
 
 	return bitmap
@@ -414,15 +590,28 @@ func ToBitmap(bit CBitmap) Bitmap {
 
 // ToCBitmap trans Bitmap to C.MMBitmapRef
 func ToCBitmap(bit Bitmap) CBitmap {
+	total := bit.Bytewidth * bit.Height
+	var cbuf *C.uint8_t
+	if total > 0 {
+		// Allocate C-owned buffer and copy pixel data from Go memory to avoid
+		// freeing Go-allocated memory in bitmap_dealloc.
+		csize := C.size_t(total)
+		cptr := C.malloc(csize)
+		if cptr != nil {
+			// Construct a Go slice view over the source buffer.
+			src := unsafe.Slice((*byte)(unsafe.Pointer(bit.ImgBuf)), total)
+			C.memcpy(cptr, unsafe.Pointer(&src[0]), csize)
+			cbuf = (*C.uint8_t)(cptr)
+		}
+	}
 	cbitmap := C.createMMBitmap_c(
-		(*C.uint8_t)(bit.ImgBuf),
+		cbuf,
 		C.int32_t(bit.Width),
 		C.int32_t(bit.Height),
 		C.int32_t(bit.Bytewidth),
 		C.uint8_t(bit.BitsPixel),
 		C.uint8_t(bit.BytesPerPixel),
 	)
-
 	return CBitmap(cbitmap)
 }
 
@@ -507,24 +696,6 @@ func CheckMouse(btn string) C.MMMouseButton {
 	return C.LEFT_BUTTON
 }
 
-// MouseButtonString converts a C.MMMouseButton to a readable name.
-func MouseButtonString(btn C.MMMouseButton) string {
-	m1 := map[C.MMMouseButton]string{
-		C.LEFT_BUTTON:   "left",
-		C.CENTER_BUTTON: "center",
-		C.RIGHT_BUTTON:  "right",
-		C.WheelDown:     "wheelDown",
-		C.WheelUp:       "wheelUp",
-		C.WheelLeft:     "wheelLeft",
-		C.WheelRight:    "wheelRight",
-	}
-	if v, ok := m1[btn]; ok {
-		return v
-	}
-
-	return fmt.Sprintf("button%d", btn)
-}
-
 // MoveScale calculate the os scale factor x, y
 func MoveScale(x, y int, displayId ...int) (int, int) {
 	if Scale || runtime.GOOS == "windows" {
@@ -576,13 +747,30 @@ func Drag(x, y int, args ...string) {
 //
 //	robotgo.DragSmooth(10, 10)
 func DragSmooth(x, y int, args ...interface{}) {
-	Toggle("left")
+	if err := Toggle("left"); err != nil {
+		return
+	}
 	MilliSleep(50)
-	smoothMove(x, y, true, args...)
-	Toggle("left", "up")
+	MoveSmooth(x, y, args...)
+	if err := Toggle("left", "up"); err != nil {
+		return
+	}
 }
 
-func smoothMove(x, y int, drag bool, args ...interface{}) bool {
+// MoveSmooth move the mouse smooth,
+// moves mouse to x, y human like, with the mouse button up.
+//
+// robotgo.MoveSmooth(x, y int, low, high float64, mouseDelay int)
+//
+// Examples:
+//
+//	robotgo.MoveSmooth(10, 10)
+//	robotgo.MoveSmooth(10, 10, 1.0, 2.0)
+func MoveSmooth(x, y int, args ...interface{}) bool {
+	// if runtime.GOOS == "windows" {
+	// 	f := ScaleF()
+	// 	x, y = Scaled0(x, f), Scaled0(y, f)
+	// }
 	x, y = MoveScale(x, y)
 
 	cx := C.int32_t(x)
@@ -606,28 +794,10 @@ func smoothMove(x, y int, drag bool, args ...interface{}) bool {
 		high = 3.0
 	}
 
-	var cbool C.bool
-	if drag {
-		cbool = C.smoothlyDragMouse(C.MMPointInt32Make(cx, cy), low, high, C.LEFT_BUTTON)
-	} else {
-		cbool = C.smoothlyMoveMouse(C.MMPointInt32Make(cx, cy), low, high)
-	}
+	cbool := C.smoothlyMoveMouse(C.MMPointInt32Make(cx, cy), low, high)
 	MilliSleep(MouseSleep + mouseDelay)
 
 	return bool(cbool)
-}
-
-// MoveSmooth move the mouse smooth,
-// moves mouse to x, y human like, with the mouse button up.
-//
-// robotgo.MoveSmooth(x, y int, low, high float64, mouseDelay int)
-//
-// Examples:
-//
-//	robotgo.MoveSmooth(10, 10)
-//	robotgo.MoveSmooth(10, 10, 1.0, 2.0)
-func MoveSmooth(x, y int, args ...interface{}) bool {
-	return smoothMove(x, y, false, args...)
 }
 
 // MoveArgs get the mouse relative args
@@ -641,6 +811,13 @@ func MoveArgs(x, y int) (int, int) {
 
 // MoveRelative move mouse with relative
 func MoveRelative(x, y int) {
+	if runtime.GOOS == "linux" && DetectDisplayServer() == DisplayServerWayland {
+		dx, dy := x, y
+		dx, dy = MoveScale(dx, dy)
+		C.moveMouseRelative(C.int32_t(dx), C.int32_t(dy))
+		MilliSleep(MouseSleep)
+		return
+	}
 	Move(MoveArgs(x, y))
 }
 
@@ -664,7 +841,7 @@ func Location() (int, int) {
 	return x, y
 }
 
-// ClickV1 click the mouse button
+// Click click the mouse button
 //
 // robotgo.Click(button string, double bool)
 //
@@ -673,7 +850,7 @@ func Location() (int, int) {
 //	robotgo.Click() // default is left button
 //	robotgo.Click("right")
 //	robotgo.Click("wheelLeft")
-func ClickV1(args ...interface{}) {
+func Click(args ...interface{}) {
 	var (
 		button C.MMMouseButton = C.LEFT_BUTTON
 		double bool
@@ -690,123 +867,10 @@ func ClickV1(args ...interface{}) {
 	if !double {
 		C.clickMouse(button)
 	} else {
-		C.doubleClick(button, 2)
+		C.doubleClick(button)
 	}
 
 	MilliSleep(MouseSleep)
-}
-
-// Click click the mouse button and return error
-//
-// robotgo.Click(button string, double bool)
-//
-// Examples:
-//
-//	err := robotgo.Click() // default is left button
-//	err := robotgo.Click("right")
-func Click(args ...interface{}) error {
-	var (
-		button C.MMMouseButton = C.LEFT_BUTTON
-		double bool
-		count  int
-	)
-
-	if len(args) > 0 {
-		btn, ok := args[0].(string)
-		if !ok {
-			return errors.New("first argument must be a button string")
-		}
-		button = CheckMouse(btn)
-	}
-
-	if len(args) > 1 {
-		dbl, ok := args[1].(bool)
-		if !ok {
-			return errors.New("second argument must be a bool indicating double click")
-		}
-		double = dbl
-	}
-	if len(args) > 2 {
-		count = args[2].(int)
-	}
-
-	defer MilliSleep(MouseSleep)
-	if !double {
-		if code := C.toggleMouse(true, button); code != 0 {
-			return formatClickError(int(code), button, "down", count)
-		}
-
-		MilliSleep(5)
-		code := C.toggleMouse(false, button)
-		return formatClickError(int(code), button, "up", count)
-	}
-
-	code := C.doubleClick(button, 2)
-	return formatClickError(int(code), button, "double", 2)
-}
-
-// MultiClick performs multiple clicks and returns error
-//
-// robotgo.MultiClick(button string, count int)
-func MultiClick(button string, count int, click ...bool) error {
-	if count < 1 {
-		return nil
-	}
-	defer MilliSleep(MouseSleep)
-
-	if runtime.GOOS == "darwin" && len(click) <= 0 {
-		btn := CheckMouse(button)
-		code := C.doubleClick(btn, C.int(count))
-		return formatClickError(int(code), btn, "down", count)
-	}
-
-	for i := 0; i < count; i++ {
-		if err := Click(button, false, i+1); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func formatClickError(code int, button C.MMMouseButton, stage string, count int) error {
-	if code == 0 {
-		return nil
-	}
-	btnName := MouseButtonString(button)
-	detail := ""
-
-	switch runtime.GOOS {
-	case "windows":
-		if code != 0 {
-			detail = syscall.Errno(code).Error()
-		}
-	case "darwin":
-		cgErrors := map[int]string{
-			0:    "kCGErrorSuccess",
-			1000: "kCGErrorFailure",
-			1001: "kCGErrorIllegalArgument",
-			1002: "kCGErrorInvalidConnection",
-			1003: "kCGErrorInvalidContext",
-			1004: "kCGErrorCannotComplete",
-			1005: "kCGErrorNotImplemented",
-			1006: "kCGErrorRangeCheck",
-			1007: "kCGErrorTypeCheck",
-			1008: "kCGErrorNoCurrentPoint",
-			1010: "kCGErrorInvalidOperation",
-		}
-		if v, ok := cgErrors[code]; ok {
-			detail = v
-		}
-	default:
-		if code == 1 {
-			detail = "XTestFakeButtonEvent returned false"
-		}
-	}
-
-	if detail != "" {
-		return fmt.Errorf("click %s failed (%s, count=%d): %s (code=%d)", stage, btnName, count, detail, code)
-	}
-	return fmt.Errorf("click %s failed (%s, count=%d), code=%d", stage, btnName, count, code)
 }
 
 // MoveClick move and click the mouse
@@ -847,16 +911,13 @@ func Toggle(key ...interface{}) error {
 		button = CheckMouse(key[0].(string))
 	}
 
-	down := true
-	if len(key) > 1 && key[1].(string) == "up" {
-		down = false
-	}
-
-	code := C.toggleMouse(C.bool(down), button)
+	down := len(key) <= 1 || key[1].(string) != "up"
+	C.toggleMouse(C.bool(down), button)
 	if len(key) > 2 {
 		MilliSleep(MouseSleep)
 	}
-	return formatClickError(int(code), button, "down", 1)
+
+	return nil
 }
 
 // MouseDown send mouse down event
@@ -993,25 +1054,6 @@ func alertArgs(args ...string) (string, string) {
 	return defaultBtn, cancelBtn
 }
 
-func showAlert(title, msg string, args ...string) bool {
-	defaultBtn, cancelBtn := alertArgs(args...)
-
-	cTitle := C.CString(title)
-	cMsg := C.CString(msg)
-	defaultButton := C.CString(defaultBtn)
-	cancelButton := C.CString(cancelBtn)
-
-	cbool := C.showAlert(cTitle, cMsg, defaultButton, cancelButton)
-	ibool := int(cbool)
-
-	C.free(unsafe.Pointer(cTitle))
-	C.free(unsafe.Pointer(cMsg))
-	C.free(unsafe.Pointer(defaultButton))
-	C.free(unsafe.Pointer(cancelButton))
-
-	return ibool == 0
-}
-
 // IsValid valid the window
 func IsValid() bool {
 	abool := C.is_valid()
@@ -1091,6 +1133,62 @@ func CloseWindow(args ...int) {
 	}
 
 	C.close_window_by_PId(C.uintptr(pid), C.int8_t(isPid))
+}
+
+// CloseWindowKill closes the target window and ensures the owning process
+// terminates. If no arguments are provided, it targets the currently selected
+// window (same as CloseWindow()). If a PID (or handle when NotPid is set) is
+// provided, it targets that window. After issuing a normal close, it waits a
+// short time for graceful shutdown and, if the process is still alive, it will
+// force-kill it.
+//
+// Usage:
+//
+//	CloseWindowKill()           // close current window and kill if needed
+//	CloseWindowKill(pid)        // close by pid and kill if needed
+//	CloseWindowKill(pid, 1)     // on Windows, treat first arg as handle
+func CloseWindowKill(args ...int) error {
+	// Determine target pid and whether argument represents pid or handle.
+	var (
+		pid   int
+		isPid int
+	)
+
+	if len(args) <= 0 {
+		// Capture pid of the currently selected window before closing it.
+		pid = GetPid()
+		C.close_main_window()
+	} else {
+		pid = args[0]
+		if len(args) > 1 || NotPid {
+			isPid = 1
+		}
+		// If the argument represents a handle (Windows/X11 path), resolve its PID
+		// before closing so we can verify/kill the correct process afterward.
+		if isPid == 1 {
+			SetHandle(pid)
+			pid = GetPid()
+		}
+		C.close_window_by_PId(C.uintptr(args[0]), C.int8_t(isPid))
+	}
+
+	if pid <= 0 {
+		// Nothing more we can do.
+		return nil
+	}
+
+	// Give the process a short opportunity to exit cleanly.
+	deadline := time.Now().Add(1500 * time.Millisecond)
+	for time.Now().Before(deadline) {
+		exist, _ := PidExists(pid)
+		if !exist {
+			return nil
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+
+	// Force terminate if still running.
+	return Kill(pid)
 }
 
 // SetHandle set the window handle

@@ -1,0 +1,26 @@
+Wayland Support — Remaining Tasks
+
+- Screen Capture:
+  - Validate on wlroots, GNOME and KDE.
+  - Handle fractional scaling and output transforms.
+  - Add multi-output selection using `xdg-output`; choose target output.
+  - Region-crop correctness tests across backends.
+- Portal Path:
+  - Finalize docs/troubleshooting for xdg-desktop-portal requirements and prompts.
+  - Consider optional screencast (PipeWire) path if needed (beyond Screenshot API).
+- Keyboard Input:
+  - Add Unicode typing via xkbcommon compose/keysyms.
+  - Verify modifier synchronization and layout handling under various layouts.
+- Window APIs:
+  - Define/return NotSupported semantics for move/resize/activate/topmost/minimize/title.
+  - Make `GetBounds`/`GetClient` robust via `xdg-output` (multi-output + fractional scaling).
+  - Add resource‑leak checks for Wayland window helpers.
+- Build/Tooling:
+  - Document pkg-config deps and `wayland-scanner` generation steps; ensure protocol headers are vendored.
+  - Keep build tags consistent (`linux,wayland` for native; pure-Go portal on linux).
+- CI/Testing:
+  - Add CI jobs with headless Weston for screencopy (dmabuf + wl_shm) and portal.
+  - Tests for dmabuf vs wl_shm selection; bounds across outputs.
+- Examples/Docs:
+  - Add backend selection flags in examples (dmabuf, wl_shm, portal).
+  - Provide a support matrix and troubleshooting guide.

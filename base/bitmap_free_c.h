@@ -2,7 +2,7 @@
 #include <assert.h>
 #include <string.h>
 
-MMBitmapRef createMMBitmap_c(uint8_t *buffer, int32_t width, int32_t height, 
+static inline MMBitmapRef createMMBitmap_c(uint8_t *buffer, int32_t width, int32_t height, 
 	int32_t bytewidth, uint8_t bitsPerPixel, uint8_t bytesPerPixel
 ) {
 	MMBitmapRef bitmap = malloc(sizeof(MMBitmap));
@@ -18,7 +18,7 @@ MMBitmapRef createMMBitmap_c(uint8_t *buffer, int32_t width, int32_t height,
 	return bitmap;
 }
 
-void destroyMMBitmap(MMBitmapRef bitmap) {
+static inline void destroyMMBitmap(MMBitmapRef bitmap) {
 	assert(bitmap != NULL);
 
 	if (bitmap->imageBuffer != NULL) {
@@ -29,7 +29,7 @@ void destroyMMBitmap(MMBitmapRef bitmap) {
 	free(bitmap);
 }
 
-void destroyMMBitmapBuffer(char * bitmapBuffer, void * hint) {
+static inline void destroyMMBitmapBuffer(char * bitmapBuffer, void * hint) {
 	if (bitmapBuffer != NULL) {
 		free(bitmapBuffer);
 	}

@@ -19,13 +19,25 @@
 	#include <ApplicationServices/ApplicationServices.h>
 	#import <IOKit/hidsystem/IOHIDLib.h>
 	#import <IOKit/hidsystem/ev_keymap.h>
-#elif defined(USE_X11)
-	#include <X11/extensions/XTest.h>
-	// #include "../base/xdisplay_c.h"
+#elif defined(IS_LINUX)
+        #include <X11/extensions/XTest.h>
+        #include <stdlib.h>
+        #include "../base/os.h"
+        // #include "../base/xdisplay_c.h"
+        #ifdef ROBOTGO_USE_WAYLAND
+        #include <wayland-client.h>
+        #include <wayland-client-protocol.h>
+        #include <xkbcommon/xkbcommon.h>
+        #include "../virtual-keyboard-unstable-v1-client-protocol.h"
+
+        void WL_KEY_EVENT(MMKeyCode key, bool is_press);
+        void WL_KEY_EVENT_WAIT(MMKeyCode key, bool is_press);
+#endif
 #endif
 
 /* Convenience wrappers around ugly APIs. */
 #if defined(IS_WINDOWS)
+    #include "../base/pubs.h"
 	HWND GetHwndByPid(DWORD dwProcessId);
 
 	HWND getHwnd(uintptr pid, int8_t isPid) { 
@@ -40,20 +52,220 @@
 		win32KeyEvent(key, flags, pid, 0); 
 		Sleep(DEADBEEF_RANDRANGE(0, 1));
 	}
-#elif defined(USE_X11)
-	Display *XGetMainDisplay(void);
+#elif defined(IS_LINUX)
+        Display *XGetMainDisplay(void);
 
-	void X_KEY_EVENT(Display *display, MMKeyCode key, bool is_press) {
-		XTestFakeKeyEvent(display, XKeysymToKeycode(display, key), is_press, CurrentTime); 
-		XSync(display, false);
-	}
+        void X_KEY_EVENT(Display *display, MMKeyCode key, bool is_press) {
+                XTestFakeKeyEvent(display, XKeysymToKeycode(display, key), is_press, CurrentTime);
+                XSync(display, false);
+        }
+        void X_KEY_EVENT_WAIT(Display *display, MMKeyCode key, bool is_press) {
+                X_KEY_EVENT(display, key, is_press);
+                microsleep(DEADBEEF_UNIFORM(0.0, 0.5));
+        }
+        
+/** Wayland virtual keyboard (only when ROBOTGO_USE_WAYLAND) **/
+        #ifdef ROBOTGO_USE_WAYLAND
+        #include <string.h>
+        #include <unistd.h>
+        #include <sys/memfd.h>
+        struct zwp_virtual_keyboard_manager_v1;
+        struct zwp_virtual_keyboard_v1;
+        static struct wl_display *wk_display = NULL;
+        static struct wl_registry *wk_registry = NULL;
+        static struct wl_seat *wk_seat = NULL;
+        static struct wl_keyboard *wk_keyboard = NULL;
+        static struct zwp_virtual_keyboard_manager_v1 *wk_vk_manager = NULL;
+        static struct zwp_virtual_keyboard_v1 *wk_vkeyboard = NULL;
+        static struct xkb_context *wk_xkb_context = NULL;
+        static struct xkb_keymap *wk_keymap = NULL;
+        static xkb_mod_mask_t wk_modifiers = 0;
 
-	void X_KEY_EVENT_WAIT(Display *display, MMKeyCode key, bool is_press) {
-		X_KEY_EVENT(display, key, is_press);
-		microsleep(DEADBEEF_UNIFORM(0.0, 0.5));
-	}
-#endif
+        /* ------------------------------------------------------------------ */
+        /* virtual-keyboard protocol definitions                              */
+        /* ------------------------------------------------------------------ */
 
+        struct zwp_virtual_keyboard_manager_v1 { struct wl_proxy *proxy; };
+        struct zwp_virtual_keyboard_v1 { struct wl_proxy *proxy; };
+
+        static const struct wl_message zwp_virtual_keyboard_manager_v1_requests[] = {
+                {"create_virtual_keyboard", "no", &zwp_virtual_keyboard_v1_interface},
+        };
+        static const struct wl_interface zwp_virtual_keyboard_manager_v1_interface = {
+                "zwp_virtual_keyboard_manager_v1", 1,
+                1, zwp_virtual_keyboard_manager_v1_requests,
+                0, NULL
+        };
+
+        static const struct wl_message zwp_virtual_keyboard_v1_requests[] = {
+                {"keymap", "ufu", NULL},
+                {"key", "uuu", NULL},
+                {"modifiers", "uuuu", NULL},
+                {"destroy", "", NULL},
+        };
+        static const struct wl_interface zwp_virtual_keyboard_v1_interface = {
+                "zwp_virtual_keyboard_v1", 1,
+                4, zwp_virtual_keyboard_v1_requests,
+                0, NULL
+        };
+
+        static struct zwp_virtual_keyboard_v1 *
+        zwp_virtual_keyboard_manager_v1_create_virtual_keyboard(
+                struct zwp_virtual_keyboard_manager_v1 *manager,
+                struct wl_seat *seat) {
+                struct wl_proxy *id = wl_proxy_marshal_constructor((struct wl_proxy *)manager,
+                        0, &zwp_virtual_keyboard_v1_interface, NULL, seat);
+                return (struct zwp_virtual_keyboard_v1 *)id;
+        }
+
+        static void zwp_virtual_keyboard_v1_destroy(
+                struct zwp_virtual_keyboard_v1 *keyboard) {
+                wl_proxy_marshal((struct wl_proxy *)keyboard, 3);
+                wl_proxy_destroy((struct wl_proxy *)keyboard);
+        }
+
+        static void zwp_virtual_keyboard_v1_keymap(
+                struct zwp_virtual_keyboard_v1 *keyboard,
+                uint32_t format, int32_t fd, uint32_t size) {
+                wl_proxy_marshal((struct wl_proxy *)keyboard, 0, format, fd, size);
+                close(fd);
+        }
+
+        static void zwp_virtual_keyboard_v1_key(
+                struct zwp_virtual_keyboard_v1 *keyboard,
+                uint32_t time, uint32_t key, uint32_t state) {
+                wl_proxy_marshal((struct wl_proxy *)keyboard, 1, time, key, state);
+        }
+
+        static void zwp_virtual_keyboard_v1_modifiers(
+                struct zwp_virtual_keyboard_v1 *keyboard,
+                uint32_t depressed, uint32_t latched,
+                uint32_t locked, uint32_t group) {
+                wl_proxy_marshal((struct wl_proxy *)keyboard, 2,
+                                depressed, latched, locked, group);
+        }
+
+        static xkb_mod_mask_t mask_for_key(MMKeyCode key) {
+                switch (key) {
+                case K_META: case K_LMETA: case K_RMETA:
+                        return XKB_MOD_MASK_LOGO;
+                case K_ALT: case K_LALT: case K_RALT:
+                        return XKB_MOD_MASK_ALT;
+                case K_CONTROL: case K_LCONTROL: case K_RCONTROL:
+                        return XKB_MOD_MASK_CTRL;
+                case K_SHIFT: case K_LSHIFT: case K_RSHIFT:
+                        return XKB_MOD_MASK_SHIFT;
+                default:
+                        return 0;
+                }
+        }
+
+        static void wk_registry_global(void *data, struct wl_registry *registry,
+                                       uint32_t name, const char *interface,
+                                       uint32_t version) {
+                (void)data; (void)version;
+                if (strcmp(interface, "wl_seat") == 0) {
+                        wk_seat = wl_registry_bind(registry, name, &wl_seat_interface, 1);
+                } else if (strcmp(interface, "zwp_virtual_keyboard_manager_v1") == 0) {
+                        wk_vk_manager = wl_registry_bind(registry, name,
+                                &zwp_virtual_keyboard_manager_v1_interface, 1);
+                }
+        }
+
+        static void wk_registry_remove(void *data, struct wl_registry *registry,
+                                       uint32_t name) {
+                (void)data; (void)registry; (void)name;
+        }
+
+        static const struct wl_registry_listener wk_registry_listener = {
+                wk_registry_global,
+                wk_registry_remove
+        };
+
+        static void wk_seat_capabilities(void *data, struct wl_seat *seat,
+                                         enum wl_seat_capability caps) {
+                (void)data;
+                if ((caps & WL_SEAT_CAPABILITY_KEYBOARD) && !wk_keyboard) {
+                        wk_keyboard = wl_seat_get_keyboard(seat);
+                }
+        }
+
+        static void wk_seat_name(void *data, struct wl_seat *seat, const char *name) {
+                (void)data; (void)seat; (void)name;
+        }
+
+        static const struct wl_seat_listener wk_seat_listener = {
+                wk_seat_capabilities,
+                wk_seat_name
+        };
+
+        static int ensure_wayland_keyboard(void) {
+                if (wk_vkeyboard) {
+                        return 0;
+                }
+                if (!wk_display) {
+                        wk_display = wl_display_connect(NULL);
+                        if (!wk_display) {
+                                return -1;
+                        }
+                        wk_registry = wl_display_get_registry(wk_display);
+                        wl_registry_add_listener(wk_registry, &wk_registry_listener, NULL);
+                        wl_display_roundtrip(wk_display);
+                        if (wk_seat) {
+                                wl_seat_add_listener(wk_seat, &wk_seat_listener, NULL);
+                                wl_display_roundtrip(wk_display);
+                        }
+                }
+                if (!wk_vk_manager || !wk_seat) {
+                        return -1;
+                }
+                wk_vkeyboard = zwp_virtual_keyboard_manager_v1_create_virtual_keyboard(wk_vk_manager, wk_seat);
+                wk_xkb_context = xkb_context_new(XKB_CONTEXT_NO_FLAGS);
+                wk_keymap = xkb_keymap_new_from_names(wk_xkb_context, NULL, XKB_KEYMAP_COMPILE_NO_FLAGS);
+                const char *keymap_str = xkb_keymap_get_as_string(wk_keymap, XKB_KEYMAP_FORMAT_TEXT_V1);
+                size_t size = strlen(keymap_str) + 1;
+                int fd = memfd_create("wk_keymap", MFD_CLOEXEC);
+                if (fd < 0 || write(fd, keymap_str, size) != (ssize_t)size) {
+                        if (fd >= 0) close(fd);
+                        return -1;
+                }
+                zwp_virtual_keyboard_v1_keymap(wk_vkeyboard, XKB_KEYMAP_FORMAT_TEXT_V1, fd, size);
+                return 0;
+        }
+
+        static void WL_KEY_EVENT(MMKeyCode key, bool is_press) {
+                if (ensure_wayland_keyboard() != 0) {
+                        return;
+                }
+                xkb_keycode_t code = keysym_to_keycode(wk_keymap, key);
+                if (code == XKB_KEY_NoSymbol) {
+                        return;
+                }
+                xkb_mod_mask_t mask = mask_for_key(key);
+                if (mask) {
+                        if (is_press) {
+                                wk_modifiers |= mask;
+                        } else {
+                                wk_modifiers &= ~mask;
+                        }
+                        zwp_virtual_keyboard_v1_modifiers(wk_vkeyboard, wk_modifiers, 0, 0, 0);
+                }
+                uint32_t evdev = (uint32_t)(code - 8);
+                zwp_virtual_keyboard_v1_key(wk_vkeyboard, 0, evdev,
+                        is_press ? WL_KEYBOARD_KEY_STATE_PRESSED : WL_KEYBOARD_KEY_STATE_RELEASED);
+                wl_display_flush(wk_display);
+        }
+
+        static void WL_KEY_EVENT_WAIT(MMKeyCode key, bool is_press) {
+                WL_KEY_EVENT(key, is_press);
+                microsleep(DEADBEEF_UNIFORM(0.0, 0.5));
+        }
+        #endif /* ROBOTGO_USE_WAYLAND */
+
+        /* End of Linux-specific keyboard helpers */
+        #endif /* defined(IS_LINUX) */
+
+        
 #if defined(IS_MACOSX)
 	int SendTo(uintptr pid, CGEventRef event) {
 		if (pid != 0) {
@@ -202,17 +414,31 @@ void toggleKeyCode(MMKeyCode code, const bool down, MMKeyFlags flags, uintptr pi
 	if (flags & MOD_SHIFT) { WIN32_KEY_EVENT_WAIT(K_SHIFT, dwFlags, pid); }
 
 	win32KeyEvent(code, dwFlags, pid, 0);
-#elif defined(USE_X11)
-	Display *display = XGetMainDisplay();
-	const Bool is_press = down ? True : False; /* Just to be safe. */
+#elif defined(IS_LINUX)
+        DisplayServer server = detectDisplayServer();
+#ifdef ROBOTGO_USE_WAYLAND
+        if (server == Wayland) {
+                const Bool is_press = down ? True : False;
 
-	/* Parse modifier keys. */
-	if (flags & MOD_META) { X_KEY_EVENT_WAIT(display, K_META, is_press); }
-	if (flags & MOD_ALT) { X_KEY_EVENT_WAIT(display, K_ALT, is_press); }
-	if (flags & MOD_CONTROL) { X_KEY_EVENT_WAIT(display, K_CONTROL, is_press); }
-	if (flags & MOD_SHIFT) { X_KEY_EVENT_WAIT(display, K_SHIFT, is_press); }
+                if (flags & MOD_META) { WL_KEY_EVENT_WAIT(K_META, is_press); }
+                if (flags & MOD_ALT) { WL_KEY_EVENT_WAIT(K_ALT, is_press); }
+                if (flags & MOD_CONTROL) { WL_KEY_EVENT_WAIT(K_CONTROL, is_press); }
+                if (flags & MOD_SHIFT) { WL_KEY_EVENT_WAIT(K_SHIFT, is_press); }
 
-	X_KEY_EVENT(display, code, is_press);
+                WL_KEY_EVENT(code, is_press);
+        } else
+#endif
+        {
+                Display *display = XGetMainDisplay();
+                const Bool is_press = down ? True : False; /* Just to be safe. */
+
+                if (flags & MOD_META) { X_KEY_EVENT_WAIT(display, K_META, is_press); }
+                if (flags & MOD_ALT) { X_KEY_EVENT_WAIT(display, K_ALT, is_press); }
+                if (flags & MOD_CONTROL) { X_KEY_EVENT_WAIT(display, K_CONTROL, is_press); }
+                if (flags & MOD_SHIFT) { X_KEY_EVENT_WAIT(display, K_SHIFT, is_press); }
+
+                X_KEY_EVENT(display, code, is_press);
+        }
 #endif
 }
 
@@ -222,7 +448,7 @@ void toggleKeyCode(MMKeyCode code, const bool down, MMKeyFlags flags, uintptr pi
 // 	toggleKeyCode(code, false, flags);
 // }
 
-#if defined(USE_X11)
+#if defined(IS_LINUX)
 	bool toUpper(char c) {
 		if (isupper(c)) {
 			return true;
@@ -242,15 +468,15 @@ void toggleKeyCode(MMKeyCode code, const bool down, MMKeyFlags flags, uintptr pi
 void toggleKey(char c, const bool down, MMKeyFlags flags, uintptr pid) {
 	MMKeyCode keyCode = keyCodeForChar(c);
 
-	#if defined(USE_X11)
-		if (toUpper(c) && !(flags & MOD_SHIFT)) {
-			flags |= MOD_SHIFT; /* Not sure if this is safe for all layouts. */
-		}
-	#else
-		if (isupper(c) && !(flags & MOD_SHIFT)) {
-			flags |= MOD_SHIFT; /* Not sure if this is safe for all layouts. */
-		}
-	#endif
+        #if defined(IS_LINUX)
+                if (toUpper(c) && !(flags & MOD_SHIFT)) {
+                        flags |= MOD_SHIFT; /* Not sure if this is safe for all layouts. */
+                }
+        #else
+                if (isupper(c) && !(flags & MOD_SHIFT)) {
+                        flags |= MOD_SHIFT; /* Not sure if this is safe for all layouts. */
+                }
+        #endif
 
 	#if defined(IS_WINDOWS)
 		int modifiers = keyCode >> 8; // Pull out modifers.
@@ -323,14 +549,14 @@ void unicodeType(const unsigned value, uintptr pid, int8_t isPid) {
   		input[1].ki.dwFlags = KEYEVENTF_KEYUP | 0x4; // KEYEVENTF_UNICODE;
 
   		SendInput(2, input, sizeof(INPUT));
-	#elif defined(USE_X11)
-		toggleUniKey(value, true);
-		microsleep(5.0);
-		toggleUniKey(value, false);	
-	#endif
+        #elif defined(IS_LINUX)
+                toggleUniKey(value, true);
+                microsleep(5.0);
+                toggleUniKey(value, false);
+        #endif
 }
 
-#if defined(USE_X11)
+#if defined(IS_LINUX)
 	int input_utf(const char *utf) {
 		Display *dpy = XOpenDisplay(NULL);
 		KeySym sym = XStringToKeysym(utf);
@@ -352,9 +578,11 @@ void unicodeType(const unsigned value, uintptr pid, int8_t isPid) {
 		XFlush(dpy);
 		XCloseDisplay(dpy);
 		return 0;
-	}
+        }
+
+        // Wayland input_utf not implemented
 #else
-	int input_utf(const char *utf){
-		return 0;
-	}
+        int input_utf(const char *utf){
+                return 0;
+        }
 #endif
