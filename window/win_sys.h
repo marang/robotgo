@@ -180,10 +180,6 @@ Bounds get_client(uintptr pid, int8_t isPid) {
 #elif defined(IS_WINDOWS)
   HWND hwnd = getHwnd(pid, isPid);
 
-  return bounds;
-#elif defined(IS_WINDOWS)
-  HWND hwnd = getHwnd(pid, isPid);
-
   RECT rect = {0};
   GetClientRect(hwnd, &rect);
 
