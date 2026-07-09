@@ -7,6 +7,29 @@ go get -u github.com/go-vgo/robotgo
 
 ## [Examples:](https://github.com/go-vgo/robotgo/blob/master/examples)
 
+#### [Linux Capabilities](https://github.com/go-vgo/robotgo/blob/master/examples/linux_capabilities/main.go)
+
+```Go
+package main
+
+import (
+	"encoding/json"
+	"fmt"
+	"log"
+
+	"github.com/go-vgo/robotgo"
+)
+
+func main() {
+	caps := robotgo.GetLinuxCapabilities()
+	data, err := json.MarshalIndent(caps, "", "  ")
+	if err != nil {
+		log.Fatal(err)
+	}
+	fmt.Println(string(data))
+}
+```
+
 #### [Mouse](https://github.com/go-vgo/robotgo/blob/master/examples/mouse/main.go)
 
 ```Go

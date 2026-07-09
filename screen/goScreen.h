@@ -58,7 +58,7 @@ static inline MMRGBHex get_px_color(int32_t x, int32_t y, int32_t display_id) {
 }
 
 static inline char* set_XDisplay_name(char* name) {
-	#if defined(IS_LINUX)
+	#if defined(IS_LINUX) && !defined(DISPLAY_SERVER_WAYLAND)
 		setXDisplay(name);
 		return "";
 	#else
@@ -67,7 +67,7 @@ static inline char* set_XDisplay_name(char* name) {
 }
 
 static inline char* get_XDisplay_name() {
-	#if defined(IS_LINUX)
+	#if defined(IS_LINUX) && !defined(DISPLAY_SERVER_WAYLAND)
 		const char* display = getXDisplay();
 		
 		char* sd = (char*)calloc(100, sizeof(char*));
@@ -79,7 +79,7 @@ static inline char* get_XDisplay_name() {
 }
 
 static inline void close_main_display() {
-	#if defined(IS_LINUX)
+	#if defined(IS_LINUX) && !defined(DISPLAY_SERVER_WAYLAND)
 		XCloseMainDisplay();
 	#else
 		// 

@@ -8,9 +8,31 @@ Current implementation baseline:
 - `ROBOTGO_FORCE_PORTAL=1` is supported for forcing portal capture.
 - `ROBOTGO_WAYLAND_BACKEND` (`auto|dmabuf|wl_shm|portal`) is supported.
 - `ROBOTGO_CAPTURE_DEBUG=1` logs backend selection/fallback details.
+- Linux runtime capability introspection is available via `GetLinuxCapabilities`.
 - Window-control APIs now expose explicit Wayland NotSupported errors via
   error-returning variants (`SetActiveE`, `MinWindowE`, `MaxWindowE`,
   `CloseWindowE`, `GetTitleE`).
+- Wayland window backend resolver is layered:
+  - compositor-specific (`sway`, `hyprland`)
+  - wlroots family generic backend (`wlroots-generic`)
+  - wayland-core explicit unsupported fallback
+- `wlroots-generic` currently implements active-window minimize/maximize
+  (state=true) when `wlrctl` is available; unsupported operations remain
+  explicit.
+- Runtime integration tests cover backend capability selection for
+  `sway`/`hyprland`/`wlroots-generic` with explicit skip behavior when runtime
+  preconditions are not present.
+- wlroots min/max E2E test exists behind opt-in env flag:
+  `ROBOTGO_WLROOTS_MINMAX_E2E=1`.
+
+Window backend support matrix (current):
+
+| Backend | Resolver trigger | Active title | Active close | PID/handle close | Activate/min/max |
+|---|---|---|---|---|---|
+| `sway` | `SWAYSOCK` or sway desktop/session | Yes (`swaymsg`) | Yes (`swaymsg kill`) | No (`ErrNotSupported`) | Yes (`wlrctl window minimize/maximize state:active`, state=true only) |
+| `hyprland` | `HYPRLAND_INSTANCE_SIGNATURE` or hyprland desktop/session | Yes (`hyprctl activewindow -j`) | Yes (`hyprctl dispatch killactive`) | No (`ErrNotSupported`) | Yes (`wlrctl window minimize/maximize state:active`, state=true only) |
+| `wlroots-generic` | wlroots-family compositor (wayfire/river/labwc/dwl/gamescope) | No (`ErrNotSupported`) | No (`ErrNotSupported`) | No (`ErrNotSupported`) | Yes (`wlrctl window minimize/maximize state:active`, state=true only) |
+| `wayland-core/*` | wayland session without specific/family backend support | No (`ErrNotSupported`) | No (`ErrNotSupported`) | No (`ErrNotSupported`) | No (`ErrNotSupported`) |
 
 - Priority Backlog (1-7):
   - 1. Full Wayland screencast portal backend (PipeWire session stream), not only screenshot fallback. `[new vs robotgo-pro]`
@@ -24,8 +46,8 @@ Current implementation baseline:
     - multi-output, fractional scale, transforms, portal consent/fallback. `[new vs robotgo-pro]`
   - 6. Hook/event support status for Wayland:
     - capability detection and explicit unsupported contract where needed. `[new vs robotgo-pro]`
-  - 7. Capability introspection API:
-    - expose runtime support per backend/feature (for example `GetCapabilities`). `[new vs robotgo-pro]`
+  - 7. Expand capability introspection:
+    - include additional feature granularity and troubleshooting metadata. `[follow-up]`
 
 - Screen Capture:
   - Validate on wlroots, GNOME and KDE.

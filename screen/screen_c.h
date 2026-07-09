@@ -3,8 +3,10 @@
 #if defined(IS_MACOSX)
 	#include <ApplicationServices/ApplicationServices.h>
 #elif defined(IS_LINUX)
+#if !defined(DISPLAY_SERVER_WAYLAND)
     #include <X11/Xlib.h>
     #include <X11/Xresource.h>
+#endif
     #include "../base/os.h"
     #if defined(ROBOTGO_USE_WAYLAND)
         #include <wayland-client.h>
@@ -53,6 +55,7 @@ static inline double sys_scale(int32_t display_id) {
 	
 		return pixelWidth / targetWidth;
 	#elif defined(IS_LINUX)
+#if !defined(DISPLAY_SERVER_WAYLAND)
     if (detectDisplayServer() == Wayland) {
         return 1.0; // No global DPI query; assume 1.0 scaling
     }
@@ -82,6 +85,9 @@ static inline double sys_scale(int32_t display_id) {
     XCloseDisplay (dpy);
 
     return xres / 96.0;
+#else
+    return 1.0;
+#endif
    	#elif defined(IS_WINDOWS)
    		double s = scaleX() / 96.0;
    		return s;
@@ -110,6 +116,7 @@ static inline MMSizeInt32 getMainDisplaySize(void) {
 	CGSize size = displayRect.size;
 	return MMSizeInt32Make((int32_t)size.width, (int32_t)size.height);
 #elif defined(IS_LINUX)
+#if !defined(DISPLAY_SERVER_WAYLAND)
     // debug: log which display server branch we take
     if (detectDisplayServer() == Wayland) {
         int32_t w = 0;
@@ -128,6 +135,16 @@ static inline MMSizeInt32 getMainDisplaySize(void) {
     return MMSizeInt32Make(
                             (int32_t)DisplayWidth(display, screen),
                             (int32_t)DisplayHeight(display, screen));
+#else
+    int32_t w = 0;
+    int32_t h = 0;
+#if defined(ROBOTGO_USE_WAYLAND)
+    if (wayland_main_bounds(&w, &h) == 0) {
+        return MMSizeInt32Make(w, h);
+    }
+#endif
+    return MMSizeInt32Make(0, 0);
+#endif
 #elif defined(IS_WINDOWS)
 	return MMSizeInt32Make(
  						(int32_t)GetSystemMetrics(SM_CXSCREEN),
@@ -149,6 +166,7 @@ static inline MMRectInt32 getScreenRect(int32_t display_id) {
 		(int32_t)point.x, (int32_t)point.y,
 		(int32_t)size.width, (int32_t)size.height);
 #elif defined(IS_LINUX)
+#if !defined(DISPLAY_SERVER_WAYLAND)
     if (detectDisplayServer() == Wayland) {
         int32_t w = 0;
         int32_t h = 0;
@@ -166,6 +184,16 @@ static inline MMRectInt32 getScreenRect(int32_t display_id) {
                     (int32_t)0, (int32_t)0,
                     (int32_t)DisplayWidth(display, screen),
                     (int32_t)DisplayHeight(display, screen));
+#else
+    int32_t w = 0;
+    int32_t h = 0;
+#if defined(ROBOTGO_USE_WAYLAND)
+    if (wayland_main_bounds(&w, &h) == 0) {
+        return MMRectInt32Make(0, 0, w, h);
+    }
+#endif
+    return MMRectInt32Make(0, 0, 0, 0);
+#endif
 #elif defined(IS_WINDOWS)
 	if (GetSystemMetrics(SM_CMONITORS) == 1 
 			|| display_id == -1 || display_id == 0) {

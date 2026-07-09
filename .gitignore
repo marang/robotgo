@@ -101,3 +101,7 @@ examples/bitmap/bitmapTobytes/out.jpg
 .crush/
 
 .gocache/
+
+# Local sequential test tracking
+docs/plan/last-running-test.txt
+docs/plan/test-run-history.log

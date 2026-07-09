@@ -18,3 +18,7 @@ func startMockServer(socket string, maj, min uint32, modifier uint64, done chan 
 		close(done)
 	}()
 }
+
+func stopMockServer() {
+	C.stop_mock_server()
+}

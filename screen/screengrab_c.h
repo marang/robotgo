@@ -40,16 +40,20 @@ static inline MMBitmapRef capture_screen_wayland(int32_t x, int32_t y, int32_t w
   return NULL;
 }
 #elif defined(IS_LINUX)
+#if !defined(DISPLAY_SERVER_WAYLAND)
 #include "../base/xdisplay_c.h"
 #include <X11/Xlib.h>
 #include <X11/Xutil.h>
+#endif
 
 // Swallow X errors (e.g., BadMatch from X_GetImage) and signal failure
 // instead of aborting the process during tests or constrained servers.
+#if !defined(DISPLAY_SERVER_WAYLAND)
 static volatile int robotgo_xerr_flag = 0;
 static int robotgo_xerr_handler(Display* d, XErrorEvent* e) {
   (void)d; (void)e; robotgo_xerr_flag = 1; return 0;
 }
+#endif
 
 typedef enum {
   ScreengrabOK = 0,
@@ -233,6 +237,7 @@ static inline MMBitmapRef copyMMBitmapFromDisplayInRect(MMRectInt32 rect, int32_
 
   return bitmap;
 #elif defined(IS_LINUX)
+#if !defined(DISPLAY_SERVER_WAYLAND)
   MMBitmapRef bitmap;
   Display *display;
   if (display_id == -1) {
@@ -284,6 +289,12 @@ static inline MMBitmapRef copyMMBitmapFromDisplayInRect(MMRectInt32 rect, int32_
   XDestroyImage(image);
 
   return bitmap;
+#else
+  (void)rect;
+  (void)display_id;
+  (void)isPid;
+  return NULL;
+#endif
 #elif defined(IS_WINDOWS)
   MMBitmapRef bitmap;
   void *data;

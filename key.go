@@ -18,6 +18,7 @@ import "C"
 
 import (
 	"errors"
+	"fmt"
 	"math/rand"
 	"reflect"
 	"runtime"
@@ -338,6 +339,57 @@ func tapKeyCode(code C.MMKeyCode, flags C.MMKeyFlags, pid C.uintptr) {
 
 var errInvalidKeyFlag = errors.New("invalid key flag specified")
 
+var (
+	errWaylandKeyboardUnavailable = errors.New("wayland virtual keyboard unavailable")
+	errWaylandKeyboardNotBuilt    = errors.New("wayland session detected but robotgo was built without wayland keyboard backend (build with -tags wayland)")
+	errWaylandKeyboardNoDisplay   = errors.New("wayland display connection failed")
+	errWaylandKeyboardNoSeat      = errors.New("wayland seat with keyboard capability not found")
+	errWaylandKeyboardNoManager   = errors.New("zwp_virtual_keyboard_manager_v1 not available")
+	errWaylandKeyboardCreate      = errors.New("failed to create virtual keyboard")
+	errWaylandKeyboardXKB         = errors.New("failed to initialize xkb context")
+	errWaylandKeyboardKeymap      = errors.New("failed to build xkb keymap")
+	errWaylandKeyboardMemfd       = errors.New("failed to setup wayland keymap memfd")
+	errWaylandKeyboardKeysym      = errors.New("key symbol not present in wayland keymap")
+)
+
+func waylandKeyboardBackendCompiled() bool {
+	return int(C.robotgo_wayland_keyboard_backend_enabled()) != 0
+}
+
+func ensureWaylandKeyboardReady() error {
+	if runtime.GOOS != "linux" || DetectDisplayServer() != DisplayServerWayland {
+		return nil
+	}
+	if !waylandKeyboardBackendCompiled() {
+		return errWaylandKeyboardNotBuilt
+	}
+	if int(C.robotgo_wayland_keyboard_ready()) == 0 {
+		return nil
+	}
+
+	code := int(C.robotgo_wayland_keyboard_last_error())
+	switch code {
+	case 1:
+		return errWaylandKeyboardNoDisplay
+	case 2:
+		return errWaylandKeyboardNoSeat
+	case 3:
+		return errWaylandKeyboardNoManager
+	case 4:
+		return errWaylandKeyboardCreate
+	case 5:
+		return errWaylandKeyboardXKB
+	case 6:
+		return errWaylandKeyboardKeymap
+	case 7:
+		return errWaylandKeyboardMemfd
+	case 8:
+		return errWaylandKeyboardKeysym
+	default:
+		return fmt.Errorf("%w (code=%d)", errWaylandKeyboardUnavailable, code)
+	}
+}
+
 func checkKeyCodes(k string) (key C.MMKeyCode, err error) {
 	if k == "" {
 		return
@@ -404,6 +456,9 @@ func getFlagsFromValue(value []string) (flags C.MMKeyFlags) {
 }
 
 func keyTaps(k string, keyArr []string, pid int) error {
+	if err := ensureWaylandKeyboardReady(); err != nil {
+		return err
+	}
 	flags := getFlagsFromValue(keyArr)
 	key, err := checkKeyCodes(k)
 	if err != nil {
@@ -429,6 +484,9 @@ func getKeyDown(keyArr []string) (bool, []string) {
 }
 
 func keyTogglesB(k string, down bool, keyArr []string, pid int) error {
+	if err := ensureWaylandKeyboardReady(); err != nil {
+		return err
+	}
 	flags := getFlagsFromValue(keyArr)
 	key, err := checkKeyCodes(k)
 	if err != nil {

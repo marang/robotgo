@@ -165,10 +165,6 @@ static const struct wl_shm_pool_interface shm_pool_impl = {
     .resize = shm_pool_resize,
 };
 
-static void shm_destroy(struct wl_client *client, struct wl_resource *resource) {
-    wl_resource_destroy(resource);
-}
-
 static void shm_create_pool(struct wl_client *client, struct wl_resource *resource, uint32_t id, int32_t fd, int32_t size) {
     close(fd);
     struct wl_resource *pool = wl_resource_create(client, &wl_shm_pool_interface, 1, id);
@@ -176,7 +172,6 @@ static void shm_create_pool(struct wl_client *client, struct wl_resource *resour
 }
 
 static const struct wl_shm_interface shm_impl = {
-    .destroy = shm_destroy,
     .create_pool = shm_create_pool,
 };
 
@@ -202,3 +197,8 @@ void run_mock_server(const char *socket, uint32_t maj, uint32_t min, uint64_t mo
     wl_display_destroy(mock_display);
 }
 
+void stop_mock_server(void) {
+    if (mock_display) {
+        wl_display_terminate(mock_display);
+    }
+}

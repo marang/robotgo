@@ -94,6 +94,22 @@ Set `ROBOTGO_CAPTURE_DEBUG=1` to log capture backend decisions.
 
 See `docs/wayland-tasks.md` for the current Wayland support status and remaining tasks.
 
+On Linux, you can inspect runtime backend/capability selection:
+
+```go
+caps := robotgo.GetLinuxCapabilities()
+fmt.Println("display:", caps.DisplayServer)
+fmt.Println("compositor:", caps.Compositor)
+fmt.Println("capture:", caps.Capture.Backend, caps.Capture.Available, caps.Capture.Fallback)
+fmt.Println("window:", caps.Window.Backend, caps.Window.Available, caps.Window.Reason)
+```
+
+Runnable example:
+
+```
+go run ./examples/linux_capabilities
+```
+
 ```go
 bit, err := robotgo.CaptureScreen(0, 0, 100, 100)
 if err != nil {

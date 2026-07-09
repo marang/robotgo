@@ -37,10 +37,10 @@ func TestGetVer(t *testing.T) {
 }
 
 func TestGetScreenSize(t *testing.T) {
-    requireDisplay(t)
-    if runtime.GOOS == "linux" && robotgo.DetectDisplayServer() == robotgo.DisplayServerWayland {
-        t.Skip("skip size/location on Wayland in non-wayland build")
-    }
+	requireDisplay(t)
+	if runtime.GOOS == "linux" && robotgo.DetectDisplayServer() == robotgo.DisplayServerWayland {
+		t.Skip("skip size/location on Wayland in non-wayland build")
+	}
 	x, y := robotgo.GetScreenSize()
 	log.Println("Get screen size: ", x, y)
 
@@ -51,11 +51,36 @@ func TestGetScreenSize(t *testing.T) {
 	fmt.Println("Get location: ", x, y)
 }
 
+func TestWaylandScreenFallback(t *testing.T) {
+	requireDisplay(t)
+	if runtime.GOOS != "linux" {
+		t.Skip("Wayland fallback is Linux-only")
+	}
+	if robotgo.DetectDisplayServer() != robotgo.DisplayServerWayland {
+		t.Skip("requires Wayland session")
+	}
+	caps := robotgo.GetLinuxCapabilities()
+	if !caps.Bounds.Available {
+		t.Skipf("Wayland bounds unavailable in this environment: backend=%q reason=%q notes=%q",
+			caps.Bounds.Backend, caps.Bounds.Reason, caps.Bounds.Notes)
+	}
+
+	w, h := robotgo.GetScreenSize()
+	if w <= 0 || h <= 0 {
+		t.Fatalf("expected non-zero Wayland screen size fallback, got %dx%d", w, h)
+	}
+
+	rect := robotgo.GetScreenRect()
+	if rect.W <= 0 || rect.H <= 0 {
+		t.Fatalf("expected non-zero Wayland screen rect fallback, got %+v", rect)
+	}
+}
+
 func TestGetSysScale(t *testing.T) {
-    requireDisplay(t)
-    if runtime.GOOS == "linux" && robotgo.DetectDisplayServer() == robotgo.DisplayServerWayland {
-        t.Skip("skip SysScale on Wayland in non-wayland build")
-    }
+	requireDisplay(t)
+	if runtime.GOOS == "linux" && robotgo.DetectDisplayServer() == robotgo.DisplayServerWayland {
+		t.Skip("skip SysScale on Wayland in non-wayland build")
+	}
 	s := robotgo.SysScale()
 	log.Println("SysScale: ", s)
 
@@ -64,10 +89,10 @@ func TestGetSysScale(t *testing.T) {
 }
 
 func TestGetTitle(t *testing.T) {
-    requireDisplay(t)
-    if runtime.GOOS == "linux" && robotgo.DetectDisplayServer() == robotgo.DisplayServerWayland {
-        t.Skip("skip window title on Wayland in non-wayland build")
-    }
+	requireDisplay(t)
+	if runtime.GOOS == "linux" && robotgo.DetectDisplayServer() == robotgo.DisplayServerWayland {
+		t.Skip("skip window title on Wayland in non-wayland build")
+	}
 	// just exercise the function, it used to crash with a segfault + "Maximum
 	// number of clients reached"
 	for i := 0; i < 128; i++ {

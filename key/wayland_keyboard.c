@@ -31,24 +31,35 @@ static struct xkb_context *wk_xkb_context = NULL;
 static struct xkb_keymap *wk_keymap = NULL;
 static xkb_mod_mask_t wk_modifiers = 0;
 
+static xkb_mod_mask_t mod_mask_for_name(struct xkb_keymap *keymap, const char *name) {
+    if (!keymap || !name) {
+        return 0;
+    }
+    xkb_mod_index_t idx = xkb_keymap_mod_get_index(keymap, name);
+    if (idx == XKB_MOD_INVALID) {
+        return 0;
+    }
+    return ((xkb_mod_mask_t)1) << idx;
+}
+
 static xkb_mod_mask_t mask_for_key(MMKeyCode key) {
     switch (key) {
     case K_META:
     case K_LMETA:
     case K_RMETA:
-        return XKB_MOD_MASK_LOGO;
+        return mod_mask_for_name(wk_keymap, XKB_MOD_NAME_LOGO);
     case K_ALT:
     case K_LALT:
     case K_RALT:
-        return XKB_MOD_MASK_ALT;
+        return mod_mask_for_name(wk_keymap, XKB_MOD_NAME_ALT);
     case K_CONTROL:
     case K_LCONTROL:
     case K_RCONTROL:
-        return XKB_MOD_MASK_CTRL;
+        return mod_mask_for_name(wk_keymap, XKB_MOD_NAME_CTRL);
     case K_SHIFT:
     case K_LSHIFT:
     case K_RSHIFT:
-        return XKB_MOD_MASK_SHIFT;
+        return mod_mask_for_name(wk_keymap, XKB_MOD_NAME_SHIFT);
     default:
         return 0;
     }
@@ -169,4 +180,3 @@ void WL_KEY_EVENT_WAIT(MMKeyCode key, bool is_press) {
     WL_KEY_EVENT(key, is_press);
     microsleep(DEADBEEF_UNIFORM(0.0, 0.5));
 }
-

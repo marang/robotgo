@@ -13,7 +13,10 @@ package robotgo
 
 import (
 	"image"
+	"os"
 	"os/exec"
+	"path/filepath"
+	"time"
 	"unsafe"
 
 	"github.com/vcaesar/imgo"
@@ -182,4 +185,14 @@ func GetText(imgPath string, args ...string) (string, error) {
 		return "", err
 	}
 	return string(body), nil
+}
+
+// GetTextImg get text from image.Image by writing a temporary PNG and running OCR.
+func GetTextImg(img image.Image, args ...string) (string, error) {
+	tmp := filepath.Join(os.TempDir(), "robotgo-ocr-"+time.Now().Format("20060102-150405.000000000")+".png")
+	if err := SavePng(img, tmp); err != nil {
+		return "", err
+	}
+	defer os.Remove(tmp)
+	return GetText(tmp, args...)
 }

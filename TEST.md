@@ -54,11 +54,12 @@ Prerequisites:
 
 Purpose:
 - Integration tests in `mouse/wayland_test.go` and `window/wayland_test.go`
+- Runtime backend integration tests in root package for Wayland window resolver paths
 
 Command:
 
 ```bash
-go test -tags "wayland integration" ./mouse ./window -v
+go test -tags "wayland integration" . ./mouse ./window -v
 ```
 
 Prerequisites:
@@ -100,13 +101,48 @@ Status:
   - Overrides Linux capture backend selection (`auto|dmabuf|wl_shm|portal`).
 - `ROBOTGO_CAPTURE_DEBUG=1`
   - Enables backend/fallback diagnostic logs for capture flow.
+- `ROBOTGO_WLROOTS_MINMAX_E2E=1`
+  - Opt-in for wlroots active-window minimize/maximize E2E integration (`MinWindowE(0)`, `MaxWindowE(0)`).
+- `ROBOTGO_SWAY_TITLE_E2E=1`
+  - Opt-in for sway active-window title E2E integration (`GetTitleE`).
+- `ROBOTGO_HYPRLAND_TITLE_E2E=1`
+  - Opt-in for hyprland active-window title E2E integration (`GetTitleE`).
 
 ## Recommended Local Sequence
 
 ```bash
 go test ./...
 go test -tags "portal" ./screen/portal -v
-go test -tags "wayland integration" ./mouse ./window -v
+go test -tags "wayland integration" . ./mouse ./window -v
 ```
 
 Run tag-gated suites as needed for the area you changed.
+
+## Sequential Crash-Tracking Run (No Parallelism)
+
+When debugging intermittent crashes/aborts, run tests sequentially and persist
+the currently running package:
+
+```bash
+set -euo pipefail
+export GOCACHE=/tmp/robotgo-gocache
+export GOMODCACHE=/tmp/robotgo-gomodcache
+mkdir -p "$GOCACHE" "$GOMODCACHE" docs/plan
+STATE_FILE="docs/plan/last-running-test.txt"
+HIST_FILE="docs/plan/test-run-history.log"
+: > "$HIST_FILE"
+
+for pkg in $(go list ./...); do
+  ts=$(date -Iseconds)
+  printf "%s RUNNING %s\n" "$ts" "$pkg" | tee "$STATE_FILE" | tee -a "$HIST_FILE"
+  go test -count=1 -p 1 -parallel 1 "$pkg" 2>&1 | tee -a "$HIST_FILE"
+  ts=$(date -Iseconds)
+  printf "%s PASS %s\n" "$ts" "$pkg" | tee -a "$HIST_FILE"
+done
+
+printf "%s COMPLETE all-packages\n" "$(date -Iseconds)" | tee "$STATE_FILE" | tee -a "$HIST_FILE"
+```
+
+After a crash, inspect:
+- `docs/plan/last-running-test.txt` for the package that was active.
+- `docs/plan/test-run-history.log` for the last emitted test output.

@@ -6,6 +6,7 @@ package key
 /*
 #cgo pkg-config: wayland-server
 #include "testdata/mock_keyboard_server.c"
+#include "../virtual-keyboard-unstable-v1-client-protocol.c"
 */
 import "C"
 import "unsafe"

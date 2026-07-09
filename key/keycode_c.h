@@ -1,6 +1,10 @@
 #include "keycode.h"
 #include <stdlib.h>
 #if defined(IS_LINUX)
+#include <stdint.h>
+#if !defined(DISPLAY_SERVER_WAYLAND)
+#include <X11/Xlib.h>
+#endif
 #include "../base/os.h"
 #if defined(DISPLAY_SERVER_WAYLAND)
 #include <xkbcommon/xkbcommon.h>
@@ -11,7 +15,7 @@
  * keymap searching for the first entry that produces the requested
  * keysym. It returns XKB_KEY_NoSymbol when no match is found.
  */
-static xkb_keycode_t keysym_to_keycode(struct xkb_keymap *keymap, xkb_keysym_t keysym) {
+static xkb_keycode_t keycode_keysym_to_keycode(struct xkb_keymap *keymap, xkb_keysym_t keysym) {
     if (!keymap) {
         return XKB_KEY_NoSymbol;
     }
@@ -92,58 +96,39 @@ MMKeyCode keyCodeForChar(const char c) {
 		}
 
 		return code;
-        #elif defined(IS_LINUX)
-                DisplayServer server = detectDisplayServer();
+#elif defined(IS_LINUX)
 #if defined(DISPLAY_SERVER_WAYLAND)
-                if (server == Wayland) {
-                        char buf[2];
-                        buf[0] = c;
-                        buf[1] = '\0';
-
-                        MMKeyCode code = xkb_utf8_to_keysym(buf);
-                        if (code == XKB_KEY_NoSymbol) {
-                                struct XSpecialCharacterMapping* xs = XSpecialCharacterTable;
-                                while (xs->name) {
-                                        if (c == xs->name) {
-                                                code = xs->code;
-                                                break;
-                                        }
-                                        xs++;
-                                }
-                        }
-
-                        if (code == XKB_KEY_NoSymbol) {
-                                return K_NOT_A_KEY;
-                        }
-                        return code;
-                } else
-#endif
-                {
-                        char buf[2];
-                        buf[0] = c;
-                        buf[1] = '\0';
-
-                        MMKeyCode code = XStringToKeysym(buf);
-                        if (code == NoSymbol) {
-                                struct XSpecialCharacterMapping* xs = XSpecialCharacterTable;
-                                while (xs->name) {
-                                        if (c == xs->name) {
-                                                code = xs->code;
-                                                break;
-                                        }
-                                        xs++;
-                                }
-                        }
-
-                        if (code == NoSymbol) {
-                                return K_NOT_A_KEY;
-                        }
-
-                        if (c == 60) {
-                                code = 44;
-                        }
-                        return code;
+                MMKeyCode code = xkb_utf32_to_keysym((uint32_t)(unsigned char)c);
+                if (code == XKB_KEY_NoSymbol) {
+                        return K_NOT_A_KEY;
                 }
+                return code;
+#else
+                char buf[2];
+                buf[0] = c;
+                buf[1] = '\0';
+
+                MMKeyCode code = XStringToKeysym(buf);
+                if (code == NoSymbol) {
+                        struct XSpecialCharacterMapping* xs = XSpecialCharacterTable;
+                        while (xs->name) {
+                                if (c == xs->name) {
+                                        code = xs->code;
+                                        break;
+                                }
+                                xs++;
+                        }
+                }
+
+                if (code == NoSymbol) {
+                        return K_NOT_A_KEY;
+                }
+
+                if (c == 60) {
+                        code = 44;
+                }
+                return code;
+#endif
         #endif
 }
 

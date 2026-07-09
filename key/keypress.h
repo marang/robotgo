@@ -19,14 +19,13 @@
 	} MMKeyFlags;
 #elif defined(IS_LINUX)
 #if defined(DISPLAY_SERVER_WAYLAND)
-        #include <xkbcommon/xkbcommon.h>
-        typedef xkb_mod_mask_t MMKeyFlags;
+        typedef unsigned int MMKeyFlags;
         enum MMKeyFlagsBits {
                 MOD_NONE = 0,
-                MOD_META = XKB_MOD_MASK_LOGO,
-                MOD_ALT = XKB_MOD_MASK_ALT,
-                MOD_CONTROL = XKB_MOD_MASK_CTRL,
-                MOD_SHIFT = XKB_MOD_MASK_SHIFT
+                MOD_META = 1u << 0,
+                MOD_ALT = 1u << 1,
+                MOD_CONTROL = 1u << 2,
+                MOD_SHIFT = 1u << 3
         };
 #else
         enum MMKeyFlagsBits {

@@ -8,8 +8,10 @@
 	#include <ApplicationServices/ApplicationServices.h>
 	// #include </System/Library/Frameworks/ApplicationServices.framework/Versions/A/Headers/ApplicationServices.h>
 #elif defined(IS_LINUX)
+#if !defined(DISPLAY_SERVER_WAYLAND)
         #include <X11/Xlib.h>
         #include <X11/extensions/XTest.h>
+#endif
         #include <stdlib.h>
         #include "../base/os.h"
 
@@ -167,9 +169,11 @@ void moveMouse(MMPointInt32 point){
 #ifdef ROBOTGO_USE_WAYLAND
                 if (detectDisplayServer() == Wayland) {
                         if (!rg_init_wayland()) {
+#if !defined(DISPLAY_SERVER_WAYLAND)
                                 Display *display = XGetMainDisplay();
                                 XWarpPointer(display, None, DefaultRootWindow(display), 0, 0, 0, 0, point.x, point.y);
                                 XSync(display, false);
+#endif
                         } else {
                                 if (rg_wl_width > 0 && rg_wl_height > 0) {
                                         uint32_t sx = (uint32_t)((double)point.x * 65535.0 / rg_wl_width);
@@ -180,11 +184,14 @@ void moveMouse(MMPointInt32 point){
                                         rg_wl_last_y = point.y;
                                 }
                         }
-                } else {
+                }
+#if !defined(DISPLAY_SERVER_WAYLAND)
+                else {
                         Display *display = XGetMainDisplay();
                         XWarpPointer(display, None, DefaultRootWindow(display), 0, 0, 0, 0, point.x, point.y);
                         XSync(display, false);
                 }
+#endif
 #else
                 Display *display = XGetMainDisplay();
                 XWarpPointer(display, None, DefaultRootWindow(display), 0, 0, 0, 0, point.x, point.y);
@@ -225,6 +232,7 @@ MMPointInt32 location() {
 			return MMPointInt32Make(rg_wl_last_x, rg_wl_last_y);
 		}
 		#endif
+#if !defined(DISPLAY_SERVER_WAYLAND)
 		int x, y; 	/* This is all we care about. Seriously. */
 		Window garb1, garb2; 	/* Why you can't specify NULL as a parameter */
 		int garb_x, garb_y;  	/* is beyond me. */
@@ -235,6 +243,9 @@ MMPointInt32 location() {
 						&garb_x, &garb_y, &more_garbage);
 
 		return MMPointInt32Make(x, y);
+#else
+		return MMPointInt32Make(rg_wl_last_x, rg_wl_last_y);
+#endif
 	#elif defined(IS_WINDOWS)
 		POINT point;
 		GetCursorPos(&point);
@@ -291,9 +302,11 @@ void toggleMouse(bool down, MMMouseButton button) {
 #ifdef ROBOTGO_USE_WAYLAND
                 if (detectDisplayServer() == Wayland) {
                         if (!rg_init_wayland()) {
+#if !defined(DISPLAY_SERVER_WAYLAND)
                                 Display *display = XGetMainDisplay();
                                 XTestFakeButtonEvent(display, button, down ? True : False, CurrentTime);
                                 XSync(display, false);
+#endif
                         } else {
                                 uint32_t code = BTN_LEFT;
                                 if (button == RIGHT_BUTTON) {
@@ -304,11 +317,14 @@ void toggleMouse(bool down, MMMouseButton button) {
                                 zwlr_virtual_pointer_v1_button(rg_wl_vptr, 0, code, down ? 1 : 0);
                                 wl_display_flush(rg_wl_display);
                         }
-                } else {
+                }
+#if !defined(DISPLAY_SERVER_WAYLAND)
+                else {
                         Display *display = XGetMainDisplay();
                         XTestFakeButtonEvent(display, button, down ? True : False, CurrentTime);
                         XSync(display, false);
                 }
+#endif
 #else
                 Display *display = XGetMainDisplay();
                 XTestFakeButtonEvent(display, button, down ? True : False, CurrentTime);
@@ -381,22 +397,7 @@ void scrollMouseXY(int x, int y) {
 	#elif defined(IS_LINUX)
 		#ifdef ROBOTGO_USE_WAYLAND
 		if (detectDisplayServer() == Wayland) {
-			if (!rg_init_wayland()) {
-				Display *display = XGetMainDisplay();
-				int ydir = 4; /* Button 4 is up, 5 is down. */
-				int xdir = 6;
-				if (y < 0) { ydir = 5; }
-				if (x < 0) { xdir = 7; }
-				for (int xi = 0; xi < abs(x); xi++) {
-					XTestFakeButtonEvent(display, xdir, 1, CurrentTime);
-					XTestFakeButtonEvent(display, xdir, 0, CurrentTime);
-				}
-				for (int yi = 0; yi < abs(y); yi++) {
-					XTestFakeButtonEvent(display, ydir, 1, CurrentTime);
-					XTestFakeButtonEvent(display, ydir, 0, CurrentTime);
-				}
-				XSync(display, false);
-			} else {
+			if (rg_init_wayland()) {
 				/* Emulate wheel scrolling using virtual pointer axis events */
 				if (y != 0) {
 					int steps = abs(y);
@@ -423,9 +424,27 @@ void scrollMouseXY(int x, int y) {
 				}
 				wl_display_flush(rg_wl_display);
 			}
-		} else
-		#endif
-		{
+#if !defined(DISPLAY_SERVER_WAYLAND)
+			else {
+				Display *display = XGetMainDisplay();
+				int ydir = 4; /* Button 4 is up, 5 is down. */
+				int xdir = 6;
+				if (y < 0) { ydir = 5; }
+				if (x < 0) { xdir = 7; }
+				for (int xi = 0; xi < abs(x); xi++) {
+					XTestFakeButtonEvent(display, xdir, 1, CurrentTime);
+					XTestFakeButtonEvent(display, xdir, 0, CurrentTime);
+				}
+				for (int yi = 0; yi < abs(y); yi++) {
+					XTestFakeButtonEvent(display, ydir, 1, CurrentTime);
+					XTestFakeButtonEvent(display, ydir, 0, CurrentTime);
+				}
+				XSync(display, false);
+			}
+#endif
+		}
+#if !defined(DISPLAY_SERVER_WAYLAND)
+		else {
 			Display *display = XGetMainDisplay();
 			int ydir = 4; /* Button 4 is up, 5 is down. */
 			int xdir = 6;
@@ -441,6 +460,23 @@ void scrollMouseXY(int x, int y) {
 			}
 			XSync(display, false);
 		}
+#endif
+		#else
+		Display *display = XGetMainDisplay();
+		int ydir = 4; /* Button 4 is up, 5 is down. */
+		int xdir = 6;
+		if (y < 0) { ydir = 5; }
+		if (x < 0) { xdir = 7; }
+		for (int xi = 0; xi < abs(x); xi++) {
+			XTestFakeButtonEvent(display, xdir, 1, CurrentTime);
+			XTestFakeButtonEvent(display, xdir, 0, CurrentTime);
+		}
+		for (int yi = 0; yi < abs(y); yi++) {
+			XTestFakeButtonEvent(display, ydir, 1, CurrentTime);
+			XTestFakeButtonEvent(display, ydir, 0, CurrentTime);
+		}
+		XSync(display, false);
+		#endif
 	#elif defined(IS_WINDOWS)
 		mouseScrollInputH.type = INPUT_MOUSE;
 		mouseScrollInputH.mi.dx = 0;

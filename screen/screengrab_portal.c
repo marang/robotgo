@@ -1,9 +1,10 @@
 //go:build linux
 // +build linux
 
-// Placeholder implementation of a portal-based screen capture backend.
-// It currently generates a solid-color bitmap as a stand-in for an actual
-// frame retrieved via the org.freedesktop.portal.ScreenCast API.
+// Placeholder implementation of a portal-based C capture backend.
+// By default this path is disabled and returns an error. The green-frame
+// stub exists only for tests that explicitly opt in via
+// ROBOTGO_PORTAL_STUB_GREEN=1.
 
 #include <stdint.h>
 #include <stdlib.h>
@@ -19,6 +20,12 @@ MMBitmapRef capture_screen_portal(int32_t x, int32_t y, int32_t w, int32_t h,
   (void)display_id;
   (void)isPid;
   if (getenv("ROBOTGO_PORTAL_FAIL")) {
+    if (err) {
+      *err = ScreengrabErrPortal;
+    }
+    return NULL;
+  }
+  if (!getenv("ROBOTGO_PORTAL_STUB_GREEN")) {
     if (err) {
       *err = ScreengrabErrPortal;
     }

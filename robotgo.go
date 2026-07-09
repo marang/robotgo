@@ -39,26 +39,36 @@ package robotgo
 #endif
 
 #cgo linux CFLAGS: -I/usr/src
-#cgo linux LDFLAGS: -L/usr/src -lm -lX11 -lXtst
+#cgo linux,!wayland LDFLAGS: -L/usr/src -lm -lX11 -lXtst
+#cgo linux,wayland LDFLAGS: -L/usr/src -lm
 #cgo linux,portal pkg-config: libpipewire-0.3 libportal
 
 #cgo windows LDFLAGS: -lgdi32 -luser32
 //
 #include "screen/goScreen.h"
 #include "mouse/mouse_c.h"
+#ifdef DISPLAY_SERVER_WAYLAND
+#include "window/goWindow_wayland_stub.h"
+#else
 #include "window/goWindow.h"
+#endif
 */
 import "C"
 
 import (
+	"bufio"
 	"context"
 	"errors"
 	"fmt"
 	"image"
 	"log"
 	"os"
+	"os/exec"
+	"regexp"
 	"runtime"
+	"strconv"
 	"strings"
+	"sync"
 	"time"
 	"unsafe"
 
@@ -68,7 +78,16 @@ import (
 
 const (
 	// Version get the robotgo version
-	Version = "v1.00.0.1189, MT. Baker!"
+	Version                  = "v1.00.0.1189, MT. Baker!"
+	envWaylandDisplay        = "WAYLAND_DISPLAY"
+	envDisplay               = "DISPLAY"
+	envCaptureDebug          = "ROBOTGO_CAPTURE_DEBUG"
+	envWaylandBackend        = "ROBOTGO_WAYLAND_BACKEND"
+	envPortalStubGreen       = "ROBOTGO_PORTAL_STUB_GREEN"
+	envForcePortal           = "ROBOTGO_FORCE_PORTAL"
+	envPath                  = "PATH"
+	waylandBackendPortalName = "portal"
+	cmdWaylandInfo           = "wayland-info"
 )
 
 // GetVersion get the robotgo version
@@ -103,17 +122,145 @@ const (
 	DisplayServerUnknown DisplayServer = "unknown"
 )
 
+// FeatureCapability describes runtime availability for a Linux feature path.
+type FeatureCapability struct {
+	Available bool
+	Fallback  bool
+	Backend   string
+	Reason    string
+	Notes     string
+}
+
+// LinuxCapabilities summarizes runtime backend availability on Linux.
+type LinuxCapabilities struct {
+	DisplayServer  DisplayServer
+	Compositor     string
+	WaylandSession bool
+	X11Session     bool
+	Capture        FeatureCapability
+	Bounds         FeatureCapability
+	Keyboard       FeatureCapability
+	Mouse          FeatureCapability
+	Window         FeatureCapability
+}
+
 // DetectDisplayServer inspects the environment and reports the active display server.
 // It checks the standard DISPLAY and WAYLAND_DISPLAY variables.
 // If neither is present, DisplayServerUnknown is returned.
 func DetectDisplayServer() DisplayServer {
-	if os.Getenv("WAYLAND_DISPLAY") != "" {
+	if os.Getenv(envWaylandDisplay) != "" {
 		return DisplayServerWayland
 	}
-	if os.Getenv("DISPLAY") != "" {
+	if os.Getenv(envDisplay) != "" {
 		return DisplayServerX11
 	}
 	return DisplayServerUnknown
+}
+
+func hasCommand(name string) bool {
+	_, err := exec.LookPath(name)
+	return err == nil
+}
+
+// GetLinuxCapabilities reports runtime feature availability for Linux sessions.
+// On non-Linux platforms it returns a zero-value capability set.
+func GetLinuxCapabilities() LinuxCapabilities {
+	if runtime.GOOS != "linux" {
+		return LinuxCapabilities{}
+	}
+
+	ds := DetectDisplayServer()
+	c := LinuxCapabilities{
+		DisplayServer:  ds,
+		Compositor:     "",
+		WaylandSession: ds == DisplayServerWayland,
+		X11Session:     ds == DisplayServerX11,
+	}
+
+	switch ds {
+	case DisplayServerWayland:
+		c.Compositor = detectWaylandCompositor()
+		c.Capture = FeatureCapability{
+			Available: true,
+			Fallback:  hasCommand("xdg-desktop-portal"),
+			Backend:   "wayland+screencopy",
+			Reason:    "wayland session detected",
+			Notes:     "native screencopy path (dmabuf/wl_shm) with optional portal fallback",
+		}
+		if c.Capture.Fallback {
+			c.Capture.Notes += "; portal detected"
+		}
+
+		size := C.getMainDisplaySize()
+		if int(size.w) > 0 && int(size.h) > 0 {
+			c.Bounds = FeatureCapability{
+				Available: true,
+				Fallback:  false,
+				Backend:   "wayland-native",
+				Reason:    "native wayland bounds path reports non-zero dimensions",
+				Notes:     "native wayland bounds path available",
+			}
+		} else if rect, ok := waylandScreenBoundsFallback(); ok {
+			c.Bounds = FeatureCapability{
+				Available: true,
+				Fallback:  true,
+				Backend:   cmdWaylandInfo,
+				Reason:    "native wayland bounds unavailable; wayland-info fallback returned valid bounds",
+				Notes:     fmt.Sprintf("wayland-info fallback available with bounds %dx%d at (%d,%d)", rect.W, rect.H, rect.X, rect.Y),
+			}
+		} else if hasCommand(cmdWaylandInfo) {
+			c.Bounds = FeatureCapability{
+				Available: false,
+				Fallback:  false,
+				Backend:   cmdWaylandInfo,
+				Reason:    "native wayland bounds unavailable and wayland-info returned no valid bounds",
+				Notes:     "wayland-info command detected but fallback probe did not produce non-zero bounds",
+			}
+		} else {
+			c.Bounds = FeatureCapability{
+				Available: false,
+				Fallback:  false,
+				Backend:   "",
+				Reason:    "native wayland bounds unavailable and wayland-info command missing",
+				Notes:     "no native bounds and no wayland-info command detected",
+			}
+		}
+
+		c.Keyboard = FeatureCapability{
+			Available: waylandKeyboardBackendCompiled(),
+			Fallback:  false,
+			Backend:   "wayland-virtual-keyboard",
+			Reason:    "compile-time availability of wayland keyboard backend",
+			Notes:     "wayland virtual keyboard backend compile-time availability",
+		}
+		c.Mouse = FeatureCapability{
+			Available: true,
+			Fallback:  false,
+			Backend:   "wayland-native",
+			Reason:    "wayland session detected",
+			Notes:     "wayland mouse backend expected in linux runtime path",
+		}
+		c.Window = resolveWindowBackend().Capability()
+		if c.Window.Backend == "native" {
+			c.Window.Backend = "wayland-core"
+		}
+
+	case DisplayServerX11:
+		c.Capture = FeatureCapability{Available: true, Backend: "x11", Reason: "x11 session detected", Notes: "x11 capture path"}
+		c.Bounds = FeatureCapability{Available: true, Backend: "x11", Reason: "x11 session detected", Notes: "x11 bounds path"}
+		c.Keyboard = FeatureCapability{Available: true, Backend: "x11", Reason: "x11 session detected", Notes: "x11 keyboard path"}
+		c.Mouse = FeatureCapability{Available: true, Backend: "x11", Reason: "x11 session detected", Notes: "x11 mouse path"}
+		c.Window = FeatureCapability{Available: true, Backend: "x11", Reason: "x11 session detected", Notes: "x11 window management path"}
+
+	default:
+		c.Capture = FeatureCapability{Available: false, Backend: "", Reason: "no display server detected", Notes: "no detected display server"}
+		c.Bounds = FeatureCapability{Available: false, Backend: "", Reason: "no display server detected", Notes: "no detected display server"}
+		c.Keyboard = FeatureCapability{Available: false, Backend: "", Reason: "no display server detected", Notes: "no detected display server"}
+		c.Mouse = FeatureCapability{Available: false, Backend: "", Reason: "no display server detected", Notes: "no detected display server"}
+		c.Window = FeatureCapability{Available: false, Backend: "", Reason: "no display server detected", Notes: "no detected display server"}
+	}
+
+	return c
 }
 
 // CaptureBackend reports which backend handled the most recent screen capture.
@@ -167,14 +314,319 @@ func isWaylandSession() bool {
 	return runtime.GOOS == "linux" && DetectDisplayServer() == DisplayServerWayland
 }
 
+var (
+	reWaylandOutputID = regexp.MustCompile(`name:\s*([0-9]+)\s*$`)
+	rePosXY           = regexp.MustCompile(`x:\s*(-?[0-9]+),\s*y:\s*(-?[0-9]+)`)
+	reLogicalXY       = regexp.MustCompile(`logical_x:\s*(-?[0-9]+),\s*logical_y:\s*(-?[0-9]+)`)
+	reLogicalWH       = regexp.MustCompile(`logical_width:\s*([0-9]+),\s*logical_height:\s*([0-9]+)`)
+	reModeWH          = regexp.MustCompile(`width:\s*([0-9]+)\s*px,\s*height:\s*([0-9]+)\s*px`)
+	reXDGOutputID     = regexp.MustCompile(`output:\s*([0-9]+)\s*$`)
+)
+
+type waylandOutputBounds struct {
+	x, y int
+	w, h int
+}
+
+type waylandWLModeState struct {
+	w, h int
+}
+
+var (
+	waylandBoundsMu     sync.Mutex
+	waylandBoundsCached Rect
+	waylandBoundsValid  bool
+	waylandBoundsProbed bool
+)
+
+func waylandScreenBoundsFallback() (Rect, bool) {
+	if !isWaylandSession() {
+		return Rect{}, false
+	}
+
+	waylandBoundsMu.Lock()
+	if waylandBoundsProbed {
+		r, ok := waylandBoundsCached, waylandBoundsValid
+		waylandBoundsMu.Unlock()
+		return r, ok
+	}
+	waylandBoundsMu.Unlock()
+
+	path, err := exec.LookPath(cmdWaylandInfo)
+	if err != nil {
+		waylandBoundsMu.Lock()
+		waylandBoundsProbed = true
+		waylandBoundsValid = false
+		waylandBoundsMu.Unlock()
+		return Rect{}, false
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	out, err := exec.CommandContext(ctx, path).Output()
+	if err != nil {
+		waylandBoundsMu.Lock()
+		waylandBoundsProbed = true
+		waylandBoundsValid = false
+		waylandBoundsMu.Unlock()
+		return Rect{}, false
+	}
+
+	rect, ok := parseWaylandInfoBounds(string(out))
+	waylandBoundsMu.Lock()
+	waylandBoundsProbed = true
+	waylandBoundsValid = ok
+	if ok {
+		waylandBoundsCached = rect
+	}
+	waylandBoundsMu.Unlock()
+
+	return rect, ok
+}
+
+func parseWaylandInfoBounds(raw string) (Rect, bool) {
+	type xdgState struct {
+		outputID      int
+		hasID         bool
+		logicalX      int
+		logicalY      int
+		logicalW      int
+		logicalH      int
+		hasLogicalPos bool
+		hasLogicalWH  bool
+	}
+	type wlState struct {
+		outputID      int
+		hasID         bool
+		x             int
+		y             int
+		hasPos        bool
+		currentMode   waylandWLModeState
+		hasCurrent    bool
+		firstMode     waylandWLModeState
+		hasFirst      bool
+		pendingMode   waylandWLModeState
+		hasPending    bool
+		expectModeVal bool
+	}
+
+	xdgBounds := make(map[int]waylandOutputBounds)
+	var wlBounds []waylandOutputBounds
+
+	inXDG := false
+	inWL := false
+	var xs xdgState
+	var ws wlState
+
+	commitXDG := func() {
+		if !xs.hasID || !xs.hasLogicalWH {
+			return
+		}
+		x := 0
+		y := 0
+		if xs.hasLogicalPos {
+			x = xs.logicalX
+			y = xs.logicalY
+		}
+		xdgBounds[xs.outputID] = waylandOutputBounds{
+			x: x,
+			y: y,
+			w: xs.logicalW,
+			h: xs.logicalH,
+		}
+	}
+
+	commitWL := func() {
+		if !ws.hasID || !ws.hasPos {
+			return
+		}
+		w := 0
+		h := 0
+		if ws.hasCurrent {
+			w, h = ws.currentMode.w, ws.currentMode.h
+		} else if ws.hasFirst {
+			w, h = ws.firstMode.w, ws.firstMode.h
+		}
+		if w <= 0 || h <= 0 {
+			return
+		}
+		if b, ok := xdgBounds[ws.outputID]; ok && b.w > 0 && b.h > 0 {
+			wlBounds = append(wlBounds, b)
+			return
+		}
+		wlBounds = append(wlBounds, waylandOutputBounds{
+			x: ws.x,
+			y: ws.y,
+			w: w,
+			h: h,
+		})
+	}
+
+	sc := bufio.NewScanner(strings.NewReader(raw))
+	for sc.Scan() {
+		line := strings.TrimSpace(sc.Text())
+		if line == "" {
+			continue
+		}
+
+		if strings.HasPrefix(line, "interface: '") {
+			if inXDG {
+				commitXDG()
+				inXDG = false
+				xs = xdgState{}
+			}
+			if inWL {
+				commitWL()
+				inWL = false
+				ws = wlState{}
+			}
+			if strings.HasPrefix(line, "interface: 'wl_output'") {
+				inWL = true
+				ws = wlState{}
+				if m := reWaylandOutputID.FindStringSubmatch(line); len(m) == 2 {
+					if id, err := strconv.Atoi(m[1]); err == nil {
+						ws.outputID = id
+						ws.hasID = true
+					}
+				}
+			}
+			continue
+		}
+
+		if line == "xdg_output_v1" {
+			if inXDG {
+				commitXDG()
+			}
+			inXDG = true
+			xs = xdgState{}
+			continue
+		}
+
+		if inXDG {
+			if m := reXDGOutputID.FindStringSubmatch(line); len(m) == 2 {
+				if id, err := strconv.Atoi(m[1]); err == nil {
+					xs.outputID = id
+					xs.hasID = true
+				}
+				continue
+			}
+			if m := reLogicalXY.FindStringSubmatch(line); len(m) == 3 {
+				x, errX := strconv.Atoi(m[1])
+				y, errY := strconv.Atoi(m[2])
+				if errX == nil && errY == nil {
+					xs.logicalX = x
+					xs.logicalY = y
+					xs.hasLogicalPos = true
+				}
+				continue
+			}
+			if m := reLogicalWH.FindStringSubmatch(line); len(m) == 3 {
+				w, errW := strconv.Atoi(m[1])
+				h, errH := strconv.Atoi(m[2])
+				if errW == nil && errH == nil {
+					xs.logicalW = w
+					xs.logicalH = h
+					xs.hasLogicalWH = true
+				}
+				continue
+			}
+		}
+
+		if inWL {
+			if m := rePosXY.FindStringSubmatch(line); len(m) == 3 {
+				x, errX := strconv.Atoi(m[1])
+				y, errY := strconv.Atoi(m[2])
+				if errX == nil && errY == nil {
+					ws.x = x
+					ws.y = y
+					ws.hasPos = true
+				}
+				continue
+			}
+			if line == "mode:" {
+				ws.expectModeVal = true
+				ws.hasPending = false
+				continue
+			}
+			if ws.expectModeVal {
+				if m := reModeWH.FindStringSubmatch(line); len(m) == 3 {
+					w, errW := strconv.Atoi(m[1])
+					h, errH := strconv.Atoi(m[2])
+					if errW == nil && errH == nil {
+						ws.pendingMode = waylandWLModeState{w: w, h: h}
+						ws.hasPending = true
+						if !ws.hasFirst {
+							ws.firstMode = ws.pendingMode
+							ws.hasFirst = true
+						}
+					}
+					continue
+				}
+				if strings.HasPrefix(line, "flags:") {
+					if ws.hasPending && strings.Contains(line, "current") {
+						ws.currentMode = ws.pendingMode
+						ws.hasCurrent = true
+					}
+					ws.expectModeVal = false
+					ws.hasPending = false
+					continue
+				}
+			}
+		}
+	}
+
+	if inXDG {
+		commitXDG()
+	}
+	if inWL {
+		commitWL()
+	}
+
+	if len(wlBounds) == 0 {
+		return Rect{}, false
+	}
+	minX := wlBounds[0].x
+	minY := wlBounds[0].y
+	maxX := wlBounds[0].x + wlBounds[0].w
+	maxY := wlBounds[0].y + wlBounds[0].h
+
+	for i := 1; i < len(wlBounds); i++ {
+		b := wlBounds[i]
+		if b.x < minX {
+			minX = b.x
+		}
+		if b.y < minY {
+			minY = b.y
+		}
+		if b.x+b.w > maxX {
+			maxX = b.x + b.w
+		}
+		if b.y+b.h > maxY {
+			maxY = b.y + b.h
+		}
+	}
+
+	w := maxX - minX
+	h := maxY - minY
+	if w <= 0 || h <= 0 {
+		return Rect{}, false
+	}
+
+	return Rect{
+		Point{X: minX, Y: minY},
+		Size{W: w, H: h},
+	}, true
+}
+
 func captureDebugf(format string, args ...interface{}) {
-	if os.Getenv("ROBOTGO_CAPTURE_DEBUG") != "" {
+	if os.Getenv(envCaptureDebug) != "" {
 		log.Printf("robotgo capture: "+format, args...)
 	}
 }
 
 func waylandBackendFromEnv() (WaylandBackend, bool) {
-	switch strings.ToLower(strings.TrimSpace(os.Getenv("ROBOTGO_WAYLAND_BACKEND"))) {
+	switch strings.ToLower(strings.TrimSpace(os.Getenv(envWaylandBackend))) {
 	case "":
 		return WaylandBackendAuto, false
 	case "auto":
@@ -207,6 +659,37 @@ func waylandErr(code C.int32_t) error {
 	default:
 		return ErrWaylandFailed
 	}
+}
+
+func portalStubEnabled() bool {
+	return os.Getenv(envPortalStubGreen) != ""
+}
+
+func captureViaPortalScreenshot(x, y, w, h C.int32_t) (CBitmap, error) {
+	img, err := portalpkg.CaptureRegionImage(context.Background(), int(x), int(y), int(w), int(h))
+	if err != nil {
+		captureDebugf("portal screenshot failed: %v", err)
+		return nil, err
+	}
+	if img == nil {
+		return nil, errors.New("portal screenshot returned nil image")
+	}
+	cb := ImgToCBitmap(img)
+	if cb == nil {
+		return nil, errors.New("portal screenshot conversion failed")
+	}
+	lastBackend = BackendPortal
+	return cb, nil
+}
+
+func captureViaPortalStub(x, y, w, h C.int32_t, displayId int, isPid int) (CBitmap, error) {
+	var perr C.int32_t
+	pbit := C.capture_screen_portal(x, y, w, h, C.int32_t(displayId), C.int8_t(isPid), &perr)
+	if pbit == nil {
+		return nil, fmt.Errorf("portal capture failed: %d", int(perr))
+	}
+	lastBackend = BackendPortal
+	return CBitmap(pbit), nil
 }
 
 type (
@@ -345,7 +828,7 @@ func RgbToHex(r, g, b uint8) C.uint32_t {
 func GetPxColor(x, y int, displayId ...int) (C.MMRGBHex, error) {
 	display := displayIdx(displayId...)
 
-	if runtime.GOOS == "linux" && (DetectDisplayServer() == DisplayServerWayland || os.Getenv("ROBOTGO_FORCE_PORTAL") != "") {
+	if runtime.GOOS == "linux" && (DetectDisplayServer() == DisplayServerWayland || os.Getenv(envForcePortal) != "") {
 		bit, err := CaptureScreen(x, y, 1, 1, display)
 		if err != nil {
 			return 0, err
@@ -422,12 +905,16 @@ func Scaled1(x int, f float64) int {
 
 // GetScreenSize get the screen size
 func GetScreenSize() (int, int) {
-	if runtime.GOOS == "linux" && DetectDisplayServer() == DisplayServerWayland {
-		// Avoid X11 calls under Wayland-only sessions.
-		return 0, 0
-	}
 	size := C.getMainDisplaySize()
-	return int(size.w), int(size.h)
+	w := int(size.w)
+	h := int(size.h)
+	if w > 0 && h > 0 {
+		return w, h
+	}
+	if rect, ok := waylandScreenBoundsFallback(); ok {
+		return rect.W, rect.H
+	}
+	return w, h
 }
 
 // GetScreenRect get the screen rect (x, y, w, h)
@@ -440,6 +927,11 @@ func GetScreenRect(displayId ...int) Rect {
 	rect := C.getScreenRect(C.int32_t(display))
 	x, y, w, h := int(rect.origin.x), int(rect.origin.y),
 		int(rect.size.w), int(rect.size.h)
+	if (w <= 0 || h <= 0) && isWaylandSession() {
+		if wlRect, ok := waylandScreenBoundsFallback(); ok {
+			x, y, w, h = wlRect.X, wlRect.Y, wlRect.W, wlRect.H
+		}
+	}
 
 	if runtime.GOOS == "windows" {
 		// f := ScaleF(displayId...)
@@ -483,7 +975,7 @@ func CaptureScreen(args ...int) (CBitmap, error) {
 		h = C.int32_t(args[3])
 	} else {
 		if runtime.GOOS != "linux" || ds == DisplayServerX11 {
-			if runtime.GOOS == "linux" && C.XGetMainDisplay() == nil {
+			if runtime.GOOS == "linux" && !x11MainDisplayAvailable() {
 				return nil, errors.New("no display server found")
 			}
 			// Get the main screen rect.
@@ -507,16 +999,20 @@ func CaptureScreen(args ...int) (CBitmap, error) {
 	if runtime.GOOS == "linux" {
 		// Allow tests or environments to force the portal backend regardless
 		// of the detected display server.
-		forcePortal := os.Getenv("ROBOTGO_FORCE_PORTAL") != "" || strings.EqualFold(strings.TrimSpace(os.Getenv("ROBOTGO_WAYLAND_BACKEND")), "portal")
+		forcePortal := os.Getenv(envForcePortal) != "" || strings.EqualFold(strings.TrimSpace(os.Getenv(envWaylandBackend)), waylandBackendPortalName)
 		if forcePortal {
-			var perr C.int32_t
-			pbit := C.capture_screen_portal(x, y, w, h, C.int32_t(displayId), C.int8_t(isPid), &perr)
-			if pbit == nil {
-				return nil, fmt.Errorf("portal capture failed: %d", int(perr))
+			if cb, pErr := captureViaPortalScreenshot(x, y, w, h); pErr == nil {
+				captureDebugf("forced portal screenshot backend (display=%d, rect=%d,%d %dx%d)", displayId, int(x), int(y), int(w), int(h))
+				return cb, nil
+			} else if portalStubEnabled() {
+				cb, sErr := captureViaPortalStub(x, y, w, h, displayId, isPid)
+				if sErr != nil {
+					return nil, fmt.Errorf("%w: %v", ErrPortalFailed, sErr)
+				}
+				captureDebugf("forced portal stub backend (display=%d, rect=%d,%d %dx%d)", displayId, int(x), int(y), int(w), int(h))
+				return cb, nil
 			}
-			captureDebugf("forced portal backend (display=%d, rect=%d,%d %dx%d)", displayId, int(x), int(y), int(w), int(h))
-			lastBackend = BackendPortal
-			return CBitmap(pbit), nil
+			return nil, ErrPortalFailed
 		}
 		switch ds {
 		case DisplayServerWayland:
@@ -529,30 +1025,33 @@ func CaptureScreen(args ...int) (CBitmap, error) {
 			if bit == nil {
 				err := waylandErr(cerr)
 				captureDebugf("wayland screencopy failed: %v", err)
-				// Try Go portal screenshot (real pixels) when available.
-				if img, pErr := portalpkg.CaptureRegionImage(context.Background(), int(x), int(y), int(w), int(h)); pErr == nil && img != nil {
-					cb := ImgToCBitmap(img)
-					captureDebugf("fallback to Go portal screenshot backend")
-					lastBackend = BackendPortal
+				// Try portal screenshot (real pixels) when available.
+				if cb, pErr := captureViaPortalScreenshot(x, y, w, h); pErr == nil {
+					captureDebugf("fallback to portal screenshot backend")
 					return cb, nil
 				}
-				// Fallback to C stub portal (may be a stub build).
-				var perr C.int32_t
-				pbit := C.capture_screen_portal(x, y, w, h, C.int32_t(displayId), C.int8_t(isPid), &perr)
-				if pbit != nil {
-					captureDebugf("fallback to C portal backend")
-					lastBackend = BackendPortal
-					return CBitmap(pbit), nil
+				// Optional fallback to C portal stub for tests only.
+				var sErr error
+				if portalStubEnabled() {
+					var cb CBitmap
+					cb, sErr = captureViaPortalStub(x, y, w, h, displayId, isPid)
+					if sErr == nil {
+						captureDebugf("fallback to C portal stub backend")
+						return cb, nil
+					}
 				}
 				if errors.Is(err, ErrNoScreencopy) {
-					return nil, fmt.Errorf("%w; portal capture failed: %d", err, int(perr))
+					if sErr != nil {
+						return nil, fmt.Errorf("%w; %v", err, sErr)
+					}
+					return nil, fmt.Errorf("%w; %w", err, ErrPortalFailed)
 				}
 				return nil, err
 			}
 			lastBackend = BackendScreencopy
 			return CBitmap(bit), nil
 		case DisplayServerX11:
-			if C.XGetMainDisplay() == nil {
+			if !x11MainDisplayAvailable() {
 				return nil, errors.New("no display server found")
 			}
 			bit := C.capture_screen(x, y, w, h, C.int32_t(displayId), C.int8_t(isPid))
@@ -1110,16 +1609,53 @@ func SetActive(win Handle) {
 // SetActiveE sets the active window and returns an explicit unsupported error
 // for Wayland sessions where global window activation is not available.
 func SetActiveE(win Handle) error {
-	if isWaylandSession() {
-		return waylandWindowNotSupported("set active window")
-	}
-	SetActiveC(C.MData(win))
-	return nil
+	return resolveWindowBackend().SetActive(win)
 }
 
 // SetActiveC set the window active
 func SetActiveC(win C.MData) {
 	C.set_active(win)
+}
+
+func nativeSetActive(win Handle) {
+	SetActiveC(C.MData(win))
+}
+
+func nativeMinWindow(pid int, state bool, isPid bool) {
+	flag := 0
+	if isPid {
+		flag = 1
+	}
+	C.min_window(C.uintptr(pid), C.bool(state), C.int8_t(flag))
+}
+
+func nativeMaxWindow(pid int, state bool, isPid bool) {
+	flag := 0
+	if isPid {
+		flag = 1
+	}
+	C.max_window(C.uintptr(pid), C.bool(state), C.int8_t(flag))
+}
+
+func nativeCloseMainWindow() {
+	C.close_main_window()
+}
+
+func nativeCloseWindowByPid(pid int, isPid bool) {
+	flag := 0
+	if isPid {
+		flag = 1
+	}
+	C.close_window_by_PId(C.uintptr(pid), C.int8_t(flag))
+}
+
+func nativeGetMainTitle() string {
+	title := C.get_main_title()
+	return C.GoString(title)
+}
+
+func nativeGetInternalTitle(pid int, isPid int) string {
+	return internalGetTitle(pid, isPid)
 }
 
 // GetActive get the active window
@@ -1142,10 +1678,6 @@ func MinWindow(pid int, args ...interface{}) {
 // MinWindowE sets the window min state and returns an explicit unsupported
 // error on Wayland sessions.
 func MinWindowE(pid int, args ...interface{}) error {
-	if isWaylandSession() {
-		return waylandWindowNotSupported("minimize window")
-	}
-
 	var (
 		state = true
 		isPid int
@@ -1157,9 +1689,7 @@ func MinWindowE(pid int, args ...interface{}) error {
 	if len(args) > 1 || NotPid {
 		isPid = 1
 	}
-
-	C.min_window(C.uintptr(pid), C.bool(state), C.int8_t(isPid))
-	return nil
+	return resolveWindowBackend().Minimize(pid, state, isPid == 1)
 }
 
 // MaxWindow set the window max
@@ -1170,10 +1700,6 @@ func MaxWindow(pid int, args ...interface{}) {
 // MaxWindowE sets the window max state and returns an explicit unsupported
 // error on Wayland sessions.
 func MaxWindowE(pid int, args ...interface{}) error {
-	if isWaylandSession() {
-		return waylandWindowNotSupported("maximize window")
-	}
-
 	var (
 		state = true
 		isPid int
@@ -1185,9 +1711,7 @@ func MaxWindowE(pid int, args ...interface{}) error {
 	if len(args) > 1 || NotPid {
 		isPid = 1
 	}
-
-	C.max_window(C.uintptr(pid), C.bool(state), C.int8_t(isPid))
-	return nil
+	return resolveWindowBackend().Maximize(pid, state, isPid == 1)
 }
 
 // CloseWindow close the window
@@ -1198,25 +1722,7 @@ func CloseWindow(args ...int) {
 // CloseWindowE closes the target window and returns an explicit unsupported
 // error on Wayland sessions.
 func CloseWindowE(args ...int) error {
-	if isWaylandSession() {
-		return waylandWindowNotSupported("close window")
-	}
-
-	if len(args) <= 0 {
-		C.close_main_window()
-		return nil
-	}
-
-	var pid, isPid int
-	if len(args) > 0 {
-		pid = args[0]
-	}
-	if len(args) > 1 || NotPid {
-		isPid = 1
-	}
-
-	C.close_window_by_PId(C.uintptr(pid), C.int8_t(isPid))
-	return nil
+	return resolveWindowBackend().Close(args...)
 }
 
 // CloseWindowKill closes the target window and ensures the owning process
@@ -1239,9 +1745,14 @@ func CloseWindowKill(args ...int) error {
 	)
 
 	if len(args) <= 0 {
+		if isWaylandSession() {
+			return CloseWindowE()
+		}
 		// Capture pid of the currently selected window before closing it.
 		pid = GetPid()
-		C.close_main_window()
+		if err := CloseWindowE(); err != nil {
+			return err
+		}
 	} else {
 		pid = args[0]
 		if len(args) > 1 || NotPid {
@@ -1253,7 +1764,9 @@ func CloseWindowKill(args ...int) error {
 			SetHandle(pid)
 			pid = GetPid()
 		}
-		C.close_window_by_PId(C.uintptr(args[0]), C.int8_t(isPid))
+		if err := CloseWindowE(args...); err != nil {
+			return err
+		}
 	}
 
 	if pid <= 0 {
@@ -1366,21 +1879,7 @@ func GetTitle(args ...int) string {
 // GetTitleE gets the window title and returns an explicit unsupported error
 // on Wayland sessions.
 func GetTitleE(args ...int) (string, error) {
-	if isWaylandSession() {
-		return "", waylandWindowNotSupported("get window title")
-	}
-
-	if len(args) <= 0 {
-		title := C.get_main_title()
-		gtitle := C.GoString(title)
-		return gtitle, nil
-	}
-
-	if len(args) > 1 {
-		return internalGetTitle(args[0], args[1]), nil
-	}
-
-	return internalGetTitle(args[0]), nil
+	return resolveWindowBackend().Title(args...)
 }
 
 // GetPid get the process id return int32

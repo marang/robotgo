@@ -20,7 +20,9 @@
 	#import <IOKit/hidsystem/IOHIDLib.h>
 	#import <IOKit/hidsystem/ev_keymap.h>
 #elif defined(IS_LINUX)
+#if !defined(DISPLAY_SERVER_WAYLAND)
         #include <X11/extensions/XTest.h>
+#endif
         #include <stdlib.h>
         #include "../base/os.h"
         // #include "../base/xdisplay_c.h"
@@ -53,6 +55,7 @@
 		Sleep(DEADBEEF_RANDRANGE(0, 1));
 	}
 #elif defined(IS_LINUX)
+        #if !defined(DISPLAY_SERVER_WAYLAND)
         Display *XGetMainDisplay(void);
 
         void X_KEY_EVENT(Display *display, MMKeyCode key, bool is_press) {
@@ -63,9 +66,11 @@
                 X_KEY_EVENT(display, key, is_press);
                 microsleep(DEADBEEF_UNIFORM(0.0, 0.5));
         }
+        #endif
         
 /** Wayland virtual keyboard (only when ROBOTGO_USE_WAYLAND) **/
         #ifdef ROBOTGO_USE_WAYLAND
+        #define ROBOTGO_WAYLAND_KEYBOARD_DIAG_DEFINED 1
         #include <string.h>
         #include <unistd.h>
         #if defined(__has_include)
@@ -98,6 +103,18 @@
         static struct xkb_context *wk_xkb_context = NULL;
         static struct xkb_keymap *wk_keymap = NULL;
         static xkb_mod_mask_t wk_modifiers = 0;
+        static int wk_last_error = 0;
+        enum {
+                RG_WK_OK = 0,
+                RG_WK_ERR_DISPLAY = 1,
+                RG_WK_ERR_NO_SEAT = 2,
+                RG_WK_ERR_NO_MANAGER = 3,
+                RG_WK_ERR_CREATE = 4,
+                RG_WK_ERR_XKB = 5,
+                RG_WK_ERR_KEYMAP = 6,
+                RG_WK_ERR_MEMFD = 7,
+                RG_WK_ERR_KEYSYM = 8
+        };
 
         static xkb_mod_mask_t mod_mask_for_name(struct xkb_keymap *keymap, const char *name) {
                 if (!keymap || !name) {
@@ -192,11 +209,13 @@
 
         static int ensure_wayland_keyboard(void) {
                 if (wk_vkeyboard) {
+                        wk_last_error = RG_WK_OK;
                         return 0;
                 }
                 if (!wk_display) {
                         wk_display = wl_display_connect(NULL);
                         if (!wk_display) {
+                                wk_last_error = RG_WK_ERR_DISPLAY;
                                 return -1;
                         }
                         wk_registry = wl_display_get_registry(wk_display);
@@ -207,20 +226,39 @@
                                 wl_display_roundtrip(wk_display);
                         }
                 }
-                if (!wk_vk_manager || !wk_seat) {
+                if (!wk_seat) {
+                        wk_last_error = RG_WK_ERR_NO_SEAT;
+                        return -1;
+                }
+                if (!wk_vk_manager) {
+                        wk_last_error = RG_WK_ERR_NO_MANAGER;
                         return -1;
                 }
                 wk_vkeyboard = zwp_virtual_keyboard_manager_v1_create_virtual_keyboard(wk_vk_manager, wk_seat);
+                if (!wk_vkeyboard) {
+                        wk_last_error = RG_WK_ERR_CREATE;
+                        return -1;
+                }
                 wk_xkb_context = xkb_context_new(XKB_CONTEXT_NO_FLAGS);
+                if (!wk_xkb_context) {
+                        wk_last_error = RG_WK_ERR_XKB;
+                        return -1;
+                }
                 wk_keymap = xkb_keymap_new_from_names(wk_xkb_context, NULL, XKB_KEYMAP_COMPILE_NO_FLAGS);
+                if (!wk_keymap) {
+                        wk_last_error = RG_WK_ERR_KEYMAP;
+                        return -1;
+                }
                 const char *keymap_str = xkb_keymap_get_as_string(wk_keymap, XKB_KEYMAP_FORMAT_TEXT_V1);
                 size_t size = strlen(keymap_str) + 1;
                 int fd = memfd_create("wk_keymap", MFD_CLOEXEC);
                 if (fd < 0 || write(fd, keymap_str, size) != (ssize_t)size) {
                         if (fd >= 0) close(fd);
+                        wk_last_error = RG_WK_ERR_MEMFD;
                         return -1;
                 }
                 zwp_virtual_keyboard_v1_keymap(wk_vkeyboard, XKB_KEYMAP_FORMAT_TEXT_V1, fd, size);
+                wk_last_error = RG_WK_OK;
                 return 0;
         }
 
@@ -230,6 +268,7 @@
                 }
                 xkb_keycode_t code = keysym_to_keycode(wk_keymap, key);
                 if (code == XKB_KEY_NoSymbol) {
+                        wk_last_error = RG_WK_ERR_KEYSYM;
                         return;
                 }
                 xkb_mod_mask_t mask = mask_for_key(key);
@@ -245,11 +284,29 @@
                 zwp_virtual_keyboard_v1_key(wk_vkeyboard, 0, evdev,
                         is_press ? WL_KEYBOARD_KEY_STATE_PRESSED : WL_KEYBOARD_KEY_STATE_RELEASED);
                 wl_display_flush(wk_display);
+                wk_last_error = RG_WK_OK;
         }
 
         static void WL_KEY_EVENT_WAIT(MMKeyCode key, bool is_press) {
                 WL_KEY_EVENT(key, is_press);
                 microsleep(DEADBEEF_UNIFORM(0.0, 0.5));
+        }
+
+        int robotgo_wayland_keyboard_ready(void) {
+                DisplayServer server = detectDisplayServer();
+                if (server != Wayland) {
+                        wk_last_error = RG_WK_OK;
+                        return 0;
+                }
+                return ensure_wayland_keyboard();
+        }
+
+        int robotgo_wayland_keyboard_last_error(void) {
+                return wk_last_error;
+        }
+
+        int robotgo_wayland_keyboard_backend_enabled(void) {
+                return 1;
         }
 
         static int WL_SEND_KEYSYM(xkb_keysym_t sym) {
@@ -355,7 +412,12 @@
         /* End of Linux-specific keyboard helpers */
         #endif /* defined(IS_LINUX) */
 
-        
+#ifndef ROBOTGO_WAYLAND_KEYBOARD_DIAG_DEFINED
+static inline int robotgo_wayland_keyboard_ready(void) { return 0; }
+static inline int robotgo_wayland_keyboard_last_error(void) { return 0; }
+static inline int robotgo_wayland_keyboard_backend_enabled(void) { return 0; }
+#endif
+
 #if defined(IS_MACOSX)
 	int SendTo(uintptr pid, CGEventRef event) {
 		if (pid != 0) {
@@ -508,7 +570,7 @@ void toggleKeyCode(MMKeyCode code, const bool down, MMKeyFlags flags, uintptr pi
         DisplayServer server = detectDisplayServer();
 #ifdef ROBOTGO_USE_WAYLAND
         if (server == Wayland) {
-                const Bool is_press = down ? True : False;
+                const bool is_press = down ? true : false;
 
                 if (flags & MOD_META) { WL_KEY_EVENT_WAIT(K_META, is_press); }
                 if (flags & MOD_ALT) { WL_KEY_EVENT_WAIT(K_ALT, is_press); }
@@ -516,8 +578,10 @@ void toggleKeyCode(MMKeyCode code, const bool down, MMKeyFlags flags, uintptr pi
                 if (flags & MOD_SHIFT) { WL_KEY_EVENT_WAIT(K_SHIFT, is_press); }
 
                 WL_KEY_EVENT(code, is_press);
-        } else
+                return;
+        }
 #endif
+#if !defined(DISPLAY_SERVER_WAYLAND)
         {
                 Display *display = XGetMainDisplay();
                 const Bool is_press = down ? True : False; /* Just to be safe. */
@@ -529,6 +593,7 @@ void toggleKeyCode(MMKeyCode code, const bool down, MMKeyFlags flags, uintptr pi
 
                 X_KEY_EVENT(display, code, is_press);
         }
+#endif
 #endif
 }
 
@@ -680,7 +745,7 @@ void unicodeType(const unsigned value, uintptr pid, int8_t isPid) {
                         return 0;
                 }
 #endif
-
+#if !defined(DISPLAY_SERVER_WAYLAND)
 		Display *dpy = XOpenDisplay(NULL);
 		KeySym sym = XStringToKeysym(utf);
 		// KeySym sym = XKeycodeToKeysym(dpy, utf);
@@ -701,6 +766,9 @@ void unicodeType(const unsigned value, uintptr pid, int8_t isPid) {
 		XFlush(dpy);
 		XCloseDisplay(dpy);
 		return 0;
+#else
+                return -1;
+#endif
         }
 #else
         int input_utf(const char *utf){
