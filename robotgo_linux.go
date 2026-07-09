@@ -27,11 +27,11 @@ import (
 	"log"
 
 	"github.com/marang/robotgo/base"
-	"github.com/robotn/xgb"
-	"github.com/robotn/xgb/xinerama"
-	"github.com/robotn/xgb/xproto"
-	"github.com/robotn/xgbutil"
-	"github.com/robotn/xgbutil/ewmh"
+	"github.com/jezek/xgb"
+	"github.com/jezek/xgb/xinerama"
+	"github.com/jezek/xgb/xproto"
+	"github.com/jezek/xgbutil"
+	"github.com/jezek/xgbutil/ewmh"
 )
 
 var xu *xgbutil.XUtil

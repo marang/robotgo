@@ -98,6 +98,8 @@ enum _MMKeyCode {
 	K_Quote			 = kVK_ANSI_Quote,
 	K_Slash			 = kVK_ANSI_Slash,
 	K_Grave			 = kVK_ANSI_Grave,
+	K_SCROLL_LOCK   = K_NOT_A_KEY,
+	K_PAUSE         = K_NOT_A_KEY,
 
 	K_AUDIO_VOLUME_MUTE = 1007,
 	K_AUDIO_VOLUME_DOWN = 1001,
@@ -213,6 +215,8 @@ enum _MMKeyCode {
     K_Quote          = XKB_KEY_apostrophe,
     K_Slash          = XKB_KEY_slash,
     K_Grave          = XKB_KEY_grave,
+    K_SCROLL_LOCK    = XKB_KEY_Scroll_Lock,
+    K_PAUSE          = XKB_KEY_Pause,
 
     K_AUDIO_VOLUME_MUTE = XKB_KEY_XF86AudioMute,
     K_AUDIO_VOLUME_DOWN = XKB_KEY_XF86AudioLowerVolume,
@@ -333,6 +337,8 @@ enum _MMKeyCode {
         K_Quote          = XK_apostrophe,
         K_Slash          = XK_slash,
         K_Grave          = XK_grave,
+        K_SCROLL_LOCK    = XK_Scroll_Lock,
+        K_PAUSE          = XK_Pause,
 
         K_AUDIO_VOLUME_MUTE = XF86XK_AudioMute,
         K_AUDIO_VOLUME_DOWN = XF86XK_AudioLowerVolume,
@@ -393,8 +399,8 @@ struct XSpecialCharacterMapping XSpecialCharacterTable[] = {
         {'/', XK_slash},
         {'\\', XK_backslash},
         {'`', XK_grave},
-        {'"', XK_quoteright},
-        {'\'', XK_quotedbl},
+        {'"', XK_quotedbl},
+        {'\'', XK_quoteright},
         {'\t', XK_Tab},
         {'\n', XK_Return}
 };
@@ -488,6 +494,8 @@ enum _MMKeyCode {
 	K_Quote		 	 = VK_OEM_7,
 	K_Slash			 = VK_OEM_2,
 	K_Grave			 = VK_OEM_3,
+	K_SCROLL_LOCK   = VK_SCROLL,
+	K_PAUSE         = VK_PAUSE,
 
 	K_AUDIO_VOLUME_MUTE = VK_VOLUME_MUTE,
 	K_AUDIO_VOLUME_DOWN = VK_VOLUME_DOWN,

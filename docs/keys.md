@@ -113,6 +113,9 @@
 	"num9"
 	"num_lock"
 
+	"scroll_lock"		Windows/Linux only
+	"pause_break"		Windows/Linux only
+
 	"num."
 	"num+"
 	"num-"

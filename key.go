@@ -87,16 +87,20 @@ const (
 	CapY = "Y"
 	CapZ = "Z"
 	//
-	Key0 = "0"
-	Key1 = "1"
-	Key2 = "2"
-	Key3 = "3"
-	Key4 = "4"
-	Key5 = "5"
-	Key6 = "6"
-	Key7 = "7"
-	Key8 = "8"
-	Key9 = "9"
+	Key0           = "0"
+	Key1           = "1"
+	Key2           = "2"
+	Key3           = "3"
+	Key4           = "4"
+	Key5           = "5"
+	Key6           = "6"
+	Key7           = "7"
+	Key8           = "8"
+	Key9           = "9"
+	KeyGrave       = "`"
+	KeyQuote       = "'"
+	KeyDoubleQuote = "\""
+	KeyQuoter      = KeyDoubleQuote
 
 	// Backspace backspace key string
 	Backspace = "backspace"
@@ -185,6 +189,9 @@ const (
 	Num8    = "num8"
 	Num9    = "num9"
 	NumLock = "num_lock"
+
+	ScrollLock = "scroll_lock"
+	PauseBreak = "pause_break"
 
 	NumDecimal = "num."
 	NumPlus    = "num+"
@@ -290,6 +297,9 @@ var keyNames = map[string]C.MMKeyCode{
 	"num8":     C.K_NUMPAD_8,
 	"num9":     C.K_NUMPAD_9,
 	"num_lock": C.K_NUMPAD_LOCK,
+
+	ScrollLock: C.K_SCROLL_LOCK,
+	PauseBreak: C.K_PAUSE,
 
 	// todo: removed
 	"numpad_0":    C.K_NUMPAD_0,
@@ -426,6 +436,7 @@ func checkKeyFlags(f string) (flags C.MMKeyFlags) {
 		"rcmd":   C.MOD_META,
 		"lcmd":   C.MOD_META,
 		"ctrl":   C.MOD_CONTROL,
+		Control:  C.MOD_CONTROL,
 		"rctrl":  C.MOD_CONTROL,
 		"lctrl":  C.MOD_CONTROL,
 		"shift":  C.MOD_SHIFT,
