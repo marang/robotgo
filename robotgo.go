@@ -896,7 +896,7 @@ func GetLocationColor(displayId ...int) (string, error) {
 // FindColorCS searches a captured screen region for color with an optional
 // tolerance. It returns the absolute screen coordinate of the first matching
 // pixel, or (-1, -1) when the color is not found.
-func FindColorCS(color CHex, x, y, w, h int, tolerance ...float64) (int, int, error) {
+func FindColorCS(x, y, w, h int, color CHex, tolerance ...float64) (int, int, error) {
 	if w <= 0 || h <= 0 {
 		return -1, -1, fmt.Errorf("invalid search region %dx%d", w, h)
 	}
@@ -932,8 +932,8 @@ func FindColorCS(color CHex, x, y, w, h int, tolerance ...float64) (int, int, er
 
 // FindcolorCS is kept for compatibility with the historical RobotGo-Pro
 // spelling.
-func FindcolorCS(color CHex, x, y, w, h int, tolerance ...float64) (int, int, error) {
-	return FindColorCS(color, x, y, w, h, tolerance...)
+func FindcolorCS(x, y, w, h int, color CHex, tolerance ...float64) (int, int, error) {
+	return FindColorCS(x, y, w, h, color, tolerance...)
 }
 
 // IsMain is main display
@@ -1159,7 +1159,7 @@ func CaptureGo(args ...int) (Bitmap, error) {
 	}
 	defer FreeBitmap(bit)
 
-	return ToBitmap(bit), nil
+	return ownedBitmapFromC(bit)
 }
 
 // CaptureImg capture the screen and return image.Image, error
@@ -1204,6 +1204,19 @@ func ToBitmap(bit CBitmap) Bitmap {
 	}
 
 	return bitmap
+}
+
+func ownedBitmapFromC(bit CBitmap) (Bitmap, error) {
+	bitmap := ToBitmap(bit)
+	data, err := bitmapBytes(bitmap)
+	if err != nil {
+		return Bitmap{}, err
+	}
+	bitmap.buf = data
+	if len(bitmap.buf) > 0 {
+		bitmap.ImgBuf = &bitmap.buf[0]
+	}
+	return bitmap, nil
 }
 
 func bitmapBufferLen(bit Bitmap) (int, error) {
