@@ -1,6 +1,7 @@
 package robotgo
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -151,6 +152,15 @@ func TestGetLinuxCapabilitiesWaylandFallback(t *testing.T) {
 	if c.Window.Backend == "" {
 		t.Fatalf("expected window backend annotation")
 	}
+	if c.Hook.Available {
+		t.Fatalf("expected hook capability unavailable in wayland core path")
+	}
+	if c.Hook.Reason == "" {
+		t.Fatalf("expected hook unsupported reason")
+	}
+	if c.Events != c.Hook {
+		t.Fatalf("expected event capability to mirror hook capability")
+	}
 }
 
 func TestGetLinuxCapabilitiesWaylandInvalidFallback(t *testing.T) {
@@ -185,5 +195,32 @@ func TestGetLinuxCapabilitiesWaylandInvalidFallback(t *testing.T) {
 	}
 	if c.Bounds.Fallback {
 		t.Fatalf("expected no fallback capability when wayland-info is invalid")
+	}
+}
+
+func TestLinuxWindowStateAPIsReturnUnsupported(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("linux only")
+	}
+
+	t.Setenv(envWaylandDisplay, testWaylandDisplay)
+	t.Setenv(envDisplay, "")
+
+	stateChecks := []struct {
+		name string
+		fn   func() (bool, error)
+	}{
+		{"IsTopMostE", IsTopMostE},
+		{"IsMinimizedE", IsMinimizedE},
+		{"IsMaximizedE", IsMaximizedE},
+	}
+	for _, tc := range stateChecks {
+		_, err := tc.fn()
+		if !errors.Is(err, ErrNotSupported) {
+			t.Fatalf("%s expected ErrNotSupported, got %v", tc.name, err)
+		}
+	}
+	if err := SetTopMostE(true); !errors.Is(err, ErrNotSupported) {
+		t.Fatalf("SetTopMostE expected ErrNotSupported, got %v", err)
 	}
 }

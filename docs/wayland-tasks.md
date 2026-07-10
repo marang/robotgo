@@ -8,10 +8,12 @@ Current implementation baseline:
 - `ROBOTGO_FORCE_PORTAL=1` is supported for forcing portal capture.
 - `ROBOTGO_WAYLAND_BACKEND` (`auto|dmabuf|wl_shm|portal`) is supported.
 - `ROBOTGO_CAPTURE_DEBUG=1` logs backend selection/fallback details.
-- Linux runtime capability introspection is available via `GetLinuxCapabilities`.
+- Linux runtime capability introspection is available via `GetLinuxCapabilities`,
+  including hook/event capability status.
 - Window-control APIs now expose explicit Wayland NotSupported errors via
   error-returning variants (`SetActiveE`, `MinWindowE`, `MaxWindowE`,
-  `CloseWindowE`, `GetTitleE`).
+  `CloseWindowE`, `GetTitleE`, `IsTopMostE`, `IsMinimizedE`,
+  `IsMaximizedE`, `SetTopMostE`).
 - Wayland window backend resolver is layered:
   - compositor-specific (`sway`, `hyprland`)
   - wlroots family generic backend (`wlroots-generic`)
@@ -19,6 +21,9 @@ Current implementation baseline:
 - `wlroots-generic` currently implements active-window minimize/maximize
   (state=true) when `wlrctl` is available; unsupported operations remain
   explicit.
+- Bitmap string helpers are available via `CaptureBitmapStr`,
+  `FindBitmapStr`, `BitmapFromStr`, and `ToStrBitmap`.
+- Region/tolerance color search is available via `FindColorCS`/`FindcolorCS`.
 - Runtime integration tests cover backend capability selection for
   `sway`/`hyprland`/`wlroots-generic` with explicit skip behavior when runtime
   preconditions are not present.
@@ -36,18 +41,21 @@ Window backend support matrix (current):
 
 - Priority Backlog (1-7):
   - 1. Full Wayland screencast portal backend (PipeWire session stream), not only screenshot fallback. `[new vs robotgo-pro]`
-  - 2. Window state/query API parity with explicit errors:
-    - `IsTopMost`, `IsMinimized`, `IsMaximized`, `SetTopMost`. `[parity]`
-  - 3. Bitmap serialization API parity:
-    - `CaptureBitmapStr`, `FindBitmapStr`, `BitmapFromStr`, `ToStrBitmap`. `[parity]`
-  - 4. Region/tolerance color search parity:
-    - `FindColorCS` with consistent behavior across platforms. `[parity]`
+  - 2. Window state/query API parity with explicit errors: partial.
+    - `IsTopMost`, `IsMinimized`, `IsMaximized`, `SetTopMost` now expose
+      explicit error-returning variants where Linux/Wayland state is unsupported.
+  - 3. Bitmap serialization API parity: implemented.
+    - `CaptureBitmapStr`, `FindBitmapStr`, `BitmapFromStr`, `ToStrBitmap`.
+  - 4. Region/tolerance color search parity: implemented.
+    - `FindColorCS`/`FindcolorCS` with platform-neutral bitmap scanning.
   - 5. Wayland reliability matrix tests across wlroots/GNOME/KDE:
     - multi-output, fractional scale, transforms, portal consent/fallback. `[new vs robotgo-pro]`
-  - 6. Hook/event support status for Wayland:
-    - capability detection and explicit unsupported contract where needed. `[new vs robotgo-pro]`
-  - 7. Expand capability introspection:
-    - include additional feature granularity and troubleshooting metadata. `[follow-up]`
+  - 6. Hook/event support status for Wayland: partial.
+    - `GetLinuxCapabilities` now reports hook/event status as explicitly
+      unsupported under Wayland compositor policy.
+  - 7. Expand capability introspection: partial.
+    - capture, bounds, keyboard, mouse, window, hook, and event capability
+      fields are present; finer troubleshooting metadata remains follow-up.
 
 - Screen Capture:
   - Validate on wlroots, GNOME and KDE.
@@ -65,12 +73,12 @@ Window backend support matrix (current):
   - Make `GetBounds`/`GetClient` robust via `xdg-output` (multi-output + fractional scaling).
   - Add resource‑leak checks for Wayland window helpers.
 - API Parity Backlog:
-  - Add explicit topmost/min/max status APIs where missing:
-    - `IsTopMost`, `SetTopMost`, `IsMinimized`, `IsMaximized`
-  - Evaluate/implement bitmap string helper parity where missing:
-    - `CaptureBitmapStr`, `FindBitmapStr`, `BitmapFromStr`, `ToStrBitmap`
-  - Evaluate/implement region color-search parity where missing:
-    - `FindColorCS` surface and compatibility behavior
+  - Extend compositor-backed implementations for existing topmost/min/max
+    status APIs where Wayland protocols or helpers make the state observable:
+  - Extend bitmap string helper coverage beyond current in-memory string
+    helpers where needed (file open/save helpers remain separate).
+  - Keep `FindColorCS` compatibility behavior covered across platform capture
+    backends.
   - Keep any new APIs consistent with Wayland semantics:
     - Return explicit `NotSupported` where protocol/compositor limitations apply.
 - Build/Tooling:
