@@ -94,8 +94,9 @@ func TestFindColorCSSignatureOrder(t *testing.T) {
 
 	// Compile-time compatibility check for the documented
 	// FindColorCS(x, y, w, h int, color CHex) argument order.
-	var _ func(int, int, int, int, CHex, ...float64) (int, int, error) = FindColorCS
-	var _ func(int, int, int, int, CHex, ...float64) (int, int, error) = FindcolorCS
+	acceptFindColorCS := func(func(int, int, int, int, CHex, ...float64) (int, int, error)) {}
+	acceptFindColorCS(FindColorCS)
+	acceptFindColorCS(FindcolorCS)
 }
 
 func TestBitmapStringInvalid(t *testing.T) {
