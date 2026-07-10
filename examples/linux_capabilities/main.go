@@ -28,5 +28,6 @@ func main() {
 	fmt.Printf("compositor: %s\n", caps.Compositor)
 	fmt.Printf("capture backend: %s (available=%v, fallback=%v)\n", caps.Capture.Backend, caps.Capture.Available, caps.Capture.Fallback)
 	fmt.Printf("bounds backend: %s (available=%v, fallback=%v)\n", caps.Bounds.Backend, caps.Bounds.Available, caps.Bounds.Fallback)
+	fmt.Printf("remote desktop portal: %s (available=%v, reason=%s)\n", caps.RemoteDesktop.Backend, caps.RemoteDesktop.Available, caps.RemoteDesktop.Reason)
 	fmt.Printf("window backend: %s (available=%v)\n", caps.Window.Backend, caps.Window.Available)
 }

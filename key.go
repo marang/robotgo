@@ -29,6 +29,7 @@ import (
 	"unsafe"
 
 	"github.com/marang/robotgo/clipboard"
+	inputportal "github.com/marang/robotgo/input/portal"
 )
 
 // Defining a bunch of constants.
@@ -414,6 +415,17 @@ func ensureWaylandKeyboardReady() error {
 // KeyboardReady reports whether the active display backend can inject
 // keyboard input. On Wayland it performs a real virtual-keyboard probe.
 func KeyboardReady() error {
+	nativeErr := nativeWaylandKeyboardReady()
+	if nativeErr == nil {
+		return nil
+	}
+	if used, err := withRemoteDesktopInput(inputportal.DeviceKeyboard, func(remoteDesktopInputSession) error { return nil }); used {
+		return err
+	}
+	return nativeErr
+}
+
+func nativeWaylandKeyboardReady() error {
 	unlock := lockWaylandKeyboard()
 	defer unlock()
 	return ensureWaylandKeyboardReady()
@@ -487,11 +499,61 @@ func getFlagsFromValue(value []string) (flags C.MMKeyFlags) {
 	return
 }
 
+func portalKeysyms(key string, modifiers []string) (int32, []int32, error) {
+	mainKey, err := checkKeyCodes(key)
+	if err != nil {
+		return 0, nil, err
+	}
+	if mainKey == C.K_NOT_A_KEY || mainKey == 0 {
+		return 0, nil, errInvalidKeyFlag
+	}
+	portalModifiers := make([]int32, 0, len(modifiers))
+	seen := make(map[int32]struct{}, len(modifiers))
+	for _, modifier := range modifiers {
+		if modifier == "none" {
+			continue
+		}
+		code, err := checkKeyCodes(modifier)
+		if err != nil {
+			return 0, nil, err
+		}
+		if code == C.K_NOT_A_KEY || code == 0 {
+			return 0, nil, errInvalidKeyFlag
+		}
+		keysym := int32(code)
+		if _, duplicate := seen[keysym]; duplicate {
+			continue
+		}
+		seen[keysym] = struct{}{}
+		portalModifiers = append(portalModifiers, keysym)
+	}
+	return int32(mainKey), portalModifiers, nil
+}
+
+func tryPortalKey(key string, modifiers []string, pid int, down bool, tap bool) (bool, error) {
+	return withRemoteDesktopInput(inputportal.DeviceKeyboard, func(session remoteDesktopInputSession) error {
+		if pid != 0 {
+			return fmt.Errorf("%w: RemoteDesktop portal input cannot target a process", ErrNotSupported)
+		}
+		mainKey, portalModifiers, err := portalKeysyms(key, modifiers)
+		if err != nil {
+			return err
+		}
+		return portalModifiedKey(session, mainKey, portalModifiers, down, tap)
+	})
+}
+
 func keyTaps(k string, keyArr []string, pid int) error {
 	unlock := lockWaylandKeyboard()
 	defer unlock()
-	if err := ensureWaylandKeyboardReady(); err != nil {
-		return err
+	if nativeErr := ensureWaylandKeyboardReady(); nativeErr != nil {
+		if used, err := tryPortalKey(k, keyArr, pid, true, true); used {
+			if err == nil {
+				MilliSleep(KeySleep)
+			}
+			return err
+		}
+		return nativeErr
 	}
 	flags := getFlagsFromValue(keyArr)
 	key, err := checkKeyCodes(k)
@@ -520,8 +582,14 @@ func getKeyDown(keyArr []string) (bool, []string) {
 func keyTogglesB(k string, down bool, keyArr []string, pid int) error {
 	unlock := lockWaylandKeyboard()
 	defer unlock()
-	if err := ensureWaylandKeyboardReady(); err != nil {
-		return err
+	if nativeErr := ensureWaylandKeyboardReady(); nativeErr != nil {
+		if used, err := tryPortalKey(k, keyArr, pid, down, false); used {
+			if err == nil {
+				MilliSleep(KeySleep)
+			}
+			return err
+		}
+		return nativeErr
 	}
 	flags := getFlagsFromValue(keyArr)
 	key, err := checkKeyCodes(k)
@@ -617,7 +685,8 @@ func KeyTap(key string, args ...interface{}) error {
 	pid := 0
 	if len(args) > 0 {
 		if reflect.TypeOf(args[0]) == reflect.TypeOf(keyArr) {
-			keyArr = args[0].([]string)
+			keyArr = append(keyArr, args[0].([]string)...)
+			keyArr = append(keyArr, ToStrings(args[1:])...)
 		} else {
 			if reflect.TypeOf(args[0]) == reflect.TypeOf(pid) {
 				pid = args[0].(int)
@@ -635,6 +704,9 @@ func getToggleArgs(args ...interface{}) (pid int, keyArr []string) {
 	if len(args) > 0 && reflect.TypeOf(args[0]) == reflect.TypeOf(pid) {
 		pid = args[0].(int)
 		keyArr = ToStrings(args[1:])
+	} else if len(args) > 0 && reflect.TypeOf(args[0]) == reflect.TypeOf(keyArr) {
+		keyArr = append(keyArr, args[0].([]string)...)
+		keyArr = append(keyArr, ToStrings(args[1:])...)
 	} else {
 		keyArr = ToStrings(args)
 	}
@@ -716,8 +788,12 @@ func UnicodeType(str uint32, args ...int) {
 func UnicodeTypeE(str uint32, args ...int) error {
 	unlock := lockWaylandKeyboard()
 	defer unlock()
-	if err := ensureWaylandKeyboardReady(); err != nil {
-		return err
+	if nativeErr := ensureWaylandKeyboardReady(); nativeErr != nil {
+		used, err := tryRemoteDesktopUnicode(rune(str), args)
+		if used {
+			return err
+		}
+		return nativeErr
 	}
 	unicodeType(str, args...)
 	return nil
@@ -788,8 +864,12 @@ func TypeStr(str string, args ...int) {
 func TypeStrE(str string, args ...int) error {
 	unlock := lockWaylandKeyboard()
 	defer unlock()
-	if err := ensureWaylandKeyboardReady(); err != nil {
-		return err
+	if nativeErr := ensureWaylandKeyboardReady(); nativeErr != nil {
+		used, err := tryRemoteDesktopText(str, args)
+		if used {
+			return err
+		}
+		return nativeErr
 	}
 	var tm, tm1 = 0, 7
 

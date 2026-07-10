@@ -9,6 +9,8 @@ import (
 	"runtime"
 	"sync"
 	"testing"
+
+	inputportal "github.com/marang/robotgo/input/portal"
 )
 
 func TestCaptureStateConcurrentAccess(t *testing.T) {
@@ -43,11 +45,16 @@ func stubCaptureCapabilityProbes(t *testing.T, native, portal bool) {
 	t.Helper()
 	oldNative := waylandCaptureAvailabilityProbe
 	oldPortal := portalAvailabilityProbe
+	oldRemoteDesktop := remoteDesktopCapabilityProbe
 	waylandCaptureAvailabilityProbe = func() bool { return native }
 	portalAvailabilityProbe = func() bool { return portal }
+	remoteDesktopCapabilityProbe = func() (inputportal.Capability, error) {
+		return inputportal.Capability{}, inputportal.ErrUnavailable
+	}
 	t.Cleanup(func() {
 		waylandCaptureAvailabilityProbe = oldNative
 		portalAvailabilityProbe = oldPortal
+		remoteDesktopCapabilityProbe = oldRemoteDesktop
 	})
 }
 
@@ -235,6 +242,30 @@ func TestGetLinuxCapabilitiesWaylandInvalidFallback(t *testing.T) {
 	}
 	if c.Bounds.Fallback {
 		t.Fatalf("expected no fallback capability when wayland-info is invalid")
+	}
+}
+
+func TestGetLinuxCapabilitiesReportsRemoteDesktopPortal(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("linux only")
+	}
+
+	t.Setenv(envWaylandDisplay, testWaylandDisplay)
+	t.Setenv(envDisplay, "")
+	stubCaptureCapabilityProbes(t, false, false)
+	remoteDesktopCapabilityProbe = func() (inputportal.Capability, error) {
+		return inputportal.Capability{
+			Version:          2,
+			AvailableDevices: inputportal.DeviceKeyboard | inputportal.DevicePointer,
+		}, nil
+	}
+
+	capabilities := GetLinuxCapabilities()
+	if !capabilities.RemoteDesktop.Available {
+		t.Fatalf("expected RemoteDesktop portal capability: %+v", capabilities.RemoteDesktop)
+	}
+	if capabilities.RemoteDesktop.Backend != "portal-remote-desktop" {
+		t.Fatalf("unexpected RemoteDesktop backend %q", capabilities.RemoteDesktop.Backend)
 	}
 }
 

@@ -24,8 +24,24 @@ The July 2026 hardening work establishes the foundation for this roadmap:
   legacy APIs previously could hide unsupported behavior.
 - Non-CGO builds compile and return `ErrNotSupported` until a tested Pure-Go
   backend is selected.
-- Default, race, lint, non-CGO, Wayland, portal, and cross-platform build gates
-  cover the supported build variants.
+- CI covers lint, default tests on Linux/macOS/Windows, non-CGO, Wayland, portal,
+  and Weston integration variants. Race and vet pass locally but are not yet
+  dedicated blocking CI gates.
+
+## Execution Status (2026-07-10)
+
+| Area | Status | Delivered | Exit criteria still open |
+|---|---|---|---|
+| Current baseline | Largely complete | Native screencopy, screenshot portal fallback, bounded waits, cleanup, live capability probes, error APIs, non-CGO contract | Promote race and vet to blocking CI gates |
+| 1. Wayland input | Partial; active next phase | Native virtual keyboard/pointer plus explicit consent-aware RemoteDesktop sessions and high-level fallback, readiness probes, reconnect, cleanup, error-returning APIs | GNOME/KDE/wlroots runtime matrix and remaining absolute/stream integration |
+| 2. Capture | Partial | Reliable one-shot screencopy and screenshot portal, region crop, output geometry, scale/transform foundations | ScreenCast/PipeWire stream and full multi-output/fractional-scale/transform gates |
+| 3. Pure-Go | Foundation only | Non-CGO builds fail explicitly instead of degrading silently | Useful selected Pure-Go backends, parity tests, benchmarks, backend introspection |
+| 4. API/compositor gaps | Parity surface delivered; runtime support partial | Window-state error APIs, bitmap string helpers, `FindColorCS`, hook/event capability reporting, Sway/Hyprland/wlroots resolver | Compositor-backed state operations and cross-platform/runtime matrix coverage |
+| 5. Reliability product | Partial | Capability API/example and expanded CI variants | Versioned compatibility matrix, richer diagnostics, dedicated compositor jobs, sanitizer/leak gates |
+
+No delivery phase is complete until all of its exit criteria are blocking and
+green. The active implementation slice is Phase 1: RemoteDesktop portal input
+for GNOME and KDE while preserving native wlroots input protocols.
 
 ## Delivery Order
 
@@ -36,6 +52,17 @@ native virtual-pointer/virtual-keyboard protocols for compositors that expose
 them. Portal session creation, consent, reconnect, cancellation, and cleanup
 must be explicit. Capability reporting must distinguish portal availability,
 permission denial, compositor protocol support, and unsupported operations.
+
+Current status: native virtual-keyboard and virtual-pointer paths, live
+readiness probes, error-returning APIs, lazy reconnect, and explicit cleanup are
+implemented. A pure-Go RemoteDesktop portal client now covers capability probes,
+consent-session creation, device selection, cancellation, denial, timeout,
+portal-driven closure, deterministic teardown, and direct pointer/keyboard
+notifications. After explicit consent, supported high-level mouse/keyboard APIs
+fall back to the active portal session, including in non-CGO builds. GNOME/KDE
+runtime tests and absolute pointer/ScreenCast integration remain open. Absolute
+pointer and touch methods are intentionally not exposed before that shared
+ScreenCast session and coordinate contract exists.
 
 Exit criteria:
 
@@ -55,6 +82,12 @@ Complete multi-output selection, fractional scaling, transforms, region
 cropping, pixel-format conversion, and DMA-BUF fallback behavior across all
 backends. Backend choice and fallback reasons remain available through runtime
 capabilities and the capture debug trace.
+
+Current status: the one-shot native and screenshot-portal paths are hardened,
+including timeout, portal request-race, crop, DMA-BUF failure, and FD ownership
+regressions. Output geometry, scale, and transform handling exist but do not yet
+have the complete compositor matrix required by this phase. ScreenCast/PipeWire
+streaming is not implemented.
 
 Exit criteria:
 
@@ -79,6 +112,10 @@ Priority order:
 4. Wayland protocol clients only where they preserve the optimized native
    DMA-BUF path and deterministic resource handling.
 
+Current status: the non-CGO API surface compiles and returns explicit
+unsupported errors. No useful Pure-Go GUI backend is enabled yet; this is a
+safety baseline, not completion of the phase.
+
 Exit criteria:
 
 - Users can inspect which implementation is active.
@@ -88,13 +125,22 @@ Exit criteria:
 
 ### 4. Close API and Compositor Gaps
 
-Finish the remaining compatibility surface without inventing misleading
+The compatibility surface now includes:
+
+- Error-returning window state/query APIs (`IsTopMostE`, `SetTopMostE`,
+  `IsMinimizedE`, `IsMaximizedE`) with explicit unsupported behavior.
+- Bitmap string helpers (`CaptureBitmapStr`, `FindBitmapStr`, `BitmapFromStr`,
+  `ToStrBitmap`).
+- Region/tolerance color search through `FindColorCS`/`FindcolorCS`.
+- Hook/event capability reporting on Wayland.
+
+Remaining work must improve runtime support without inventing misleading
 cross-platform semantics:
 
-- Window state/query operations (`IsTopMost`, `SetTopMost`, `IsMinimized`,
-  `IsMaximized`) with compositor-specific capability reporting.
-- Bitmap serialization helpers and consistent region/tolerance color search.
-- Hook/event capability detection on Wayland with explicit unsupported errors.
+- Implement compositor-backed window state/query behavior where the compositor
+  exposes trustworthy state and retain explicit unsupported results elsewhere.
+- Validate bitmap and color-search behavior across capture backends and
+  supported platforms.
 - Stable multi-screen and bounds behavior for negative origins, transforms,
   scale, and absent display identifiers.
 
@@ -108,6 +154,12 @@ macOS, Windows, CPU architectures, CGO modes, and optional dependencies. Add a
 diagnostic API/example that reports selected backends, protocol versions,
 fallback decisions, permissions, and actionable remediation without exposing
 sensitive environment data.
+
+Current status: `GetLinuxCapabilities` and its runnable example expose selected
+feature backends, availability, fallbacks, reasons, and notes. CI covers three
+operating systems, non-CGO, tagged Wayland/portal, and Weston integration.
+Protocol versions, permission state, remediation guidance, versioned support
+data, dedicated GNOME/KDE/wlroots jobs, and native sanitizer gates remain open.
 
 Releases require:
 

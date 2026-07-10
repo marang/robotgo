@@ -3,14 +3,17 @@
 package robotgo
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"image"
 	"os"
+	"runtime"
 	"time"
 	"unsafe"
 
 	"github.com/marang/robotgo/clipboard"
+	inputportal "github.com/marang/robotgo/input/portal"
 )
 
 const Version = "v1.00.0.1189, MT. Baker!"
@@ -48,6 +51,7 @@ type LinuxCapabilities struct {
 	Bounds         FeatureCapability
 	Keyboard       FeatureCapability
 	Mouse          FeatureCapability
+	RemoteDesktop  FeatureCapability
 	Window         FeatureCapability
 }
 
@@ -125,7 +129,7 @@ func GetLinuxCapabilities() LinuxCapabilities {
 		Reason:    ErrNotSupported.Error(),
 		Notes:     "this build has no selected pure-Go display backend",
 	}
-	return LinuxCapabilities{
+	capabilities := LinuxCapabilities{
 		DisplayServer:  ds,
 		WaylandSession: ds == DisplayServerWayland,
 		X11Session:     ds == DisplayServerX11,
@@ -135,6 +139,45 @@ func GetLinuxCapabilities() LinuxCapabilities {
 		Mouse:          unsupported,
 		Window:         unsupported,
 	}
+	if runtime.GOOS == "linux" && ds == DisplayServerWayland {
+		ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+		portalCapability, err := inputportal.Probe(ctx)
+		cancel()
+		if err != nil {
+			capabilities.RemoteDesktop = FeatureCapability{
+				Available: false,
+				Backend:   "portal-remote-desktop",
+				Reason:    err.Error(),
+				Notes:     "the pure-Go RemoteDesktop client remains usable without CGO when a portal backend is available",
+			}
+		} else {
+			capabilities.RemoteDesktop = FeatureCapability{
+				Available: portalCapability.AvailableDevices != 0,
+				Backend:   "portal-remote-desktop",
+				Reason:    "RemoteDesktop portal capability probed without CGO",
+				Notes:     fmt.Sprintf("interface version=%d device-mask=%d", portalCapability.Version, portalCapability.AvailableDevices),
+			}
+		}
+		if err := RemoteDesktopInputReady(RemoteDesktopKeyboard); err == nil {
+			capabilities.Keyboard = FeatureCapability{
+				Available: true,
+				Fallback:  true,
+				Backend:   "portal-remote-desktop",
+				Reason:    "active pure-Go RemoteDesktop session grants keyboard input",
+				Notes:     "TypeStrE and UnicodeTypeE use the consent-aware portal session",
+			}
+		}
+		if err := RemoteDesktopInputReady(RemoteDesktopPointer); err == nil {
+			capabilities.Mouse = FeatureCapability{
+				Available: true,
+				Fallback:  true,
+				Backend:   "portal-remote-desktop",
+				Reason:    "active pure-Go RemoteDesktop session grants pointer input",
+				Notes:     "relative movement, buttons, and scroll use the consent-aware portal session",
+			}
+		}
+	}
+	return capabilities
 }
 
 func LastBackend() CaptureBackend            { return BackendNone }
@@ -179,15 +222,119 @@ const (
 	Cmd            = "cmd"
 )
 
-func KeyTap(string, ...interface{}) error    { return ErrNotSupported }
-func KeyToggle(string, ...interface{}) error { return ErrNotSupported }
-func KeyboardReady() error                   { return ErrNotSupported }
-func UnicodeType(uint32, ...int)             {}
-func TypeStr(string, ...int)                 {}
-func TypeStrDelay(string, int)               {}
-func PasteStr(string) error                  { return ErrNotSupported }
-func ReadAll() (string, error)               { return clipboard.ReadAll() }
-func WriteAll(text string) error             { return clipboard.WriteAll(text) }
+// KeyTap taps a key through an explicitly authorized RemoteDesktop session.
+func KeyTap(key string, args ...interface{}) error {
+	pid, _, modifiers, err := parsePortalKeyArgs(args, false)
+	if err != nil {
+		return err
+	}
+	used, err := withRemoteDesktopInput(inputportal.DeviceKeyboard, func(session remoteDesktopInputSession) error {
+		if pid != 0 {
+			return fmt.Errorf("%w: RemoteDesktop portal input cannot target a process", ErrNotSupported)
+		}
+		mainKey, modifierKeys, err := portalKeysymsPure(key, modifiers)
+		if err != nil {
+			return err
+		}
+		return portalModifiedKey(session, mainKey, modifierKeys, true, true)
+	})
+	if !used {
+		return ErrNotSupported
+	}
+	if err == nil {
+		MilliSleep(KeySleep)
+	}
+	return err
+}
+
+func parsePortalKeyArgs(args []interface{}, toggle bool) (pid int, down bool, modifiers []string, err error) {
+	down = true
+	if len(args) == 0 {
+		return pid, down, nil, nil
+	}
+	if values, ok := args[0].([]string); ok {
+		modifiers = append(modifiers, values...)
+		args = args[1:]
+	} else if value, ok := args[0].(int); ok {
+		pid = value
+		args = args[1:]
+	}
+	for _, arg := range args {
+		value, ok := arg.(string)
+		if !ok {
+			return 0, false, nil, fmt.Errorf("%w: portal keyboard argument has type %T", ErrNotSupported, arg)
+		}
+		modifiers = append(modifiers, value)
+	}
+	if toggle && len(modifiers) > 0 && (modifiers[0] == "up" || modifiers[0] == "down") {
+		down = modifiers[0] == "down"
+		modifiers = modifiers[1:]
+	}
+	return pid, down, modifiers, nil
+}
+
+// KeyToggle changes a key state through an authorized RemoteDesktop session.
+func KeyToggle(key string, args ...interface{}) error {
+	pid, down, modifiers, err := parsePortalKeyArgs(args, true)
+	if err != nil {
+		return err
+	}
+	used, err := withRemoteDesktopInput(inputportal.DeviceKeyboard, func(session remoteDesktopInputSession) error {
+		if pid != 0 {
+			return fmt.Errorf("%w: RemoteDesktop portal input cannot target a process", ErrNotSupported)
+		}
+		mainKey, modifierKeys, err := portalKeysymsPure(key, modifiers)
+		if err != nil {
+			return err
+		}
+		return portalModifiedKey(session, mainKey, modifierKeys, down, false)
+	})
+	if !used {
+		return ErrNotSupported
+	}
+	if err == nil {
+		MilliSleep(KeySleep)
+	}
+	return err
+}
+
+// KeyDown presses a key through an authorized RemoteDesktop session.
+func KeyDown(key string, args ...interface{}) error { return KeyToggle(key, args...) }
+
+// KeyUp releases a key through an authorized RemoteDesktop session.
+func KeyUp(key string, args ...interface{}) error {
+	return KeyToggle(key, append([]interface{}{"up"}, args...)...)
+}
+
+// KeyPress presses and releases a key through an authorized RemoteDesktop session.
+func KeyPress(key string, args ...interface{}) error {
+	if err := KeyDown(key, args...); err != nil {
+		return err
+	}
+	MilliSleep(2)
+	return KeyUp(key, args...)
+}
+func KeyboardReady() error                  { return RemoteDesktopInputReady(RemoteDesktopKeyboard) }
+func UnicodeType(value uint32, args ...int) { _ = UnicodeTypeE(value, args...) }
+func UnicodeTypeE(value uint32, args ...int) error {
+	used, err := tryRemoteDesktopUnicode(rune(value), args)
+	if !used {
+		return ErrNotSupported
+	}
+	return err
+}
+func TypeStr(text string, args ...int) { _ = TypeStrE(text, args...) }
+func TypeStrE(text string, args ...int) error {
+	used, err := tryRemoteDesktopText(text, args)
+	if !used {
+		return ErrNotSupported
+	}
+	return err
+}
+func TypeStrDelay(string, int)   {}
+func PasteStr(string) error      { return ErrNotSupported }
+func ReadAll() (string, error)   { return clipboard.ReadAll() }
+func WriteAll(text string) error { return clipboard.WriteAll(text) }
 func CharCodeAt(s string, n int) rune {
 	for i, r := range []rune(s) {
 		if i == n {
@@ -197,27 +344,61 @@ func CharCodeAt(s string, n int) rune {
 	return 0
 }
 
-func Move(int, int, ...int)                       {}
-func MoveE(int, int, ...int) error                { return ErrNotSupported }
-func MoveRelative(int, int)                       {}
-func MoveRelativeE(int, int) error                { return ErrNotSupported }
+func Move(int, int, ...int)        {}
+func MoveE(int, int, ...int) error { return ErrNotSupported }
+func MoveRelative(x, y int)        { _ = MoveRelativeE(x, y) }
+func MoveRelativeE(x, y int) error {
+	used, err := tryRemoteDesktopMoveRelative(x, y)
+	if !used {
+		return ErrNotSupported
+	}
+	return err
+}
 func MoveSmooth(int, int, ...interface{}) bool    { return false }
 func MoveSmoothRelative(int, int, ...interface{}) {}
 func DragSmooth(int, int, ...interface{})         {}
-func Click(...interface{})                        {}
-func ClickE(...interface{}) error                 { return ErrNotSupported }
-func Toggle(...interface{}) error                 { return ErrNotSupported }
-func Scroll(int, int, ...int)                     {}
-func ScrollE(int, int, ...int) error              { return ErrNotSupported }
-func ScrollDir(int, ...interface{})               {}
-func Location() (int, int)                        { return 0, 0 }
-func LocationE() (int, int, error)                { return 0, 0, ErrNotSupported }
-func MouseReady() error                           { return ErrNotSupported }
-func CloseWaylandInput()                          {}
-func GetScreenSize() (int, int)                   { return 0, 0 }
-func GetScreenRect(...int) Rect                   { return Rect{} }
-func GetScaleSize(...int) (int, int)              { return 0, 0 }
-func DisplaysNum() int                            { return 0 }
+func Click(args ...interface{})                   { _ = ClickE(args...) }
+func ClickE(args ...interface{}) error {
+	name := "left"
+	if len(args) > 0 {
+		name = args[0].(string)
+	}
+	double := len(args) > 1 && args[1].(bool)
+	used, err := tryRemoteDesktopClick(name, double)
+	if !used {
+		return ErrNotSupported
+	}
+	return err
+}
+func Toggle(args ...interface{}) error {
+	name := "left"
+	if len(args) > 0 {
+		name = args[0].(string)
+	}
+	down := len(args) <= 1 || args[1].(string) != "up"
+	used, err := tryRemoteDesktopToggle(name, down)
+	if !used {
+		return ErrNotSupported
+	}
+	return err
+}
+func Scroll(x, y int, args ...int) { _ = ScrollE(x, y, args...) }
+func ScrollE(x, y int, _ ...int) error {
+	used, err := tryRemoteDesktopScroll(x, y)
+	if !used {
+		return ErrNotSupported
+	}
+	return err
+}
+func ScrollDir(int, ...interface{})  {}
+func Location() (int, int)           { return 0, 0 }
+func LocationE() (int, int, error)   { return 0, 0, ErrNotSupported }
+func MouseReady() error              { return RemoteDesktopInputReady(RemoteDesktopPointer) }
+func CloseWaylandInput()             { _ = CloseRemoteDesktopInput() }
+func GetScreenSize() (int, int)      { return 0, 0 }
+func GetScreenRect(...int) Rect      { return Rect{} }
+func GetScaleSize(...int) (int, int) { return 0, 0 }
+func DisplaysNum() int               { return 0 }
 func GetPixelColor(int, int, ...int) (string, error) {
 	return "", ErrNotSupported
 }

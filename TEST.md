@@ -73,6 +73,51 @@ Prerequisites:
 - Linux
 - Wayland runtime available
 
+### RemoteDesktop portal input
+
+Purpose:
+
+- Hermetic RemoteDesktop request/session lifecycle coverage
+- Consent response, denial, timeout, portal closure, device grants, and cleanup
+- Direct pointer and keyboard notification dispatch
+- High-level CGO and non-CGO fallback dispatch after explicit consent
+
+Command:
+
+```bash
+go test -race ./input/portal
+```
+
+Prerequisites:
+
+- No live portal is required for the hermetic suite.
+- The runnable `examples/remote_desktop_input` probe requires Linux plus
+  `xdg-desktop-portal` and a backend that implements RemoteDesktop.
+- `-connect` and `-demo` may show a consent dialog; `-demo` injects input only
+  after approval.
+
+Opt-in real portal lifecycle test:
+
+```bash
+ROBOTGO_REMOTE_DESKTOP_E2E=1 go test -tags "integration" ./input/portal -run TestRemoteDesktopPortalRuntime -v
+```
+
+The test requests pointer consent and moves the pointer one logical unit out and
+back. Default hosted CI only compile-checks this harness because it has no real
+desktop consent session. `.github/workflows/remote-desktop-e2e.yml` runs the
+test without skipping on explicitly provisioned self-hosted GNOME, KDE, and
+wlroots Wayland runners, for both CGO and non-CGO builds. It can be triggered
+manually at any time. Set the repository variable
+`ROBOTGO_REMOTE_DESKTOP_E2E=1` after those runners are provisioned to run the
+same matrix on pull requests and pushes to `main`, where it can be configured as
+a required check for branches in this repository. Fork pull requests are
+intentionally excluded because untrusted code must never execute on persistent
+self-hosted desktop runners. Configure the `remote-desktop-e2e` GitHub
+Environment with required reviewers and use ephemeral, network-isolated runners.
+The workflow uses read-only permissions, does not persist checkout credentials,
+and verifies that each runner's `XDG_CURRENT_DESKTOP` matches its matrix label
+before injecting input.
+
 ### `waylandint` (Keyboard integration harness)
 
 Purpose:

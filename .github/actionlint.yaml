@@ -1,0 +1,8 @@
+self-hosted-runner:
+  labels:
+    - wayland
+    - gnome
+    - kde
+    - wlroots
+config-variables:
+  - ROBOTGO_REMOTE_DESKTOP_E2E
