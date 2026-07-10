@@ -57,6 +57,22 @@ static inline void max_window(uintptr pid, bool state, int8_t isPid) {
 	(void)isPid;
 }
 
+static inline bool IsTopMost(void) {
+	return false;
+}
+
+static inline bool IsMinimized(void) {
+	return false;
+}
+
+static inline bool IsMaximized(void) {
+	return false;
+}
+
+static inline void SetTopMost(bool state) {
+	(void)state;
+}
+
 static inline uintptr get_handle(void) {
 	return pub_mData.XWin;
 }

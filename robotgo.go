@@ -58,6 +58,8 @@ import "C"
 import (
 	"bufio"
 	"context"
+	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"image"
@@ -142,6 +144,8 @@ type LinuxCapabilities struct {
 	Keyboard       FeatureCapability
 	Mouse          FeatureCapability
 	Window         FeatureCapability
+	Hook           FeatureCapability
+	Events         FeatureCapability
 }
 
 // DetectDisplayServer inspects the environment and reports the active display server.
@@ -244,6 +248,14 @@ func GetLinuxCapabilities() LinuxCapabilities {
 		if c.Window.Backend == "native" {
 			c.Window.Backend = "wayland-core"
 		}
+		c.Hook = FeatureCapability{
+			Available: false,
+			Fallback:  false,
+			Backend:   "wayland",
+			Reason:    "global hooks are restricted by Wayland compositor policy",
+			Notes:     "hook/event APIs must report unsupported unless a compositor-specific protocol is implemented",
+		}
+		c.Events = c.Hook
 
 	case DisplayServerX11:
 		c.Capture = FeatureCapability{Available: true, Backend: "x11", Reason: "x11 session detected", Notes: "x11 capture path"}
@@ -251,6 +263,8 @@ func GetLinuxCapabilities() LinuxCapabilities {
 		c.Keyboard = FeatureCapability{Available: true, Backend: "x11", Reason: "x11 session detected", Notes: "x11 keyboard path"}
 		c.Mouse = FeatureCapability{Available: true, Backend: "x11", Reason: "x11 session detected", Notes: "x11 mouse path"}
 		c.Window = FeatureCapability{Available: true, Backend: "x11", Reason: "x11 session detected", Notes: "x11 window management path"}
+		c.Hook = FeatureCapability{Available: true, Backend: "x11", Reason: "x11 session detected", Notes: "x11 hook/event path"}
+		c.Events = c.Hook
 
 	default:
 		c.Capture = FeatureCapability{Available: false, Backend: "", Reason: "no display server detected", Notes: "no detected display server"}
@@ -258,6 +272,8 @@ func GetLinuxCapabilities() LinuxCapabilities {
 		c.Keyboard = FeatureCapability{Available: false, Backend: "", Reason: "no display server detected", Notes: "no detected display server"}
 		c.Mouse = FeatureCapability{Available: false, Backend: "", Reason: "no display server detected", Notes: "no detected display server"}
 		c.Window = FeatureCapability{Available: false, Backend: "", Reason: "no display server detected", Notes: "no detected display server"}
+		c.Hook = FeatureCapability{Available: false, Backend: "", Reason: "no display server detected", Notes: "no detected display server"}
+		c.Events = c.Hook
 	}
 
 	return c
@@ -308,6 +324,13 @@ var (
 
 func waylandWindowNotSupported(op string) error {
 	return fmt.Errorf("%w: %s on Wayland", ErrNotSupported, op)
+}
+
+func linuxWindowStateNotSupported(op string) error {
+	if isWaylandSession() {
+		return waylandWindowNotSupported(op)
+	}
+	return fmt.Errorf("%w: %s on Linux", ErrNotSupported, op)
 }
 
 func isWaylandSession() bool {
@@ -719,6 +742,18 @@ type Bitmap struct {
 	buf []uint8 // keep Go memory alive for ImgBuf
 }
 
+const bitmapStringFormat = "robotgo.bitmap.v1"
+
+type bitmapStringPayload struct {
+	Format        string `json:"format"`
+	Width         int    `json:"width"`
+	Height        int    `json:"height"`
+	Bytewidth     int    `json:"bytewidth"`
+	BitsPixel     uint8  `json:"bitsPixel"`
+	BytesPerPixel uint8  `json:"bytesPerPixel"`
+	Data          string `json:"data"`
+}
+
 // Point is point struct
 type Point struct {
 	X int
@@ -856,6 +891,49 @@ func GetPixelColor(x, y int, displayId ...int) (string, error) {
 func GetLocationColor(displayId ...int) (string, error) {
 	x, y := Location()
 	return GetPixelColor(x, y, displayId...)
+}
+
+// FindColorCS searches a captured screen region for color with an optional
+// tolerance. It returns the absolute screen coordinate of the first matching
+// pixel, or (-1, -1) when the color is not found.
+func FindColorCS(color CHex, x, y, w, h int, tolerance ...float64) (int, int, error) {
+	if w <= 0 || h <= 0 {
+		return -1, -1, fmt.Errorf("invalid search region %dx%d", w, h)
+	}
+
+	tol := 0.0
+	if len(tolerance) > 0 {
+		tol = tolerance[0]
+	}
+	if tol < 0 {
+		return -1, -1, fmt.Errorf("invalid color tolerance %f", tol)
+	}
+
+	bmp, err := CaptureGo(x, y, w, h)
+	if err != nil {
+		return -1, -1, err
+	}
+
+	r, g, b := splitHex(uint32(color))
+	for yy := 0; yy < bmp.Height; yy++ {
+		for xx := 0; xx < bmp.Width; xx++ {
+			pr, pg, pb, ok := bitmapRGBAt(bmp, xx, yy)
+			if !ok {
+				return -1, -1, errors.New("invalid bitmap pixel layout")
+			}
+			if rgbSimilar(pr, pg, pb, r, g, b, tol) {
+				return x + xx, y + yy, nil
+			}
+		}
+	}
+
+	return -1, -1, nil
+}
+
+// FindcolorCS is kept for compatibility with the historical RobotGo-Pro
+// spelling.
+func FindcolorCS(color CHex, x, y, w, h int, tolerance ...float64) (int, int, error) {
+	return FindColorCS(color, x, y, w, h, tolerance...)
 }
 
 // IsMain is main display
@@ -1128,6 +1206,126 @@ func ToBitmap(bit CBitmap) Bitmap {
 	return bitmap
 }
 
+func bitmapBufferLen(bit Bitmap) (int, error) {
+	if bit.Width <= 0 || bit.Height <= 0 {
+		return 0, fmt.Errorf("invalid bitmap dimensions %dx%d", bit.Width, bit.Height)
+	}
+	if bit.Bytewidth <= 0 || bit.BytesPerPixel == 0 {
+		return 0, fmt.Errorf("invalid bitmap layout bytewidth=%d bytesPerPixel=%d", bit.Bytewidth, bit.BytesPerPixel)
+	}
+	if bit.Bytewidth < bit.Width*int(bit.BytesPerPixel) {
+		return 0, fmt.Errorf("invalid bitmap stride %d for width=%d bytesPerPixel=%d", bit.Bytewidth, bit.Width, bit.BytesPerPixel)
+	}
+	total := bit.Bytewidth * bit.Height
+	if total <= 0 {
+		return 0, errors.New("invalid bitmap buffer size")
+	}
+	return total, nil
+}
+
+func bitmapBytes(bit Bitmap) ([]byte, error) {
+	total, err := bitmapBufferLen(bit)
+	if err != nil {
+		return nil, err
+	}
+	if bit.ImgBuf == nil {
+		return nil, errors.New("bitmap image buffer is nil")
+	}
+	src := unsafe.Slice((*byte)(unsafe.Pointer(bit.ImgBuf)), total)
+	dst := make([]byte, total)
+	copy(dst, src)
+	return dst, nil
+}
+
+// ToStrBitmap serializes a Bitmap into a stable JSON/base64 string.
+func ToStrBitmap(bit Bitmap) (string, error) {
+	data, err := bitmapBytes(bit)
+	if err != nil {
+		return "", err
+	}
+	payload := bitmapStringPayload{
+		Format:        bitmapStringFormat,
+		Width:         bit.Width,
+		Height:        bit.Height,
+		Bytewidth:     bit.Bytewidth,
+		BitsPixel:     bit.BitsPixel,
+		BytesPerPixel: bit.BytesPerPixel,
+		Data:          base64.StdEncoding.EncodeToString(data),
+	}
+	raw, err := json.Marshal(payload)
+	if err != nil {
+		return "", err
+	}
+	return string(raw), nil
+}
+
+// BitmapFromStr decodes a bitmap string produced by ToStrBitmap.
+func BitmapFromStr(str string) (Bitmap, error) {
+	var payload bitmapStringPayload
+	if err := json.Unmarshal([]byte(str), &payload); err != nil {
+		return Bitmap{}, err
+	}
+	if payload.Format != bitmapStringFormat {
+		return Bitmap{}, fmt.Errorf("unsupported bitmap string format %q", payload.Format)
+	}
+	data, err := base64.StdEncoding.DecodeString(payload.Data)
+	if err != nil {
+		return Bitmap{}, err
+	}
+	bit := Bitmap{
+		Width:         payload.Width,
+		Height:        payload.Height,
+		Bytewidth:     payload.Bytewidth,
+		BitsPixel:     payload.BitsPixel,
+		BytesPerPixel: payload.BytesPerPixel,
+		buf:           data,
+	}
+	if _, err := bitmapBufferLen(bit); err != nil {
+		return Bitmap{}, err
+	}
+	if len(data) != bit.Bytewidth*bit.Height {
+		return Bitmap{}, fmt.Errorf("bitmap payload length %d does not match layout size %d", len(data), bit.Bytewidth*bit.Height)
+	}
+	if len(bit.buf) > 0 {
+		bit.ImgBuf = &bit.buf[0]
+	}
+	return bit, nil
+}
+
+// CaptureBitmapStr captures the screen and returns the serialized bitmap.
+func CaptureBitmapStr(args ...int) (string, error) {
+	bit, err := CaptureGo(args...)
+	if err != nil {
+		return "", err
+	}
+	return ToStrBitmap(bit)
+}
+
+// FindBitmapStr searches for needleStr inside haystackStr. When only one
+// string is provided, the current screen is captured and searched for that
+// bitmap. It returns (-1, -1) when no match is found.
+func FindBitmapStr(needleStr string, haystackStr ...string) (int, int, error) {
+	needle, err := BitmapFromStr(needleStr)
+	if err != nil {
+		return -1, -1, err
+	}
+
+	var haystack Bitmap
+	if len(haystackStr) > 0 {
+		haystack, err = BitmapFromStr(haystackStr[0])
+		if err != nil {
+			return -1, -1, err
+		}
+	} else {
+		haystack, err = CaptureGo()
+		if err != nil {
+			return -1, -1, err
+		}
+	}
+
+	return findBitmap(haystack, needle)
+}
+
 // ToCBitmap trans Bitmap to C.MMBitmapRef
 func ToCBitmap(bit Bitmap) CBitmap {
 	total := bit.Bytewidth * bit.Height
@@ -1175,6 +1373,75 @@ func ImgToCBitmap(img image.Image) CBitmap {
 func ByteToCBitmap(by []byte) CBitmap {
 	img, _ := ByteToImg(by)
 	return ImgToCBitmap(img)
+}
+
+func splitHex(hex uint32) (uint8, uint8, uint8) {
+	return uint8((hex >> 16) & 0xff), uint8((hex >> 8) & 0xff), uint8(hex & 0xff)
+}
+
+func rgbSimilar(r1, g1, b1, r2, g2, b2 uint8, tolerance float64) bool {
+	if tolerance <= 0 {
+		return r1 == r2 && g1 == g2 && b1 == b2
+	}
+	dr := float64(int(r1) - int(r2))
+	dg := float64(int(g1) - int(g2))
+	db := float64(int(b1) - int(b2))
+	return dr*dr+dg*dg+db*db <= (tolerance*442.0)*(tolerance*442.0)
+}
+
+func bitmapRGBAt(bit Bitmap, x, y int) (uint8, uint8, uint8, bool) {
+	if x < 0 || y < 0 || x >= bit.Width || y >= bit.Height {
+		return 0, 0, 0, false
+	}
+	total, err := bitmapBufferLen(bit)
+	if err != nil || bit.ImgBuf == nil {
+		return 0, 0, 0, false
+	}
+	offset := y*bit.Bytewidth + x*int(bit.BytesPerPixel)
+	if offset+2 >= total {
+		return 0, 0, 0, false
+	}
+	buf := unsafe.Slice((*byte)(unsafe.Pointer(bit.ImgBuf)), total)
+	return buf[offset+2], buf[offset+1], buf[offset], true
+}
+
+func findBitmap(haystack, needle Bitmap) (int, int, error) {
+	if _, err := bitmapBufferLen(haystack); err != nil {
+		return -1, -1, err
+	}
+	if _, err := bitmapBufferLen(needle); err != nil {
+		return -1, -1, err
+	}
+	if needle.Width > haystack.Width || needle.Height > haystack.Height {
+		return -1, -1, nil
+	}
+	for y := 0; y <= haystack.Height-needle.Height; y++ {
+		for x := 0; x <= haystack.Width-needle.Width; x++ {
+			if bitmapMatchesAt(haystack, needle, x, y) {
+				return x, y, nil
+			}
+		}
+	}
+	return -1, -1, nil
+}
+
+func bitmapMatchesAt(haystack, needle Bitmap, startX, startY int) bool {
+	for y := 0; y < needle.Height; y++ {
+		for x := 0; x < needle.Width; x++ {
+			hr, hg, hb, ok := bitmapRGBAt(haystack, startX+x, startY+y)
+			if !ok {
+				return false
+			}
+			nr, ng, nb, ok := bitmapRGBAt(needle, x, y)
+			if !ok {
+				return false
+			}
+			if hr != nr || hg != ng || hb != nb {
+				return false
+			}
+		}
+	}
+	return true
 }
 
 // SetXDisplayName set XDisplay name (Linux)
@@ -1599,6 +1866,69 @@ func IsValid() bool {
 	abool := C.is_valid()
 	gbool := bool(abool)
 	return gbool
+}
+
+// IsTopMost reports whether the current active window is topmost.
+func IsTopMost() bool {
+	ok, _ := IsTopMostE()
+	return ok
+}
+
+// IsTopMostE reports whether the current active window is topmost and returns
+// an explicit unsupported error on Linux backends without reliable state
+// query support.
+func IsTopMostE() (bool, error) {
+	if runtime.GOOS == "linux" {
+		return false, linuxWindowStateNotSupported("query topmost state")
+	}
+	return bool(C.IsTopMost()), nil
+}
+
+// IsMinimized reports whether the current active window is minimized.
+func IsMinimized() bool {
+	ok, _ := IsMinimizedE()
+	return ok
+}
+
+// IsMinimizedE reports whether the current active window is minimized and
+// returns an explicit unsupported error on Linux backends without reliable
+// state query support.
+func IsMinimizedE() (bool, error) {
+	if runtime.GOOS == "linux" {
+		return false, linuxWindowStateNotSupported("query minimized state")
+	}
+	return bool(C.IsMinimized()), nil
+}
+
+// IsMaximized reports whether the current active window is maximized.
+func IsMaximized() bool {
+	ok, _ := IsMaximizedE()
+	return ok
+}
+
+// IsMaximizedE reports whether the current active window is maximized and
+// returns an explicit unsupported error on Linux backends without reliable
+// state query support.
+func IsMaximizedE() (bool, error) {
+	if runtime.GOOS == "linux" {
+		return false, linuxWindowStateNotSupported("query maximized state")
+	}
+	return bool(C.IsMaximized()), nil
+}
+
+// SetTopMost updates topmost state for platforms that support it.
+func SetTopMost(state bool) {
+	_ = SetTopMostE(state)
+}
+
+// SetTopMostE updates topmost state and returns an explicit unsupported error
+// on Linux backends without reliable topmost support.
+func SetTopMostE(state bool) error {
+	if runtime.GOOS == "linux" {
+		return linuxWindowStateNotSupported("set topmost state")
+	}
+	C.SetTopMost(C.bool(state))
+	return nil
 }
 
 // SetActive set the window active
