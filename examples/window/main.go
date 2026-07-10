@@ -44,7 +44,9 @@ func get() {
 	fmt.Println("title-----", title)
 
 	// set Window Active
-	robotgo.SetActive(mdata)
+	if err := robotgo.SetActiveE(mdata); err != nil {
+		fmt.Println("SetActive error:", err)
+	}
 }
 
 func findIds() {
@@ -180,7 +182,9 @@ func window() {
 	pid := robotgo.GetPid()
 	fmt.Println("\n7. close window and kill process in 10 seconds", pid)
 	robotgo.Sleep(10)
-	robotgo.CloseWindowKill(pid)
+	if err := robotgo.CloseWindowKill(pid); err != nil {
+		fmt.Println("CloseWindowKill error:", err)
+	}
 }
 
 func main() {

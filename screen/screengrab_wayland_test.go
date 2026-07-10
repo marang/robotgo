@@ -8,8 +8,8 @@ import (
 	"image/color"
 	"os"
 	"path/filepath"
-	"syscall"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -17,12 +17,27 @@ import (
 	"golang.org/x/sys/unix"
 )
 
+const (
+	mockModeStall           = 1
+	mockModeFailAfterDmabuf = 2
+)
+
+func cleanupMockServer(t *testing.T, done <-chan struct{}) {
+	t.Helper()
+	stopMockServer()
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+	}
+}
+
 // TestScreencopyDmabuf ensures CaptureScreen handles linux_dmabuf/buffer_done events.
 func TestScreencopyDmabuf(t *testing.T) {
 	dir := t.TempDir()
 	sock := "robotgo-wl"
 	t.Setenv("XDG_RUNTIME_DIR", dir)
 	t.Setenv("WAYLAND_DISPLAY", sock)
+	t.Setenv("ROBOTGO_DISABLE_PORTAL", "1")
 	robotgo.SetWaylandBackend(robotgo.WaylandBackendDmabuf)
 
 	var maj, min uint32
@@ -49,7 +64,7 @@ func TestScreencopyDmabuf(t *testing.T) {
 
 	done := make(chan struct{})
 	startMockServer(sock, maj, min, 0, done)
-	_ = done
+	t.Cleanup(func() { cleanupMockServer(t, done) })
 
 	time.Sleep(100 * time.Millisecond)
 
@@ -58,6 +73,9 @@ func TestScreencopyDmabuf(t *testing.T) {
 			t.Skip("dmabuf allocation not available")
 		}
 		t.Fatalf("capture failed: %v", err)
+	}
+	if got := robotgo.LastBackend(); got != robotgo.BackendScreencopy {
+		t.Fatalf("backend = %q, want %q", got, robotgo.BackendScreencopy)
 	}
 
 }
@@ -71,7 +89,7 @@ func TestScreencopyWlShm(t *testing.T) {
 
 	done := make(chan struct{})
 	startMockServer(sock, 0, 0, 0, done)
-	_ = done
+	t.Cleanup(func() { cleanupMockServer(t, done) })
 
 	time.Sleep(100 * time.Millisecond)
 
@@ -87,11 +105,12 @@ func TestScreencopyPortalFallback(t *testing.T) {
 	t.Setenv("XDG_RUNTIME_DIR", dir)
 	t.Setenv("WAYLAND_DISPLAY", sock)
 	t.Setenv("ROBOTGO_PORTAL_STUB_GREEN", "1")
+	t.Setenv("ROBOTGO_DISABLE_PORTAL", "1")
 	robotgo.SetWaylandBackend(robotgo.WaylandBackendDmabuf)
 
 	done := make(chan struct{})
 	startMockServer(sock, 0, 0, 1, done)
-	_ = done
+	t.Cleanup(func() { cleanupMockServer(t, done) })
 
 	time.Sleep(100 * time.Millisecond)
 
@@ -100,12 +119,73 @@ func TestScreencopyPortalFallback(t *testing.T) {
 		t.Fatalf("capture failed: %v", err)
 	}
 	if robotgo.LastBackend() != robotgo.BackendPortal {
-		t.Skipf("portal fallback not selected in this environment (backend=%v)", robotgo.LastBackend())
+		t.Fatalf("portal fallback not selected (backend=%v)", robotgo.LastBackend())
 	}
 	r, g, b, _ := img.At(0, 0).RGBA()
 	clr := color.RGBA{uint8(r >> 8), uint8(g >> 8), uint8(b >> 8), 0}
 	if clr.G != 0xff {
-		t.Skipf("portal backend active but stub pixel not observed (got %v)", img.At(0, 0))
+		t.Fatalf("portal backend active but stub pixel not observed (got %v)", img.At(0, 0))
 	}
 
+}
+
+func TestScreencopyTimeoutIsBounded(t *testing.T) {
+	dir := t.TempDir()
+	sock := "robotgo-wl-timeout"
+	t.Setenv("XDG_RUNTIME_DIR", dir)
+	t.Setenv("WAYLAND_DISPLAY", sock)
+	t.Setenv("ROBOTGO_DISABLE_PORTAL", "1")
+	robotgo.SetWaylandBackend(robotgo.WaylandBackendWlShm)
+	t.Cleanup(func() { robotgo.SetWaylandBackend(robotgo.WaylandBackendAuto) })
+
+	done := make(chan struct{})
+	startMockServerMode(sock, 0, 0, 0, mockModeStall, done)
+	t.Cleanup(func() {
+		cleanupMockServer(t, done)
+	})
+	time.Sleep(100 * time.Millisecond)
+
+	started := time.Now()
+	bit, err := robotgo.CaptureScreen()
+	if bit != nil {
+		robotgo.FreeBitmap(bit)
+	}
+	if err == nil {
+		t.Fatal("expected stalled compositor capture to fail")
+	}
+	if elapsed := time.Since(started); elapsed < 1500*time.Millisecond || elapsed > 4*time.Second {
+		t.Fatalf("capture did not respect the configured timeout window: %v", elapsed)
+	}
+}
+
+func TestScreencopyDmabufFailureDoesNotCloseStdin(t *testing.T) {
+	if _, err := unix.FcntlInt(0, unix.F_GETFD, 0); err != nil {
+		t.Skipf("stdin is not open in this test environment: %v", err)
+	}
+
+	dir := t.TempDir()
+	sock := "robotgo-wl-fd"
+	t.Setenv("XDG_RUNTIME_DIR", dir)
+	t.Setenv("WAYLAND_DISPLAY", sock)
+	t.Setenv("ROBOTGO_DISABLE_PORTAL", "1")
+	robotgo.SetWaylandBackend(robotgo.WaylandBackendDmabuf)
+	t.Cleanup(func() { robotgo.SetWaylandBackend(robotgo.WaylandBackendAuto) })
+
+	done := make(chan struct{})
+	startMockServerMode(sock, 1, 1, 0, mockModeFailAfterDmabuf, done)
+	t.Cleanup(func() {
+		cleanupMockServer(t, done)
+	})
+	time.Sleep(100 * time.Millisecond)
+
+	bit, err := robotgo.CaptureScreen()
+	if bit != nil {
+		robotgo.FreeBitmap(bit)
+	}
+	if err == nil {
+		t.Fatal("expected compositor failure")
+	}
+	if _, err := unix.FcntlInt(0, unix.F_GETFD, 0); err != nil {
+		t.Fatalf("capture failure closed stdin: %v", err)
+	}
 }

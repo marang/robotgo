@@ -36,7 +36,7 @@ func main() {
 
     // Identify which backend handled the capture
     backend := robotgo.LastBackend()
-    method := "unknown"
+	method := string(backend)
     switch backend {
     case robotgo.BackendScreencopy:
         method = "Wayland native (wlr-screencopy)"
@@ -44,8 +44,6 @@ func main() {
         method = "xdg-desktop-portal (Screenshot)"
     case robotgo.BackendX11:
         method = "X11 (XGetImage)"
-    default:
-        method = string(backend)
-    }
+	}
     fmt.Println("saved:", name, "backend:", backend, "method:", method)
 }

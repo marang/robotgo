@@ -193,6 +193,6 @@ func GetTextImg(img image.Image, args ...string) (string, error) {
 	if err := SavePng(img, tmp); err != nil {
 		return "", err
 	}
-	defer os.Remove(tmp)
+	defer func() { _ = os.Remove(tmp) }()
 	return GetText(tmp, args...)
 }

@@ -1,11 +1,34 @@
+//go:build cgo
+
 package robotgo
 
 import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"sync"
 	"testing"
 )
+
+func TestCaptureStateConcurrentAccess(t *testing.T) {
+	t.Cleanup(func() {
+		SetWaylandBackend(WaylandBackendAuto)
+		setLastBackend(BackendNone)
+	})
+
+	var wg sync.WaitGroup
+	for i := 0; i < 32; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			SetWaylandBackend([]WaylandBackend{WaylandBackendAuto, WaylandBackendDmabuf, WaylandBackendWlShm}[i%3])
+			setLastBackend([]CaptureBackend{BackendScreencopy, BackendPortal, BackendX11}[i%3])
+			_ = selectedWaylandBackend()
+			_ = LastBackend()
+		}(i)
+	}
+	wg.Wait()
+}
 
 func resetWaylandBoundsCacheForTest() {
 	waylandBoundsMu.Lock()
@@ -13,6 +36,18 @@ func resetWaylandBoundsCacheForTest() {
 	waylandBoundsValid = false
 	waylandBoundsProbed = false
 	waylandBoundsMu.Unlock()
+}
+
+func stubCaptureCapabilityProbes(t *testing.T, native, portal bool) {
+	t.Helper()
+	oldNative := waylandCaptureAvailabilityProbe
+	oldPortal := portalAvailabilityProbe
+	waylandCaptureAvailabilityProbe = func() bool { return native }
+	portalAvailabilityProbe = func() bool { return portal }
+	t.Cleanup(func() {
+		waylandCaptureAvailabilityProbe = oldNative
+		portalAvailabilityProbe = oldPortal
+	})
 }
 
 func writeWaylandInfoStub(t *testing.T, dir string) {
@@ -122,6 +157,7 @@ func TestGetLinuxCapabilitiesWaylandFallback(t *testing.T) {
 	t.Setenv(envSessionDesktop, "")
 	t.Setenv(envSwaySock, "")
 	t.Setenv(envHyprlandSignature, "")
+	stubCaptureCapabilityProbes(t, false, true)
 
 	resetWaylandBoundsCacheForTest()
 	defer resetWaylandBoundsCacheForTest()
@@ -131,7 +167,10 @@ func TestGetLinuxCapabilitiesWaylandFallback(t *testing.T) {
 		t.Fatalf("expected wayland display server, got %v", c.DisplayServer)
 	}
 	if !c.Capture.Available {
-		t.Fatalf("expected capture available in wayland session")
+		t.Fatalf("expected portal capture available in wayland session")
+	}
+	if c.Capture.Backend != "portal" {
+		t.Fatalf("expected portal capture backend, got %q", c.Capture.Backend)
 	}
 	if !c.Bounds.Available {
 		t.Fatalf("expected bounds available in wayland session")
@@ -169,6 +208,7 @@ func TestGetLinuxCapabilitiesWaylandInvalidFallback(t *testing.T) {
 	t.Setenv(envSessionDesktop, "")
 	t.Setenv(envSwaySock, "")
 	t.Setenv(envHyprlandSignature, "")
+	stubCaptureCapabilityProbes(t, false, false)
 
 	resetWaylandBoundsCacheForTest()
 	defer resetWaylandBoundsCacheForTest()

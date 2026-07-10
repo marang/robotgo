@@ -1,3 +1,5 @@
+//go:build cgo
+
 package robotgo
 
 import (
@@ -133,10 +135,7 @@ func (nativeWindowBackend) Close(args ...int) error {
 	}
 
 	pid := args[0]
-	isPid := false
-	if len(args) > 1 || NotPid {
-		isPid = true
-	}
+	isPid := len(args) > 1 || NotPid
 	nativeCloseWindowByPid(pid, isPid)
 	return nil
 }
@@ -204,55 +203,6 @@ func (b waylandCoreWindowBackend) Close(args ...int) error {
 }
 
 func (b waylandCoreWindowBackend) Title(args ...int) (string, error) {
-	_ = args
-	return "", b.unsupported("get window title")
-}
-
-type limitedWaylandWindowBackend struct {
-	name   string
-	notes  string
-	reason string
-}
-
-func (b limitedWaylandWindowBackend) Name() string {
-	return b.name
-}
-
-func (b limitedWaylandWindowBackend) Capability() FeatureCapability {
-	return FeatureCapability{
-		Available: false,
-		Fallback:  false,
-		Backend:   b.name,
-		Reason:    b.reason,
-		Notes:     b.notes,
-	}
-}
-
-func (b limitedWaylandWindowBackend) unsupported(op string) error {
-	return fmt.Errorf("%w (backend=%s)", waylandWindowNotSupported(op), b.name)
-}
-
-func (b limitedWaylandWindowBackend) SetActive(win Handle) error {
-	_ = win
-	return b.unsupported("set active window")
-}
-
-func (b limitedWaylandWindowBackend) Minimize(pid int, state bool, isPid bool) error {
-	_, _, _ = pid, state, isPid
-	return b.unsupported("minimize window")
-}
-
-func (b limitedWaylandWindowBackend) Maximize(pid int, state bool, isPid bool) error {
-	_, _, _ = pid, state, isPid
-	return b.unsupported("maximize window")
-}
-
-func (b limitedWaylandWindowBackend) Close(args ...int) error {
-	_ = args
-	return b.unsupported("close window")
-}
-
-func (b limitedWaylandWindowBackend) Title(args ...int) (string, error) {
 	_ = args
 	return "", b.unsupported("get window title")
 }

@@ -72,6 +72,7 @@ typedef enum {
 MMBitmapRef capture_screen_wayland(int32_t x, int32_t y, int32_t w, int32_t h,
                                    int32_t display_id, int8_t isPid,
                                    int32_t backend, int32_t *err);
+int robotgo_wayland_screencopy_ready(void);
 #endif
 // Portal capture is available on Linux regardless of Wayland build tag.
 MMBitmapRef capture_screen_portal(int32_t x, int32_t y, int32_t w, int32_t h,
@@ -89,6 +90,7 @@ static inline MMBitmapRef capture_screen_wayland(int32_t x, int32_t y,
   if (err) { *err = ScreengrabErrFailed; }
   return NULL;
 }
+static inline int robotgo_wayland_screencopy_ready(void) { return 0; }
 #endif
 #elif defined(IS_WINDOWS)
 #include <string.h>

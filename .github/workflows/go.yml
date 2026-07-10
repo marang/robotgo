@@ -1,6 +1,9 @@
 name: Go
 on: [push]
 
+env:
+  GOLANGCI_LINT_VERSION: v2.11.4
+
 # Avoid canceling in-progress jobs when a new push arrives
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -10,10 +13,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Set up Go 1.24.0
-        uses: actions/setup-go@v4
+      - name: Set up Go
+        uses: actions/setup-go@v6
         with:
-          go-version: 1.24.0
+          go-version: 1.25.x
       - name: Install system dependencies for cgo typecheck
         run: |
           sudo apt-get update
@@ -23,7 +26,7 @@ jobs:
             libwayland-dev libxkbcommon-dev wayland-protocols \
             libgbm-dev libdrm-dev
       - name: Install golangci-lint
-        run: go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
+        run: go install github.com/golangci/golangci-lint/cmd/golangci-lint@${GOLANGCI_LINT_VERSION}
       - name: Add golangci-lint to PATH
         run: echo "$(go env GOPATH)/bin" >> $GITHUB_PATH
       - name: Run golangci-lint
@@ -33,17 +36,26 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # go: [1.12.x, 1.13.x]
-        os: [macOS-latest, windows-latest] # ubuntu-latest
+        os: [ubuntu-latest, macOS-latest, windows-latest]
     runs-on: ${{ matrix.os }}
 
     steps:
       - uses: actions/checkout@v4
-      - name: Set up Go 1.24.0
-        uses: actions/setup-go@v4
+      - name: Set up Go
+        uses: actions/setup-go@v6
         with:
-          go-version: 1.24.0
+          go-version: 1.25.x
         id: go
+
+      - name: Install Linux dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential pkg-config \
+            libx11-dev libxtst-dev \
+            libwayland-dev libxkbcommon-dev wayland-protocols \
+            libgbm-dev libdrm-dev
 
       - name: Get dependencies
         run: |
@@ -52,17 +64,27 @@ jobs:
       - name: Build
         run: go build -v .
       - name: Test
-        run: go test -v robot_info_test.go
-        # run: go test -v .
-  wayland-integration:
+        run: go test -v ./...
+  nocgo:
     runs-on: ubuntu-latest
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
-      - name: Set up Go 1.24.0
-        uses: actions/setup-go@v4
+      - name: Set up Go
+        uses: actions/setup-go@v6
         with:
-          go-version: 1.24.0
+          go-version: 1.25.x
+      - name: Test explicit unsupported non-CGO build
+        env:
+          CGO_ENABLED: "0"
+        run: go test -v ./...
+  wayland-integration:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: 1.25.x
       - name: Install Wayland test dependencies
         run: |
           sudo apt-get update
@@ -75,4 +97,8 @@ jobs:
         env:
           XDG_RUNTIME_DIR: /tmp
         run: |
-          go test -tags "wayland integration" ./mouse ./window -v
+          go test -tags "wayland" ./...
+          go test -tags "portal" ./screen/portal -v
+          go test -tags "wayland test" ./screen -run TestScreencopy -v
+          go test -tags "wayland test" . -run TestDrmFindRenderNode -v
+          go test -tags "wayland integration" . ./mouse ./window -v

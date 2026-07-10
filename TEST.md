@@ -12,6 +12,12 @@ go test ./...
 
 This is the baseline suite used for regular development and should stay green.
 
+The explicit unsupported non-CGO variant is also part of CI:
+
+```bash
+CGO_ENABLED=0 go test ./...
+```
+
 ## Special Test Suites (Build Tags)
 
 Some tests are intentionally gated because they require OS-specific runtime dependencies or mock compositor/server setup.
@@ -48,7 +54,8 @@ go test -tags "portal" ./screen/portal -v
 
 Prerequisites:
 - Linux
-- Portal-related build dependencies (`libportal`, `libpipewire-0.3`)
+- CGO enabled for the optional `CBitmap` adapter
+- A live portal is not required; D-Bus behavior is tested hermetically
 
 ### `wayland,integration`
 
@@ -97,6 +104,8 @@ Status:
   - Must be set for Wayland socket creation.
 - `ROBOTGO_FORCE_PORTAL=1`
   - Forces portal capture path for Linux capture tests.
+- `ROBOTGO_DISABLE_PORTAL=1`
+  - Disables portal capture and consent prompts; useful for deterministic native-backend tests.
 - `ROBOTGO_WAYLAND_BACKEND`
   - Overrides Linux capture backend selection (`auto|dmabuf|wl_shm|portal`).
 - `ROBOTGO_CAPTURE_DEBUG=1`
@@ -112,6 +121,8 @@ Status:
 
 ```bash
 go test ./...
+CGO_ENABLED=0 go test ./...
+go test -tags "wayland" ./...
 go test -tags "portal" ./screen/portal -v
 go test -tags "wayland integration" . ./mouse ./window -v
 ```

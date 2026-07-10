@@ -6,9 +6,18 @@ Current implementation baseline:
 - Mouse and key input have Wayland backends.
 - Screen capture prefers Wayland screencopy and falls back to portal.
 - `ROBOTGO_FORCE_PORTAL=1` is supported for forcing portal capture.
+- `ROBOTGO_DISABLE_PORTAL=1` disables portal prompts/fallback for deterministic native-only operation.
 - `ROBOTGO_WAYLAND_BACKEND` (`auto|dmabuf|wl_shm|portal`) is supported.
 - `ROBOTGO_CAPTURE_DEBUG=1` logs backend selection/fallback details.
 - Linux runtime capability introspection is available via `GetLinuxCapabilities`.
+- Capability introspection probes the live screencopy protocol, desktop portal
+  D-Bus owner, virtual pointer and virtual keyboard instead of inferring support
+  solely from session environment variables.
+- Error-returning mouse and typing variants are available (`MoveE`,
+  `MoveRelativeE`, `ClickE`, `ScrollE`, `LocationE`, `TypeStrE`,
+  `UnicodeTypeE`) while legacy APIs remain source-compatible.
+- Native screencopy has bounded event dispatch, deterministic FD/resource
+  cleanup and hermetic regression coverage for compositor stalls and DMABUF failures.
 - Window-control APIs now expose explicit Wayland NotSupported errors via
   error-returning variants (`SetActiveE`, `MinWindowE`, `MaxWindowE`,
   `CloseWindowE`, `GetTitleE`).
@@ -76,6 +85,8 @@ Window backend support matrix (current):
 - Build/Tooling:
   - Document pkg-config deps and `wayland-scanner` generation steps; ensure protocol headers are vendored.
   - Keep build tags consistent (`linux,wayland` for native capture and `linux,portal` for explicit portal package path).
+  - Non-CGO builds compile with explicit unsupported stubs; selectively port
+    and harden upstream Pure-Go backends before enabling them as defaults.
 - CI/Testing:
   - Stabilize CI jobs with headless Weston for screencopy (dmabuf + wl_shm) and portal.
   - Tests for dmabuf vs wl_shm selection; bounds across outputs.
