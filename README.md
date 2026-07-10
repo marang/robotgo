@@ -80,6 +80,12 @@ winget install Golang.go
 
 #### For Linux:
 
+Build the native Wayland backend explicitly:
+
+```bash
+go build -tags wayland ./...
+```
+
 Wayland screen capture uses `wlr-screencopy` first (DMA-BUF or wl_shm).
 DMA-BUF requires the compositor to expose `zwp_linux_dmabuf_v1` version 4+.
 If Wayland screencopy is unavailable/fails, RobotGo falls back to the
@@ -88,9 +94,23 @@ freedesktop portal screenshot path.
 Portal fallback requires `xdg-desktop-portal` and a desktop backend (for
 example `xdg-desktop-portal-gnome` or `xdg-desktop-portal-kde`).
 You can force portal capture with `ROBOTGO_FORCE_PORTAL=1`.
+Set `ROBOTGO_DISABLE_PORTAL=1` to prohibit consent prompts and require the
+native backend; failures then remain explicit.
 You can also override backend selection with `ROBOTGO_WAYLAND_BACKEND`:
 `auto`, `dmabuf`, `wl_shm`, or `portal`.
 Set `ROBOTGO_CAPTURE_DEBUG=1` to log capture backend decisions.
+
+`GetLinuxCapabilities` probes the actual compositor protocols and portal
+D-Bus service; it does not infer availability merely from environment
+variables. For automation that must observe failures, prefer the
+error-returning input APIs `MoveE`, `MoveRelativeE`, `ClickE`, `ScrollE`,
+`LocationE`, `MouseReady`, `KeyboardReady`, `TypeStrE`, and `UnicodeTypeE`.
+The legacy void-returning APIs remain available for source compatibility.
+Long-running applications can call `CloseWaylandInput` to release persistent
+virtual input protocol objects; subsequent input calls reconnect lazily.
+
+With `CGO_ENABLED=0` and no Pure-Go backend selected, RobotGo compiles and
+returns `ErrNotSupported` explicitly instead of silently using an X11 path.
 
 See `docs/wayland-tasks.md` for the current Wayland support status and remaining tasks.
 
@@ -564,6 +584,9 @@ func main() {
 
 ## Plans
 
+- See the [product roadmap](docs/plan/product-roadmap.md) for the delivery order
+  and the quality standard used to measure this fork against upstream and
+  RobotGo Pro.
 - Refactor some C code to Go (such as x11, windows)
 - Better multiscreen support
 - Wayland support including DMA-BUF screencopy

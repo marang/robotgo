@@ -11,13 +11,10 @@ jobs:
       - checkout
       # specify any bash command here prefixed with `run: `
       - run: apt update
-      - run:
-          apt -y install gcc libc6-dev
-          libx11-dev xorg-dev libxtst-dev
-          xsel xclip
-          pkg-config libwayland-dev libwayland-cursor0 libwayland-egl1 libxkbcommon-dev wayland-protocols
-          # libpng++-dev
-          # xcb libxcb-xkb-dev x11-xkb-utils libx11-xcb-dev libxkbcommon-x11-dev
+      - run: >-
+          apt -y install gcc libc6-dev libx11-dev xorg-dev libxtst-dev
+          xsel xclip pkg-config libwayland-dev libwayland-cursor0
+          libwayland-egl1 libxkbcommon-dev wayland-protocols libgbm-dev libdrm-dev
       - run: apt -y install xvfb
       - run: echo 'export PKG_CONFIG_PATH=/usr/lib/pkgconfig:/usr/lib/x86_64-linux-gnu/pkgconfig:$PKG_CONFIG_PATH' >> $BASH_ENV
       # Install golangci-lint and add GOPATH/bin to PATH for subsequent steps

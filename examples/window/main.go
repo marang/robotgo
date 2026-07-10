@@ -44,7 +44,9 @@ func get() {
 	fmt.Println("title-----", title)
 
 	// set Window Active
-	robotgo.SetActive(mdata)
+	if err := robotgo.SetActiveE(mdata); err != nil {
+		fmt.Println("SetActive error:", err)
+	}
 }
 
 func findIds() {

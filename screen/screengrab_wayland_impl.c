@@ -14,12 +14,14 @@
 #include <gbm.h>
 #include <xf86drm.h>
 #include <limits.h>
+#include <poll.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/mman.h>
 #include <sys/stat.h>
+#include <sys/syscall.h>
 #include <sys/sysmacros.h>
 #include <unistd.h>
 #include <time.h>
@@ -31,6 +33,17 @@
 
 #define WAYLAND_BACKEND_DMABUF 0
 #define WAYLAND_BACKEND_WL_SHM 1
+
+static int robotgo_memfd_create(const char *name, unsigned int flags) {
+#ifdef SYS_memfd_create
+  return (int)syscall(SYS_memfd_create, name, flags);
+#else
+  (void)name;
+  (void)flags;
+  errno = ENOSYS;
+  return -1;
+#endif
+}
 
 #if defined(IS_LINUX)
 
@@ -668,15 +681,12 @@ static void frame_buffer(void *data, struct zwlr_screencopy_frame_v1 *frame,
   cap->stride = (int)stride;
   cap->format = format;
 
-  char shm_name[64];
-  snprintf(shm_name, sizeof(shm_name), "/robotgo-wl-%d", getpid());
-  int fd = shm_open(shm_name, O_CREAT | O_EXCL | O_RDWR, 0600);
+  int fd = robotgo_memfd_create("robotgo-wl", MFD_CLOEXEC);
   if (fd < 0) {
     cap->failed = 1;
     cap->err_code = ScreengrabErrFailed;
     return;
   }
-  shm_unlink(shm_name);
   size_t size = (size_t)stride * height;
   if (ftruncate(fd, (off_t)size) < 0) {
     close(fd);
@@ -692,10 +702,23 @@ static void frame_buffer(void *data, struct zwlr_screencopy_frame_v1 *frame,
     return;
   }
   struct wl_shm_pool *pool = wl_shm_create_pool(cap->shm, fd, (int)size);
+  if (!pool) {
+    munmap(cap->data, size);
+    cap->data = NULL;
+    close(fd);
+    cap->failed = 1;
+    cap->err_code = ScreengrabErrFailed;
+    return;
+  }
   cap->buffer = wl_shm_pool_create_buffer(pool, 0, (int)width, (int)height,
                                           (int)stride, format);
   wl_shm_pool_destroy(pool);
   close(fd);
+  if (!cap->buffer) {
+    cap->failed = 1;
+    cap->err_code = ScreengrabErrFailed;
+    return;
+  }
   zwlr_screencopy_frame_v1_copy(frame, cap->buffer);
 }
 
@@ -835,6 +858,68 @@ static const struct zwlr_screencopy_frame_v1_listener frame_listener = {
     .failed = frame_failed,
 };
 
+static long monotonic_millis(void) {
+  struct timespec ts;
+#ifdef CLOCK_MONOTONIC
+  if (clock_gettime(CLOCK_MONOTONIC, &ts) != 0) {
+    return -1;
+  }
+#else
+  if (clock_gettime(CLOCK_REALTIME, &ts) != 0) {
+    return -1;
+  }
+#endif
+  return ts.tv_sec * 1000L + ts.tv_nsec / 1000000L;
+}
+
+// Dispatch pending Wayland events while respecting a real deadline. A plain
+// wl_display_dispatch() can block forever and therefore cannot implement a
+// timeout by checking the clock after it returns.
+static int dispatch_until(struct wl_display *display, long deadline_ms) {
+  while (wl_display_prepare_read(display) != 0) {
+    if (wl_display_dispatch_pending(display) < 0) {
+      return -1;
+    }
+  }
+
+  if (wl_display_flush(display) < 0 && errno != EAGAIN) {
+    wl_display_cancel_read(display);
+    return -1;
+  }
+
+  long now = monotonic_millis();
+  if (now < 0 || now >= deadline_ms) {
+    wl_display_cancel_read(display);
+    return 0;
+  }
+  long remaining = deadline_ms - now;
+  if (remaining > INT_MAX) {
+    remaining = INT_MAX;
+  }
+
+  struct pollfd pfd = {
+      .fd = wl_display_get_fd(display),
+      .events = POLLIN,
+      .revents = 0,
+  };
+  int ready;
+  do {
+    ready = poll(&pfd, 1, (int)remaining);
+  } while (ready < 0 && errno == EINTR);
+
+  if (ready <= 0 || (pfd.revents & (POLLERR | POLLHUP | POLLNVAL))) {
+    wl_display_cancel_read(display);
+    return ready == 0 ? 0 : -1;
+  }
+  if (wl_display_read_events(display) < 0) {
+    return -1;
+  }
+  if (wl_display_dispatch_pending(display) < 0) {
+    return -1;
+  }
+  return 1;
+}
+
 static void cleanup_capture(struct capture *cap) {
   if (cap->using_dmabuf) {
     if (cap->data && cap->bo && cap->map_data) {
@@ -895,6 +980,33 @@ static void cleanup_capture(struct capture *cap) {
   }
 }
 
+int robotgo_wayland_screencopy_ready(void) {
+  struct capture cap = {0};
+  cap.drm_fd = -1;
+  wl_list_init(&cap.outputs);
+
+  cap.display = wl_display_connect(NULL);
+  if (!cap.display) {
+    return 0;
+  }
+  cap.registry = wl_display_get_registry(cap.display);
+  if (!cap.registry) {
+    cleanup_capture(&cap);
+    return 0;
+  }
+  wl_registry_add_listener(cap.registry, &registry_listener, &cap);
+  if (wl_display_roundtrip(cap.display) < 0 ||
+      wl_display_roundtrip(cap.display) < 0) {
+    cleanup_capture(&cap);
+    return 0;
+  }
+
+  int ready = cap.manager != NULL && !wl_list_empty(&cap.outputs) &&
+              (cap.shm != NULL || cap.dmabuf != NULL);
+  cleanup_capture(&cap);
+  return ready;
+}
+
 // capture_screen_wayland_impl performs the actual capture logic. The backend
 // parameter selects whether dmabuf (zero-copy) or wl_shm (shared memory)
 // should be used.
@@ -903,14 +1015,11 @@ MMBitmapRef capture_screen_wayland_impl(int32_t x, int32_t y, int32_t w,
                                         int8_t isPid, int32_t backend,
                                         int32_t *err) {
   (void)isPid;
-  int32_t global_x = x;
-  int32_t global_y = y;
-  int32_t global_w = w;
-  int32_t global_h = h;
   if (err) {
     *err = ScreengrabOK;
   }
   struct capture cap = {0};
+  cap.drm_fd = -1;
   wl_list_init(&cap.outputs);
 
   cap.display = wl_display_connect(NULL);
@@ -1055,30 +1164,26 @@ MMBitmapRef capture_screen_wayland_impl(int32_t x, int32_t y, int32_t w,
 
   cap.frame =
       zwlr_screencopy_manager_v1_capture_output(cap.manager, 0, out->wl_output);
+  if (!cap.frame) {
+    if (err) {
+      *err = ScreengrabErrFailed;
+    }
+    cleanup_capture(&cap);
+    return NULL;
+  }
   zwlr_screencopy_frame_v1_add_listener(cap.frame, &frame_listener, &cap);
 
-  struct timespec ts_start, ts_now;
-#ifdef CLOCK_MONOTONIC
-  clock_gettime(CLOCK_MONOTONIC, &ts_start);
-#else
-  clock_gettime(CLOCK_REALTIME, &ts_start);
-#endif
   const long timeout_ms = 2000; // 2s safety timeout
+  long start_ms = monotonic_millis();
+  long deadline_ms = start_ms < 0 ? 0 : start_ms + timeout_ms;
   while (!cap.done && !cap.failed) {
-    int dres = wl_display_dispatch(cap.display);
+    int dres = dispatch_until(cap.display, deadline_ms);
     if (dres < 0) {
       cap.failed = 1;
       cap.err_code = ScreengrabErrFailed;
       break;
     }
-#ifdef CLOCK_MONOTONIC
-    clock_gettime(CLOCK_MONOTONIC, &ts_now);
-#else
-    clock_gettime(CLOCK_REALTIME, &ts_now);
-#endif
-    long elapsed_ms = (ts_now.tv_sec - ts_start.tv_sec) * 1000L +
-                      (ts_now.tv_nsec - ts_start.tv_nsec) / 1000000L;
-    if (elapsed_ms > timeout_ms) {
+    if (dres == 0) {
       cap.failed = 1;
       cap.err_code = ScreengrabErrFailed;
       break;
@@ -1101,16 +1206,6 @@ MMBitmapRef capture_screen_wayland_impl(int32_t x, int32_t y, int32_t w,
   if (cap.failed || !cap.data) {
     int32_t code = cap.err_code ? cap.err_code : ScreengrabErrFailed;
     cleanup_capture(&cap);
-    // Try portal fallback for any failure case
-    int32_t perr = ScreengrabOK;
-    MMBitmapRef p = capture_screen_portal(global_x, global_y, global_w, global_h,
-                                          display_id, isPid, &perr);
-    if (p) {
-      if (err) {
-        *err = perr;
-      }
-      return p;
-    }
     if (err) {
       *err = code;
     }

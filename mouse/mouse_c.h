@@ -23,7 +23,8 @@
         #include "wlr-virtual-pointer-unstable-v1-client-protocol.h"
         #include "../window/get_bounds_wayland.h"
 
-        static struct wl_display *rg_wl_display = NULL;
+	        static struct wl_display *rg_wl_display = NULL;
+	        static struct wl_registry *rg_wl_registry = NULL;
         static struct wl_seat *rg_wl_seat = NULL;
         static struct zwlr_virtual_pointer_manager_v1 *rg_wl_vptr_mgr = NULL;
         static struct zwlr_virtual_pointer_v1 *rg_wl_vptr = NULL;
@@ -55,35 +56,84 @@
                 }
         }
 
-        static const struct wl_registry_listener rg_wl_registry_listener = {
+	        static const struct wl_registry_listener rg_wl_registry_listener = {
                 rg_wl_registry_handle_global,
                 NULL
-        };
+	        };
 
-        static int rg_init_wayland(void) {
-                if (rg_wl_inited) {
-                        return rg_wl_display != NULL && rg_wl_vptr != NULL;
-                }
-                rg_wl_inited = 1;
-                rg_wl_display = wl_display_connect(NULL);
-                if (!rg_wl_display) {
-                        return 0;
-                }
-                struct wl_registry *registry = wl_display_get_registry(rg_wl_display);
-                wl_registry_add_listener(registry, &rg_wl_registry_listener, NULL);
-                wl_display_roundtrip(rg_wl_display);
-                if (!rg_wl_seat || !rg_wl_vptr_mgr) {
-                        wl_display_disconnect(rg_wl_display);
-                        rg_wl_display = NULL;
-                        return 0;
-                }
-                if (rg_wl_vptr_mgr && rg_wl_seat) {
-                        rg_wl_vptr = zwlr_virtual_pointer_manager_v1_create_virtual_pointer(rg_wl_vptr_mgr, rg_wl_seat);
-                }
-                get_bounds_wayland(rg_wl_display, &rg_wl_width, &rg_wl_height);
-                return rg_wl_vptr != NULL;
-        }
+	        static void rg_cleanup_wayland(void) {
+	                if (rg_wl_vptr) {
+	                        zwlr_virtual_pointer_v1_destroy(rg_wl_vptr);
+	                        rg_wl_vptr = NULL;
+	                }
+	                if (rg_wl_vptr_mgr) {
+	                        zwlr_virtual_pointer_manager_v1_destroy(rg_wl_vptr_mgr);
+	                        rg_wl_vptr_mgr = NULL;
+	                }
+	                if (rg_wl_seat) {
+	                        wl_seat_destroy(rg_wl_seat);
+	                        rg_wl_seat = NULL;
+	                }
+	                if (rg_wl_registry) {
+	                        wl_registry_destroy(rg_wl_registry);
+	                        rg_wl_registry = NULL;
+	                }
+	                if (rg_wl_display) {
+	                        wl_display_disconnect(rg_wl_display);
+	                        rg_wl_display = NULL;
+	                }
+	                rg_wl_width = 0;
+	                rg_wl_height = 0;
+	                rg_wl_inited = 0;
+	        }
+
+	        static int rg_init_wayland(void) {
+	                if (rg_wl_inited && rg_wl_display && rg_wl_vptr) {
+	                        return 1;
+	                }
+	                rg_cleanup_wayland();
+	                rg_wl_display = wl_display_connect(NULL);
+	                if (!rg_wl_display) {
+	                        return 0;
+	                }
+	                rg_wl_registry = wl_display_get_registry(rg_wl_display);
+	                if (!rg_wl_registry) {
+	                        rg_cleanup_wayland();
+	                        return 0;
+	                }
+	                wl_registry_add_listener(rg_wl_registry, &rg_wl_registry_listener, NULL);
+	                if (wl_display_roundtrip(rg_wl_display) < 0) {
+	                        rg_cleanup_wayland();
+	                        return 0;
+	                }
+	                if (!rg_wl_seat || !rg_wl_vptr_mgr) {
+	                        rg_cleanup_wayland();
+	                        return 0;
+	                }
+	                rg_wl_vptr = zwlr_virtual_pointer_manager_v1_create_virtual_pointer(rg_wl_vptr_mgr, rg_wl_seat);
+	                if (!rg_wl_vptr) {
+	                        rg_cleanup_wayland();
+	                        return 0;
+	                }
+	                get_bounds_wayland(rg_wl_display, &rg_wl_width, &rg_wl_height);
+	                rg_wl_inited = 1;
+	                return 1;
+	        }
+
+	        static int robotgo_wayland_mouse_backend_enabled(void) { return 1; }
+	        static int robotgo_wayland_mouse_ready(void) {
+	                if (detectDisplayServer() != Wayland) {
+	                        return 0;
+	                }
+	                return rg_init_wayland();
+	        }
+	        static void robotgo_wayland_mouse_close(void) { rg_cleanup_wayland(); }
 #endif /* ROBOTGO_USE_WAYLAND */
+	#ifndef ROBOTGO_USE_WAYLAND
+	        static int robotgo_wayland_mouse_backend_enabled(void) { return 0; }
+	        static int robotgo_wayland_mouse_ready(void) { return 0; }
+	        static void robotgo_wayland_mouse_close(void) { }
+	#endif
 #endif
 
 /* Some convenience macros for converting our enums to the system API types. */

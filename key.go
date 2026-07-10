@@ -24,6 +24,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"sync"
 	"unicode"
 	"unsafe"
 
@@ -366,6 +367,16 @@ func waylandKeyboardBackendCompiled() bool {
 	return int(C.robotgo_wayland_keyboard_backend_enabled()) != 0
 }
 
+var waylandKeyboardMu sync.Mutex
+
+func lockWaylandKeyboard() func() {
+	if runtime.GOOS == "linux" && DetectDisplayServer() == DisplayServerWayland {
+		waylandKeyboardMu.Lock()
+		return waylandKeyboardMu.Unlock
+	}
+	return func() {}
+}
+
 func ensureWaylandKeyboardReady() error {
 	if runtime.GOOS != "linux" || DetectDisplayServer() != DisplayServerWayland {
 		return nil
@@ -399,6 +410,16 @@ func ensureWaylandKeyboardReady() error {
 		return fmt.Errorf("%w (code=%d)", errWaylandKeyboardUnavailable, code)
 	}
 }
+
+// KeyboardReady reports whether the active display backend can inject
+// keyboard input. On Wayland it performs a real virtual-keyboard probe.
+func KeyboardReady() error {
+	unlock := lockWaylandKeyboard()
+	defer unlock()
+	return ensureWaylandKeyboardReady()
+}
+
+func closeWaylandKeyboard() { C.robotgo_wayland_keyboard_close() }
 
 func checkKeyCodes(k string) (key C.MMKeyCode, err error) {
 	if k == "" {
@@ -467,6 +488,8 @@ func getFlagsFromValue(value []string) (flags C.MMKeyFlags) {
 }
 
 func keyTaps(k string, keyArr []string, pid int) error {
+	unlock := lockWaylandKeyboard()
+	defer unlock()
 	if err := ensureWaylandKeyboardReady(); err != nil {
 		return err
 	}
@@ -495,6 +518,8 @@ func getKeyDown(keyArr []string) (bool, []string) {
 }
 
 func keyTogglesB(k string, down bool, keyArr []string, pid int) error {
+	unlock := lockWaylandKeyboard()
+	defer unlock()
 	if err := ensureWaylandKeyboardReady(); err != nil {
 		return err
 	}
@@ -683,6 +708,22 @@ func CharCodeAt(s string, n int) rune {
 
 // UnicodeType tap the uint32 unicode
 func UnicodeType(str uint32, args ...int) {
+	_ = UnicodeTypeE(str, args...)
+}
+
+// UnicodeTypeE types one Unicode code point and reports backend availability
+// errors.
+func UnicodeTypeE(str uint32, args ...int) error {
+	unlock := lockWaylandKeyboard()
+	defer unlock()
+	if err := ensureWaylandKeyboardReady(); err != nil {
+		return err
+	}
+	unicodeType(str, args...)
+	return nil
+}
+
+func unicodeType(str uint32, args ...int) {
 	cstr := C.uint(str)
 	pid := 0
 	if len(args) > 0 {
@@ -719,10 +760,16 @@ func ToUC(text string) []string {
 }
 
 func inputUTF(str string) {
-	cstr := C.CString(str)
-	C.input_utf(cstr)
+	_ = inputUTFUnsafe(str)
+}
 
-	C.free(unsafe.Pointer(cstr))
+func inputUTFUnsafe(str string) error {
+	cstr := C.CString(str)
+	defer C.free(unsafe.Pointer(cstr))
+	if int(C.input_utf(cstr)) != 0 {
+		return errors.New("failed to inject UTF-8 text")
+	}
+	return nil
 }
 
 // TypeStr send a string (supported UTF-8)
@@ -734,6 +781,16 @@ func inputUTF(str string) {
 //	robotgo.TypeStr("abc@123, Hi galaxy, こんにちは")
 //	robotgo.TypeStr("To be or not to be, this is questions.", pid int)
 func TypeStr(str string, args ...int) {
+	_ = TypeStrE(str, args...)
+}
+
+// TypeStrE sends a UTF-8 string and reports backend or key injection errors.
+func TypeStrE(str string, args ...int) error {
+	unlock := lockWaylandKeyboard()
+	defer unlock()
+	if err := ensureWaylandKeyboardReady(); err != nil {
+		return err
+	}
 	var tm, tm1 = 0, 7
 
 	if len(args) > 1 {
@@ -753,25 +810,28 @@ func TypeStr(str string, args ...int) {
 			ru := []rune(strUc[i])
 			if len(ru) <= 1 {
 				ustr := uint32(CharCodeAt(strUc[i], 0))
-				UnicodeType(ustr, pid)
+				unicodeType(ustr, pid)
 			} else {
-				inputUTF(strUc[i])
+				if err := inputUTFUnsafe(strUc[i]); err != nil {
+					return err
+				}
 				MilliSleep(tm1)
 			}
 
 			MilliSleep(tm)
 		}
-		return
+		return nil
 	}
 
 	for i := 0; i < len([]rune(str)); i++ {
 		ustr := uint32(CharCodeAt(str, i))
-		UnicodeType(ustr, pid)
+		unicodeType(ustr, pid)
 		// if len(args) > 0 {
 		MilliSleep(tm)
 		// }
 	}
 	MilliSleep(KeySleep)
+	return nil
 }
 
 // PasteStr paste a string (support UTF-8),

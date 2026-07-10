@@ -1,5 +1,5 @@
-//go:build linux && wayland && integration
-// +build linux,wayland,integration
+//go:build cgo && linux && wayland && integration
+// +build cgo,linux,wayland,integration
 
 package robotgo
 

@@ -6,7 +6,6 @@ package portal
 import (
 	"context"
 	"errors"
-	"fmt"
 	"image"
 	"image/draw"
 	"os"
@@ -14,8 +13,7 @@ import (
 )
 
 /*
-#cgo linux pkg-config: libpipewire-0.3 libportal
-#include "../screengrab_c.h"
+#include "../../base/bitmap_free_c.h"
 #include <stdlib.h>
 #include <string.h>
 */
@@ -23,6 +21,12 @@ import "C"
 
 // CBitmap mirrors robotgo.CBitmap without importing the root package.
 type CBitmap = C.MMBitmapRef
+
+func freeCBitmap(bitmap CBitmap) {
+	if bitmap != nil {
+		C.destroyMMBitmap(bitmap)
+	}
+}
 
 func imageToCBitmap(img image.Image) (CBitmap, error) {
 	if img == nil {
@@ -74,20 +78,13 @@ func Capture(ctx context.Context, x, y, w, h int) (CBitmap, error) {
 	}
 
 	img, err := CaptureRegionImage(ctx, x, y, w, h)
-	if err == nil && img != nil {
-		return imageToCBitmap(img)
+	if err != nil {
+		return nil, err
 	}
-
-	// Optional compatibility fallback.
-	var cerr C.int32_t
-	bit := C.capture_screen_portal(C.int32_t(x), C.int32_t(y), C.int32_t(w), C.int32_t(h), 0, 0, &cerr)
-	if bit == nil {
-		if err != nil {
-			return nil, fmt.Errorf("portal screenshot failed: %v; C fallback failed: %d", err, int(cerr))
-		}
-		return nil, fmt.Errorf("portal capture failed: %d", int(cerr))
+	if img == nil {
+		return nil, errors.New("portal screenshot returned nil image")
 	}
-	return bit, nil
+	return imageToCBitmap(img)
 }
 
 // CaptureRegionImage is implemented in screenshot_portal.go.

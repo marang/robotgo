@@ -17,12 +17,18 @@
 #define ZWLR_SCREENCOPY_FRAME_V1_LINUX_DMABUF 5
 #define ZWLR_SCREENCOPY_FRAME_V1_BUFFER_DONE 6
 #define ZWLR_SCREENCOPY_FRAME_V1_READY 3
+#define ZWLR_SCREENCOPY_FRAME_V1_FAILED 4
 #define WL_BUFFER_RELEASE 0
+
+#define MOCK_MODE_NORMAL 0
+#define MOCK_MODE_STALL 1
+#define MOCK_MODE_FAIL_AFTER_DMABUF 2
 
 static struct wl_display *mock_display;
 static dev_t mock_dev;
 static uint64_t mock_modifier;
 static int use_shm;
+static uint32_t mock_mode;
 
 struct zwlr_screencopy_frame_v1_interface {
     void (*copy)(struct wl_client *, struct wl_resource *, struct wl_resource *);
@@ -52,6 +58,15 @@ static const struct zwlr_screencopy_frame_v1_interface frame_impl = {
 static void handle_capture_output(struct wl_client *client, struct wl_resource *resource, uint32_t id, struct wl_resource *output) {
     struct wl_resource *frame = wl_resource_create(client, &zwlr_screencopy_frame_v1_interface, 3, id);
     wl_resource_set_implementation(frame, &frame_impl, NULL, NULL);
+    if (mock_mode == MOCK_MODE_STALL) {
+        return;
+    }
+    if (mock_mode == MOCK_MODE_FAIL_AFTER_DMABUF) {
+        wl_resource_post_event(frame, ZWLR_SCREENCOPY_FRAME_V1_LINUX_DMABUF, WL_SHM_FORMAT_ARGB8888, 64, 64);
+        wl_resource_post_event(frame, ZWLR_SCREENCOPY_FRAME_V1_FAILED);
+        wl_display_flush_clients(mock_display);
+        return;
+    }
     if (use_shm) {
         wl_resource_post_event(frame, ZWLR_SCREENCOPY_FRAME_V1_BUFFER, WL_SHM_FORMAT_ARGB8888, 64, 64, 256);
     } else {
@@ -105,7 +120,10 @@ static void dmabuf_create_params(struct wl_client *client, struct wl_resource *r
 
 static void dmabuf_get_default_feedback(struct wl_client *client, struct wl_resource *resource, uint32_t id) {
     struct wl_resource *fb = wl_resource_create(client, &zwp_linux_dmabuf_feedback_v1_interface, 4, id);
-    wl_resource_set_implementation(fb, NULL, NULL, NULL);
+    static const struct zwp_linux_dmabuf_feedback_v1_interface feedback_impl = {
+        .destroy = params_destroy,
+    };
+    wl_resource_set_implementation(fb, &feedback_impl, NULL, NULL);
     struct {
         uint32_t format;
         uint32_t pad;
@@ -180,9 +198,10 @@ static void bind_shm(struct wl_client *client, void *data, uint32_t version, uin
     wl_resource_set_implementation(res, &shm_impl, NULL, NULL);
 }
 
-void run_mock_server(const char *socket, uint32_t maj, uint32_t min, uint64_t modifier) {
+void run_mock_server_mode(const char *socket, uint32_t maj, uint32_t min, uint64_t modifier, uint32_t mode) {
     mock_dev = makedev(maj, min);
     mock_modifier = modifier;
+    mock_mode = mode;
     use_shm = (maj == 0 && min == 0 && modifier == 0);
     mock_display = wl_display_create();
     wl_display_add_socket(mock_display, socket);
@@ -195,6 +214,11 @@ void run_mock_server(const char *socket, uint32_t maj, uint32_t min, uint64_t mo
     wl_global_create(mock_display, &zwlr_screencopy_manager_v1_interface, 3, NULL, bind_screencopy_manager);
     wl_display_run(mock_display);
     wl_display_destroy(mock_display);
+    mock_display = NULL;
+}
+
+void run_mock_server(const char *socket, uint32_t maj, uint32_t min, uint64_t modifier) {
+    run_mock_server_mode(socket, maj, min, modifier, MOCK_MODE_NORMAL);
 }
 
 void stop_mock_server(void) {

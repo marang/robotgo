@@ -202,62 +202,119 @@
                 (void)data; (void)seat; (void)name;
         }
 
-        static const struct wl_seat_listener wk_seat_listener = {
-                wk_seat_capabilities,
-                wk_seat_name
-        };
+	        static const struct wl_seat_listener wk_seat_listener = {
+	                wk_seat_capabilities,
+	                wk_seat_name
+	        };
 
-        static int ensure_wayland_keyboard(void) {
-                if (wk_vkeyboard) {
-                        wk_last_error = RG_WK_OK;
-                        return 0;
-                }
-                if (!wk_display) {
-                        wk_display = wl_display_connect(NULL);
+	        static void cleanup_wayland_keyboard(void) {
+	                if (wk_vkeyboard) {
+	                        zwp_virtual_keyboard_v1_destroy(wk_vkeyboard);
+	                        wk_vkeyboard = NULL;
+	                }
+	                if (wk_vk_manager) {
+	                        zwp_virtual_keyboard_manager_v1_destroy(wk_vk_manager);
+	                        wk_vk_manager = NULL;
+	                }
+	                if (wk_keyboard) {
+	                        wl_keyboard_destroy(wk_keyboard);
+	                        wk_keyboard = NULL;
+	                }
+	                if (wk_seat) {
+	                        wl_seat_destroy(wk_seat);
+	                        wk_seat = NULL;
+	                }
+	                if (wk_registry) {
+	                        wl_registry_destroy(wk_registry);
+	                        wk_registry = NULL;
+	                }
+	                if (wk_keymap) {
+	                        xkb_keymap_unref(wk_keymap);
+	                        wk_keymap = NULL;
+	                }
+	                if (wk_xkb_context) {
+	                        xkb_context_unref(wk_xkb_context);
+	                        wk_xkb_context = NULL;
+	                }
+	                if (wk_display) {
+	                        wl_display_disconnect(wk_display);
+	                        wk_display = NULL;
+	                }
+	                wk_modifiers = 0;
+	        }
+
+	        static int ensure_wayland_keyboard(void) {
+	                if (wk_vkeyboard && wk_keymap && wk_display) {
+	                        wk_last_error = RG_WK_OK;
+	                        return 0;
+	                }
+	                cleanup_wayland_keyboard();
+	                if (!wk_display) {
+	                        wk_display = wl_display_connect(NULL);
                         if (!wk_display) {
                                 wk_last_error = RG_WK_ERR_DISPLAY;
                                 return -1;
-                        }
-                        wk_registry = wl_display_get_registry(wk_display);
-                        wl_registry_add_listener(wk_registry, &wk_registry_listener, NULL);
-                        wl_display_roundtrip(wk_display);
-                        if (wk_seat) {
-                                wl_seat_add_listener(wk_seat, &wk_seat_listener, NULL);
-                                wl_display_roundtrip(wk_display);
-                        }
-                }
-                if (!wk_seat) {
-                        wk_last_error = RG_WK_ERR_NO_SEAT;
-                        return -1;
-                }
-                if (!wk_vk_manager) {
-                        wk_last_error = RG_WK_ERR_NO_MANAGER;
-                        return -1;
+	                        }
+	                        wk_registry = wl_display_get_registry(wk_display);
+	                        if (!wk_registry) {
+	                                wk_last_error = RG_WK_ERR_DISPLAY;
+	                                cleanup_wayland_keyboard();
+	                                return -1;
+	                        }
+	                        wl_registry_add_listener(wk_registry, &wk_registry_listener, NULL);
+	                        if (wl_display_roundtrip(wk_display) < 0) {
+	                                wk_last_error = RG_WK_ERR_DISPLAY;
+	                                cleanup_wayland_keyboard();
+	                                return -1;
+	                        }
+	                        if (wk_seat) {
+	                                wl_seat_add_listener(wk_seat, &wk_seat_listener, NULL);
+	                                if (wl_display_roundtrip(wk_display) < 0) {
+	                                        wk_last_error = RG_WK_ERR_DISPLAY;
+	                                        cleanup_wayland_keyboard();
+	                                        return -1;
+	                                }
+	                        }
+	                }
+	                if (!wk_seat) {
+	                        wk_last_error = RG_WK_ERR_NO_SEAT;
+	                        cleanup_wayland_keyboard();
+	                        return -1;
+	                }
+	                if (!wk_vk_manager) {
+	                        wk_last_error = RG_WK_ERR_NO_MANAGER;
+	                        cleanup_wayland_keyboard();
+	                        return -1;
                 }
                 wk_vkeyboard = zwp_virtual_keyboard_manager_v1_create_virtual_keyboard(wk_vk_manager, wk_seat);
-                if (!wk_vkeyboard) {
-                        wk_last_error = RG_WK_ERR_CREATE;
-                        return -1;
+	                if (!wk_vkeyboard) {
+	                        wk_last_error = RG_WK_ERR_CREATE;
+	                        cleanup_wayland_keyboard();
+	                        return -1;
                 }
                 wk_xkb_context = xkb_context_new(XKB_CONTEXT_NO_FLAGS);
-                if (!wk_xkb_context) {
-                        wk_last_error = RG_WK_ERR_XKB;
-                        return -1;
+	                if (!wk_xkb_context) {
+	                        wk_last_error = RG_WK_ERR_XKB;
+	                        cleanup_wayland_keyboard();
+	                        return -1;
                 }
                 wk_keymap = xkb_keymap_new_from_names(wk_xkb_context, NULL, XKB_KEYMAP_COMPILE_NO_FLAGS);
-                if (!wk_keymap) {
-                        wk_last_error = RG_WK_ERR_KEYMAP;
-                        return -1;
+	                if (!wk_keymap) {
+	                        wk_last_error = RG_WK_ERR_KEYMAP;
+	                        cleanup_wayland_keyboard();
+	                        return -1;
                 }
                 const char *keymap_str = xkb_keymap_get_as_string(wk_keymap, XKB_KEYMAP_FORMAT_TEXT_V1);
                 size_t size = strlen(keymap_str) + 1;
                 int fd = memfd_create("wk_keymap", MFD_CLOEXEC);
                 if (fd < 0 || write(fd, keymap_str, size) != (ssize_t)size) {
-                        if (fd >= 0) close(fd);
-                        wk_last_error = RG_WK_ERR_MEMFD;
-                        return -1;
-                }
-                zwp_virtual_keyboard_v1_keymap(wk_vkeyboard, XKB_KEYMAP_FORMAT_TEXT_V1, fd, size);
+	                        if (fd >= 0) close(fd);
+	                        wk_last_error = RG_WK_ERR_MEMFD;
+	                        cleanup_wayland_keyboard();
+	                        return -1;
+	                }
+	                zwp_virtual_keyboard_v1_keymap(wk_vkeyboard, XKB_KEYMAP_FORMAT_TEXT_V1, fd, size);
+	                close(fd);
                 wk_last_error = RG_WK_OK;
                 return 0;
         }
@@ -305,9 +362,13 @@
                 return wk_last_error;
         }
 
-        int robotgo_wayland_keyboard_backend_enabled(void) {
-                return 1;
-        }
+	        int robotgo_wayland_keyboard_backend_enabled(void) {
+	                return 1;
+	        }
+
+	        void robotgo_wayland_keyboard_close(void) {
+	                cleanup_wayland_keyboard();
+	        }
 
         static int WL_SEND_KEYSYM(xkb_keysym_t sym) {
                 if (ensure_wayland_keyboard() != 0 || sym == XKB_KEY_NoSymbol) {
@@ -416,6 +477,7 @@
 static inline int robotgo_wayland_keyboard_ready(void) { return 0; }
 static inline int robotgo_wayland_keyboard_last_error(void) { return 0; }
 static inline int robotgo_wayland_keyboard_backend_enabled(void) { return 0; }
+static inline void robotgo_wayland_keyboard_close(void) { }
 #endif
 
 #if defined(IS_MACOSX)

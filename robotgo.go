@@ -41,8 +41,6 @@ package robotgo
 #cgo linux CFLAGS: -I/usr/src
 #cgo linux,!wayland LDFLAGS: -L/usr/src -lm -lX11 -lXtst
 #cgo linux,wayland LDFLAGS: -L/usr/src -lm
-#cgo linux,portal pkg-config: libpipewire-0.3 libportal
-
 #cgo windows LDFLAGS: -lgdi32 -luser32
 //
 #include "screen/goScreen.h"
@@ -87,6 +85,7 @@ const (
 	envWaylandBackend        = "ROBOTGO_WAYLAND_BACKEND"
 	envPortalStubGreen       = "ROBOTGO_PORTAL_STUB_GREEN"
 	envForcePortal           = "ROBOTGO_FORCE_PORTAL"
+	envDisablePortal         = "ROBOTGO_DISABLE_PORTAL"
 	envPath                  = "PATH"
 	waylandBackendPortalName = "portal"
 	cmdWaylandInfo           = "wayland-info"
@@ -166,6 +165,21 @@ func hasCommand(name string) bool {
 	return err == nil
 }
 
+var (
+	portalAvailabilityProbe = func() bool {
+		if os.Getenv(envDisablePortal) != "" {
+			return false
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+		defer cancel()
+		available, err := portalpkg.Available(ctx)
+		return err == nil && available
+	}
+	waylandCaptureAvailabilityProbe = func() bool {
+		return int(C.robotgo_wayland_screencopy_ready()) != 0
+	}
+)
+
 // GetLinuxCapabilities reports runtime feature availability for Linux sessions.
 // On non-Linux platforms it returns a zero-value capability set.
 func GetLinuxCapabilities() LinuxCapabilities {
@@ -184,15 +198,35 @@ func GetLinuxCapabilities() LinuxCapabilities {
 	switch ds {
 	case DisplayServerWayland:
 		c.Compositor = detectWaylandCompositor()
-		c.Capture = FeatureCapability{
-			Available: true,
-			Fallback:  hasCommand("xdg-desktop-portal"),
-			Backend:   "wayland+screencopy",
-			Reason:    "wayland session detected",
-			Notes:     "native screencopy path (dmabuf/wl_shm) with optional portal fallback",
-		}
-		if c.Capture.Fallback {
-			c.Capture.Notes += "; portal detected"
+		nativeCapture := waylandCaptureAvailabilityProbe()
+		portalAvailable := portalAvailabilityProbe()
+		switch {
+		case nativeCapture:
+			c.Capture = FeatureCapability{
+				Available: true,
+				Fallback:  portalAvailable,
+				Backend:   "wayland+screencopy",
+				Reason:    "screencopy manager and compatible buffer backend detected",
+				Notes:     "native screencopy path (dmabuf/wl_shm)",
+			}
+			if portalAvailable {
+				c.Capture.Notes += "; desktop portal fallback detected"
+			}
+		case portalAvailable:
+			c.Capture = FeatureCapability{
+				Available: true,
+				Fallback:  false,
+				Backend:   "portal",
+				Reason:    "native screencopy unavailable; desktop portal service detected",
+				Notes:     "capture requires portal approval and may prompt the user",
+			}
+		default:
+			c.Capture = FeatureCapability{
+				Available: false,
+				Backend:   "",
+				Reason:    "no native screencopy protocol or desktop portal service detected",
+				Notes:     "build with -tags wayland for native wlroots capture or install a desktop portal",
+			}
 		}
 
 		size := C.getMainDisplaySize()
@@ -230,19 +264,37 @@ func GetLinuxCapabilities() LinuxCapabilities {
 			}
 		}
 
-		c.Keyboard = FeatureCapability{
-			Available: waylandKeyboardBackendCompiled(),
-			Fallback:  false,
-			Backend:   "wayland-virtual-keyboard",
-			Reason:    "compile-time availability of wayland keyboard backend",
-			Notes:     "wayland virtual keyboard backend compile-time availability",
+		if err := KeyboardReady(); err == nil {
+			c.Keyboard = FeatureCapability{
+				Available: true,
+				Fallback:  false,
+				Backend:   "wayland-virtual-keyboard",
+				Reason:    "zwp_virtual_keyboard_manager_v1 and a keyboard seat are available",
+				Notes:     "keyboard injection targets the focused Wayland surface",
+			}
+		} else {
+			c.Keyboard = FeatureCapability{
+				Available: false,
+				Backend:   "wayland-virtual-keyboard",
+				Reason:    err.Error(),
+				Notes:     "use a compositor with zwp_virtual_keyboard_manager_v1 or a portal RemoteDesktop backend",
+			}
 		}
-		c.Mouse = FeatureCapability{
-			Available: true,
-			Fallback:  false,
-			Backend:   "wayland-native",
-			Reason:    "wayland session detected",
-			Notes:     "wayland mouse backend expected in linux runtime path",
+		if err := MouseReady(); err == nil {
+			c.Mouse = FeatureCapability{
+				Available: true,
+				Fallback:  false,
+				Backend:   "wayland-virtual-pointer",
+				Reason:    "zwlr_virtual_pointer_v1 is available",
+				Notes:     "mouse injection available; Wayland does not expose the real global cursor position",
+			}
+		} else {
+			c.Mouse = FeatureCapability{
+				Available: false,
+				Backend:   "wayland-virtual-pointer",
+				Reason:    err.Error(),
+				Notes:     "use a compositor with zwlr_virtual_pointer_v1 or a portal RemoteDesktop backend",
+			}
 		}
 		c.Window = resolveWindowBackend().Capability()
 		if c.Window.Backend == "native" {
@@ -289,25 +341,47 @@ const (
 	BackendX11        CaptureBackend = "x11"
 )
 
-var lastBackend CaptureBackend
+var (
+	captureStateMu sync.RWMutex
+	lastBackend    CaptureBackend
+	waylandBackend = WaylandBackendAuto
+)
 
 // LastBackend returns the backend used for the last CaptureScreen call.
-func LastBackend() CaptureBackend { return lastBackend }
+func LastBackend() CaptureBackend {
+	captureStateMu.RLock()
+	defer captureStateMu.RUnlock()
+	return lastBackend
+}
+
+func setLastBackend(backend CaptureBackend) {
+	captureStateMu.Lock()
+	lastBackend = backend
+	captureStateMu.Unlock()
+}
 
 // WaylandBackend selects which Wayland backend to use at runtime.
 type WaylandBackend int
 
 const (
-	WaylandBackendAuto WaylandBackend = iota
-	WaylandBackendDmabuf
-	WaylandBackendWlShm
+	WaylandBackendAuto   WaylandBackend = -1
+	WaylandBackendDmabuf WaylandBackend = 0
+	WaylandBackendWlShm  WaylandBackend = 1
 )
-
-var waylandBackend = WaylandBackendAuto
 
 // SetWaylandBackend allows tests and callers to force a specific Wayland
 // capture backend.
-func SetWaylandBackend(b WaylandBackend) { waylandBackend = b }
+func SetWaylandBackend(b WaylandBackend) {
+	captureStateMu.Lock()
+	waylandBackend = b
+	captureStateMu.Unlock()
+}
+
+func selectedWaylandBackend() WaylandBackend {
+	captureStateMu.RLock()
+	defer captureStateMu.RUnlock()
+	return waylandBackend
+}
 
 var (
 	ErrWaylandDisplay  = errors.New("wayland connect failed")
@@ -689,6 +763,9 @@ func portalStubEnabled() bool {
 }
 
 func captureViaPortalScreenshot(x, y, w, h C.int32_t) (CBitmap, error) {
+	if os.Getenv(envDisablePortal) != "" {
+		return nil, ErrPortalFailed
+	}
 	img, err := portalpkg.CaptureRegionImage(context.Background(), int(x), int(y), int(w), int(h))
 	if err != nil {
 		captureDebugf("portal screenshot failed: %v", err)
@@ -701,7 +778,7 @@ func captureViaPortalScreenshot(x, y, w, h C.int32_t) (CBitmap, error) {
 	if cb == nil {
 		return nil, errors.New("portal screenshot conversion failed")
 	}
-	lastBackend = BackendPortal
+	setLastBackend(BackendPortal)
 	return cb, nil
 }
 
@@ -711,7 +788,7 @@ func captureViaPortalStub(x, y, w, h C.int32_t, displayId int, isPid int) (CBitm
 	if pbit == nil {
 		return nil, fmt.Errorf("portal capture failed: %d", int(perr))
 	}
-	lastBackend = BackendPortal
+	setLastBackend(BackendPortal)
 	return CBitmap(pbit), nil
 }
 
@@ -1094,7 +1171,7 @@ func CaptureScreen(args ...int) (CBitmap, error) {
 		}
 		switch ds {
 		case DisplayServerWayland:
-			backend := waylandBackend
+			backend := selectedWaylandBackend()
 			if envBackend, ok := waylandBackendFromEnv(); ok {
 				backend = envBackend
 			}
@@ -1126,7 +1203,7 @@ func CaptureScreen(args ...int) (CBitmap, error) {
 				}
 				return nil, err
 			}
-			lastBackend = BackendScreencopy
+			setLastBackend(BackendScreencopy)
 			return CBitmap(bit), nil
 		case DisplayServerX11:
 			if !x11MainDisplayAvailable() {
@@ -1136,7 +1213,7 @@ func CaptureScreen(args ...int) (CBitmap, error) {
 			if bit == nil {
 				return nil, errors.New("screen capture failed")
 			}
-			lastBackend = BackendX11
+			setLastBackend(BackendX11)
 			return CBitmap(bit), nil
 		default:
 			return nil, errors.New("no display server found")
@@ -1147,7 +1224,7 @@ func CaptureScreen(args ...int) (CBitmap, error) {
 	if bit == nil {
 		return nil, errors.New("screen capture failed")
 	}
-	lastBackend = BackendNone
+	setLastBackend(BackendNone)
 	return CBitmap(bit), nil
 }
 
@@ -1526,6 +1603,48 @@ func MoveScale(x, y int, displayId ...int) (int, int) {
 	return x, y
 }
 
+var waylandMouseMu sync.Mutex
+
+func lockWaylandMouse() func() {
+	if runtime.GOOS == "linux" && DetectDisplayServer() == DisplayServerWayland {
+		waylandMouseMu.Lock()
+		return waylandMouseMu.Unlock
+	}
+	return func() {}
+}
+
+func ensureWaylandMouseReady() error {
+	if runtime.GOOS != "linux" || DetectDisplayServer() != DisplayServerWayland {
+		return nil
+	}
+	if int(C.robotgo_wayland_mouse_backend_enabled()) == 0 {
+		return fmt.Errorf("%w: robotgo was built without the Wayland mouse backend (build with -tags wayland)", ErrNotSupported)
+	}
+	if int(C.robotgo_wayland_mouse_ready()) == 0 {
+		return fmt.Errorf("%w: zwlr_virtual_pointer_v1 is unavailable", ErrNotSupported)
+	}
+	return nil
+}
+
+// MouseReady reports whether the active display backend can inject mouse
+// input. On Wayland it performs a real virtual-pointer protocol probe.
+func MouseReady() error {
+	unlock := lockWaylandMouse()
+	defer unlock()
+	return ensureWaylandMouseReady()
+}
+
+// CloseWaylandInput releases persistent virtual-pointer and virtual-keyboard
+// protocol objects. A later input call reconnects lazily.
+func CloseWaylandInput() {
+	waylandMouseMu.Lock()
+	defer waylandMouseMu.Unlock()
+	waylandKeyboardMu.Lock()
+	defer waylandKeyboardMu.Unlock()
+	C.robotgo_wayland_mouse_close()
+	closeWaylandKeyboard()
+}
+
 // Move move the mouse to (x, y)
 //
 // Examples:
@@ -1533,6 +1652,17 @@ func MoveScale(x, y int, displayId ...int) (int, int) {
 //	robotgo.MouseSleep = 100  // 100 millisecond
 //	robotgo.Move(10, 10)
 func Move(x, y int, displayId ...int) {
+	_ = MoveE(x, y, displayId...)
+}
+
+// MoveE moves the mouse to (x, y) and reports backend availability errors.
+// Prefer it over Move when the caller must know whether injection succeeded.
+func MoveE(x, y int, displayId ...int) error {
+	unlock := lockWaylandMouse()
+	defer unlock()
+	if err := ensureWaylandMouseReady(); err != nil {
+		return err
+	}
 	x, y = MoveScale(x, y, displayId...)
 
 	cx := C.int32_t(x)
@@ -1540,6 +1670,7 @@ func Move(x, y int, displayId ...int) {
 	C.moveMouse(C.MMPointInt32Make(cx, cy))
 
 	MilliSleep(MouseSleep)
+	return nil
 }
 
 // Deprecated: use the DragSmooth(),
@@ -1547,6 +1678,11 @@ func Move(x, y int, displayId ...int) {
 // Drag drag the mouse to (x, y),
 // It's not valid now, use the DragSmooth()
 func Drag(x, y int, args ...string) {
+	unlock := lockWaylandMouse()
+	defer unlock()
+	if err := ensureWaylandMouseReady(); err != nil {
+		return
+	}
 	x, y = MoveScale(x, y)
 
 	var button C.MMMouseButton = C.LEFT_BUTTON
@@ -1587,6 +1723,11 @@ func DragSmooth(x, y int, args ...interface{}) {
 //	robotgo.MoveSmooth(10, 10)
 //	robotgo.MoveSmooth(10, 10, 1.0, 2.0)
 func MoveSmooth(x, y int, args ...interface{}) bool {
+	unlock := lockWaylandMouse()
+	defer unlock()
+	if err := ensureWaylandMouseReady(); err != nil {
+		return false
+	}
 	// if runtime.GOOS == "windows" {
 	// 	f := ScaleF()
 	// 	x, y = Scaled0(x, f), Scaled0(y, f)
@@ -1631,14 +1772,25 @@ func MoveArgs(x, y int) (int, int) {
 
 // MoveRelative move mouse with relative
 func MoveRelative(x, y int) {
+	_ = MoveRelativeE(x, y)
+}
+
+// MoveRelativeE moves the mouse by a relative delta and reports backend
+// availability errors.
+func MoveRelativeE(x, y int) error {
+	unlock := lockWaylandMouse()
+	defer unlock()
+	if err := ensureWaylandMouseReady(); err != nil {
+		return err
+	}
 	if runtime.GOOS == "linux" && DetectDisplayServer() == DisplayServerWayland {
 		dx, dy := x, y
 		dx, dy = MoveScale(dx, dy)
 		C.moveMouseRelative(C.int32_t(dx), C.int32_t(dy))
 		MilliSleep(MouseSleep)
-		return
+		return nil
 	}
-	Move(MoveArgs(x, y))
+	return MoveE(MoveArgs(x, y))
 }
 
 // MoveSmoothRelative move mouse smooth with relative
@@ -1649,6 +1801,17 @@ func MoveSmoothRelative(x, y int, args ...interface{}) {
 
 // Location get the mouse location position return x, y
 func Location() (int, int) {
+	x, y, _ := LocationE()
+	return x, y
+}
+
+// LocationE returns the current pointer position. Native Wayland does not
+// expose a trustworthy global pointer location, so it returns ErrNotSupported
+// instead of presenting the last injected position as an observation.
+func LocationE() (int, int, error) {
+	if runtime.GOOS == "linux" && DetectDisplayServer() == DisplayServerWayland {
+		return 0, 0, fmt.Errorf("%w: global pointer location is not exposed by Wayland", ErrNotSupported)
+	}
 	pos := C.location()
 	x := int(pos.x)
 	y := int(pos.y)
@@ -1658,7 +1821,7 @@ func Location() (int, int) {
 		x, y = Scaled0(x, f), Scaled0(y, f)
 	}
 
-	return x, y
+	return x, y, nil
 }
 
 // Click click the mouse button
@@ -1671,6 +1834,16 @@ func Location() (int, int) {
 //	robotgo.Click("right")
 //	robotgo.Click("wheelLeft")
 func Click(args ...interface{}) {
+	_ = ClickE(args...)
+}
+
+// ClickE clicks a mouse button and reports backend availability errors.
+func ClickE(args ...interface{}) error {
+	unlock := lockWaylandMouse()
+	defer unlock()
+	if err := ensureWaylandMouseReady(); err != nil {
+		return err
+	}
 	var (
 		button C.MMMouseButton = C.LEFT_BUTTON
 		double bool
@@ -1691,6 +1864,7 @@ func Click(args ...interface{}) {
 	}
 
 	MilliSleep(MouseSleep)
+	return nil
 }
 
 // MoveClick move and click the mouse
@@ -1726,6 +1900,11 @@ func MovesClick(x, y int, args ...interface{}) {
 //	robotgo.Toggle("left") // default is down
 //	robotgo.Toggle("left", "up")
 func Toggle(key ...interface{}) error {
+	unlock := lockWaylandMouse()
+	defer unlock()
+	if err := ensureWaylandMouseReady(); err != nil {
+		return err
+	}
 	var button C.MMMouseButton = C.LEFT_BUTTON
 	if len(key) > 0 {
 		button = CheckMouse(key[0].(string))
@@ -1761,6 +1940,16 @@ func MouseUp(key ...interface{}) error {
 //
 //	robotgo.Scroll(10, 10)
 func Scroll(x, y int, args ...int) {
+	_ = ScrollE(x, y, args...)
+}
+
+// ScrollE scrolls the mouse and reports backend availability errors.
+func ScrollE(x, y int, args ...int) error {
+	unlock := lockWaylandMouse()
+	defer unlock()
+	if err := ensureWaylandMouseReady(); err != nil {
+		return err
+	}
 	var msDelay = 10
 	if len(args) > 0 {
 		msDelay = args[0]
@@ -1771,6 +1960,7 @@ func Scroll(x, y int, args ...int) {
 
 	C.scrollMouseXY(cx, cy)
 	MilliSleep(MouseSleep + msDelay)
+	return nil
 }
 
 // ScrollDir scroll the mouse with direction to (x, "up")
