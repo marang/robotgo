@@ -89,6 +89,7 @@ const (
 	envDisablePortal         = "ROBOTGO_DISABLE_PORTAL"
 	envPath                  = "PATH"
 	waylandBackendPortalName = "portal"
+	waylandBackendScreenCast = "screencast"
 	cmdWaylandInfo           = "wayland-info"
 )
 
@@ -185,7 +186,35 @@ var (
 		defer cancel()
 		return inputportal.Probe(ctx)
 	}
+	screenCastCapabilityProbe = func() (portalpkg.ScreenCastCapability, error) {
+		ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+		defer cancel()
+		return portalpkg.ProbeScreenCast(ctx)
+	}
 )
+
+func screenCastCapabilityNotes() string {
+	if os.Getenv(envDisablePortal) != "" {
+		return "persistent ScreenCast capture is disabled by " + envDisablePortal
+	}
+	if !screenCastCaptureCompiled() {
+		return "persistent ScreenCast frame capture is not compiled; build with -tags pipewire"
+	}
+	capability, err := screenCastCapabilityProbe()
+	if err != nil {
+		return "persistent ScreenCast/PipeWire probe failed: " + err.Error()
+	}
+	if !capability.PipeWireReady {
+		return "ScreenCast portal detected, but the session bus cannot pass the PipeWire file descriptor"
+	}
+	if capability.Sources == 0 {
+		return fmt.Sprintf("ScreenCast interface version=%d advertises no capturable sources", capability.Version)
+	}
+	return fmt.Sprintf(
+		"persistent ScreenCast/PipeWire available (interface version=%d source-mask=%d cursor-mask=%d)",
+		capability.Version, capability.Sources, capability.CursorModes,
+	)
+}
 
 func probeRemoteDesktopCapability() FeatureCapability {
 	capability, err := remoteDesktopCapabilityProbe()
@@ -243,7 +272,16 @@ func GetLinuxCapabilities() LinuxCapabilities {
 		c.RemoteDesktop = probeRemoteDesktopCapability()
 		nativeCapture := waylandCaptureAvailabilityProbe()
 		portalAvailable := portalAvailabilityProbe()
+		persistentCapture := ScreenCastCaptureReady() == nil
 		switch {
+		case persistentCapture:
+			c.Capture = FeatureCapability{
+				Available: true,
+				Fallback:  nativeCapture || portalAvailable,
+				Backend:   "portal-screencast+pipewire",
+				Reason:    "an active ScreenCast session provides reusable PipeWire frames",
+				Notes:     screenCastCapabilityNotes(),
+			}
 		case nativeCapture:
 			c.Capture = FeatureCapability{
 				Available: true,
@@ -254,6 +292,9 @@ func GetLinuxCapabilities() LinuxCapabilities {
 			}
 			if portalAvailable {
 				c.Capture.Notes += "; desktop portal fallback detected"
+				if screenCastCaptureCompiled() {
+					c.Capture.Notes += "; " + screenCastCapabilityNotes()
+				}
 			}
 		case portalAvailable:
 			c.Capture = FeatureCapability{
@@ -261,7 +302,7 @@ func GetLinuxCapabilities() LinuxCapabilities {
 				Fallback:  false,
 				Backend:   "portal",
 				Reason:    "native screencopy unavailable; desktop portal service detected",
-				Notes:     "capture requires portal approval and may prompt the user",
+				Notes:     "capture requires portal approval and may prompt the user; " + screenCastCapabilityNotes(),
 			}
 		default:
 			c.Capture = FeatureCapability{
@@ -399,6 +440,7 @@ const (
 	BackendNone       CaptureBackend = ""
 	BackendScreencopy CaptureBackend = "screencopy"
 	BackendPortal     CaptureBackend = "portal"
+	BackendScreenCast CaptureBackend = "screencast"
 	BackendX11        CaptureBackend = "x11"
 )
 
@@ -843,6 +885,20 @@ func captureViaPortalScreenshot(x, y, w, h C.int32_t) (CBitmap, error) {
 	return cb, nil
 }
 
+func captureViaPersistentScreenCast(x, y, w, h C.int32_t) (CBitmap, error) {
+	img, err := captureViaScreenCast(context.Background(), int(x), int(y), int(w), int(h))
+	if err != nil {
+		captureDebugf("persistent ScreenCast failed: %v", err)
+		return nil, err
+	}
+	bitmap := ImgToCBitmap(img)
+	if bitmap == nil {
+		return nil, errors.New("ScreenCast frame conversion failed")
+	}
+	setLastBackend(BackendScreenCast)
+	return bitmap, nil
+}
+
 func captureViaPortalStub(x, y, w, h C.int32_t, displayId int, isPid int) (CBitmap, error) {
 	var perr C.int32_t
 	pbit := C.capture_screen_portal(x, y, w, h, C.int32_t(displayId), C.int8_t(isPid), &perr)
@@ -1215,7 +1271,16 @@ func CaptureScreen(args ...int) (CBitmap, error) {
 	if runtime.GOOS == "linux" {
 		// Allow tests or environments to force the portal backend regardless
 		// of the detected display server.
-		forcePortal := os.Getenv(envForcePortal) != "" || strings.EqualFold(strings.TrimSpace(os.Getenv(envWaylandBackend)), waylandBackendPortalName)
+		backendOverride := strings.ToLower(strings.TrimSpace(os.Getenv(envWaylandBackend)))
+		if backendOverride == waylandBackendScreenCast {
+			bitmap, err := captureViaPersistentScreenCast(x, y, w, h)
+			if err != nil {
+				return nil, errors.Join(ErrPortalFailed, err)
+			}
+			captureDebugf("forced persistent ScreenCast backend (rect=%d,%d %dx%d)", int(x), int(y), int(w), int(h))
+			return bitmap, nil
+		}
+		forcePortal := os.Getenv(envForcePortal) != "" || backendOverride == waylandBackendPortalName
 		if forcePortal {
 			if cb, pErr := captureViaPortalScreenshot(x, y, w, h); pErr == nil {
 				captureDebugf("forced portal screenshot backend (display=%d, rect=%d,%d %dx%d)", displayId, int(x), int(y), int(w), int(h))
@@ -1241,6 +1306,10 @@ func CaptureScreen(args ...int) (CBitmap, error) {
 			if bit == nil {
 				err := waylandErr(cerr)
 				captureDebugf("wayland screencopy failed: %v", err)
+				if cb, streamErr := captureViaPersistentScreenCast(x, y, w, h); streamErr == nil {
+					captureDebugf("fallback to persistent ScreenCast backend")
+					return cb, nil
+				}
 				// Try portal screenshot (real pixels) when available.
 				if cb, pErr := captureViaPortalScreenshot(x, y, w, h); pErr == nil {
 					captureDebugf("fallback to portal screenshot backend")
