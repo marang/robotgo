@@ -127,7 +127,25 @@ jobs:
       - name: Test explicit unsupported non-CGO build
         env:
           CGO_ENABLED: "0"
-        run: go test -v ./...
+        run: |
+          go test -v ./...
+          go test -tags ocr ./...
+  ocr:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@v6
+        with:
+          go-version: 1.25.x
+      - name: Install OCR development dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential pkg-config libleptonica-dev libtesseract-dev
+      - name: Test OCR build variant
+        run: go test -tags ocr ./...
   wayland-integration:
     runs-on: ubuntu-latest
     steps:

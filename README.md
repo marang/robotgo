@@ -73,7 +73,7 @@ workflow.
 | Windows | CGO-enabled default build | Native mouse, keyboard, capture, window, and process paths |
 | Linux/X11 | CGO-enabled default build | X11/XTest input, capture, window, and process paths |
 | Linux/Wayland | `-tags wayland` for native protocols; add `pipewire` for persistent ScreenCast frames | Native wlroots capture/input where compositor protocols exist, one-shot Screenshot fallback, reusable ScreenCast/PipeWire capture, explicit RemoteDesktop portal sessions, capability-aware window support |
-| Any platform without CGO | `CGO_ENABLED=0` | The API compiles; native GUI operations return `ErrNotSupported`, while explicit Linux RemoteDesktop portal sessions provide a limited Pure-Go input path |
+| Any platform without CGO | `CGO_ENABLED=0` | The portable high-level API remains available; native GUI operations return `ErrNotSupported`, while explicit Linux RemoteDesktop portal sessions provide a limited Pure-Go input path |
 
 Wayland compositors intentionally restrict global automation. GNOME and KDE can
 use consent-aware Screenshot and RemoteDesktop portal paths. The explicit
@@ -154,7 +154,9 @@ Package names differ on other distributions. Optional runtime integrations:
 - `wlrctl`, `swaymsg`, or `hyprctl` enables the compositor-specific window
   operations documented in the [Wayland status](docs/wayland-tasks.md).
 - `zenity` or `kdialog` enables native-style alert dialogs on Linux.
-- Tesseract is required only for the optional OCR helpers.
+- Tesseract is required only for the optional OCR helpers. The default helper
+  invokes the `tesseract` command; `-tags ocr` selects the in-process Gosseract
+  backend and additionally requires Tesseract and Leptonica development files.
 
 `libpng` is not a direct RobotGo build requirement; PNG/JPEG image handling is
 implemented through Go image packages in the current module.
@@ -214,6 +216,27 @@ unable to report all backend failures, so new reliability-sensitive code should
 use variants such as `MoveE`, `MoveRelativeE`, `ClickE`, `ScrollE`, `LocationE`,
 `TypeStrE`, `UnicodeTypeE`, and the error-returning window APIs.
 
+Low-level helpers whose signatures directly expose `C.*` types remain CGO-only.
+Portable callers should use `Bitmap`, `CHex`, `Handle`, the error-returning APIs,
+and the high-level capture, input, and window functions instead.
+
+For concurrent programs, change process-wide legacy defaults atomically with
+`GetRuntimeConfig` and `SetRuntimeConfig`. Direct assignments to `MouseSleep`,
+`KeySleep`, `DisplayID`, `NotPid`, and `Scale` remain compatible for startup
+configuration but must not race with active operations.
+
+When converting caller-provided raw pixels, create an owned value with
+`NewBitmap`. Conversion variants such as `ToRGBAGoE`, `ToCBitmapE`,
+`ImgToCBitmapE`, and `ByteToCBitmapE` validate dimensions, layout, buffer size,
+and decode errors; their legacy counterparts remain available for compatibility.
+
+Potentially blocking helpers have context-aware variants: `ReadAllContext` and
+`WriteAllContext` also select the regular or primary Unix clipboard explicitly;
+`GetTextContext` and `GetTextImgContext` bound command-backed OCR execution and
+temporary-file cleanup. With `-tags ocr`, cancellation is observed before and
+after the synchronous in-process Tesseract call; that native call cannot itself
+be interrupted.
+
 ## Linux display backends
 
 ### X11
@@ -227,6 +250,10 @@ go build ./...
 An X11 session requires `DISPLAY` and an accessible X server. RobotGo does not
 silently route a Wayland-primary operation through X11 merely because Xwayland
 is present.
+
+Error-returning window APIs no longer report success for native operations that
+have no implementation. In particular, the current X11 minimize/maximize path
+returns `ErrNotSupported` instead of silently doing nothing.
 
 ### Wayland
 
