@@ -16,8 +16,8 @@
 #define ZWLR_SCREENCOPY_FRAME_V1_BUFFER 0
 #define ZWLR_SCREENCOPY_FRAME_V1_LINUX_DMABUF 5
 #define ZWLR_SCREENCOPY_FRAME_V1_BUFFER_DONE 6
-#define ZWLR_SCREENCOPY_FRAME_V1_READY 3
-#define ZWLR_SCREENCOPY_FRAME_V1_FAILED 4
+#define ZWLR_SCREENCOPY_FRAME_V1_READY 2
+#define ZWLR_SCREENCOPY_FRAME_V1_FAILED 3
 #define WL_BUFFER_RELEASE 0
 
 #define MOCK_MODE_NORMAL 0
@@ -46,18 +46,27 @@ static void frame_copy(struct wl_client *client, struct wl_resource *resource, s
     wl_resource_post_event(resource, ZWLR_SCREENCOPY_FRAME_V1_READY, 0, 0, 0);
     wl_resource_post_event(buffer, WL_BUFFER_RELEASE);
     wl_display_flush_clients(mock_display);
-    wl_display_terminate(mock_display);
+}
+
+static void frame_destroy(struct wl_client *client, struct wl_resource *resource) {
+    wl_resource_destroy(resource);
+}
+
+static void frame_resource_destroy(struct wl_resource *resource) {
+    if (mock_display) {
+        wl_display_terminate(mock_display);
+    }
 }
 
 static const struct zwlr_screencopy_frame_v1_interface frame_impl = {
     .copy = frame_copy,
     .copy_with_damage = NULL,
-    .destroy = NULL,
+    .destroy = frame_destroy,
 };
 
 static void handle_capture_output(struct wl_client *client, struct wl_resource *resource, uint32_t id, struct wl_resource *output) {
     struct wl_resource *frame = wl_resource_create(client, &zwlr_screencopy_frame_v1_interface, 3, id);
-    wl_resource_set_implementation(frame, &frame_impl, NULL, NULL);
+    wl_resource_set_implementation(frame, &frame_impl, NULL, frame_resource_destroy);
     if (mock_mode == MOCK_MODE_STALL) {
         return;
     }
@@ -85,13 +94,6 @@ static void bind_screencopy_manager(struct wl_client *client, void *data, uint32
     struct wl_resource *res = wl_resource_create(client, &zwlr_screencopy_manager_v1_interface, 3, id);
     wl_resource_set_implementation(res, &screencopy_impl, NULL, NULL);
 }
-
-struct zwp_linux_buffer_params_v1_interface {
-    void (*destroy)(struct wl_client *, struct wl_resource *);
-    void (*add)(struct wl_client *, struct wl_resource *, int32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t);
-    void (*create)(struct wl_client *, struct wl_resource *, int32_t, int32_t, uint32_t, uint32_t);
-    void (*create_immed)(struct wl_client *, struct wl_resource *, uint32_t, int32_t, int32_t, uint32_t, uint32_t);
-};
 
 static void params_destroy(struct wl_client *client, struct wl_resource *resource) {
     wl_resource_destroy(resource);
@@ -130,7 +132,13 @@ static void dmabuf_get_default_feedback(struct wl_client *client, struct wl_reso
         uint64_t modifier;
     } entry = {WL_SHM_FORMAT_ARGB8888, 0, mock_modifier};
     int fd = memfd_create("tbl", MFD_CLOEXEC);
-    write(fd, &entry, sizeof(entry));
+    if (fd < 0 || write(fd, &entry, sizeof(entry)) != (ssize_t)sizeof(entry)) {
+        if (fd >= 0) {
+            close(fd);
+        }
+        wl_resource_post_no_memory(fb);
+        return;
+    }
     wl_resource_post_event(fb, ZWP_LINUX_DMABUF_FEEDBACK_V1_FORMAT_TABLE, fd, sizeof(entry));
     close(fd);
     struct wl_array arr;

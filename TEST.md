@@ -73,6 +73,65 @@ Prerequisites:
 - Linux
 - Wayland runtime available
 
+### RemoteDesktop portal input
+
+Purpose:
+
+- Hermetic RemoteDesktop request/session lifecycle coverage
+- Consent response, denial, timeout, portal closure, device grants, and cleanup
+- Direct pointer and keyboard notification dispatch
+- Shared RemoteDesktop/ScreenCast negotiation, stream metadata, absolute
+  pointer coordinates, optional touch, and restore-token handling
+- High-level CGO and non-CGO fallback dispatch after explicit consent
+- CGO/non-CGO parity for mouse delays and explicit consent-timeout diagnostics
+
+Command:
+
+```bash
+go test -race ./input/portal
+```
+
+Prerequisites:
+
+- No live portal is required for the hermetic suite.
+- The runnable `examples/remote_desktop_input` probe requires Linux plus
+  `xdg-desktop-portal` and a backend that implements RemoteDesktop.
+- `-connect` and `-demo` may show a consent dialog; `-demo` injects input only
+  after approval. Add `-screen` to demonstrate absolute stream coordinates or
+  `-touch` to request and demonstrate touchscreen input. Restore-token contents
+  are intentionally never printed.
+
+Opt-in real portal lifecycle test:
+
+```bash
+ROBOTGO_REMOTE_DESKTOP_E2E=1 go test -tags "integration" ./input/portal -run TestRemoteDesktopPortalRuntime -v
+```
+
+The test opens the lower-level portal session directly and exercises relative
+and absolute pointer input, a modifier press/release, optional touch, and
+deterministic close. It intentionally does not use the high-level fallback APIs,
+so an available native Wayland backend cannot mask a broken portal path. Default
+hosted CI only compile-checks this harness because it has no real desktop consent
+session. `.github/workflows/remote-desktop-e2e.yml` runs the test without skipping
+on explicitly provisioned self-hosted GNOME, KDE, and wlroots Wayland runners,
+once per desktop. The portal client is pure Go and therefore independent of the
+root package's CGO setting; CGO and non-CGO high-level fallback dispatch remains
+covered by the hermetic root tests. The workflow can be triggered
+manually at any time. Set the repository variable
+`ROBOTGO_REMOTE_DESKTOP_E2E=1` after those runners are provisioned to run the
+same matrix on pull requests and pushes to `main`, where it can be configured as
+a required check for branches in this repository. Fork pull requests are
+intentionally excluded because untrusted code must never execute on persistent
+self-hosted desktop runners. Configure the `remote-desktop-e2e` GitHub
+Environment with required reviewers and use ephemeral, network-isolated runners.
+The workflow uses read-only permissions, does not persist checkout credentials,
+and verifies that each runner's `XDG_CURRENT_DESKTOP` matches its matrix label
+before injecting input.
+
+Runtime outcomes and missing infrastructure are recorded in
+`docs/compatibility/wayland-input.md`; an unavailable runner is not counted as a
+passing compositor.
+
 ### `waylandint` (Keyboard integration harness)
 
 Purpose:

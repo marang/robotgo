@@ -1,0 +1,75 @@
+name: RemoteDesktop E2E
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: remote-desktop-e2e-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  portal-input:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (vars.ROBOTGO_REMOTE_DESKTOP_E2E == '1' &&
+      (github.event_name == 'push' ||
+      github.event.pull_request.head.repo.full_name == github.repository))
+    name: ${{ matrix.desktop }} portal input
+    environment: remote-desktop-e2e
+    strategy:
+      fail-fast: false
+      matrix:
+        desktop: [gnome, kde, wlroots]
+    runs-on: [self-hosted, linux, wayland, "${{ matrix.desktop }}"]
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: 1.25.x
+      - name: Verify interactive Wayland session
+        shell: bash
+        run: |
+          test -n "$WAYLAND_DISPLAY"
+          test -n "$DBUS_SESSION_BUS_ADDRESS"
+          test -n "$XDG_CURRENT_DESKTOP"
+          desktop="${XDG_CURRENT_DESKTOP,,}"
+          case "${{ matrix.desktop }}:$desktop" in
+            gnome:*gnome*|kde:*kde*|kde:*plasma*) ;;
+            wlroots:*sway*|wlroots:*hyprland*|wlroots:*wayfire*|wlroots:*river*|wlroots:*labwc*|wlroots:*dwl*|wlroots:*gamescope*) ;;
+            *) echo "runner desktop '$XDG_CURRENT_DESKTOP' does not match label '${{ matrix.desktop }}'" >&2; exit 1 ;;
+          esac
+      - name: Run real RemoteDesktop portal input test
+        env:
+          ROBOTGO_REMOTE_DESKTOP_E2E: "1"
+        shell: bash
+        run: |
+          mkdir -p "$RUNNER_TEMP/remote-desktop-report"
+          {
+            date --iso-8601=seconds
+            go version
+            uname -srm
+            printf 'desktop=%s\nwayland_display=%s\n' "$XDG_CURRENT_DESKTOP" "$WAYLAND_DISPLAY"
+            busctl --user get-property org.freedesktop.portal.Desktop \
+              /org/freedesktop/portal/desktop org.freedesktop.portal.RemoteDesktop version || true
+            busctl --user get-property org.freedesktop.portal.Desktop \
+              /org/freedesktop/portal/desktop org.freedesktop.portal.ScreenCast version || true
+          } > "$RUNNER_TEMP/remote-desktop-report/environment.txt"
+          go test -count=1 -tags "integration" ./input/portal \
+            -run '^TestRemoteDesktopPortalRuntime$' -v 2>&1 | \
+            tee "$RUNNER_TEMP/remote-desktop-report/test.log"
+      - name: Upload compatibility evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: remote-desktop-${{ matrix.desktop }}
+          path: ${{ runner.temp }}/remote-desktop-report

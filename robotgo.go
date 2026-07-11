@@ -72,6 +72,7 @@ import (
 	"time"
 	"unsafe"
 
+	inputportal "github.com/marang/robotgo/input/portal"
 	portalpkg "github.com/marang/robotgo/screen/portal"
 	"github.com/vcaesar/tt"
 )
@@ -142,6 +143,7 @@ type LinuxCapabilities struct {
 	Bounds         FeatureCapability
 	Keyboard       FeatureCapability
 	Mouse          FeatureCapability
+	RemoteDesktop  FeatureCapability
 	Window         FeatureCapability
 	Hook           FeatureCapability
 	Events         FeatureCapability
@@ -178,7 +180,47 @@ var (
 	waylandCaptureAvailabilityProbe = func() bool {
 		return int(C.robotgo_wayland_screencopy_ready()) != 0
 	}
+	remoteDesktopCapabilityProbe = func() (inputportal.Capability, error) {
+		ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+		defer cancel()
+		return inputportal.Probe(ctx)
+	}
 )
+
+func probeRemoteDesktopCapability() FeatureCapability {
+	capability, err := remoteDesktopCapabilityProbe()
+	if err != nil && capability.ScreenCastIssue == "" {
+		return FeatureCapability{
+			Available: false,
+			Backend:   "portal-remote-desktop",
+			Reason:    err.Error(),
+			Notes:     "install xdg-desktop-portal with a backend that implements RemoteDesktop",
+		}
+	}
+	available := capability.AvailableDevices != 0
+	reason := "RemoteDesktop portal advertises input devices"
+	if !available {
+		reason = "RemoteDesktop portal advertises no input devices"
+	}
+	notes := fmt.Sprintf(
+		"interface version=%d device-mask=%d; screencast version=%d source-mask=%d cursor-mask=%d; explicit consent session available through input/portal",
+		capability.Version,
+		capability.AvailableDevices,
+		capability.ScreenCastVersion,
+		capability.AvailableSources,
+		capability.AvailableCursorModes,
+	)
+	if capability.ScreenCastIssue != "" {
+		notes += "; ScreenCast capability degraded: " + capability.ScreenCastIssue
+	}
+	return FeatureCapability{
+		Available: available,
+		Fallback:  false,
+		Backend:   "portal-remote-desktop",
+		Reason:    reason,
+		Notes:     notes,
+	}
+}
 
 // GetLinuxCapabilities reports runtime feature availability for Linux sessions.
 // On non-Linux platforms it returns a zero-value capability set.
@@ -198,6 +240,7 @@ func GetLinuxCapabilities() LinuxCapabilities {
 	switch ds {
 	case DisplayServerWayland:
 		c.Compositor = detectWaylandCompositor()
+		c.RemoteDesktop = probeRemoteDesktopCapability()
 		nativeCapture := waylandCaptureAvailabilityProbe()
 		portalAvailable := portalAvailabilityProbe()
 		switch {
@@ -264,7 +307,7 @@ func GetLinuxCapabilities() LinuxCapabilities {
 			}
 		}
 
-		if err := KeyboardReady(); err == nil {
+		if err := nativeWaylandKeyboardReady(); err == nil {
 			c.Keyboard = FeatureCapability{
 				Available: true,
 				Fallback:  false,
@@ -272,15 +315,24 @@ func GetLinuxCapabilities() LinuxCapabilities {
 				Reason:    "zwp_virtual_keyboard_manager_v1 and a keyboard seat are available",
 				Notes:     "keyboard injection targets the focused Wayland surface",
 			}
+		} else if portalErr := RemoteDesktopInputReady(RemoteDesktopKeyboard); portalErr == nil {
+			c.Keyboard = FeatureCapability{
+				Available: true,
+				Fallback:  true,
+				Backend:   "portal-remote-desktop",
+				Reason:    "active RemoteDesktop portal session grants keyboard input",
+				Notes:     "consent-aware portal keyboard session is active",
+			}
 		} else {
 			c.Keyboard = FeatureCapability{
 				Available: false,
+				Fallback:  c.RemoteDesktop.Available,
 				Backend:   "wayland-virtual-keyboard",
 				Reason:    err.Error(),
-				Notes:     "use a compositor with zwp_virtual_keyboard_manager_v1 or a portal RemoteDesktop backend",
+				Notes:     "use native zwp_virtual_keyboard_manager_v1 or call StartRemoteDesktopInput for a consent-aware portal session",
 			}
 		}
-		if err := MouseReady(); err == nil {
+		if err := nativeWaylandMouseReady(); err == nil {
 			c.Mouse = FeatureCapability{
 				Available: true,
 				Fallback:  false,
@@ -288,12 +340,21 @@ func GetLinuxCapabilities() LinuxCapabilities {
 				Reason:    "zwlr_virtual_pointer_v1 is available",
 				Notes:     "mouse injection available; Wayland does not expose the real global cursor position",
 			}
+		} else if portalErr := RemoteDesktopInputReady(RemoteDesktopPointer); portalErr == nil {
+			c.Mouse = FeatureCapability{
+				Available: true,
+				Fallback:  true,
+				Backend:   "portal-remote-desktop",
+				Reason:    "active RemoteDesktop portal session grants pointer input",
+				Notes:     "relative motion, button, and scroll fallback is active; global position remains unavailable",
+			}
 		} else {
 			c.Mouse = FeatureCapability{
 				Available: false,
+				Fallback:  c.RemoteDesktop.Available,
 				Backend:   "wayland-virtual-pointer",
 				Reason:    err.Error(),
-				Notes:     "use a compositor with zwlr_virtual_pointer_v1 or a portal RemoteDesktop backend",
+				Notes:     "use native zwlr_virtual_pointer_v1 or call StartRemoteDesktopInput for a consent-aware portal session",
 			}
 		}
 		c.Window = resolveWindowBackend().Capability()
@@ -1629,6 +1690,17 @@ func ensureWaylandMouseReady() error {
 // MouseReady reports whether the active display backend can inject mouse
 // input. On Wayland it performs a real virtual-pointer protocol probe.
 func MouseReady() error {
+	nativeErr := nativeWaylandMouseReady()
+	if nativeErr == nil {
+		return nil
+	}
+	if used, err := withRemoteDesktopInput(inputportal.DevicePointer, func(remoteDesktopInputSession) error { return nil }); used {
+		return err
+	}
+	return nativeErr
+}
+
+func nativeWaylandMouseReady() error {
 	unlock := lockWaylandMouse()
 	defer unlock()
 	return ensureWaylandMouseReady()
@@ -1643,6 +1715,7 @@ func CloseWaylandInput() {
 	defer waylandKeyboardMu.Unlock()
 	C.robotgo_wayland_mouse_close()
 	closeWaylandKeyboard()
+	_ = CloseRemoteDesktopInput()
 }
 
 // Move move the mouse to (x, y)
@@ -1660,8 +1733,12 @@ func Move(x, y int, displayId ...int) {
 func MoveE(x, y int, displayId ...int) error {
 	unlock := lockWaylandMouse()
 	defer unlock()
-	if err := ensureWaylandMouseReady(); err != nil {
-		return err
+	if nativeErr := ensureWaylandMouseReady(); nativeErr != nil {
+		used, err := tryRemoteDesktopMoveAbsolute(x, y, displayId)
+		if used {
+			return finishRemoteDesktopMouseEvent(err, 0)
+		}
+		return nativeErr
 	}
 	x, y = MoveScale(x, y, displayId...)
 
@@ -1780,8 +1857,12 @@ func MoveRelative(x, y int) {
 func MoveRelativeE(x, y int) error {
 	unlock := lockWaylandMouse()
 	defer unlock()
-	if err := ensureWaylandMouseReady(); err != nil {
-		return err
+	if nativeErr := ensureWaylandMouseReady(); nativeErr != nil {
+		used, err := tryRemoteDesktopMoveRelative(x, y)
+		if used {
+			return finishRemoteDesktopMouseEvent(err, 0)
+		}
+		return nativeErr
 	}
 	if runtime.GOOS == "linux" && DetectDisplayServer() == DisplayServerWayland {
 		dx, dy := x, y
@@ -1841,20 +1922,26 @@ func Click(args ...interface{}) {
 func ClickE(args ...interface{}) error {
 	unlock := lockWaylandMouse()
 	defer unlock()
-	if err := ensureWaylandMouseReady(); err != nil {
-		return err
-	}
 	var (
 		button C.MMMouseButton = C.LEFT_BUTTON
+		name                   = "left"
 		double bool
 	)
 
 	if len(args) > 0 {
-		button = CheckMouse(args[0].(string))
+		name = args[0].(string)
+		button = CheckMouse(name)
 	}
 
 	if len(args) > 1 {
 		double = args[1].(bool)
+	}
+	if nativeErr := ensureWaylandMouseReady(); nativeErr != nil {
+		used, err := tryRemoteDesktopClick(name, double)
+		if used {
+			return finishRemoteDesktopMouseEvent(err, 0)
+		}
+		return nativeErr
 	}
 
 	if !double {
@@ -1902,15 +1989,21 @@ func MovesClick(x, y int, args ...interface{}) {
 func Toggle(key ...interface{}) error {
 	unlock := lockWaylandMouse()
 	defer unlock()
-	if err := ensureWaylandMouseReady(); err != nil {
-		return err
-	}
 	var button C.MMMouseButton = C.LEFT_BUTTON
+	name := "left"
 	if len(key) > 0 {
-		button = CheckMouse(key[0].(string))
+		name = key[0].(string)
+		button = CheckMouse(name)
 	}
 
 	down := len(key) <= 1 || key[1].(string) != "up"
+	if nativeErr := ensureWaylandMouseReady(); nativeErr != nil {
+		used, err := tryRemoteDesktopToggle(name, down)
+		if used {
+			return err
+		}
+		return nativeErr
+	}
 	C.toggleMouse(C.bool(down), button)
 	if len(key) > 2 {
 		MilliSleep(MouseSleep)
@@ -1947,12 +2040,16 @@ func Scroll(x, y int, args ...int) {
 func ScrollE(x, y int, args ...int) error {
 	unlock := lockWaylandMouse()
 	defer unlock()
-	if err := ensureWaylandMouseReady(); err != nil {
-		return err
-	}
 	var msDelay = 10
 	if len(args) > 0 {
 		msDelay = args[0]
+	}
+	if nativeErr := ensureWaylandMouseReady(); nativeErr != nil {
+		used, err := tryRemoteDesktopScroll(x, y)
+		if used {
+			return finishRemoteDesktopMouseEvent(err, msDelay)
+		}
+		return nativeErr
 	}
 
 	cx := C.int(x)

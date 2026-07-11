@@ -1,605 +1,385 @@
-# Robotgo
+# RobotGo
 
-<!--<img align="right" src="https://raw.githubusercontent.com/go-vgo/robotgo/master/logo.jpg">-->
-<!--[![Build Status](https://travis-ci.org/go-vgo/robotgo.svg)](https://travis-ci.org/go-vgo/robotgo)
-[![codecov](https://codecov.io/gh/go-vgo/robotgo/branch/master/graph/badge.svg)](https://codecov.io/gh/go-vgo/robotgo)-->
-<!--<a href="https://circleci.com/gh/go-vgo/robotgo/tree/dev"><img src="https://img.shields.io/circleci/project/go-vgo/robotgo/dev.svg" alt="Build Status"></a>-->
+[![CI: main](https://github.com/marang/robotgo/actions/workflows/go.yml/badge.svg?branch=main)](https://github.com/marang/robotgo/actions/workflows/go.yml?query=branch%3Amain)
+[![Go Reference](https://pkg.go.dev/badge/github.com/marang/robotgo.svg)](https://pkg.go.dev/github.com/marang/robotgo)
 
-[![Build Status](https://github.com/go-vgo/robotgo/workflows/Go/badge.svg)](https://github.com/go-vgo/robotgo/commits/master)
-[![CircleCI Status](https://circleci.com/gh/go-vgo/robotgo.svg?style=shield)](https://circleci.com/gh/go-vgo/robotgo)
-[![Build Status](https://travis-ci.org/go-vgo/robotgo.svg)](https://travis-ci.org/go-vgo/robotgo)
-![Appveyor](https://ci.appveyor.com/api/projects/status/github/go-vgo/robotgo?branch=master&svg=true)
-[![Go Report Card](https://goreportcard.com/badge/github.com/go-vgo/robotgo)](https://goreportcard.com/report/github.com/go-vgo/robotgo)
-[![GoDoc](https://pkg.go.dev/badge/github.com/go-vgo/robotgo?status.svg)](https://pkg.go.dev/github.com/go-vgo/robotgo?tab=doc)
-[![GitHub release](https://img.shields.io/github/release/go-vgo/robotgo.svg)](https://github.com/go-vgo/robotgo/releases/latest)
-[![Join the chat at https://gitter.im/go-vgo/robotgo](https://badges.gitter.im/Join%20Chat.svg)](https://gitter.im/go-vgo/robotgo?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=badge)
+<p align="center">
+  <img src="docs/assets/robotgo-hero.png" alt="RobotGo desktop automation" width="100%">
+</p>
 
-<!-- [![Release](https://github-release-version.herokuapp.com/github/go-vgo/robotgo/release.svg?style=flat)](https://github.com/go-vgo/robotgo/releases/latest) -->
-<!-- <a href="https://github.com/go-vgo/robotgo/releases"><img src="https://img.shields.io/badge/%20version%20-%206.0.0%20-blue.svg?style=flat-square" alt="Releases"></a> -->
+RobotGo is a cross-platform desktop automation library for Go. It controls the
+mouse and keyboard, captures screens and pixels, manages windows and processes,
+and converts images and bitmaps.
 
-> Golang Desktop Automation. Control the mouse, keyboard, read the screen, process, Window Handle, image and bitmap and global event listener.
+## About this fork
 
-RobotGo supports Mac, Windows, and Linux(X11); and robotgo supports arm64 and x86-amd64.
+> **This is `marang/robotgo`, not the original `go-vgo/robotgo` module.** Use
+> `github.com/marang/robotgo` in `go get` and imports. The two repositories are
+> separate Go modules.
 
-## Contents
+This fork has diverged substantially from the original implementation, chiefly
+to make Linux automation Wayland-first without weakening macOS, Windows, or
+Linux/X11 behavior. Relevant new upstream features are still reviewed
+selectively, then adapted, hardened, and tested against this repository's
+backend and error contracts rather than merged blindly.
 
-- [Docs](#docs)
-- [Binding](#binding)
-- [Requirements](#requirements)
-- [Installation](#installation)
-- [Update](#update)
-- [Examples](#examples)
-- [Type Conversion and keys](https://github.com/go-vgo/robotgo/blob/master/docs/keys.md)
-- [Cross-Compiling](https://github.com/go-vgo/robotgo/blob/master/docs/install.md#crosscompiling)
-- [Authors](#authors)
-- [Plans](#plans)
-- [Donate](#donate)
-- [Contributors](#contributors)
-- [License](#license)
+Current technical differences include:
 
-## Docs
+- Native Wayland `wlr-screencopy` capture with DMA-BUF/`wl_shm` selection and
+  an explicit freedesktop Screenshot portal fallback.
+- A consent-aware RemoteDesktop portal session client for explicit GNOME/KDE
+  pointer and keyboard injection, with cancellable lifecycle and cleanup.
+- Error-returning mouse, keyboard, capture, and window APIs alongside legacy
+  compatibility APIs.
+- Runtime capability reporting that probes live protocols and services and
+  explains backend choice, fallback, and unsupported behavior.
+- Sway, Hyprland, generic wlroots, and Wayland-core window backend resolution,
+  with partial operations reported honestly instead of universal support being
+  implied.
+- A defined non-CGO contract: builds remain possible, while unavailable GUI
+  operations return `ErrNotSupported` rather than plausible zero values.
+- Hermetic portal/compositor tests, tagged Wayland integration suites, and CI
+  coverage for Linux, macOS, Windows, Wayland, portal, lint, and non-CGO modes.
+- Open, auditable native and Go backend code, including explicit resource
+  ownership, bounded waits, and fallback diagnostics.
 
-- [GoDoc](https://godoc.org/github.com/go-vgo/robotgo) <br>
-- [API Docs](https://github.com/go-vgo/robotgo/blob/master/docs/doc.md) (Deprecated, no updated)
+Upstream authorship and history remain credited under
+[Upstream and attribution](#upstream-and-attribution). Upstream URLs elsewhere
+in that section are historical references, not installation or support links
+for this fork.
 
-## Binding:
+## Features
 
-[ADB](https://github.com/vcaesar/adb), packaging android adb API.
+| Area | Available functionality |
+|---|---|
+| Mouse | Move, relative move, smooth move, drag, click, button toggle, scroll, and location where the platform exposes it |
+| Keyboard | Key taps and combinations, key state changes, text/Unicode input, delays, and clipboard-assisted input |
+| Screen and pixels | Full/region capture, display bounds and scale, pixel/color queries, bitmap conversion and string helpers, image save, and region/tolerance color search |
+| Windows | Active window, title, close, minimize/maximize, topmost queries/setters, bounds/client geometry, and compositor-specific Wayland variants where supported |
+| Processes | Enumerate, inspect, find, activate, and terminate processes |
+| Images | Go image/bitmap conversion, template helpers, encoding, saving, and optional OCR |
+| Diagnostics | Display-server detection, selected capture backend, and Linux feature capability/fallback reporting |
 
-[Robotn](https://github.com/vcaesar/robotn), binding JavaScript and other, support more language.
+Availability is platform- and backend-dependent. Prefer error-returning APIs
+and inspect `GetLinuxCapabilities` on Linux when an operation is required for a
+workflow.
 
-## Requirements:
+## Support overview
 
-Now, Please make sure `Golang, GCC` is installed correctly before installing RobotGo.
+| Platform/session | Build | Current behavior |
+|---|---|---|
+| macOS | CGO-enabled default build | Native mouse, keyboard, capture, window, and process paths; macOS permissions still apply |
+| Windows | CGO-enabled default build | Native mouse, keyboard, capture, window, and process paths |
+| Linux/X11 | CGO-enabled default build | X11/XTest input, capture, window, and process paths |
+| Linux/Wayland | `-tags wayland` for native protocols; pure-Go portal client available separately | Native wlroots capture/input where compositor protocols exist, screenshot fallback, explicit RemoteDesktop portal sessions, capability-aware window support |
+| Any platform without CGO | `CGO_ENABLED=0` | The API compiles; native GUI operations return `ErrNotSupported`, while explicit Linux RemoteDesktop portal sessions provide a limited Pure-Go input path |
 
-### ALL:
+Wayland compositors intentionally restrict global automation. GNOME and KDE can
+use consent-aware Screenshot and RemoteDesktop portal paths. The explicit
+RemoteDesktop session client is available under `input/portal`. After explicit
+consent through `StartRemoteDesktopInput`, supported high-level input APIs use
+that session when native virtual input is unavailable; RobotGo never opens the
+dialog implicitly. Native pointer and keyboard automation requires the
+compositor to expose the corresponding virtual-input protocols. See
+[Wayland status](docs/wayland-tasks.md) for the detailed matrix and open work.
 
-```
-Golang
+## Requirements
 
-GCC
-```
+- Go 1.25 or newer, matching [`go.mod`](go.mod).
+- A CGO-compatible C toolchain for the full native desktop-automation feature
+  set. The explicitly started Linux RemoteDesktop portal subset also works in a
+  non-CGO build.
+- Platform development libraries for the selected backend.
 
-#### For MacOS:
+### macOS
 
-```
-brew install go
-```
+Install Go and the Xcode command-line tools:
 
-Xcode Command Line Tools (And Privacy setting: [#277](https://github.com/go-vgo/robotgo/issues/277))
-
-```
+```bash
 xcode-select --install
 ```
 
-#### For Windows:
+Grant Accessibility and Screen Recording permissions to the application or
+terminal that runs RobotGo when macOS requests them.
 
+### Windows
+
+Install Go and a CGO-compatible compiler such as LLVM-MinGW or MinGW-w64. The
+compiler must be available on `PATH` when `go build` runs.
+
+### Linux
+
+The default Linux build targets X11 and requires X11/XTest development files.
+On Debian/Ubuntu:
+
+```bash
+sudo apt update
+sudo apt install build-essential pkg-config libx11-dev libxtst-dev
 ```
-winget install Golang.go
+
+For the native Wayland build, install the Wayland, xkbcommon, GBM, and DRM
+development files as well:
+
+```bash
+sudo apt install libwayland-dev libxkbcommon-dev wayland-protocols libgbm-dev libdrm-dev
 ```
 
-#### For Linux:
+Package names differ on other distributions. Optional runtime integrations:
 
-Build the native Wayland backend explicitly:
+- `xdg-desktop-portal` plus the matching desktop backend provides screenshot
+  fallback and consent-aware RemoteDesktop input sessions.
+- `xsel` or `xclip` provides clipboard access on Linux.
+- `wayland-info` can provide a bounds fallback when native output geometry is
+  unavailable.
+- `wlrctl`, `swaymsg`, or `hyprctl` enables the compositor-specific window
+  operations documented in the [Wayland status](docs/wayland-tasks.md).
+- `zenity` or `kdialog` enables native-style alert dialogs on Linux.
+- Tesseract is required only for the optional OCR helpers.
+
+`libpng` is not a direct RobotGo build requirement; PNG/JPEG image handling is
+implemented through Go image packages in the current module.
+
+## Installation
+
+Add this fork to a Go module:
+
+```bash
+go get github.com/marang/robotgo@latest
+```
+
+Import it with the same module path:
+
+```go
+import "github.com/marang/robotgo"
+```
+
+Do not mix this import with `github.com/go-vgo/robotgo`; Go treats them as
+different modules.
+
+## Quick start
+
+Prefer error-returning APIs in automation that must detect unsupported backends
+or runtime failures:
+
+```go
+package main
+
+import (
+	"fmt"
+	"log"
+
+	"github.com/marang/robotgo"
+)
+
+func main() {
+	if err := robotgo.MoveE(100, 200); err != nil {
+		log.Printf("move unavailable: %v", err)
+	}
+	if err := robotgo.ClickE("left"); err != nil {
+		log.Printf("click unavailable: %v", err)
+	}
+
+	bit, err := robotgo.CaptureScreen(0, 0, 320, 200)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer robotgo.FreeBitmap(bit)
+
+	fmt.Println("capture backend:", robotgo.LastBackend())
+}
+```
+
+Legacy APIs remain available for source compatibility. Their signatures may be
+unable to report all backend failures, so new reliability-sensitive code should
+use variants such as `MoveE`, `MoveRelativeE`, `ClickE`, `ScrollE`, `LocationE`,
+`TypeStrE`, `UnicodeTypeE`, and the error-returning window APIs.
+
+## Linux display backends
+
+### X11
+
+The normal Linux build uses the X11 backend:
+
+```bash
+go build ./...
+```
+
+An X11 session requires `DISPLAY` and an accessible X server. RobotGo does not
+silently route a Wayland-primary operation through X11 merely because Xwayland
+is present.
+
+### Wayland
+
+Build the native Wayland paths explicitly:
 
 ```bash
 go build -tags wayland ./...
 ```
 
-Wayland screen capture uses `wlr-screencopy` first (DMA-BUF or wl_shm).
-DMA-BUF requires the compositor to expose `zwp_linux_dmabuf_v1` version 4+.
-If Wayland screencopy is unavailable/fails, RobotGo falls back to the
-freedesktop portal screenshot path.
+Capture selection is:
 
-Portal fallback requires `xdg-desktop-portal` and a desktop backend (for
-example `xdg-desktop-portal-gnome` or `xdg-desktop-portal-kde`).
-You can force portal capture with `ROBOTGO_FORCE_PORTAL=1`.
-Set `ROBOTGO_DISABLE_PORTAL=1` to prohibit consent prompts and require the
-native backend; failures then remain explicit.
-You can also override backend selection with `ROBOTGO_WAYLAND_BACKEND`:
-`auto`, `dmabuf`, `wl_shm`, or `portal`.
-Set `ROBOTGO_CAPTURE_DEBUG=1` to log capture backend decisions.
+1. Native `wlr-screencopy` using DMA-BUF when supported.
+2. Native `wl_shm` when DMA-BUF is unavailable or unsuitable.
+3. The freedesktop Screenshot portal when native capture fails and portal use
+   is allowed.
 
-`GetLinuxCapabilities` probes the actual compositor protocols and portal
-D-Bus service; it does not infer availability merely from environment
-variables. For automation that must observe failures, prefer the
-error-returning input APIs `MoveE`, `MoveRelativeE`, `ClickE`, `ScrollE`,
-`LocationE`, `MouseReady`, `KeyboardReady`, `TypeStrE`, and `UnicodeTypeE`.
-The legacy void-returning APIs remain available for source compatibility.
-Long-running applications can call `CloseWaylandInput` to release persistent
-virtual input protocol objects; subsequent input calls reconnect lazily.
+The portal may prompt the user. Native screencopy and virtual input are most
+useful on wlroots compositors; availability is probed at runtime rather than
+inferred from environment variables alone.
 
-With `CGO_ENABLED=0` and no Pure-Go backend selected, RobotGo compiles and
-returns `ErrNotSupported` explicitly instead of silently using an X11 path.
+For explicit GNOME/KDE portal input, probe support without prompting and then
+call `StartRemoteDesktopInput` with the required device mask. While that session
+is active, relative movement, buttons/clicks, scrolling, key taps/toggles, text,
+and Unicode can fall back to it when native input is unavailable. The lower-level
+`input/portal` package additionally exposes relative pointer motion, smooth and
+discrete axes, pointer buttons, and keycode/keysym events.
+`StartRemoteDesktopInputWithOptions` can attach monitor/window/virtual
+ScreenCast sources to the same consent session. Selected stream position and
+logical size then let `MoveE` map global coordinates to absolute portal input;
+touch down/motion/up is available when the portal grants touchscreen access.
+Stream metadata includes the node ID, optional mapping ID and PipeWire serial,
+and a persistence restore token without exposing that token through
+diagnostics. Restore tokens are single-use: store them securely, pass the latest
+value as `RemoteDesktopInputOptions.RestoreToken`, and replace it with the token
+returned by the restored session. For multiple streams, the optional `displayId`
+argument to `MoveE` selects the stream by its returned slice index; without it,
+RobotGo uses logical stream positions. The session must be closed
+deterministically.
 
-See `docs/wayland-tasks.md` for the current Wayland support status and remaining tasks.
+RemoteDesktop keyboard and relative-pointer capability remains available when
+only the optional ScreenCast probe is degraded. In that case `Probe` returns the
+usable partial capability together with the ScreenCast error. Inspect
+`Capability.ScreenCastIssue` or `RemoteDesktopInputStatus.ScreenCastReason`
+before relying on absolute input, touch, or stream metadata.
+Consent diagnostics distinguish `not-requested`, `granted`, `closed`,
+`cancelled`, `timed-out`, `denied`, `failed`, and `unavailable`. A timeout means
+the caller's consent deadline elapsed; it does not imply that the portal itself
+is unavailable.
 
-On Linux, you can inspect runtime backend/capability selection:
+Successful portal-backed `MoveE`, `MoveRelativeE`, `ClickE`, and `ScrollE`
+honor the same `MouseSleep` and scroll-delay behavior in CGO and non-CGO builds.
+
+The example defaults to probe-only mode:
+
+```bash
+go run ./examples/remote_desktop_input
+go run ./examples/remote_desktop_input -connect
+go run ./examples/remote_desktop_input -connect -screen
+# Read the example before using the opt-in input demo:
+go run ./examples/remote_desktop_input -demo -screen
+go run ./examples/remote_desktop_input -demo -touch
+```
+
+Useful capture controls:
+
+| Variable | Values/effect |
+|---|---|
+| `ROBOTGO_WAYLAND_BACKEND` | `auto`, `dmabuf`, `wl_shm`, or `portal` |
+| `ROBOTGO_FORCE_PORTAL=1` | Force screenshot portal capture |
+| `ROBOTGO_DISABLE_PORTAL=1` | Disable portal prompts and fallback |
+| `ROBOTGO_CAPTURE_DEBUG=1` | Log backend selection and fallback decisions |
+
+`LastBackend` reports the backend used by the latest capture. Long-running
+Wayland applications can call `CloseWaylandInput` to release persistent virtual
+pointer and keyboard objects; later input calls reconnect lazily.
+
+Global pointer position and global foreign-window control are not universally
+available in Wayland core. `LocationE` and unsupported window operations return
+`ErrNotSupported`. Sway, Hyprland, and some wlroots environments have partial
+window support through compositor-specific tools; inspect capabilities instead
+of assuming parity with X11.
+
+### Runtime diagnostics
+
+`GetLinuxCapabilities` reports the detected session, compositor, selected
+feature backends, fallbacks, and unsupported reasons:
 
 ```go
 caps := robotgo.GetLinuxCapabilities()
 fmt.Println("display:", caps.DisplayServer)
 fmt.Println("compositor:", caps.Compositor)
 fmt.Println("capture:", caps.Capture.Backend, caps.Capture.Available, caps.Capture.Fallback)
+fmt.Println("keyboard:", caps.Keyboard.Backend, caps.Keyboard.Available, caps.Keyboard.Reason)
+fmt.Println("mouse:", caps.Mouse.Backend, caps.Mouse.Available, caps.Mouse.Reason)
+fmt.Println("remote desktop:", caps.RemoteDesktop.Backend, caps.RemoteDesktop.Available, caps.RemoteDesktop.Reason)
 fmt.Println("window:", caps.Window.Backend, caps.Window.Available, caps.Window.Reason)
 ```
 
-Runnable example:
+Run the complete diagnostic example with:
 
-```
-go run ./examples/linux_capabilities
-```
-
-```go
-bit, err := robotgo.CaptureScreen(0, 0, 100, 100)
-if err != nil {
-  log.Fatal(err)
-}
-defer robotgo.FreeBitmap(bit)
+```bash
+go run -tags wayland ./examples/linux_capabilities
 ```
 
-```
-winget install MartinStorsjo.LLVM-MinGW.UCRT
-```
+## Examples
 
-Or [MinGW-w64](https://sourceforge.net/projects/mingw-w64/files) (Use recommended) or others Mingw [llvm-mingw](https://github.com/mstorsjo/llvm-mingw);
+The checked-in examples use this fork's module path and track the current API:
 
-Download the Mingw, then set system environment variables `C:\mingw64\bin` to the Path.
-[Set environment variables to run GCC from command line](https://www.youtube.com/results?search_query=Set+environment+variables+to+run+GCC+from+command+line).
+- [Mouse](examples/mouse/main.go)
+- [Keyboard and clipboard](examples/key/main.go)
+- [Screen capture and pixels](examples/screen/main.go)
+- [Full-screen capture with backend reporting](examples/screen_full/main.go)
+- [Linux capabilities](examples/linux_capabilities/main.go)
+- [Consent-aware RemoteDesktop portal input](examples/remote_desktop_input/main.go)
+- [Window and process helpers](examples/window/main.go)
+- [Display scaling](examples/scale/main.go)
 
-`Or the other GCC` (But you should compile the "libpng" with yourself when use the [bitmap](https://github.com/vcaesar/bitmap).)
+Examples perform real desktop actions. Read them before running them, especially
+the window/process example, which can close windows or terminate processes.
 
-#### For everything else:
+## Testing
 
-```
-GCC
+Run the default and explicit non-CGO contracts first:
 
-X11 with the XTest extension (the Xtst library)
-
-"Clipboard": xsel xclip
-
-
-"Bitmap": libpng (Just used by the "bitmap".)
-
-"Event-Gohook": xcb, xkb, libxkbcommon (Just used by the "hook".)
-
-```
-
-##### Ubuntu:
-
-```yml
-# sudo apt install golang
-sudo snap install go  --classic
-
-# gcc
-sudo apt install gcc libc6-dev
-
-# x11
-sudo apt install libx11-dev xorg-dev libxtst-dev
-
-# Clipboard
-sudo apt install xsel xclip
-
-#
-# Bitmap
-sudo apt install libpng++-dev
-
-# GoHook
-sudo apt install xcb libxcb-xkb-dev x11-xkb-utils libx11-xcb-dev libxkbcommon-x11-dev libxkbcommon-dev
-
+```bash
+go test ./...
+CGO_ENABLED=0 go test ./...
+go test -race ./input/portal
 ```
 
-##### Fedora:
+Wayland and portal code has additional tagged suites:
 
-```yml
-# x11
-sudo dnf install libXtst-devel
-
-# Clipboard
-sudo dnf install xsel xclip
-
-#
-# Bitmap
-sudo dnf install libpng-devel
-
-# GoHook
-sudo dnf install libxkbcommon-devel libxkbcommon-x11-devel xorg-x11-xkb-utils-devel
-
+```bash
+go test -tags "wayland" ./...
+go test -tags "portal" ./screen/portal -v
+go test -tags "wayland test" ./screen -run TestScreencopy -v
+go test -tags "wayland integration" . ./mouse ./window -v
 ```
 
-## Installation:
+See [TEST.md](TEST.md) for prerequisites, DRM tests, keyboard integration, and
+opt-in compositor E2E checks.
 
-With Go module support (Go 1.11+), just import:
+Real Wayland input results are tracked in the
+[versioned compatibility matrix](docs/compatibility/wayland-input.md).
 
-```go
-import "github.com/go-vgo/robotgo"
-```
+## Documentation and roadmap
 
-Otherwise, to install the robotgo package, run the command:
+- [Go API reference](https://pkg.go.dev/github.com/marang/robotgo)
+- [Key names and conversion](docs/keys.md)
+- [Testing guide](TEST.md)
+- [Current Wayland support and backlog](docs/wayland-tasks.md)
+- [Product roadmap](docs/plan/product-roadmap.md)
+- [Wayland implementation history](docs/wayland-history.md)
 
-```
-go get github.com/go-vgo/robotgo
-```
+The active product priority is validating the explicit RemoteDesktop high-level
+fallback on real GNOME/KDE runtimes while retaining native virtual-input paths
+on wlroots compositors.
 
-png.h: No such file or directory? Please see [issues/47](https://github.com/go-vgo/robotgo/issues/47).
+## Upstream and attribution
 
-## Update:
+This fork descends from [go-vgo/robotgo](https://github.com/go-vgo/robotgo) and
+preserves its history and license notices. The original RobotGo author is
+[vz](https://github.com/vcaesar); upstream contributors remain credited in the
+Git history and source headers. These links are intentionally upstream
+attribution, not installation or support links for this fork.
 
-```
-go get -u github.com/go-vgo/robotgo
-```
+Development, issues, CI, and current contributors for this fork live at:
 
-Note go1.10.x C file compilation cache problem, [golang #24355](https://github.com/golang/go/issues/24355).
-`go mod vendor` problem, [golang #26366](https://github.com/golang/go/issues/26366).
-
-## [Examples:](https://github.com/go-vgo/robotgo/blob/master/examples)
-
-#### [Mouse](https://github.com/go-vgo/robotgo/blob/master/examples/mouse/main.go)
-
-```Go
-package main
-
-import (
-  "fmt"
-  "github.com/go-vgo/robotgo"
-)
-
-func main() {
-  robotgo.MouseSleep = 300
-
-  robotgo.Move(100, 100)
-  fmt.Println(robotgo.Location())
-  robotgo.Move(100, -200) // multi screen supported
-  robotgo.MoveSmooth(120, -150)
-  fmt.Println(robotgo.Location())
-
-  robotgo.ScrollDir(10, "up")
-  robotgo.ScrollDir(20, "right")
-
-  robotgo.Scroll(0, -10)
-  robotgo.Scroll(100, 0)
-
-  robotgo.MilliSleep(100)
-  robotgo.ScrollSmooth(-10, 6)
-  // robotgo.ScrollRelative(10, -100)
-
-  robotgo.Move(10, 20)
-  robotgo.MoveRelative(0, -10)
-  robotgo.DragSmooth(10, 10)
-
-  robotgo.Click("wheelRight")
-  robotgo.Click("left", true)
-  robotgo.MoveSmooth(100, 200, 1.0, 10.0)
-
-  robotgo.Toggle("left")
-  robotgo.Toggle("left", "up")
-}
-```
-
-#### [Keyboard](https://github.com/go-vgo/robotgo/blob/master/examples/key/main.go)
-
-```Go
-package main
-
-import (
-  "fmt"
-
-  "github.com/go-vgo/robotgo"
-)
-
-func main() {
-  robotgo.TypeStr("Hello World")
-  robotgo.TypeStr("だんしゃり", 0, 1)
-  // robotgo.TypeStr("テストする")
-
-  robotgo.TypeStr("Hi, Seattle space needle, Golden gate bridge, One world trade center.")
-  robotgo.TypeStr("Hi galaxy, hi stars, hi MT.Rainier, hi sea. こんにちは世界.")
-  robotgo.Sleep(1)
-
-  // ustr := uint32(robotgo.CharCodeAt("Test", 0))
-  // robotgo.UnicodeType(ustr)
-
-  robotgo.KeySleep = 100
-  robotgo.KeyTap("enter")
-  // robotgo.TypeStr("en")
-  robotgo.KeyTap("i", "alt", "cmd")
-
-  arr := []string{"alt", "cmd"}
-  robotgo.KeyTap("i", arr)
-
-  robotgo.MilliSleep(100)
-  robotgo.KeyToggle("a")
-  robotgo.KeyToggle("a", "up")
-
-  robotgo.WriteAll("Test")
-  text, err := robotgo.ReadAll()
-  if err == nil {
-    fmt.Println(text)
-  }
-}
-```
-
-#### [Screen](https://github.com/go-vgo/robotgo/blob/master/examples/screen/main.go)
-
-```Go
-package main
-
-import (
-  "fmt"
-  "strconv"
-
-  "github.com/go-vgo/robotgo"
-  "github.com/vcaesar/imgo"
-)
-
-func main() {
-  x, y := robotgo.Location()
-  fmt.Println("pos: ", x, y)
-
-  color := robotgo.GetPixelColor(100, 200)
-  fmt.Println("color---- ", color)
-
-  sx, sy := robotgo.GetScreenSize()
-  fmt.Println("get screen size: ", sx, sy)
-
-  bit := robotgo.CaptureScreen(10, 10, 30, 30)
-  defer robotgo.FreeBitmap(bit)
-
-  img := robotgo.ToImage(bit)
-  imgo.Save("test.png", img)
-
-  num := robotgo.DisplaysNum()
-  for i := 0; i < num; i++ {
-    robotgo.DisplayID = i
-    img1, _ := robotgo.CaptureImg()
-    path1 := "save_" + strconv.Itoa(i)
-    robotgo.Save(img1, path1+".png")
-    robotgo.SaveJpeg(img1, path1+".jpeg", 50)
-
-    img2, _ := robotgo.CaptureImg(10, 10, 20, 20)
-    robotgo.Save(img2, "test_"+strconv.Itoa(i)+".png")
-
-    x, y, w, h := robotgo.GetDisplayBounds(i)
-    img3, err := robotgo.CaptureImg(x, y, w, h)
-    fmt.Println("Capture error: ", err)
-    robotgo.Save(img3, path1+"_1.png")
-  }
-}
-```
-
-#### [Bitmap](https://github.com/vcaesar/bitmap/blob/main/examples/main.go)
-
-```Go
-package main
-
-import (
-  "fmt"
-
-  "github.com/go-vgo/robotgo"
-  "github.com/vcaesar/bitmap"
-)
-
-func main() {
-  bit := robotgo.CaptureScreen(10, 20, 30, 40)
-  // use `defer robotgo.FreeBitmap(bit)` to free the bitmap
-  defer robotgo.FreeBitmap(bit)
-
-  fmt.Println("bitmap...", bit)
-  img := robotgo.ToImage(bit)
-  // robotgo.SavePng(img, "test_1.png")
-  robotgo.Save(img, "test_1.png")
-
-  bit2 := robotgo.ToCBitmap(robotgo.ImgToBitmap(img))
-  fx, fy := bitmap.Find(bit2)
-  fmt.Println("FindBitmap------ ", fx, fy)
-  robotgo.Move(fx, fy)
-
-  arr := bitmap.FindAll(bit2)
-  fmt.Println("Find all bitmap: ", arr)
-
-  fx, fy = bitmap.Find(bit)
-  fmt.Println("FindBitmap------ ", fx, fy)
-
-  bitmap.Save(bit, "test.png")
-}
-```
-
-#### [OpenCV](https://github.com/vcaesar/gcv)
-
-```Go
-package main
-
-import (
-  "fmt"
-  "math/rand"
-
-  "github.com/go-vgo/robotgo"
-  "github.com/vcaesar/gcv"
-  "github.com/vcaesar/bitmap"
-)
-
-func main() {
-  opencv()
-}
-
-func opencv() {
-  name := "test.png"
-  name1 := "test_001.png"
-  robotgo.SaveCapture(name1, 10, 10, 30, 30)
-  robotgo.SaveCapture(name)
-
-  fmt.Print("gcv find image: ")
-  fmt.Println(gcv.FindImgFile(name1, name))
-  fmt.Println(gcv.FindAllImgFile(name1, name))
-
-  bit := bitmap.Open(name1)
-  defer robotgo.FreeBitmap(bit)
-  fmt.Print("find bitmap: ")
-  fmt.Println(bitmap.Find(bit))
-
-  // bit0 := robotgo.CaptureScreen()
-  // img := robotgo.ToImage(bit0)
-  // bit1 := robotgo.CaptureScreen(10, 10, 30, 30)
-  // img1 := robotgo.ToImage(bit1)
-  // defer robotgo.FreeBitmapArr(bit0, bit1)
-  img, _ := robotgo.CaptureImg()
-  img1, _ := robotgo.CaptureImg(10, 10, 30, 30)
-
-  fmt.Print("gcv find image: ")
-  fmt.Println(gcv.FindImg(img1, img))
-  fmt.Println()
-
-  res := gcv.FindAllImg(img1, img)
-  fmt.Println(res[0].TopLeft.Y, res[0].Rects.TopLeft.X, res)
-  x, y := res[0].TopLeft.X, res[0].TopLeft.Y
-  robotgo.Move(x, y-rand.Intn(5))
-  robotgo.MilliSleep(100)
-  robotgo.Click()
-
-  res = gcv.FindAll(img1, img) // use find template and sift
-  fmt.Println("find all: ", res)
-  res1 := gcv.Find(img1, img)
-  fmt.Println("find: ", res1)
-
-  img2, _, _ := robotgo.DecodeImg("test_001.png")
-  x, y = gcv.FindX(img2, img)
-  fmt.Println(x, y)
-}
-```
-
-#### [Event](https://github.com/robotn/gohook/blob/master/examples/main.go)
-
-```Go
-package main
-
-import (
-  "fmt"
-
-  // "github.com/go-vgo/robotgo"
-  hook "github.com/robotn/gohook"
-)
-
-func main() {
-  add()
-  low()
-  event()
-}
-
-func add() {
-  fmt.Println("--- Please press ctrl + shift + q to stop hook ---")
-  hook.Register(hook.KeyDown, []string{"q", "ctrl", "shift"}, func(e hook.Event) {
-    fmt.Println("ctrl-shift-q")
-    hook.End()
-  })
-
-  fmt.Println("--- Please press w---")
-  hook.Register(hook.KeyDown, []string{"w"}, func(e hook.Event) {
-    fmt.Println("w")
-  })
-
-  s := hook.Start()
-  <-hook.Process(s)
-}
-
-func low() {
-	evChan := hook.Start()
-	defer hook.End()
-
-	for ev := range evChan {
-		fmt.Println("hook: ", ev)
-	}
-}
-
-func event() {
-  ok := hook.AddEvents("q", "ctrl", "shift")
-  if ok {
-    fmt.Println("add events...")
-  }
-
-  keve := hook.AddEvent("k")
-  if keve {
-    fmt.Println("you press... ", "k")
-  }
-
-  mleft := hook.AddEvent("mleft")
-  if mleft {
-    fmt.Println("you press... ", "mouse left button")
-  }
-}
-```
-
-#### [Window](https://github.com/go-vgo/robotgo/blob/master/examples/window/main.go)
-
-```Go
-package main
-
-import (
-  "fmt"
-
-  "github.com/go-vgo/robotgo"
-)
-
-func main() {
-  fpid, err := robotgo.FindIds("Google")
-  if err == nil {
-    fmt.Println("pids... ", fpid)
-
-    if len(fpid) > 0 {
-      robotgo.TypeStr("Hi galaxy!", fpid[0])
-      robotgo.KeyTap("a", fpid[0], "cmd")
-
-      robotgo.KeyToggle("a", fpid[0])
-      robotgo.KeyToggle("a", fpid[0], "up")
-
-      robotgo.ActivePid(fpid[0])
-
-      robotgo.Kill(fpid[0])
-    }
-  }
-
-  robotgo.ActiveName("chrome")
-
-  isExist, err := robotgo.PidExists(100)
-  if err == nil && isExist {
-    fmt.Println("pid exists is", isExist)
-
-    robotgo.Kill(100)
-  }
-
-  abool := robotgo.Alert("test", "robotgo")
-  if abool {
- 	  fmt.Println("ok@@@ ", "ok")
-  }
-
-  title := robotgo.GetTitle()
-  fmt.Println("title@@@ ", title)
-}
-```
-
-## Authors
-
-- [The author is vz](https://github.com/vcaesar)
-- [Maintainers](https://github.com/orgs/go-vgo/people)
-- [Contributors](https://github.com/go-vgo/robotgo/graphs/contributors)
-
-## Plans
-
-- See the [product roadmap](docs/plan/product-roadmap.md) for the delivery order
-  and the quality standard used to measure this fork against upstream and
-  RobotGo Pro.
-- Refactor some C code to Go (such as x11, windows)
-- Better multiscreen support
-- Wayland support including DMA-BUF screencopy
-- Update Window Handle
-- Try to support Android and IOS
-
-## Contributors
-
-- See [contributors page](https://github.com/go-vgo/robotgo/graphs/contributors) for full list of contributors.
-- See [Contribution Guidelines](https://github.com/go-vgo/robotgo/blob/master/CONTRIBUTING.md).
+- [marang/robotgo](https://github.com/marang/robotgo)
+- [Issues](https://github.com/marang/robotgo/issues)
+- [Current contributors](https://github.com/marang/robotgo/graphs/contributors)
 
 ## License
 
-Robotgo is primarily distributed under the terms of "the Apache License (Version 2.0)", with portions covered by various BSD-like licenses.
-
-See [LICENSE-APACHE](http://www.apache.org/licenses/LICENSE-2.0), [LICENSE](https://github.com/go-vgo/robotgo/blob/master/LICENSE).
+RobotGo is distributed under the [Apache License 2.0](LICENSE). Vendored or
+generated components retain their applicable notices in the source tree.

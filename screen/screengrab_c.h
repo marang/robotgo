@@ -39,6 +39,7 @@ static inline MMBitmapRef capture_screen_wayland(int32_t x, int32_t y, int32_t w
   if (err) { *err = ScreengrabErrFailed; }
   return NULL;
 }
+static inline int robotgo_wayland_screencopy_ready(void) { return 0; }
 #elif defined(IS_LINUX)
 #if !defined(DISPLAY_SERVER_WAYLAND)
 #include "../base/xdisplay_c.h"
@@ -135,6 +136,7 @@ static inline MMBitmapRef capture_screen_wayland(int32_t x, int32_t y, int32_t w
   if (err) { *err = ScreengrabErrFailed; }
   return NULL;
 }
+static inline int robotgo_wayland_screencopy_ready(void) { return 0; }
 #endif
 
 #if defined(IS_MACOSX) && __ENVIRONMENT_MAC_OS_X_VERSION_MIN_REQUIRED__ > 140400
