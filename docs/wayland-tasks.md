@@ -39,6 +39,11 @@ Current implementation baseline:
 - `StartRemoteDesktopInput` activates an explicit high-level fallback for
   relative movement, buttons/clicks, scroll, key taps/toggles, text, and Unicode;
   the consent dialog is never opened implicitly.
+- `StartRemoteDesktopInputWithOptions` attaches ScreenCast sources to the same
+  session for stream-aware absolute pointer and touchscreen input. Stream
+    geometry, mapping ID, PipeWire serial, persistence token availability, and
+    permission status (including timeout versus cancellation) are observable
+    without exposing token contents. Portal mouse delays have CGO/non-CGO parity.
 - Runtime integration tests cover backend capability selection for
   `sway`/`hyprland`/`wlroots-generic` with explicit skip behavior when runtime
   preconditions are not present.
@@ -55,11 +60,10 @@ Window backend support matrix (current):
 | `wayland-core/*` | wayland session without specific/family backend support | No (`ErrNotSupported`) | No (`ErrNotSupported`) | No (`ErrNotSupported`) | No (`ErrNotSupported`) |
 
 - Priority Backlog (1-7):
-  - 1. Validate the explicit RemoteDesktop high-level mouse/keyboard fallback
-    on GNOME/KDE and add ScreenCast mapping for absolute pointer/touch events.
-    Consent, denial, cancellation, timeout, teardown, and high-level dispatch
-    already have hermetic coverage. Absolute/touch methods stay unexposed until
-    the shared ScreenCast stream and coordinate mapping are implemented.
+  - 1. Register protected GNOME/KDE/wlroots runners and validate the complete
+    RemoteDesktop high-level matrix in hermetic CGO and non-CGO builds. Shared ScreenCast
+    mapping, absolute pointer/touch, consent, denial, cancellation, timeout,
+    restore metadata, teardown, and high-level dispatch have hermetic coverage.
     `[new vs robotgo-pro]`
   - 2. Full Wayland ScreenCast portal backend with a reusable PipeWire session
     stream, not one screenshot request per frame. `[new vs robotgo-pro]`
@@ -120,8 +124,9 @@ Window backend support matrix (current):
 - CI/Testing:
   - Keep the current headless Weston, screencopy, portal, and non-CGO jobs
     blocking.
-  - Add dedicated GNOME, KDE, and wlroots runtime jobs.
-  - Add blocking race, vet, leak/sanitizer, and bounds-across-outputs gates.
+  - Provision the existing dedicated GNOME, KDE, and wlroots runtime workflow.
+  - Keep the new blocking race/vet jobs green; add leak/sanitizer and
+    bounds-across-outputs gates.
 - Examples/Docs:
   - Add backend selection flags in examples (dmabuf, wl_shm, portal).
   - Publish a versioned support matrix and troubleshooting guide.

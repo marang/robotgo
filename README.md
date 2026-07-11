@@ -232,17 +232,42 @@ call `StartRemoteDesktopInput` with the required device mask. While that session
 is active, relative movement, buttons/clicks, scrolling, key taps/toggles, text,
 and Unicode can fall back to it when native input is unavailable. The lower-level
 `input/portal` package additionally exposes relative pointer motion, smooth and
-discrete axes, pointer buttons, and keycode/keysym events. Absolute pointer and
-touch APIs remain intentionally unexposed until RobotGo can create the required
-ScreenCast stream in the same portal session and map its logical coordinates
-correctly. The session must be closed deterministically. The example defaults to
-probe-only mode:
+discrete axes, pointer buttons, and keycode/keysym events.
+`StartRemoteDesktopInputWithOptions` can attach monitor/window/virtual
+ScreenCast sources to the same consent session. Selected stream position and
+logical size then let `MoveE` map global coordinates to absolute portal input;
+touch down/motion/up is available when the portal grants touchscreen access.
+Stream metadata includes the node ID, optional mapping ID and PipeWire serial,
+and a persistence restore token without exposing that token through
+diagnostics. Restore tokens are single-use: store them securely, pass the latest
+value as `RemoteDesktopInputOptions.RestoreToken`, and replace it with the token
+returned by the restored session. For multiple streams, the optional `displayId`
+argument to `MoveE` selects the stream by its returned slice index; without it,
+RobotGo uses logical stream positions. The session must be closed
+deterministically.
+
+RemoteDesktop keyboard and relative-pointer capability remains available when
+only the optional ScreenCast probe is degraded. In that case `Probe` returns the
+usable partial capability together with the ScreenCast error. Inspect
+`Capability.ScreenCastIssue` or `RemoteDesktopInputStatus.ScreenCastReason`
+before relying on absolute input, touch, or stream metadata.
+Consent diagnostics distinguish `not-requested`, `granted`, `closed`,
+`cancelled`, `timed-out`, `denied`, `failed`, and `unavailable`. A timeout means
+the caller's consent deadline elapsed; it does not imply that the portal itself
+is unavailable.
+
+Successful portal-backed `MoveE`, `MoveRelativeE`, `ClickE`, and `ScrollE`
+honor the same `MouseSleep` and scroll-delay behavior in CGO and non-CGO builds.
+
+The example defaults to probe-only mode:
 
 ```bash
 go run ./examples/remote_desktop_input
 go run ./examples/remote_desktop_input -connect
+go run ./examples/remote_desktop_input -connect -screen
 # Read the example before using the opt-in input demo:
-go run ./examples/remote_desktop_input -demo
+go run ./examples/remote_desktop_input -demo -screen
+go run ./examples/remote_desktop_input -demo -touch
 ```
 
 Useful capture controls:
@@ -323,6 +348,9 @@ go test -tags "wayland integration" . ./mouse ./window -v
 
 See [TEST.md](TEST.md) for prerequisites, DRM tests, keyboard integration, and
 opt-in compositor E2E checks.
+
+Real Wayland input results are tracked in the
+[versioned compatibility matrix](docs/compatibility/wayland-input.md).
 
 ## Documentation and roadmap
 

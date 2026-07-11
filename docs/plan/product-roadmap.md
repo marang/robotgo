@@ -22,18 +22,18 @@ The July 2026 hardening work establishes the foundation for this roadmap:
   session environment variables alone.
 - Mouse, keyboard, capture, and window operations expose explicit errors where
   legacy APIs previously could hide unsupported behavior.
-- Non-CGO builds compile and return `ErrNotSupported` until a tested Pure-Go
-  backend is selected.
+- Non-CGO builds compile and return `ErrNotSupported` for native GUI operations;
+  the explicitly authorized RemoteDesktop portal is the first tested Pure-Go
+  input backend.
 - CI covers lint, default tests on Linux/macOS/Windows, non-CGO, Wayland, portal,
-  and Weston integration variants. Race and vet pass locally but are not yet
-  dedicated blocking CI gates.
+  Weston integration, race, and vet variants.
 
-## Execution Status (2026-07-10)
+## Execution Status (2026-07-11)
 
 | Area | Status | Delivered | Exit criteria still open |
 |---|---|---|---|
-| Current baseline | Largely complete | Native screencopy, screenshot portal fallback, bounded waits, cleanup, live capability probes, error APIs, non-CGO contract | Promote race and vet to blocking CI gates |
-| 1. Wayland input | Partial; active next phase | Native virtual keyboard/pointer plus explicit consent-aware RemoteDesktop sessions and high-level fallback, readiness probes, reconnect, cleanup, error-returning APIs | GNOME/KDE/wlroots runtime matrix and remaining absolute/stream integration |
+| Current baseline | Complete in branch | Native screencopy, screenshot portal fallback, bounded waits, cleanup, live capability probes, error APIs, non-CGO contract, dedicated race/vet jobs | Confirm new CI jobs on remote branch |
+| 1. Wayland input | Implementation complete; runtime validation blocked | Native virtual keyboard/pointer, consent-aware RemoteDesktop fallback, shared ScreenCast stream mapping, absolute pointer/touch, restore tokens, diagnostics and E2E harness | Register GNOME/KDE/wlroots runners and collect green CGO/non-CGO evidence |
 | 2. Capture | Partial | Reliable one-shot screencopy and screenshot portal, region crop, output geometry, scale/transform foundations | ScreenCast/PipeWire stream and full multi-output/fractional-scale/transform gates |
 | 3. Pure-Go | Foundation only | Non-CGO builds fail explicitly instead of degrading silently | Useful selected Pure-Go backends, parity tests, benchmarks, backend introspection |
 | 4. API/compositor gaps | Parity surface delivered; runtime support partial | Window-state error APIs, bitmap string helpers, `FindColorCS`, hook/event capability reporting, Sway/Hyprland/wlroots resolver | Compositor-backed state operations and cross-platform/runtime matrix coverage |
@@ -59,10 +59,15 @@ implemented. A pure-Go RemoteDesktop portal client now covers capability probes,
 consent-session creation, device selection, cancellation, denial, timeout,
 portal-driven closure, deterministic teardown, and direct pointer/keyboard
 notifications. After explicit consent, supported high-level mouse/keyboard APIs
-fall back to the active portal session, including in non-CGO builds. GNOME/KDE
-runtime tests and absolute pointer/ScreenCast integration remain open. Absolute
-pointer and touch methods are intentionally not exposed before that shared
-ScreenCast session and coordinate contract exists.
+fall back to the active portal session, including in non-CGO builds.
+The RemoteDesktop session can now call ScreenCast `SelectSources` before start,
+parse logical stream geometry, map `MoveE` absolute coordinates, inject touch,
+and expose persistence restore-token availability. Runtime capability and
+permission diagnostics, including explicit cancellation and timeout states, are
+available without opening a consent dialog. Portal-backed mouse timing is
+consistent in CGO and non-CGO builds. The
+remaining Phase 1 blocker is real GNOME/KDE/wlroots evidence; this repository
+currently has no registered self-hosted runners for that matrix.
 
 Exit criteria:
 
