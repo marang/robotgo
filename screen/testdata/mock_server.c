@@ -46,18 +46,27 @@ static void frame_copy(struct wl_client *client, struct wl_resource *resource, s
     wl_resource_post_event(resource, ZWLR_SCREENCOPY_FRAME_V1_READY, 0, 0, 0);
     wl_resource_post_event(buffer, WL_BUFFER_RELEASE);
     wl_display_flush_clients(mock_display);
-    wl_display_terminate(mock_display);
+}
+
+static void frame_destroy(struct wl_client *client, struct wl_resource *resource) {
+    wl_resource_destroy(resource);
+}
+
+static void frame_resource_destroy(struct wl_resource *resource) {
+    if (mock_display) {
+        wl_display_terminate(mock_display);
+    }
 }
 
 static const struct zwlr_screencopy_frame_v1_interface frame_impl = {
     .copy = frame_copy,
     .copy_with_damage = NULL,
-    .destroy = NULL,
+    .destroy = frame_destroy,
 };
 
 static void handle_capture_output(struct wl_client *client, struct wl_resource *resource, uint32_t id, struct wl_resource *output) {
     struct wl_resource *frame = wl_resource_create(client, &zwlr_screencopy_frame_v1_interface, 3, id);
-    wl_resource_set_implementation(frame, &frame_impl, NULL, NULL);
+    wl_resource_set_implementation(frame, &frame_impl, NULL, frame_resource_destroy);
     if (mock_mode == MOCK_MODE_STALL) {
         return;
     }
