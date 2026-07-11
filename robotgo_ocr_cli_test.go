@@ -1,4 +1,4 @@
-//go:build !ocr || !cgo
+//go:build (!ocr || !cgo) && !windows
 
 package robotgo
 
