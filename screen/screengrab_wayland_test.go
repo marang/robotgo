@@ -24,10 +24,16 @@ const (
 
 func cleanupMockServer(t *testing.T, done <-chan struct{}) {
 	t.Helper()
-	stopMockServer()
+	select {
+	case <-done:
+		return
+	case <-time.After(time.Second):
+		stopMockServer()
+	}
 	select {
 	case <-done:
 	case <-time.After(time.Second):
+		t.Error("mock Wayland server did not stop")
 	}
 }
 
@@ -99,6 +105,7 @@ func TestScreencopyWlShm(t *testing.T) {
 	sock := "robotgo-wl"
 	t.Setenv("XDG_RUNTIME_DIR", dir)
 	t.Setenv("WAYLAND_DISPLAY", sock)
+	t.Setenv("ROBOTGO_DISABLE_PORTAL", "1")
 	robotgo.SetWaylandBackend(robotgo.WaylandBackendWlShm)
 	t.Cleanup(func() { robotgo.SetWaylandBackend(robotgo.WaylandBackendAuto) })
 
@@ -110,6 +117,9 @@ func TestScreencopyWlShm(t *testing.T) {
 
 	if _, err := CaptureScreen(); err != nil {
 		t.Fatalf("capture failed: %v", err)
+	}
+	if got := robotgo.LastBackend(); got != robotgo.BackendScreencopy {
+		t.Fatalf("backend = %q, want %q", got, robotgo.BackendScreencopy)
 	}
 
 }

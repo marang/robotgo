@@ -16,8 +16,8 @@
 #define ZWLR_SCREENCOPY_FRAME_V1_BUFFER 0
 #define ZWLR_SCREENCOPY_FRAME_V1_LINUX_DMABUF 5
 #define ZWLR_SCREENCOPY_FRAME_V1_BUFFER_DONE 6
-#define ZWLR_SCREENCOPY_FRAME_V1_READY 3
-#define ZWLR_SCREENCOPY_FRAME_V1_FAILED 4
+#define ZWLR_SCREENCOPY_FRAME_V1_READY 2
+#define ZWLR_SCREENCOPY_FRAME_V1_FAILED 3
 #define WL_BUFFER_RELEASE 0
 
 #define MOCK_MODE_NORMAL 0
@@ -132,7 +132,13 @@ static void dmabuf_get_default_feedback(struct wl_client *client, struct wl_reso
         uint64_t modifier;
     } entry = {WL_SHM_FORMAT_ARGB8888, 0, mock_modifier};
     int fd = memfd_create("tbl", MFD_CLOEXEC);
-    write(fd, &entry, sizeof(entry));
+    if (fd < 0 || write(fd, &entry, sizeof(entry)) != (ssize_t)sizeof(entry)) {
+        if (fd >= 0) {
+            close(fd);
+        }
+        wl_resource_post_no_memory(fb);
+        return;
+    }
     wl_resource_post_event(fb, ZWP_LINUX_DMABUF_FEEDBACK_V1_FORMAT_TABLE, fd, sizeof(entry));
     close(fd);
     struct wl_array arr;
