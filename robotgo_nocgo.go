@@ -61,6 +61,7 @@ const (
 	BackendNone       CaptureBackend = ""
 	BackendScreencopy CaptureBackend = "screencopy"
 	BackendPortal     CaptureBackend = "portal"
+	BackendScreenCast CaptureBackend = "screencast"
 	BackendX11        CaptureBackend = "x11"
 )
 

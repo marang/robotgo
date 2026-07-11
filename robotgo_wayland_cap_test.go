@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	inputportal "github.com/marang/robotgo/input/portal"
+	portalpkg "github.com/marang/robotgo/screen/portal"
 )
 
 func TestCaptureStateConcurrentAccess(t *testing.T) {
@@ -47,16 +48,48 @@ func stubCaptureCapabilityProbes(t *testing.T, native, portal bool) {
 	oldNative := waylandCaptureAvailabilityProbe
 	oldPortal := portalAvailabilityProbe
 	oldRemoteDesktop := remoteDesktopCapabilityProbe
+	oldScreenCast := screenCastCapabilityProbe
 	waylandCaptureAvailabilityProbe = func() bool { return native }
 	portalAvailabilityProbe = func() bool { return portal }
 	remoteDesktopCapabilityProbe = func() (inputportal.Capability, error) {
 		return inputportal.Capability{}, inputportal.ErrUnavailable
 	}
+	screenCastCapabilityProbe = func() (portalpkg.ScreenCastCapability, error) {
+		return portalpkg.ScreenCastCapability{
+			Version:       5,
+			Sources:       portalpkg.ScreenCastSourceMonitor,
+			CursorModes:   portalpkg.ScreenCastCursorEmbedded,
+			PipeWireReady: true,
+		}, nil
+	}
 	t.Cleanup(func() {
 		waylandCaptureAvailabilityProbe = oldNative
 		portalAvailabilityProbe = oldPortal
 		remoteDesktopCapabilityProbe = oldRemoteDesktop
+		screenCastCapabilityProbe = oldScreenCast
 	})
+}
+
+func TestGetLinuxCapabilitiesReportsActiveScreenCast(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("linux only")
+	}
+	prepareScreenCastCaptureTest(t)
+	stubCaptureCapabilityProbes(t, true, true)
+	screenCastCaptureState.Lock()
+	screenCastCaptureState.capture = &fakeScreenCastCapture{}
+	screenCastCaptureState.Unlock()
+
+	capabilities := GetLinuxCapabilities()
+	if !capabilities.Capture.Available || capabilities.Capture.Backend != "portal-screencast+pipewire" {
+		t.Fatalf("active ScreenCast capability = %+v", capabilities.Capture)
+	}
+	if !capabilities.Capture.Fallback {
+		t.Fatal("active ScreenCast capability did not report available fallback paths")
+	}
+	if !strings.Contains(capabilities.Capture.Notes, "interface version=5") {
+		t.Fatalf("ScreenCast protocol diagnostics missing: %q", capabilities.Capture.Notes)
+	}
 }
 
 func writeWaylandInfoStub(t *testing.T, dir string) {

@@ -26,7 +26,8 @@ backend and error contracts rather than merged blindly.
 Current technical differences include:
 
 - Native Wayland `wlr-screencopy` capture with DMA-BUF/`wl_shm` selection and
-  an explicit freedesktop Screenshot portal fallback.
+  explicit freedesktop Screenshot and persistent ScreenCast/PipeWire portal
+  paths.
 - A consent-aware RemoteDesktop portal session client for explicit GNOME/KDE
   pointer and keyboard injection, with cancellable lifecycle and cleanup.
 - Error-returning mouse, keyboard, capture, and window APIs alongside legacy
@@ -71,7 +72,7 @@ workflow.
 | macOS | CGO-enabled default build | Native mouse, keyboard, capture, window, and process paths; macOS permissions still apply |
 | Windows | CGO-enabled default build | Native mouse, keyboard, capture, window, and process paths |
 | Linux/X11 | CGO-enabled default build | X11/XTest input, capture, window, and process paths |
-| Linux/Wayland | `-tags wayland` for native protocols; pure-Go portal client available separately | Native wlroots capture/input where compositor protocols exist, screenshot fallback, explicit RemoteDesktop portal sessions, capability-aware window support |
+| Linux/Wayland | `-tags wayland` for native protocols; add `pipewire` for persistent ScreenCast frames | Native wlroots capture/input where compositor protocols exist, one-shot Screenshot fallback, reusable ScreenCast/PipeWire capture, explicit RemoteDesktop portal sessions, capability-aware window support |
 | Any platform without CGO | `CGO_ENABLED=0` | The API compiles; native GUI operations return `ErrNotSupported`, while explicit Linux RemoteDesktop portal sessions provide a limited Pure-Go input path |
 
 Wayland compositors intentionally restrict global automation. GNOME and KDE can
@@ -82,6 +83,8 @@ that session when native virtual input is unavailable; RobotGo never opens the
 dialog implicitly. Native pointer and keyboard automation requires the
 compositor to expose the corresponding virtual-input protocols. See
 [Wayland status](docs/wayland-tasks.md) for the detailed matrix and open work.
+Persistent capture runtime evidence is tracked separately in the
+[Wayland capture compatibility matrix](docs/compatibility/wayland-capture.md).
 
 ## Requirements
 
@@ -122,6 +125,23 @@ development files as well:
 
 ```bash
 sudo apt install libwayland-dev libxkbcommon-dev wayland-protocols libgbm-dev libdrm-dev
+```
+
+Persistent ScreenCast frame capture additionally needs PipeWire development
+files and the `pipewire` build tag:
+
+```bash
+sudo apt install libpipewire-0.3-dev
+go build -tags "wayland pipewire" ./...
+```
+
+On non-FHS systems where PipeWire headers and libraries are outside the default
+compiler paths, derive them from pkg-config before building:
+
+```bash
+export CGO_CFLAGS="$(pkg-config --cflags-only-I libpipewire-0.3)"
+export CGO_LDFLAGS="$(pkg-config --libs libpipewire-0.3)"
+go build -tags "wayland pipewire" ./...
 ```
 
 Package names differ on other distributions. Optional runtime integrations:
@@ -220,12 +240,50 @@ Capture selection is:
 
 1. Native `wlr-screencopy` using DMA-BUF when supported.
 2. Native `wl_shm` when DMA-BUF is unavailable or unsuitable.
-3. The freedesktop Screenshot portal when native capture fails and portal use
+3. An already authorized persistent ScreenCast/PipeWire session, when one was
+   explicitly started.
+4. The freedesktop Screenshot portal when native capture fails and portal use
    is allowed.
 
 The portal may prompt the user. Native screencopy and virtual input are most
 useful on wlroots compositors; availability is probed at runtime rather than
 inferred from environment variables alone.
+
+For repeated GNOME/KDE capture, build with `-tags pipewire`, explicitly open
+one consent session, then read as many frames as required without creating a
+new portal request per frame:
+
+```go
+ctx := context.Background()
+err := robotgo.StartScreenCastCapture(ctx, robotgo.ScreenCastCaptureOptions{
+	Sources: robotgo.ScreenCastSourceMonitor,
+	Cursor:  robotgo.ScreenCastCursorEmbedded,
+	Persist: robotgo.ScreenCastPersistApp,
+})
+if err != nil {
+	log.Fatal(err)
+}
+defer robotgo.CloseScreenCastCapture()
+
+frame, err := robotgo.CaptureScreenCast(ctx) // image.Image
+```
+
+`CaptureScreenCast(ctx, x, y, width, height)` crops in logical compositor
+coordinates and maps fractional stream scaling to physical pixels.
+`ScreenCastCaptureStreams` exposes selected stream geometry and PipeWire
+metadata; `ScreenCastCaptureRestoreToken` returns the newest single-use restore
+token. Keep restore tokens private and replace the stored token after every
+restored session. `CaptureScreen` continues to prefer native screencopy, then
+reuses an active ScreenCast session on native failure. Use
+`ROBOTGO_WAYLAND_BACKEND=screencast` only when the persistent session should be
+mandatory.
+
+The image capture backend supports hidden and embedded cursor modes. Raw cursor
+metadata remains available to lower-level `OpenScreenCast` consumers, but
+`OpenPipeWireCapture` rejects that mode explicitly because its `image.Image`
+result cannot represent separate cursor metadata. Starting a capture waits for
+the PipeWire stream to reach a usable state; an idle session recycles frames
+without converting them until a capture is requested.
 
 For explicit GNOME/KDE portal input, probe support without prompting and then
 call `StartRemoteDesktopInput` with the required device mask. While that session
@@ -274,7 +332,7 @@ Useful capture controls:
 
 | Variable | Values/effect |
 |---|---|
-| `ROBOTGO_WAYLAND_BACKEND` | `auto`, `dmabuf`, `wl_shm`, or `portal` |
+| `ROBOTGO_WAYLAND_BACKEND` | `auto`, `dmabuf`, `wl_shm`, `screencast`, or `portal` |
 | `ROBOTGO_FORCE_PORTAL=1` | Force screenshot portal capture |
 | `ROBOTGO_DISABLE_PORTAL=1` | Disable portal prompts and fallback |
 | `ROBOTGO_CAPTURE_DEBUG=1` | Log backend selection and fallback decisions |
@@ -321,6 +379,7 @@ The checked-in examples use this fork's module path and track the current API:
 - [Full-screen capture with backend reporting](examples/screen_full/main.go)
 - [Linux capabilities](examples/linux_capabilities/main.go)
 - [Consent-aware RemoteDesktop portal input](examples/remote_desktop_input/main.go)
+- [Persistent ScreenCast/PipeWire capture](examples/screencast_capture/main.go)
 - [Window and process helpers](examples/window/main.go)
 - [Display scaling](examples/scale/main.go)
 
