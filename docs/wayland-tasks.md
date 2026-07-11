@@ -7,7 +7,7 @@ Current implementation baseline:
 - Screen capture prefers Wayland screencopy and falls back to portal.
 - `ROBOTGO_FORCE_PORTAL=1` is supported for forcing portal capture.
 - `ROBOTGO_DISABLE_PORTAL=1` disables portal prompts/fallback for deterministic native-only operation.
-- `ROBOTGO_WAYLAND_BACKEND` (`auto|dmabuf|wl_shm|portal`) is supported.
+- `ROBOTGO_WAYLAND_BACKEND` (`auto|dmabuf|wl_shm|screencast|portal`) is supported.
 - `ROBOTGO_CAPTURE_DEBUG=1` logs backend selection/fallback details.
 - Linux runtime capability introspection is available via `GetLinuxCapabilities`,
   including hook/event capability status.
@@ -19,6 +19,11 @@ Current implementation baseline:
   `UnicodeTypeE`) while legacy APIs remain source-compatible.
 - Native screencopy has bounded event dispatch, deterministic FD/resource
   cleanup and hermetic regression coverage for compositor stalls and DMABUF failures.
+- An explicitly started ScreenCast session provides reusable PipeWire frames
+  behind the `pipewire` build tag. It preserves stream geometry/serial metadata,
+  supports logical region crop with fractional scaling, converts negotiated raw
+  RGB/BGR formats to RGBA, applies SPA crop/transform metadata, and closes
+  PipeWire before the portal session.
 - Window-control APIs now expose explicit Wayland NotSupported errors via
   error-returning variants (`SetActiveE`, `MinWindowE`, `MaxWindowE`,
   `CloseWindowE`, `GetTitleE`, `IsTopMostE`, `IsMinimizedE`,
@@ -65,8 +70,10 @@ Window backend support matrix (current):
     mapping, absolute pointer/touch, consent, denial, cancellation, timeout,
     restore metadata, teardown, and high-level dispatch have hermetic coverage.
     `[new vs robotgo-pro]`
-  - 2. Full Wayland ScreenCast portal backend with a reusable PipeWire session
-    stream, not one screenshot request per frame. `[new vs robotgo-pro]`
+  - 2. Validate the reusable ScreenCast/PipeWire backend on protected real
+    GNOME/KDE/wlroots runners and promote its leak/timeout tests to release
+    gates. The implementation and opt-in integration harness are present.
+    `[new vs robotgo-pro]`
   - 3. Extend window state/query operations from explicit error parity to real
     compositor-backed behavior where state is observable.
   - 4. Wayland reliability matrix across wlroots/GNOME/KDE: multi-output,
@@ -97,8 +104,8 @@ Window backend support matrix (current):
 - Portal Path:
   - Expand troubleshooting for xdg-desktop-portal backend selection and consent prompts.
   - Validate the existing high-level RemoteDesktop input fallback on GNOME/KDE.
-  - Add a full ScreenCast/PipeWire stream path in addition to the current
-    screenshot fallback.
+  - Validate the persistent ScreenCast/PipeWire stream path and repeated-frame
+    behavior across GNOME/KDE/wlroots portal backends.
 - Keyboard Input:
   - Add Unicode typing via xkbcommon compose/keysyms.
   - Verify modifier synchronization and layout handling under various layouts.

@@ -145,13 +145,17 @@ jobs:
             build-essential pkg-config weston \
             libx11-dev libxtst-dev libxkbcommon-dev \
             libwayland-dev wayland-protocols \
-            libgbm-dev libdrm-dev
+            libgbm-dev libdrm-dev libpipewire-0.3-dev
       - name: Run Wayland integration tests
         env:
           XDG_RUNTIME_DIR: /tmp
         run: |
           go test -tags "wayland" ./...
           go test -tags "portal" ./screen/portal -v
+          go test -tags "pipewire" ./screen/portal -v
+          # Compile the consent-driven ScreenCast/PipeWire harness; real runs
+          # require a graphical desktop and ROBOTGO_SCREENCAST_E2E=1.
+          go test -tags "pipewire integration" ./screen/portal -run '^$'
           # Compile the consent-driven harness; real runs use remote-desktop-e2e.yml.
           go test -tags "integration" ./input/portal -run '^$'
           go test -tags "wayland test" ./screen -run TestScreencopy -v

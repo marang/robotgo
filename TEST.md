@@ -132,6 +132,40 @@ Runtime outcomes and missing infrastructure are recorded in
 `docs/compatibility/wayland-input.md`; an unavailable runner is not counted as a
 passing compositor.
 
+### Persistent ScreenCast/PipeWire capture
+
+Purpose:
+
+- Hermetic ScreenCast request/session negotiation, denial, closure, metadata,
+  file-descriptor ownership, and deterministic teardown
+- Reusable PipeWire consumer compilation and frame/crop behavior
+- Fractional logical-to-physical region mapping and repeated-frame lifecycle
+
+Command:
+
+```bash
+go test -race ./screen/portal
+go test -race -tags "pipewire" ./screen/portal
+```
+
+Prerequisites for the tagged suite:
+
+- Linux, CGO, and `libpipewire-0.3-dev`
+- No live portal is required for the hermetic tests
+
+Opt-in real portal/PipeWire test:
+
+```bash
+ROBOTGO_SCREENCAST_E2E=1 go test -tags "pipewire integration" ./screen/portal -run TestPipeWireCapturePersistentSessionIntegration -v
+```
+
+Run it from a graphical Wayland session. It displays the portal consent UI,
+captures two frames from the same session, validates non-empty output, and
+closes the PipeWire consumer before the portal session.
+`.github/workflows/screencast-e2e.yml` runs the same harness on protected
+self-hosted GNOME, KDE, and wlroots runners when the repository variable
+`ROBOTGO_SCREENCAST_E2E=1` is enabled, or by manual dispatch.
+
 ### `waylandint` (Keyboard integration harness)
 
 Purpose:
@@ -166,7 +200,9 @@ Status:
 - `ROBOTGO_DISABLE_PORTAL=1`
   - Disables portal capture and consent prompts; useful for deterministic native-backend tests.
 - `ROBOTGO_WAYLAND_BACKEND`
-  - Overrides Linux capture backend selection (`auto|dmabuf|wl_shm|portal`).
+  - Overrides Linux capture backend selection (`auto|dmabuf|wl_shm|screencast|portal`).
+- `ROBOTGO_SCREENCAST_E2E=1`
+  - Enables the real persistent ScreenCast/PipeWire integration test.
 - `ROBOTGO_CAPTURE_DEBUG=1`
   - Enables backend/fallback diagnostic logs for capture flow.
 - `ROBOTGO_WLROOTS_MINMAX_E2E=1`
@@ -183,6 +219,7 @@ go test ./...
 CGO_ENABLED=0 go test ./...
 go test -tags "wayland" ./...
 go test -tags "portal" ./screen/portal -v
+go test -tags "pipewire" ./screen/portal -v
 go test -tags "wayland integration" . ./mouse ./window -v
 ```
 

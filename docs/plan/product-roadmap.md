@@ -34,14 +34,14 @@ The July 2026 hardening work establishes the foundation for this roadmap:
 |---|---|---|---|
 | Current baseline | Complete in branch | Native screencopy, screenshot portal fallback, bounded waits, cleanup, live capability probes, error APIs, non-CGO contract, dedicated race/vet jobs | Confirm new CI jobs on remote branch |
 | 1. Wayland input | Implementation complete; runtime validation blocked | Native virtual keyboard/pointer, consent-aware RemoteDesktop fallback, shared ScreenCast stream mapping, absolute pointer/touch, restore tokens, diagnostics and E2E harness | Register GNOME/KDE/wlroots runners and collect green CGO/non-CGO evidence |
-| 2. Capture | Partial | Reliable one-shot screencopy and screenshot portal, region crop, output geometry, scale/transform foundations | ScreenCast/PipeWire stream and full multi-output/fractional-scale/transform gates |
+| 2. Capture | Active; persistent backend implemented | Reliable one-shot paths plus one consent-aware ScreenCast session, reusable PipeWire frames, logical region crop, raw pixel conversion, metadata/restore tokens, cleanup and integration harness | Real GNOME/KDE/wlroots evidence and full multi-output/fractional-scale/transform/leak gates |
 | 3. Pure-Go | Foundation only | Non-CGO builds fail explicitly instead of degrading silently | Useful selected Pure-Go backends, parity tests, benchmarks, backend introspection |
 | 4. API/compositor gaps | Parity surface delivered; runtime support partial | Window-state error APIs, bitmap string helpers, `FindColorCS`, hook/event capability reporting, Sway/Hyprland/wlroots resolver | Compositor-backed state operations and cross-platform/runtime matrix coverage |
 | 5. Reliability product | Partial | Capability API/example and expanded CI variants | Versioned compatibility matrix, richer diagnostics, dedicated compositor jobs, sanitizer/leak gates |
 
 No delivery phase is complete until all of its exit criteria are blocking and
-green. The active implementation slice is Phase 1: RemoteDesktop portal input
-for GNOME and KDE while preserving native wlroots input protocols.
+green. Phase 1 implementation is merged; its real-compositor evidence remains
+an infrastructure blocker. The active implementation slice is Phase 2 capture.
 
 ## Delivery Order
 
@@ -90,9 +90,15 @@ capabilities and the capture debug trace.
 
 Current status: the one-shot native and screenshot-portal paths are hardened,
 including timeout, portal request-race, crop, DMA-BUF failure, and FD ownership
-regressions. Output geometry, scale, and transform handling exist but do not yet
-have the complete compositor matrix required by this phase. ScreenCast/PipeWire
-streaming is not implemented.
+regressions. An opt-in `pipewire` build now opens one ScreenCast consent session,
+owns its PipeWire remote and stream deterministically, returns repeated raw
+frames, converts supported RGB/BGR formats to RGBA, maps logical regions at
+fractional scale, applies all eight SPA video transforms and crop metadata,
+exposes stream/restore metadata, and provides hermetic plus opt-in runtime
+tests. `CaptureScreen` can reuse the active session after native
+screencopy failure or select it explicitly. Output geometry, scale, and
+transform handling still need the complete real-compositor matrix required by
+this phase.
 
 Exit criteria:
 
