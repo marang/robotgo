@@ -1,4 +1,4 @@
-//go:build cgo
+//go:build cgo && linux
 
 package robotgo
 
@@ -10,6 +10,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	inputportal "github.com/marang/robotgo/input/portal"
 	portalpkg "github.com/marang/robotgo/screen/portal"
@@ -40,6 +41,7 @@ func resetWaylandBoundsCacheForTest() {
 	waylandBoundsCached = Rect{}
 	waylandBoundsValid = false
 	waylandBoundsProbed = false
+	waylandBoundsAt = time.Time{}
 	waylandBoundsMu.Unlock()
 }
 
@@ -149,6 +151,48 @@ interface: 'wl_output',                                  version:  4, name: 58
 	}
 	if rect.X != 10 || rect.Y != 20 || rect.W != 800 || rect.H != 600 {
 		t.Fatalf("unexpected bounds: %+v", rect)
+	}
+}
+
+func TestWaylandBoundsCacheExpiresAndCanBeInvalidated(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("linux only")
+	}
+	tmp := t.TempDir()
+	writeWaylandInfoStub(t, tmp)
+	t.Setenv(envPath, tmp+":"+os.Getenv(envPath))
+	t.Setenv(envWaylandDisplay, testWaylandDisplay)
+	t.Setenv(envDisplay, "")
+
+	now := time.Unix(100, 0)
+	previousNow := waylandBoundsNow
+	waylandBoundsNow = func() time.Time { return now }
+	t.Cleanup(func() {
+		waylandBoundsNow = previousNow
+		InvalidateScreenBoundsCache()
+	})
+
+	waylandBoundsMu.Lock()
+	waylandBoundsCached = Rect{Point: Point{X: 1, Y: 2}, Size: Size{W: 3, H: 4}}
+	waylandBoundsValid = true
+	waylandBoundsProbed = true
+	waylandBoundsAt = now
+	waylandBoundsMu.Unlock()
+
+	if rect, ok := waylandScreenBoundsFallback(); !ok || rect.W != 3 {
+		t.Fatalf("fresh cached bounds = %+v, %v", rect, ok)
+	}
+	now = now.Add(waylandBoundsSuccessTTL + time.Millisecond)
+	if rect, ok := waylandScreenBoundsFallback(); !ok || rect.W != 800 || rect.H != 600 {
+		t.Fatalf("refreshed bounds = %+v, %v", rect, ok)
+	}
+
+	InvalidateScreenBoundsCache()
+	waylandBoundsMu.Lock()
+	probed := waylandBoundsProbed
+	waylandBoundsMu.Unlock()
+	if probed {
+		t.Fatal("InvalidateScreenBoundsCache left cache marked as probed")
 	}
 }
 

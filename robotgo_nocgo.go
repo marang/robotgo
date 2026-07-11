@@ -19,11 +19,16 @@ import (
 const Version = "v1.00.0.1189, MT. Baker!"
 
 var (
+	// Deprecated: use SetRuntimeConfig for runtime changes in concurrent programs.
 	MouseSleep = 0
-	KeySleep   = 10
-	DisplayID  = -1
-	NotPid     bool
-	Scale      bool
+	// Deprecated: use SetRuntimeConfig for runtime changes in concurrent programs.
+	KeySleep = 10
+	// Deprecated: use SetRuntimeConfig for runtime changes in concurrent programs.
+	DisplayID = -1
+	// Deprecated: use SetRuntimeConfig for runtime changes in concurrent programs.
+	NotPid bool
+	// Deprecated: use SetRuntimeConfig for runtime changes in concurrent programs.
+	Scale bool
 )
 
 type DisplayServer string
@@ -53,6 +58,8 @@ type LinuxCapabilities struct {
 	Mouse          FeatureCapability
 	RemoteDesktop  FeatureCapability
 	Window         FeatureCapability
+	Hook           FeatureCapability
+	Events         FeatureCapability
 }
 
 type CaptureBackend string
@@ -106,6 +113,7 @@ type Bitmap struct {
 	BitsPixel     uint8
 	BytesPerPixel uint8
 	buf           []uint8
+	trusted       bool
 }
 
 // CBitmap is an opaque compatibility handle in non-CGO builds.
@@ -139,6 +147,8 @@ func GetLinuxCapabilities() LinuxCapabilities {
 		Keyboard:       unsupported,
 		Mouse:          unsupported,
 		Window:         unsupported,
+		Hook:           unsupported,
+		Events:         unsupported,
 	}
 	if runtime.GOOS == "linux" && ds == DisplayServerWayland {
 		ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
@@ -252,7 +262,7 @@ func KeyTap(key string, args ...interface{}) error {
 		return ErrNotSupported
 	}
 	if err == nil {
-		MilliSleep(KeySleep)
+		MilliSleep(currentKeyDelay())
 	}
 	return err
 }
@@ -272,7 +282,7 @@ func parsePortalKeyArgs(args []interface{}, toggle bool) (pid int, down bool, mo
 	for _, arg := range args {
 		value, ok := arg.(string)
 		if !ok {
-			return 0, false, nil, fmt.Errorf("%w: portal keyboard argument has type %T", ErrNotSupported, arg)
+			return 0, false, nil, fmt.Errorf("robotgo: key modifier must be a string, got %T", arg)
 		}
 		modifiers = append(modifiers, value)
 	}
@@ -303,7 +313,7 @@ func KeyToggle(key string, args ...interface{}) error {
 		return ErrNotSupported
 	}
 	if err == nil {
-		MilliSleep(KeySleep)
+		MilliSleep(currentKeyDelay())
 	}
 	return err
 }
@@ -378,11 +388,10 @@ func MoveSmoothRelative(int, int, ...interface{}) {}
 func DragSmooth(int, int, ...interface{})         {}
 func Click(args ...interface{})                   { _ = ClickE(args...) }
 func ClickE(args ...interface{}) error {
-	name := "left"
-	if len(args) > 0 {
-		name = args[0].(string)
+	name, double, err := parseClickArguments(args)
+	if err != nil {
+		return err
 	}
-	double := len(args) > 1 && args[1].(bool)
 	used, err := tryRemoteDesktopClick(name, double)
 	if !used {
 		return ErrNotSupported
@@ -390,11 +399,10 @@ func ClickE(args ...interface{}) error {
 	return finishRemoteDesktopMouseEvent(err, 0)
 }
 func Toggle(args ...interface{}) error {
-	name := "left"
-	if len(args) > 0 {
-		name = args[0].(string)
+	name, down, err := parseToggleArguments(args)
+	if err != nil {
+		return err
 	}
-	down := len(args) <= 1 || args[1].(string) != "up"
 	used, err := tryRemoteDesktopToggle(name, down)
 	if !used {
 		return ErrNotSupported
@@ -433,9 +441,61 @@ func ToBitmap(bit CBitmap) Bitmap {
 	}
 	return *bit
 }
-func ToImage(CBitmap) image.Image { return image.NewRGBA(image.Rect(0, 0, 0, 0)) }
-func PadHex(hex uint32) string    { return fmt.Sprintf("%06x", hex&0xffffff) }
-func U32ToHex(hex uint32) uint32  { return hex }
+func ToCBitmap(bit Bitmap) CBitmap {
+	bitmap, _ := ToCBitmapE(bit)
+	return bitmap
+}
+func ToCBitmapE(bit Bitmap) (CBitmap, error) {
+	data, err := bitmapBytes(bit)
+	if err != nil {
+		return nil, err
+	}
+	result := bit
+	result.buf = data
+	result.ImgBuf = &result.buf[0]
+	return &result, nil
+}
+func ToImage(bit CBitmap) image.Image {
+	img, err := ToRGBAE(bit)
+	if err != nil {
+		return nil
+	}
+	return img
+}
+func ToRGBA(bit CBitmap) *image.RGBA {
+	img, _ := ToRGBAE(bit)
+	return img
+}
+func ToRGBAE(bit CBitmap) (*image.RGBA, error) {
+	if bit == nil {
+		return nil, errors.New("bitmap is nil")
+	}
+	return ToRGBAGoE(*bit)
+}
+func ImgToCBitmap(img image.Image) CBitmap {
+	bitmap, _ := ImgToCBitmapE(img)
+	return bitmap
+}
+func ImgToCBitmapE(img image.Image) (CBitmap, error) {
+	bitmap, err := ImgToBitmapE(img)
+	if err != nil {
+		return nil, err
+	}
+	return ToCBitmapE(bitmap)
+}
+func ByteToCBitmap(data []byte) CBitmap {
+	bitmap, _ := ByteToCBitmapE(data)
+	return bitmap
+}
+func ByteToCBitmapE(data []byte) (CBitmap, error) {
+	img, err := ByteToImg(data)
+	if err != nil {
+		return nil, err
+	}
+	return ImgToCBitmapE(img)
+}
+func PadHex(hex uint32) string   { return fmt.Sprintf("%06x", hex&0xffffff) }
+func U32ToHex(hex uint32) uint32 { return hex }
 func RgbToHex(r, g, b uint8) uint32 {
 	return uint32(r)<<16 | uint32(g)<<8 | uint32(b)
 }

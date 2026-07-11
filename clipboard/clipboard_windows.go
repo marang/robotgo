@@ -8,6 +8,8 @@
 package clipboard
 
 import (
+	"context"
+	"fmt"
 	"syscall"
 	"time"
 	"unsafe"
@@ -35,8 +37,7 @@ var (
 	lstrcpy      = kernel32.NewProc("lstrcpyW")
 )
 
-// waitOpenClipboard opens the clipboard, waiting for up to a second to do so.
-func waitOpenClipboard() error {
+func waitOpenClipboardContext(ctx context.Context) error {
 	started := time.Now()
 	limit := started.Add(time.Second)
 	var (
@@ -44,19 +45,39 @@ func waitOpenClipboard() error {
 		err error
 	)
 	for time.Now().Before(limit) {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 		r, _, err = openClipboard.Call(0)
 		if r != 0 {
 			return nil
 		}
-		time.Sleep(time.Millisecond)
+		timer := time.NewTimer(time.Millisecond)
+		select {
+		case <-ctx.Done():
+			if !timer.Stop() {
+				select {
+				case <-timer.C:
+				default:
+				}
+			}
+			return ctx.Err()
+		case <-timer.C:
+		}
 	}
 
 	return err
 }
 
 func readAll() (string, error) {
-	// r, _, err := openClipboard.Call(0)
-	err := waitOpenClipboard()
+	return readAllContext(context.Background(), SelectionClipboard)
+}
+
+func readAllContext(ctx context.Context, selection Selection) (string, error) {
+	if selection != SelectionClipboard {
+		return "", fmt.Errorf("clipboard: primary selection is unsupported on Windows")
+	}
+	err := waitOpenClipboardContext(ctx)
 	if err != nil {
 		return "", err
 	}
@@ -83,7 +104,14 @@ func readAll() (string, error) {
 }
 
 func writeAll(text string) error {
-	err := waitOpenClipboard()
+	return writeAllContext(context.Background(), text, SelectionClipboard)
+}
+
+func writeAllContext(ctx context.Context, text string, selection Selection) error {
+	if selection != SelectionClipboard {
+		return fmt.Errorf("clipboard: primary selection is unsupported on Windows")
+	}
+	err := waitOpenClipboardContext(ctx)
 	if err != nil {
 		return err
 	}

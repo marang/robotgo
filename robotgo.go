@@ -56,8 +56,6 @@ import "C"
 import (
 	"bufio"
 	"context"
-	"encoding/base64"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"image"
@@ -100,16 +98,21 @@ func GetVersion() string {
 
 var (
 	// MouseSleep set the mouse default millisecond sleep time
+	// Deprecated: use SetRuntimeConfig for runtime changes in concurrent programs.
 	MouseSleep = 0
 	// KeySleep set the key default millisecond sleep time
+	// Deprecated: use SetRuntimeConfig for runtime changes in concurrent programs.
 	KeySleep = 10
 
 	// DisplayID set the screen display id
+	// Deprecated: use SetRuntimeConfig for runtime changes in concurrent programs.
 	DisplayID = -1
 
 	// NotPid used the hwnd not pid in windows
+	// Deprecated: use SetRuntimeConfig for runtime changes in concurrent programs.
 	NotPid bool
 	// Scale option the os screen scale
+	// Deprecated: use SetRuntimeConfig for runtime changes in concurrent programs.
 	Scale bool
 )
 
@@ -533,22 +536,51 @@ type waylandWLModeState struct {
 }
 
 var (
-	waylandBoundsMu     sync.Mutex
-	waylandBoundsCached Rect
-	waylandBoundsValid  bool
-	waylandBoundsProbed bool
+	waylandBoundsProbeMu sync.Mutex
+	waylandBoundsMu      sync.Mutex
+	waylandBoundsCached  Rect
+	waylandBoundsValid   bool
+	waylandBoundsProbed  bool
+	waylandBoundsAt      time.Time
+	waylandBoundsNow     = time.Now
 )
+
+const (
+	waylandBoundsSuccessTTL = 2 * time.Second
+	waylandBoundsFailureTTL = 250 * time.Millisecond
+)
+
+// InvalidateScreenBoundsCache forces the next Wayland fallback bounds query to
+// re-read compositor output geometry.
+func InvalidateScreenBoundsCache() {
+	waylandBoundsProbeMu.Lock()
+	defer waylandBoundsProbeMu.Unlock()
+	waylandBoundsMu.Lock()
+	waylandBoundsCached = Rect{}
+	waylandBoundsValid = false
+	waylandBoundsProbed = false
+	waylandBoundsAt = time.Time{}
+	waylandBoundsMu.Unlock()
+}
 
 func waylandScreenBoundsFallback() (Rect, bool) {
 	if !isWaylandSession() {
 		return Rect{}, false
 	}
+	waylandBoundsProbeMu.Lock()
+	defer waylandBoundsProbeMu.Unlock()
 
 	waylandBoundsMu.Lock()
 	if waylandBoundsProbed {
-		r, ok := waylandBoundsCached, waylandBoundsValid
-		waylandBoundsMu.Unlock()
-		return r, ok
+		ttl := waylandBoundsFailureTTL
+		if waylandBoundsValid {
+			ttl = waylandBoundsSuccessTTL
+		}
+		if waylandBoundsNow().Sub(waylandBoundsAt) < ttl {
+			r, ok := waylandBoundsCached, waylandBoundsValid
+			waylandBoundsMu.Unlock()
+			return r, ok
+		}
 	}
 	waylandBoundsMu.Unlock()
 
@@ -557,6 +589,7 @@ func waylandScreenBoundsFallback() (Rect, bool) {
 		waylandBoundsMu.Lock()
 		waylandBoundsProbed = true
 		waylandBoundsValid = false
+		waylandBoundsAt = waylandBoundsNow()
 		waylandBoundsMu.Unlock()
 		return Rect{}, false
 	}
@@ -569,6 +602,7 @@ func waylandScreenBoundsFallback() (Rect, bool) {
 		waylandBoundsMu.Lock()
 		waylandBoundsProbed = true
 		waylandBoundsValid = false
+		waylandBoundsAt = waylandBoundsNow()
 		waylandBoundsMu.Unlock()
 		return Rect{}, false
 	}
@@ -577,6 +611,7 @@ func waylandScreenBoundsFallback() (Rect, bool) {
 	waylandBoundsMu.Lock()
 	waylandBoundsProbed = true
 	waylandBoundsValid = ok
+	waylandBoundsAt = waylandBoundsNow()
 	if ok {
 		waylandBoundsCached = rect
 	}
@@ -933,19 +968,8 @@ type Bitmap struct {
 	BitsPixel     uint8
 	BytesPerPixel uint8
 
-	buf []uint8 // keep Go memory alive for ImgBuf
-}
-
-const bitmapStringFormat = "robotgo.bitmap.v1"
-
-type bitmapStringPayload struct {
-	Format        string `json:"format"`
-	Width         int    `json:"width"`
-	Height        int    `json:"height"`
-	Bytewidth     int    `json:"bytewidth"`
-	BitsPixel     uint8  `json:"bitsPixel"`
-	BytesPerPixel uint8  `json:"bytesPerPixel"`
-	Data          string `json:"data"`
+	buf     []uint8 // keep Go memory alive for ImgBuf
+	trusted bool    // ImgBuf was produced by a RobotGo-owned native bitmap
 }
 
 // Point is point struct
@@ -1087,49 +1111,6 @@ func GetLocationColor(displayId ...int) (string, error) {
 	return GetPixelColor(x, y, displayId...)
 }
 
-// FindColorCS searches a captured screen region for color with an optional
-// tolerance. It returns the absolute screen coordinate of the first matching
-// pixel, or (-1, -1) when the color is not found.
-func FindColorCS(x, y, w, h int, color CHex, tolerance ...float64) (int, int, error) {
-	if w <= 0 || h <= 0 {
-		return -1, -1, fmt.Errorf("invalid search region %dx%d", w, h)
-	}
-
-	tol := 0.0
-	if len(tolerance) > 0 {
-		tol = tolerance[0]
-	}
-	if tol < 0 {
-		return -1, -1, fmt.Errorf("invalid color tolerance %f", tol)
-	}
-
-	bmp, err := CaptureGo(x, y, w, h)
-	if err != nil {
-		return -1, -1, err
-	}
-
-	r, g, b := splitHex(uint32(color))
-	for yy := 0; yy < bmp.Height; yy++ {
-		for xx := 0; xx < bmp.Width; xx++ {
-			pr, pg, pb, ok := bitmapRGBAt(bmp, xx, yy)
-			if !ok {
-				return -1, -1, errors.New("invalid bitmap pixel layout")
-			}
-			if rgbSimilar(pr, pg, pb, r, g, b, tol) {
-				return x + xx, y + yy, nil
-			}
-		}
-	}
-
-	return -1, -1, nil
-}
-
-// FindcolorCS is kept for compatibility with the historical RobotGo-Pro
-// spelling.
-func FindcolorCS(x, y, w, h int, color CHex, tolerance ...float64) (int, int, error) {
-	return FindColorCS(x, y, w, h, color, tolerance...)
-}
-
 // IsMain is main display
 func IsMain(displayId int) bool {
 	return displayId == GetMainId()
@@ -1137,8 +1118,8 @@ func IsMain(displayId int) bool {
 
 func displayIdx(id ...int) int {
 	display := -1
-	if DisplayID != -1 {
-		display = DisplayID
+	if configured := currentDisplayID(); configured != -1 {
+		display = configured
 	}
 	if len(id) > 0 {
 		display = id[0]
@@ -1230,8 +1211,8 @@ func GetScaleSize(displayId ...int) (int, int) {
 func CaptureScreen(args ...int) (CBitmap, error) {
 	var x, y, w, h C.int32_t
 	displayId := -1
-	if DisplayID != -1 {
-		displayId = DisplayID
+	if configured := currentDisplayID(); configured != -1 {
+		displayId = configured
 	}
 
 	if len(args) > 4 {
@@ -1264,7 +1245,7 @@ func CaptureScreen(args ...int) (CBitmap, error) {
 	}
 
 	isPid := 0
-	if NotPid || len(args) > 5 {
+	if currentTreatAsHandle() || len(args) > 5 {
 		isPid = 1
 	}
 
@@ -1382,6 +1363,9 @@ func CaptureImg(args ...int) (image.Image, error) {
 
 // FreeBitmap free and dealloc the C bitmap
 func FreeBitmap(bitmap CBitmap) {
+	if bitmap == nil {
+		return
+	}
 	// C.destroyMMBitmap(bitmap)
 	C.bitmap_dealloc(C.MMBitmapRef(bitmap))
 }
@@ -1400,6 +1384,9 @@ func ToMMBitmapRef(bit CBitmap) C.MMBitmapRef {
 
 // ToBitmap trans C.MMBitmapRef to Bitmap
 func ToBitmap(bit CBitmap) Bitmap {
+	if bit == nil {
+		return Bitmap{}
+	}
 	bitmap := Bitmap{
 		ImgBuf:        (*uint8)(bit.imageBuffer),
 		Width:         int(bit.width),
@@ -1408,6 +1395,7 @@ func ToBitmap(bit CBitmap) Bitmap {
 		BitsPixel:     uint8(bit.bitsPerPixel),
 		BytesPerPixel: uint8(bit.bytesPerPixel),
 		buf:           nil,
+		trusted:       true,
 	}
 
 	return bitmap
@@ -1426,242 +1414,89 @@ func ownedBitmapFromC(bit CBitmap) (Bitmap, error) {
 	return bitmap, nil
 }
 
-func bitmapBufferLen(bit Bitmap) (int, error) {
-	if bit.Width <= 0 || bit.Height <= 0 {
-		return 0, fmt.Errorf("invalid bitmap dimensions %dx%d", bit.Width, bit.Height)
-	}
-	if bit.Bytewidth <= 0 || bit.BytesPerPixel == 0 {
-		return 0, fmt.Errorf("invalid bitmap layout bytewidth=%d bytesPerPixel=%d", bit.Bytewidth, bit.BytesPerPixel)
-	}
-	if bit.Bytewidth < bit.Width*int(bit.BytesPerPixel) {
-		return 0, fmt.Errorf("invalid bitmap stride %d for width=%d bytesPerPixel=%d", bit.Bytewidth, bit.Width, bit.BytesPerPixel)
-	}
-	total := bit.Bytewidth * bit.Height
-	if total <= 0 {
-		return 0, errors.New("invalid bitmap buffer size")
-	}
-	return total, nil
+// ToCBitmap trans Bitmap to C.MMBitmapRef. Invalid input returns nil; callers
+// that need the validation error should use ToCBitmapE.
+func ToCBitmap(bit Bitmap) CBitmap {
+	bitmap, _ := ToCBitmapE(bit)
+	return bitmap
 }
 
-func bitmapBytes(bit Bitmap) ([]byte, error) {
-	total, err := bitmapBufferLen(bit)
+// ToCBitmapE validates and copies a Go Bitmap into C-owned memory.
+func ToCBitmapE(bit Bitmap) (CBitmap, error) {
+	data, err := bitmapBytes(bit)
 	if err != nil {
 		return nil, err
 	}
-	if bit.ImgBuf == nil {
-		return nil, errors.New("bitmap image buffer is nil")
-	}
-	src := unsafe.Slice((*byte)(unsafe.Pointer(bit.ImgBuf)), total)
-	dst := make([]byte, total)
-	copy(dst, src)
-	return dst, nil
-}
-
-// ToStrBitmap serializes a Bitmap into a stable JSON/base64 string.
-func ToStrBitmap(bit Bitmap) (string, error) {
-	data, err := bitmapBytes(bit)
-	if err != nil {
-		return "", err
-	}
-	payload := bitmapStringPayload{
-		Format:        bitmapStringFormat,
-		Width:         bit.Width,
-		Height:        bit.Height,
-		Bytewidth:     bit.Bytewidth,
-		BitsPixel:     bit.BitsPixel,
-		BytesPerPixel: bit.BytesPerPixel,
-		Data:          base64.StdEncoding.EncodeToString(data),
-	}
-	raw, err := json.Marshal(payload)
-	if err != nil {
-		return "", err
-	}
-	return string(raw), nil
-}
-
-// BitmapFromStr decodes a bitmap string produced by ToStrBitmap.
-func BitmapFromStr(str string) (Bitmap, error) {
-	var payload bitmapStringPayload
-	if err := json.Unmarshal([]byte(str), &payload); err != nil {
-		return Bitmap{}, err
-	}
-	if payload.Format != bitmapStringFormat {
-		return Bitmap{}, fmt.Errorf("unsupported bitmap string format %q", payload.Format)
-	}
-	data, err := base64.StdEncoding.DecodeString(payload.Data)
-	if err != nil {
-		return Bitmap{}, err
-	}
-	bit := Bitmap{
-		Width:         payload.Width,
-		Height:        payload.Height,
-		Bytewidth:     payload.Bytewidth,
-		BitsPixel:     payload.BitsPixel,
-		BytesPerPixel: payload.BytesPerPixel,
-		buf:           data,
-	}
-	if _, err := bitmapBufferLen(bit); err != nil {
-		return Bitmap{}, err
-	}
-	if len(data) != bit.Bytewidth*bit.Height {
-		return Bitmap{}, fmt.Errorf("bitmap payload length %d does not match layout size %d", len(data), bit.Bytewidth*bit.Height)
-	}
-	if len(bit.buf) > 0 {
-		bit.ImgBuf = &bit.buf[0]
-	}
-	return bit, nil
-}
-
-// CaptureBitmapStr captures the screen and returns the serialized bitmap.
-func CaptureBitmapStr(args ...int) (string, error) {
-	bit, err := CaptureGo(args...)
-	if err != nil {
-		return "", err
-	}
-	return ToStrBitmap(bit)
-}
-
-// FindBitmapStr searches for needleStr inside haystackStr. When only one
-// string is provided, the current screen is captured and searched for that
-// bitmap. It returns (-1, -1) when no match is found.
-func FindBitmapStr(needleStr string, haystackStr ...string) (int, int, error) {
-	needle, err := BitmapFromStr(needleStr)
-	if err != nil {
-		return -1, -1, err
-	}
-
-	var haystack Bitmap
-	if len(haystackStr) > 0 {
-		haystack, err = BitmapFromStr(haystackStr[0])
-		if err != nil {
-			return -1, -1, err
-		}
-	} else {
-		haystack, err = CaptureGo()
-		if err != nil {
-			return -1, -1, err
-		}
-	}
-
-	return findBitmap(haystack, needle)
-}
-
-// ToCBitmap trans Bitmap to C.MMBitmapRef
-func ToCBitmap(bit Bitmap) CBitmap {
-	total := bit.Bytewidth * bit.Height
-	var cbuf *C.uint8_t
-	if total > 0 {
-		// Allocate C-owned buffer and copy pixel data from Go memory to avoid
-		// freeing Go-allocated memory in bitmap_dealloc.
-		csize := C.size_t(total)
-		cptr := C.malloc(csize)
-		if cptr != nil {
-			// Construct a Go slice view over the source buffer.
-			src := unsafe.Slice((*byte)(unsafe.Pointer(bit.ImgBuf)), total)
-			C.memcpy(cptr, unsafe.Pointer(&src[0]), csize)
-			cbuf = (*C.uint8_t)(cptr)
-		}
+	cptr := C.CBytes(data)
+	if cptr == nil {
+		return nil, errors.New("allocate C bitmap buffer")
 	}
 	cbitmap := C.createMMBitmap_c(
-		cbuf,
+		(*C.uint8_t)(cptr),
 		C.int32_t(bit.Width),
 		C.int32_t(bit.Height),
 		C.int32_t(bit.Bytewidth),
 		C.uint8_t(bit.BitsPixel),
 		C.uint8_t(bit.BytesPerPixel),
 	)
-	return CBitmap(cbitmap)
+	if cbitmap == nil {
+		C.free(cptr)
+		return nil, errors.New("create C bitmap")
+	}
+	return CBitmap(cbitmap), nil
 }
 
 // ToImage convert C.MMBitmapRef to standard image.Image
 func ToImage(bit CBitmap) image.Image {
-	return ToRGBA(bit)
+	img, err := ToRGBAE(bit)
+	if err != nil {
+		return nil
+	}
+	return img
 }
 
 // ToRGBA convert C.MMBitmapRef to standard image.RGBA
 func ToRGBA(bit CBitmap) *image.RGBA {
-	bmp1 := ToBitmap(bit)
-	return ToRGBAGo(bmp1)
+	img, _ := ToRGBAE(bit)
+	return img
+}
+
+// ToRGBAE validates a C bitmap before converting it to image.RGBA.
+func ToRGBAE(bit CBitmap) (*image.RGBA, error) {
+	if bit == nil {
+		return nil, errors.New("bitmap is nil")
+	}
+	return ToRGBAGoE(ToBitmap(bit))
 }
 
 // ImgToCBitmap trans image.Image to CBitmap
 func ImgToCBitmap(img image.Image) CBitmap {
-	return ToCBitmap(ImgToBitmap(img))
+	bitmap, _ := ImgToCBitmapE(img)
+	return bitmap
+}
+
+// ImgToCBitmapE converts an image to a validated C bitmap.
+func ImgToCBitmapE(img image.Image) (CBitmap, error) {
+	bitmap, err := ImgToBitmapE(img)
+	if err != nil {
+		return nil, err
+	}
+	return ToCBitmapE(bitmap)
 }
 
 // ByteToCBitmap trans []byte to CBitmap
 func ByteToCBitmap(by []byte) CBitmap {
-	img, _ := ByteToImg(by)
-	return ImgToCBitmap(img)
+	bitmap, _ := ByteToCBitmapE(by)
+	return bitmap
 }
 
-func splitHex(hex uint32) (uint8, uint8, uint8) {
-	return uint8((hex >> 16) & 0xff), uint8((hex >> 8) & 0xff), uint8(hex & 0xff)
-}
-
-func rgbSimilar(r1, g1, b1, r2, g2, b2 uint8, tolerance float64) bool {
-	if tolerance <= 0 {
-		return r1 == r2 && g1 == g2 && b1 == b2
+// ByteToCBitmapE decodes image bytes and returns any decode or bitmap error.
+func ByteToCBitmapE(by []byte) (CBitmap, error) {
+	img, err := ByteToImg(by)
+	if err != nil {
+		return nil, err
 	}
-	dr := float64(int(r1) - int(r2))
-	dg := float64(int(g1) - int(g2))
-	db := float64(int(b1) - int(b2))
-	return dr*dr+dg*dg+db*db <= (tolerance*442.0)*(tolerance*442.0)
-}
-
-func bitmapRGBAt(bit Bitmap, x, y int) (uint8, uint8, uint8, bool) {
-	if x < 0 || y < 0 || x >= bit.Width || y >= bit.Height {
-		return 0, 0, 0, false
-	}
-	total, err := bitmapBufferLen(bit)
-	if err != nil || bit.ImgBuf == nil {
-		return 0, 0, 0, false
-	}
-	offset := y*bit.Bytewidth + x*int(bit.BytesPerPixel)
-	if offset+2 >= total {
-		return 0, 0, 0, false
-	}
-	buf := unsafe.Slice((*byte)(unsafe.Pointer(bit.ImgBuf)), total)
-	return buf[offset+2], buf[offset+1], buf[offset], true
-}
-
-func findBitmap(haystack, needle Bitmap) (int, int, error) {
-	if _, err := bitmapBufferLen(haystack); err != nil {
-		return -1, -1, err
-	}
-	if _, err := bitmapBufferLen(needle); err != nil {
-		return -1, -1, err
-	}
-	if needle.Width > haystack.Width || needle.Height > haystack.Height {
-		return -1, -1, nil
-	}
-	for y := 0; y <= haystack.Height-needle.Height; y++ {
-		for x := 0; x <= haystack.Width-needle.Width; x++ {
-			if bitmapMatchesAt(haystack, needle, x, y) {
-				return x, y, nil
-			}
-		}
-	}
-	return -1, -1, nil
-}
-
-func bitmapMatchesAt(haystack, needle Bitmap, startX, startY int) bool {
-	for y := 0; y < needle.Height; y++ {
-		for x := 0; x < needle.Width; x++ {
-			hr, hg, hb, ok := bitmapRGBAt(haystack, startX+x, startY+y)
-			if !ok {
-				return false
-			}
-			nr, ng, nb, ok := bitmapRGBAt(needle, x, y)
-			if !ok {
-				return false
-			}
-			if hr != nr || hg != ng || hb != nb {
-				return false
-			}
-		}
-	}
-	return true
+	return ImgToCBitmapE(img)
 }
 
 // SetXDisplayName set XDisplay name (Linux)
@@ -1725,7 +1560,7 @@ func CheckMouse(btn string) C.MMMouseButton {
 
 // MoveScale calculate the os scale factor x, y
 func MoveScale(x, y int, displayId ...int) (int, int) {
-	if Scale || runtime.GOOS == "windows" {
+	if currentScale() || runtime.GOOS == "windows" {
 		f := ScaleF()
 		x, y = Scaled1(x, f), Scaled1(y, f)
 	}
@@ -1815,7 +1650,7 @@ func MoveE(x, y int, displayId ...int) error {
 	cy := C.int32_t(y)
 	C.moveMouse(C.MMPointInt32Make(cx, cy))
 
-	MilliSleep(MouseSleep)
+	MilliSleep(currentMouseDelay())
 	return nil
 }
 
@@ -1840,7 +1675,7 @@ func Drag(x, y int, args ...string) {
 	}
 
 	C.dragMouse(C.MMPointInt32Make(cx, cy), button)
-	MilliSleep(MouseSleep)
+	MilliSleep(currentMouseDelay())
 }
 
 // DragSmooth drag the mouse like smooth to (x, y)
@@ -1902,7 +1737,7 @@ func MoveSmooth(x, y int, args ...interface{}) bool {
 	}
 
 	cbool := C.smoothlyMoveMouse(C.MMPointInt32Make(cx, cy), low, high)
-	MilliSleep(MouseSleep + mouseDelay)
+	MilliSleep(currentMouseDelay() + mouseDelay)
 
 	return bool(cbool)
 }
@@ -1937,7 +1772,7 @@ func MoveRelativeE(x, y int) error {
 		dx, dy := x, y
 		dx, dy = MoveScale(dx, dy)
 		C.moveMouseRelative(C.int32_t(dx), C.int32_t(dy))
-		MilliSleep(MouseSleep)
+		MilliSleep(currentMouseDelay())
 		return nil
 	}
 	return MoveE(MoveArgs(x, y))
@@ -1966,7 +1801,7 @@ func LocationE() (int, int, error) {
 	x := int(pos.x)
 	y := int(pos.y)
 
-	if Scale || runtime.GOOS == "windows" {
+	if currentScale() || runtime.GOOS == "windows" {
 		f := ScaleF()
 		x, y = Scaled0(x, f), Scaled0(y, f)
 	}
@@ -1991,20 +1826,11 @@ func Click(args ...interface{}) {
 func ClickE(args ...interface{}) error {
 	unlock := lockWaylandMouse()
 	defer unlock()
-	var (
-		button C.MMMouseButton = C.LEFT_BUTTON
-		name                   = "left"
-		double bool
-	)
-
-	if len(args) > 0 {
-		name = args[0].(string)
-		button = CheckMouse(name)
+	name, double, err := parseClickArguments(args)
+	if err != nil {
+		return err
 	}
-
-	if len(args) > 1 {
-		double = args[1].(bool)
-	}
+	button := CheckMouse(name)
 	if nativeErr := ensureWaylandMouseReady(); nativeErr != nil {
 		used, err := tryRemoteDesktopClick(name, double)
 		if used {
@@ -2019,7 +1845,7 @@ func ClickE(args ...interface{}) error {
 		C.doubleClick(button)
 	}
 
-	MilliSleep(MouseSleep)
+	MilliSleep(currentMouseDelay())
 	return nil
 }
 
@@ -2058,14 +1884,11 @@ func MovesClick(x, y int, args ...interface{}) {
 func Toggle(key ...interface{}) error {
 	unlock := lockWaylandMouse()
 	defer unlock()
-	var button C.MMMouseButton = C.LEFT_BUTTON
-	name := "left"
-	if len(key) > 0 {
-		name = key[0].(string)
-		button = CheckMouse(name)
+	name, down, err := parseToggleArguments(key)
+	if err != nil {
+		return err
 	}
-
-	down := len(key) <= 1 || key[1].(string) != "up"
+	button := CheckMouse(name)
 	if nativeErr := ensureWaylandMouseReady(); nativeErr != nil {
 		used, err := tryRemoteDesktopToggle(name, down)
 		if used {
@@ -2075,7 +1898,7 @@ func Toggle(key ...interface{}) error {
 	}
 	C.toggleMouse(C.bool(down), button)
 	if len(key) > 2 {
-		MilliSleep(MouseSleep)
+		MilliSleep(currentMouseDelay())
 	}
 
 	return nil
@@ -2125,7 +1948,7 @@ func ScrollE(x, y int, args ...int) error {
 	cy := C.int(y)
 
 	C.scrollMouseXY(cx, cy)
-	MilliSleep(MouseSleep + msDelay)
+	MilliSleep(currentMouseDelay() + msDelay)
 	return nil
 }
 
@@ -2190,7 +2013,7 @@ func ScrollSmooth(to int, args ...int) {
 			break
 		}
 	}
-	MilliSleep(MouseSleep)
+	MilliSleep(currentMouseDelay())
 }
 
 // ScrollRelative scroll mouse with relative
@@ -2313,39 +2136,39 @@ func SetActiveE(win Handle) error {
 
 // SetActiveC set the window active
 func SetActiveC(win C.MData) {
-	C.set_active(win)
+	_ = C.set_active(win)
 }
 
-func nativeSetActive(win Handle) {
-	SetActiveC(C.MData(win))
+func nativeSetActive(win Handle) bool {
+	return bool(C.set_active(C.MData(win)))
 }
 
-func nativeMinWindow(pid int, state bool, isPid bool) {
+func nativeMinWindow(pid int, state bool, isPid bool) bool {
 	flag := 0
 	if isPid {
 		flag = 1
 	}
-	C.min_window(C.uintptr(pid), C.bool(state), C.int8_t(flag))
+	return bool(C.min_window(C.uintptr(pid), C.bool(state), C.int8_t(flag)))
 }
 
-func nativeMaxWindow(pid int, state bool, isPid bool) {
+func nativeMaxWindow(pid int, state bool, isPid bool) bool {
 	flag := 0
 	if isPid {
 		flag = 1
 	}
-	C.max_window(C.uintptr(pid), C.bool(state), C.int8_t(flag))
+	return bool(C.max_window(C.uintptr(pid), C.bool(state), C.int8_t(flag)))
 }
 
-func nativeCloseMainWindow() {
-	C.close_main_window()
+func nativeCloseMainWindow() bool {
+	return bool(C.close_main_window())
 }
 
-func nativeCloseWindowByPid(pid int, isPid bool) {
+func nativeCloseWindowByPid(pid int, isPid bool) bool {
 	flag := 0
 	if isPid {
 		flag = 1
 	}
-	C.close_window_by_PId(C.uintptr(pid), C.int8_t(flag))
+	return bool(C.close_window_by_PId(C.uintptr(pid), C.int8_t(flag)))
 }
 
 func nativeGetMainTitle() string {
@@ -2377,15 +2200,12 @@ func MinWindow(pid int, args ...interface{}) {
 // MinWindowE sets the window min state and returns an explicit unsupported
 // error on Wayland sessions.
 func MinWindowE(pid int, args ...interface{}) error {
-	var (
-		state = true
-		isPid int
-	)
-
-	if len(args) > 0 {
-		state = args[0].(bool)
+	state, err := parseWindowStateArguments(args)
+	if err != nil {
+		return err
 	}
-	if len(args) > 1 || NotPid {
+	var isPid int
+	if len(args) > 1 || currentTreatAsHandle() {
 		isPid = 1
 	}
 	return resolveWindowBackend().Minimize(pid, state, isPid == 1)
@@ -2399,15 +2219,12 @@ func MaxWindow(pid int, args ...interface{}) {
 // MaxWindowE sets the window max state and returns an explicit unsupported
 // error on Wayland sessions.
 func MaxWindowE(pid int, args ...interface{}) error {
-	var (
-		state = true
-		isPid int
-	)
-
-	if len(args) > 0 {
-		state = args[0].(bool)
+	state, err := parseWindowStateArguments(args)
+	if err != nil {
+		return err
 	}
-	if len(args) > 1 || NotPid {
+	var isPid int
+	if len(args) > 1 || currentTreatAsHandle() {
 		isPid = 1
 	}
 	return resolveWindowBackend().Maximize(pid, state, isPid == 1)
@@ -2454,7 +2271,7 @@ func CloseWindowKill(args ...int) error {
 		}
 	} else {
 		pid = args[0]
-		if len(args) > 1 || NotPid {
+		if len(args) > 1 || currentTreatAsHandle() {
 			isPid = 1
 		}
 		// If the argument represents a handle (Windows/X11 path), resolve its PID
@@ -2496,7 +2313,7 @@ func SetHandle(hwnd int) {
 // SetHandlePid set the window handle by pid
 func SetHandlePid(pid int, args ...int) {
 	var isPid int
-	if len(args) > 0 || NotPid {
+	if len(args) > 0 || currentTreatAsHandle() {
 		isPid = 1
 	}
 
@@ -2527,7 +2344,7 @@ func GetHandPid(pid int, args ...int) Handle {
 // GetHandByPidC get handle mdata by pid
 func GetHandByPidC(pid int, args ...int) C.MData {
 	var isPid int
-	if len(args) > 0 || NotPid {
+	if len(args) > 0 || currentTreatAsHandle() {
 		isPid = 1
 	}
 

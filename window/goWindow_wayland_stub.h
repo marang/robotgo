@@ -37,24 +37,27 @@ static inline void set_handle_pid_mData(uintptr pid, int8_t isPid) {
 	pub_mData = set_handle_pid(pid, isPid);
 }
 
-static inline void set_active(const MData win) {
+static inline bool set_active(const MData win) {
 	pub_mData = win;
+	return win.XWin != 0;
 }
 
 static inline MData get_active(void) {
 	return pub_mData;
 }
 
-static inline void min_window(uintptr pid, bool state, int8_t isPid) {
+static inline bool min_window(uintptr pid, bool state, int8_t isPid) {
 	(void)pid;
 	(void)state;
 	(void)isPid;
+	return false;
 }
 
-static inline void max_window(uintptr pid, bool state, int8_t isPid) {
+static inline bool max_window(uintptr pid, bool state, int8_t isPid) {
 	(void)pid;
 	(void)state;
 	(void)isPid;
+	return false;
 }
 
 static inline bool IsTopMost(void) {
@@ -86,11 +89,12 @@ static inline void active_PID(uintptr pid, int8_t isPid) {
 	(void)isPid;
 }
 
-static inline void close_main_window(void) {}
+static inline bool close_main_window(void) { return false; }
 
-static inline void close_window_by_PId(uintptr pid, int8_t isPid) {
+static inline bool close_window_by_PId(uintptr pid, int8_t isPid) {
 	(void)pid;
 	(void)isPid;
+	return false;
 }
 
 static inline char* get_main_title(void) {

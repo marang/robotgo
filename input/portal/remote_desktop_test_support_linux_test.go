@@ -36,6 +36,7 @@ type fakeRemoteDesktopPortal struct {
 	closeOnSources      bool
 	closeOnStart        bool
 	invalidCreatePath   bool
+	malformedCreate     bool
 	invalidSelectPath   bool
 	selectCode          uint32
 	selectSourcesCode   uint32
@@ -142,9 +143,13 @@ func (p *fakeRemoteDesktopPortal) createSession(_ context.Context, options map[s
 			return "", err
 		}
 	}
-	if err := p.emitResponse(request, p.createCode, map[string]dbus.Variant{
+	results := map[string]dbus.Variant{
 		"session_handle": dbus.MakeVariant(string(session)),
-	}); err != nil {
+	}
+	if p.malformedCreate {
+		results = map[string]dbus.Variant{}
+	}
+	if err := p.emitResponse(request, p.createCode, results); err != nil {
 		return "", err
 	}
 	return request, nil

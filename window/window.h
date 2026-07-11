@@ -17,7 +17,7 @@ bool IsAxEnabled(bool options);
 MData get_active(void);
 void initWindow(uintptr handle);
 char* get_title_by_hand(MData m_data);
-void close_window_by_Id(MData m_data);
+bool close_window_by_Id(MData m_data);
 
 // int findwindow()
 uintptr initHandle = 0;
@@ -35,7 +35,7 @@ void initWindow(uintptr handle){
 	}
 
 	pub_mData.XWin = 0;
-	XCloseDisplay(rDisplay);
+	if (rDisplay != NULL) { XCloseDisplay(rDisplay); }
 #elif defined(IS_WINDOWS)
 	pub_mData.HWnd = 0;
 #endif
@@ -280,15 +280,16 @@ bool IsMaximized(void){
 #endif
 }
 
-void set_active(const MData win) {
-	// Check if the window is valid
-	if (!is_valid()) { return; }
+bool set_active(const MData win) {
 #if defined(IS_MACOSX)
+	if (win.AxID == NULL) { return false; }
 	// Attempt to raise the specified window object
-	if (AXUIElementPerformAction(win.AxID, kAXRaiseAction) != kAXErrorSuccess) {
+	if (AXUIElementPerformAction(win.AxID, kAXRaiseAction) == kAXErrorSuccess) {
+		return true;
+	} else {
 		pid_t pid = 0;
 		// Attempt to retrieve the PID of the window
-		if (AXUIElementGetPid(win.AxID, &pid) != kAXErrorSuccess || !pid) { return; }
+		if (AXUIElementGetPid(win.AxID, &pid) != kAXErrorSuccess || !pid) { return false; }
 
 		// Ignore deprecated warnings
 		#pragma clang diagnostic push
@@ -296,25 +297,34 @@ void set_active(const MData win) {
 
 		ProcessSerialNumber psn;
 		// Attempt to retrieve the process psn
+		bool activated = false;
 		if (GetProcessForPID(pid, &psn) == 0) {
 			// Gracefully activate process
-			SetFrontProcessWithOptions(&psn, kSetFrontProcessFrontWindowOnly);
+			activated = SetFrontProcessWithOptions(&psn, kSetFrontProcessFrontWindowOnly) == 0;
 		}
 
 		#pragma clang diagnostic pop
+		return activated;
 	}
 #elif defined(IS_LINUX)
+	if (win.XWin == 0) { return false; }
 	// Ignore X errors
 	XDismissErrors();
 
+	Display *rDisplay = XOpenDisplay(NULL);
+	if (rDisplay == NULL) { return false; }
+	if (WM_PID == None) { LoadAtoms(); }
 	// Go to the specified window's desktop
 	SetDesktopForWindow(win);
-	Display *rDisplay = XOpenDisplay(NULL);
+	bool activated = false;
 	// Check the atom value
 	if (WM_ACTIVE != None) {
 		// Retrieve the screen number
 		XWindowAttributes attr = { 0 };
-		XGetWindowAttributes(rDisplay, win.XWin, &attr);
+		if (XGetWindowAttributes(rDisplay, win.XWin, &attr) == 0 || attr.screen == NULL) {
+			XCloseDisplay(rDisplay);
+			return false;
+		}
 		int s = XScreenNumberOfScreen(attr.screen);
 
 		// Prepare an event
@@ -328,28 +338,32 @@ void set_active(const MData win) {
 		e.data.l[1] = CurrentTime;
 
 		// Send the message
-		XSendEvent(rDisplay, XRootWindow(rDisplay, s), False,
+		activated = XSendEvent(rDisplay, XRootWindow(rDisplay, s), False,
 			SubstructureNotifyMask | SubstructureRedirectMask,
-			(XEvent*) &e);
+			(XEvent*) &e) != 0;
 	} else {
 		// Attempt to raise the specified window
 		XRaiseWindow(rDisplay, win.XWin);
 		// Set the specified window's input focus
 		XSetInputFocus(rDisplay, win.XWin, RevertToParent, CurrentTime);
+		activated = true;
 	}
+	XFlush(rDisplay);
 	XCloseDisplay(rDisplay);
+	return activated;
 #elif defined(IS_WINDOWS)
-	if (IsMinimized()) {
+	if (win.HWnd == NULL || !IsWindow(win.HWnd)) { return false; }
+	if (IsIconic(win.HWnd)) {
 		ShowWindow(win.HWnd, SW_RESTORE);
 	}
 
-	SetForegroundWindow(win.HWnd);
+	return SetForegroundWindow(win.HWnd) != 0;
 #endif
 }
 
 MData get_active(void) {
 #if defined(IS_MACOSX)
-	MData result;
+	MData result = { 0 };
 	// Ignore deprecated warnings
 	#pragma clang diagnostic push
 	#pragma clang diagnostic ignored "-Wdeprecated-declarations"
@@ -388,7 +402,7 @@ MData get_active(void) {
 
 	return result;
 #elif defined(IS_LINUX)
-	MData result;
+	MData result = { 0 };
 	Display *rDisplay = XOpenDisplay(NULL);
 	// Check X-Window display
 	if (WM_ACTIVE == None || rDisplay == NULL) {
@@ -427,7 +441,7 @@ MData get_active(void) {
 	return result;
 #elif defined(IS_WINDOWS)
 	// Attempt to get the foreground window multiple times in case
-	MData result;
+	MData result = { 0 };
 
 	uint8_t times = 0;
 	while (++times < 20) {
@@ -460,41 +474,56 @@ void SetTopMost(bool state){
 #endif
 }
 
-void close_main_window () {
+bool close_main_window () {
    // Check if the window is valid
-	if (!is_valid()) { return; }
+	if (!is_valid()) { return false; }
 
-	close_window_by_Id(pub_mData);
+	return close_window_by_Id(pub_mData);
 }
 
-void close_window_by_PId(uintptr pid, int8_t isPid){
+bool close_window_by_PId(uintptr pid, int8_t isPid){
 	MData win = set_handle_pid(pid, isPid);
-	close_window_by_Id(win);
+	bool closed = close_window_by_Id(win);
+#if defined(IS_MACOSX)
+	if (win.AxID != NULL) { CFRelease(win.AxID); }
+#endif
+	return closed;
 }
 
 // CloseWindow
-void close_window_by_Id(MData m_data){
-	// Check window validity
-	if (!is_valid()) { return; }
+bool close_window_by_Id(MData m_data){
 #if defined(IS_MACOSX)
+	if (m_data.AxID == NULL) { return false; }
 	AXUIElementRef b = NULL;
 	// Retrieve the close button of this window
 	if (AXUIElementCopyAttributeValue(m_data.AxID, kAXCloseButtonAttribute, (CFTypeRef*) &b) 
 		== kAXErrorSuccess && b != NULL) {
 		// Simulate button press on the close button
-		AXUIElementPerformAction(b, kAXPressAction);
+		AXError result = AXUIElementPerformAction(b, kAXPressAction);
 		CFRelease(b);
+		return result == kAXErrorSuccess;
 	}
+	return false;
 #elif defined(IS_LINUX)
+	if (m_data.XWin == 0) { return false; }
 	Display *rDisplay = XOpenDisplay(NULL);
+	if (rDisplay == NULL) { return false; }
 	// Ignore X errors
 	XDismissErrors();
+	XWindowAttributes attr = { 0 };
+	if (XGetWindowAttributes(rDisplay, m_data.XWin, &attr) == 0) {
+		XCloseDisplay(rDisplay);
+		return false;
+	}
 
 	// Close the window
-	XDestroyWindow(rDisplay, m_data.XWin);
+	bool closed = XDestroyWindow(rDisplay, m_data.XWin) != 0;
+	XFlush(rDisplay);
 	XCloseDisplay(rDisplay);
+	return closed;
 #elif defined(IS_WINDOWS)
-	PostMessage(m_data.HWnd, WM_CLOSE, 0, 0);
+	if (m_data.HWnd == NULL || !IsWindow(m_data.HWnd)) { return false; }
+	return PostMessage(m_data.HWnd, WM_CLOSE, 0, 0) != 0;
 #endif
 }
 

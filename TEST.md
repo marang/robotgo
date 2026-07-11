@@ -16,6 +16,10 @@ The explicit unsupported non-CGO variant is also part of CI:
 
 ```bash
 CGO_ENABLED=0 go test ./...
+CGO_ENABLED=0 go test -tags "ocr" ./...
+
+# Optional in-process OCR backend (requires Tesseract and Leptonica development files)
+go test -tags "ocr" ./...
 ```
 
 ## Special Test Suites (Build Tags)

@@ -26,12 +26,12 @@ import (
 	"errors"
 	"log"
 
-	"github.com/marang/robotgo/base"
 	"github.com/jezek/xgb"
 	"github.com/jezek/xgb/xinerama"
 	"github.com/jezek/xgb/xproto"
 	"github.com/jezek/xgbutil"
 	"github.com/jezek/xgbutil/ewmh"
+	"github.com/marang/robotgo/base"
 )
 
 var xu *xgbutil.XUtil
@@ -58,7 +58,7 @@ func GetBounds(pid int, args ...int) (int, int, int, int) {
 	}
 
 	var isPid int
-	if len(args) > 0 || NotPid {
+	if len(args) > 0 || currentTreatAsHandle() {
 		isPid = 1
 		return internalGetBounds(pid, isPid)
 	}
@@ -94,7 +94,7 @@ func GetClient(pid int, args ...int) (int, int, int, int) {
 	}
 
 	var isPid int
-	if len(args) > 0 || NotPid {
+	if len(args) > 0 || currentTreatAsHandle() {
 		isPid = 1
 		return internalGetClient(pid, isPid)
 	}
@@ -111,7 +111,7 @@ func GetClient(pid int, args ...int) (int, int, int, int) {
 // internalGetTitle get the window title
 func internalGetTitle(pid int, args ...int) string {
 	var isPid int
-	if len(args) > 0 || NotPid {
+	if len(args) > 0 || currentTreatAsHandle() {
 		isPid = 1
 		return cgetTitle(pid, isPid)
 	}
@@ -133,7 +133,7 @@ func ActivePidC(pid int, args ...int) error {
 	}
 
 	var isPid int
-	if len(args) > 0 || NotPid {
+	if len(args) > 0 || currentTreatAsHandle() {
 		isPid = 1
 		internalActive(pid, isPid)
 		return nil

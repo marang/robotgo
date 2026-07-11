@@ -549,7 +549,7 @@ func keyTaps(k string, keyArr []string, pid int) error {
 	if nativeErr := ensureWaylandKeyboardReady(); nativeErr != nil {
 		if used, err := tryPortalKey(k, keyArr, pid, true, true); used {
 			if err == nil {
-				MilliSleep(KeySleep)
+				MilliSleep(currentKeyDelay())
 			}
 			return err
 		}
@@ -562,7 +562,7 @@ func keyTaps(k string, keyArr []string, pid int) error {
 	}
 
 	tapKeyCode(key, flags, C.uintptr(pid))
-	MilliSleep(KeySleep)
+	MilliSleep(currentKeyDelay())
 	return nil
 }
 
@@ -585,7 +585,7 @@ func keyTogglesB(k string, down bool, keyArr []string, pid int) error {
 	if nativeErr := ensureWaylandKeyboardReady(); nativeErr != nil {
 		if used, err := tryPortalKey(k, keyArr, pid, down, false); used {
 			if err == nil {
-				MilliSleep(KeySleep)
+				MilliSleep(currentKeyDelay())
 			}
 			return err
 		}
@@ -598,7 +598,7 @@ func keyTogglesB(k string, down bool, keyArr []string, pid int) error {
 	}
 
 	C.toggleKeyCode(key, C.bool(down), flags, C.uintptr(pid))
-	MilliSleep(KeySleep)
+	MilliSleep(currentKeyDelay())
 	return nil
 }
 
@@ -628,11 +628,20 @@ func ToInterfaces(fields []string) []interface{} {
 
 // ToStrings convert []interface{} to []string
 func ToStrings(fields []interface{}) []string {
-	res := make([]string, 0, len(fields))
-	for _, s := range fields {
-		res = append(res, s.(string))
-	}
+	res, _ := toStringsE(fields)
 	return res
+}
+
+func toStringsE(fields []interface{}) ([]string, error) {
+	res := make([]string, 0, len(fields))
+	for _, field := range fields {
+		value, ok := field.(string)
+		if !ok {
+			return nil, fmt.Errorf("robotgo: key modifier must be a string, got %T", field)
+		}
+		res = append(res, value)
+	}
+	return res, nil
 }
 
 // toErr it converts a C string to a Go error
@@ -686,13 +695,25 @@ func KeyTap(key string, args ...interface{}) error {
 	if len(args) > 0 {
 		if reflect.TypeOf(args[0]) == reflect.TypeOf(keyArr) {
 			keyArr = append(keyArr, args[0].([]string)...)
-			keyArr = append(keyArr, ToStrings(args[1:])...)
+			values, err := toStringsE(args[1:])
+			if err != nil {
+				return err
+			}
+			keyArr = append(keyArr, values...)
 		} else {
 			if reflect.TypeOf(args[0]) == reflect.TypeOf(pid) {
 				pid = args[0].(int)
-				keyArr = ToStrings(args[1:])
+				values, err := toStringsE(args[1:])
+				if err != nil {
+					return err
+				}
+				keyArr = values
 			} else {
-				keyArr = ToStrings(args)
+				values, err := toStringsE(args)
+				if err != nil {
+					return err
+				}
+				keyArr = values
 			}
 		}
 	}
@@ -700,15 +721,17 @@ func KeyTap(key string, args ...interface{}) error {
 	return keyTaps(key, keyArr, pid)
 }
 
-func getToggleArgs(args ...interface{}) (pid int, keyArr []string) {
+func getToggleArgs(args ...interface{}) (pid int, keyArr []string, err error) {
 	if len(args) > 0 && reflect.TypeOf(args[0]) == reflect.TypeOf(pid) {
 		pid = args[0].(int)
-		keyArr = ToStrings(args[1:])
+		keyArr, err = toStringsE(args[1:])
 	} else if len(args) > 0 && reflect.TypeOf(args[0]) == reflect.TypeOf(keyArr) {
 		keyArr = append(keyArr, args[0].([]string)...)
-		keyArr = append(keyArr, ToStrings(args[1:])...)
+		var values []string
+		values, err = toStringsE(args[1:])
+		keyArr = append(keyArr, values...)
 	} else {
-		keyArr = ToStrings(args)
+		keyArr, err = toStringsE(args)
 	}
 	return
 }
@@ -728,7 +751,10 @@ func getToggleArgs(args ...interface{}) (pid int, keyArr []string) {
 //	robotgo.KeyToggle("k", pid int)
 func KeyToggle(key string, args ...interface{}) error {
 	key, args = appendShift(key, 1, args...)
-	pid, keyArr := getToggleArgs(args...)
+	pid, keyArr, err := getToggleArgs(args...)
+	if err != nil {
+		return err
+	}
 	return keyToggles(key, keyArr, pid)
 }
 
@@ -910,7 +936,7 @@ func TypeStrE(str string, args ...int) error {
 		MilliSleep(tm)
 		// }
 	}
-	MilliSleep(KeySleep)
+	MilliSleep(currentKeyDelay())
 	return nil
 }
 
@@ -944,6 +970,5 @@ func SetDelay(d ...int) {
 		v = d[0]
 	}
 
-	KeySleep = v
-	MouseSleep = v
+	_ = setInputDelays(v, v)
 }

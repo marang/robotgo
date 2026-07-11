@@ -19,6 +19,9 @@ Current implementation baseline:
   `UnicodeTypeE`) while legacy APIs remain source-compatible.
 - Native screencopy has bounded event dispatch, deterministic FD/resource
   cleanup and hermetic regression coverage for compositor stalls and DMABUF failures.
+- Fallback output bounds use short success/failure TTLs and can be refreshed
+  explicitly with `InvalidateScreenBoundsCache`, so hotplug and scale changes
+  do not remain cached for the lifetime of the process.
 - An explicitly started ScreenCast session provides reusable PipeWire frames
   behind the `pipewire` build tag. It preserves stream geometry/serial metadata,
   supports logical region crop with fractional scaling, converts negotiated raw

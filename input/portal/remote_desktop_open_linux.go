@@ -127,18 +127,31 @@ func (n remoteDesktopNegotiation) createSession() (dbus.ObjectPath, error) {
 		return "", err
 	}
 	predicted := sessionPath(n.portal.uniqueName(), sessionToken)
+	invoked := false
 	results, requestErr := n.waitRequest(requestToken, map[dbus.ObjectPath]struct{}{predicted: {}}, func() (dbus.ObjectPath, error) {
+		invoked = true
 		return n.portal.createSession(n.ctx, map[string]dbus.Variant{
 			"handle_token":         dbus.MakeVariant(requestToken),
 			"session_handle_token": dbus.MakeVariant(sessionToken),
 		})
 	})
 	if results == nil && requestErr != nil {
+		// CreateSession can create the token-derived session before its method
+		// reply or Response signal reaches the client. Preserve the predictable
+		// path for outer cleanup whenever the outcome is ambiguous.
+		if invoked && !errors.Is(requestErr, ErrCancelled) &&
+			!errors.Is(requestErr, ErrRejected) &&
+			!errors.Is(requestErr, ErrClosed) &&
+			!errors.Is(requestErr, ErrUnavailable) {
+			return predicted, fmt.Errorf("remote desktop portal: create session: %w", requestErr)
+		}
 		return "", fmt.Errorf("remote desktop portal: create session: %w", requestErr)
 	}
 	actual, err := resultSessionPath(results)
 	if err != nil {
-		return "", errors.Join(err, requestErr)
+		// A malformed success response can still correspond to the predictable
+		// session created from session_handle_token.
+		return predicted, errors.Join(err, requestErr)
 	}
 	if _, closed := n.closedSessions[actual]; closed {
 		return actual, errors.Join(fmt.Errorf("remote desktop portal: returned session closed during creation: %w", ErrClosed), requestErr)

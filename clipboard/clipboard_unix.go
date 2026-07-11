@@ -8,8 +8,10 @@
 package clipboard
 
 import (
+	"context"
 	"errors"
 	"os/exec"
+	"strings"
 )
 
 const (
@@ -18,85 +20,105 @@ const (
 )
 
 var (
-	// Primary choose primary mode on unix
+	// Primary chooses primary mode for the legacy ReadAll and WriteAll APIs.
+	// Deprecated: use ReadAllContext or WriteAllContext with SelectionPrimary.
 	Primary bool
 
-	pasteCmdArgs, copyCmdArgs []string
-
-	xselPasteArgs = []string{xsel, "--output", "--clipboard"}
-	xselCopyArgs  = []string{xsel, "--input", "--clipboard"}
-
-	xclipPasteArgs = []string{xclip, "-out", "-selection", "clipboard"}
-	xclipCopyArgs  = []string{xclip, "-in", "-selection", "clipboard"}
-
 	errMissingCommands = errors.New("no clipboard utilities available; please install xsel or xclip")
+	selectedTool       unixClipboardTool
+)
+
+type unixClipboardTool uint8
+
+const (
+	unixClipboardNone unixClipboardTool = iota
+	unixClipboardXclip
+	unixClipboardXsel
 )
 
 func init() {
-	pasteCmdArgs = xclipPasteArgs
-	copyCmdArgs = xclipCopyArgs
-
 	if _, err := exec.LookPath(xclip); err == nil {
+		selectedTool = unixClipboardXclip
 		return
 	}
-
-	pasteCmdArgs = xselPasteArgs
-	copyCmdArgs = xselCopyArgs
-
 	if _, err := exec.LookPath(xsel); err == nil {
+		selectedTool = unixClipboardXsel
 		return
 	}
 
 	Unsupported = true
 }
 
-func getPasteCommand() *exec.Cmd {
-	if Primary {
-		pasteCmdArgs = pasteCmdArgs[:1]
+func unixClipboardCommand(tool unixClipboardTool, read bool, selection Selection) (string, []string, error) {
+	selectionName := "clipboard"
+	if selection == SelectionPrimary {
+		selectionName = "primary"
 	}
-	return exec.Command(pasteCmdArgs[0], pasteCmdArgs[1:]...)
-}
-
-func getCopyCommand() *exec.Cmd {
-	if Primary {
-		copyCmdArgs = copyCmdArgs[:1]
+	switch tool {
+	case unixClipboardXclip:
+		direction := "-in"
+		if read {
+			direction = "-out"
+		}
+		return xclip, []string{direction, "-selection", selectionName}, nil
+	case unixClipboardXsel:
+		direction := "--input"
+		if read {
+			direction = "--output"
+		}
+		return xsel, []string{direction, "--" + selectionName}, nil
+	default:
+		return "", nil, errMissingCommands
 	}
-	return exec.Command(copyCmdArgs[0], copyCmdArgs[1:]...)
 }
 
 func readAll() (string, error) {
-	if Unsupported {
-		return "", errMissingCommands
+	selection := SelectionClipboard
+	if Primary {
+		selection = SelectionPrimary
 	}
+	ctx, cancel := context.WithTimeout(context.Background(), defaultCommandTimeout)
+	defer cancel()
+	return readAllContext(ctx, selection)
+}
 
-	pasteCmd := getPasteCommand()
-	out, err := pasteCmd.Output()
+func readAllContext(ctx context.Context, selection Selection) (string, error) {
+	name, args, err := unixClipboardCommand(selectedTool, true, selection)
 	if err != nil {
 		return "", err
 	}
-
+	out, err := exec.CommandContext(ctx, name, args...).Output()
+	if err != nil {
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return "", ctxErr
+		}
+		return "", err
+	}
 	return string(out), nil
 }
 
 func writeAll(text string) error {
-	if Unsupported {
-		return errMissingCommands
+	selection := SelectionClipboard
+	if Primary {
+		selection = SelectionPrimary
 	}
-	copyCmd := getCopyCommand()
-	in, err := copyCmd.StdinPipe()
+	ctx, cancel := context.WithTimeout(context.Background(), defaultCommandTimeout)
+	defer cancel()
+	return writeAllContext(ctx, text, selection)
+}
+
+func writeAllContext(ctx context.Context, text string, selection Selection) error {
+	name, args, err := unixClipboardCommand(selectedTool, false, selection)
 	if err != nil {
 		return err
 	}
-
-	if err := copyCmd.Start(); err != nil {
+	cmd := exec.CommandContext(ctx, name, args...)
+	cmd.Stdin = strings.NewReader(text)
+	if err := cmd.Run(); err != nil {
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return ctxErr
+		}
 		return err
 	}
-	if _, err := in.Write([]byte(text)); err != nil {
-		return err
-	}
-	if err := in.Close(); err != nil {
-		return err
-	}
-
-	return copyCmd.Wait()
+	return nil
 }
