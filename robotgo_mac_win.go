@@ -25,7 +25,7 @@ import "unsafe"
 // GetBounds get the window bounds
 func GetBounds(pid int, args ...int) (int, int, int, int) {
 	var isPid int
-	if len(args) > 0 || NotPid {
+	if len(args) > 0 || currentTreatAsHandle() {
 		isPid = 1
 	}
 
@@ -35,7 +35,7 @@ func GetBounds(pid int, args ...int) (int, int, int, int) {
 // GetClient get the window client bounds
 func GetClient(pid int, args ...int) (int, int, int, int) {
 	var isPid int
-	if len(args) > 0 || NotPid {
+	if len(args) > 0 || currentTreatAsHandle() {
 		isPid = 1
 	}
 
@@ -45,7 +45,7 @@ func GetClient(pid int, args ...int) (int, int, int, int) {
 // internalGetTitle get the window title
 func internalGetTitle(pid int, args ...int) string {
 	var isPid int
-	if len(args) > 0 || NotPid {
+	if len(args) > 0 || currentTreatAsHandle() {
 		isPid = 1
 	}
 	gtitle := cgetTitle(pid, isPid)
@@ -63,7 +63,7 @@ func internalGetTitle(pid int, args ...int) string {
 //	robotgo.ActivePid(ids[0])
 func ActivePid(pid int, args ...int) error {
 	var isPid int
-	if len(args) > 0 || NotPid {
+	if len(args) > 0 || currentTreatAsHandle() {
 		isPid = 1
 	}
 
@@ -73,7 +73,7 @@ func ActivePid(pid int, args ...int) error {
 
 // DisplaysNum get the count of displays
 func DisplaysNum() int {
-    return int(C.get_num_displays())
+	return int(C.get_num_displays())
 }
 
 // Alert show a alert window
@@ -84,19 +84,19 @@ func DisplaysNum() int {
 //
 //	robotgo.Alert("hi", "window", "ok", "cancel")
 func Alert(title, msg string, args ...string) bool {
-    var defBtn, cancelBtn *C.char
-    ct := C.CString(title)
-    cm := C.CString(msg)
-    defer C.free(unsafe.Pointer(ct))
-    defer C.free(unsafe.Pointer(cm))
-    if len(args) > 0 {
-        defBtn = C.CString(args[0])
-        defer C.free(unsafe.Pointer(defBtn))
-    }
-    if len(args) > 1 {
-        cancelBtn = C.CString(args[1])
-        defer C.free(unsafe.Pointer(cancelBtn))
-    }
-    r := C.showAlert(ct, cm, defBtn, cancelBtn)
-    return int(r) == 0
+	var defBtn, cancelBtn *C.char
+	ct := C.CString(title)
+	cm := C.CString(msg)
+	defer C.free(unsafe.Pointer(ct))
+	defer C.free(unsafe.Pointer(cm))
+	if len(args) > 0 {
+		defBtn = C.CString(args[0])
+		defer C.free(unsafe.Pointer(defBtn))
+	}
+	if len(args) > 1 {
+		cancelBtn = C.CString(args[1])
+		defer C.free(unsafe.Pointer(cancelBtn))
+	}
+	r := C.showAlert(ct, cm, defBtn, cancelBtn)
+	return int(r) == 0
 }

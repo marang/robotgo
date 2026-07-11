@@ -104,50 +104,95 @@ func (nativeWindowBackend) Name() string {
 }
 
 func (nativeWindowBackend) Capability() FeatureCapability {
+	reason := "operation supported by current non-wayland-global backend"
+	notes := "window operations use platform native backend"
+	switch runtime.GOOS {
+	case "linux":
+		reason = "X11 window backend is available with explicit per-operation support"
+		notes = "activation, title, and close use X11; minimize/maximize return ErrNotSupported because the legacy native path has no implementation"
+	case "darwin":
+		notes = "native window operations use Accessibility APIs; maximize returns ErrNotSupported"
+	}
 	return FeatureCapability{
 		Available: true,
 		Fallback:  false,
 		Backend:   "native",
-		Reason:    "operation supported by current non-wayland-global backend",
-		Notes:     "window operations use platform native backend",
+		Reason:    reason,
+		Notes:     notes,
 	}
 }
 
 func (nativeWindowBackend) SetActive(win Handle) error {
-	nativeSetActive(win)
+	var zero Handle
+	if win == zero {
+		return fmt.Errorf("%w: active window handle is zero", errWindowOperationFailed)
+	}
+	if !nativeSetActive(win) {
+		return fmt.Errorf("%w: native backend could not activate target window", errWindowOperationFailed)
+	}
 	return nil
 }
 
 func (nativeWindowBackend) Minimize(pid int, state bool, isPid bool) error {
-	nativeMinWindow(pid, state, isPid)
+	if pid <= 0 {
+		return fmt.Errorf("%w: invalid window target %d", errWindowOperationFailed, pid)
+	}
+	if !nativeMinWindow(pid, state, isPid) {
+		if runtime.GOOS == "linux" {
+			return fmt.Errorf("%w: native X11 minimize is not implemented", ErrNotSupported)
+		}
+		return fmt.Errorf("%w: native backend could not change minimized state", errWindowOperationFailed)
+	}
 	return nil
 }
 
 func (nativeWindowBackend) Maximize(pid int, state bool, isPid bool) error {
-	nativeMaxWindow(pid, state, isPid)
+	if pid <= 0 {
+		return fmt.Errorf("%w: invalid window target %d", errWindowOperationFailed, pid)
+	}
+	if !nativeMaxWindow(pid, state, isPid) {
+		if runtime.GOOS == "linux" || runtime.GOOS == "darwin" {
+			return fmt.Errorf("%w: native maximize is not implemented on %s", ErrNotSupported, runtime.GOOS)
+		}
+		return fmt.Errorf("%w: native backend could not change maximized state", errWindowOperationFailed)
+	}
 	return nil
 }
 
 func (nativeWindowBackend) Close(args ...int) error {
 	if len(args) <= 0 {
-		nativeCloseMainWindow()
+		if !nativeCloseMainWindow() {
+			return fmt.Errorf("%w: native backend could not close active window", errWindowOperationFailed)
+		}
 		return nil
 	}
 
 	pid := args[0]
-	isPid := len(args) > 1 || NotPid
-	nativeCloseWindowByPid(pid, isPid)
+	if pid <= 0 {
+		return fmt.Errorf("%w: invalid window target %d", errWindowOperationFailed, pid)
+	}
+	isPid := len(args) > 1 || currentTreatAsHandle()
+	if !nativeCloseWindowByPid(pid, isPid) {
+		return fmt.Errorf("%w: native backend could not close target window", errWindowOperationFailed)
+	}
 	return nil
 }
 
 func (nativeWindowBackend) Title(args ...int) (string, error) {
+	var title string
 	if len(args) <= 0 {
-		return nativeGetMainTitle(), nil
+		title = nativeGetMainTitle()
+	} else if args[0] <= 0 {
+		return "", fmt.Errorf("%w: invalid window target %d", errWindowTitleUnavailable, args[0])
+	} else if len(args) > 1 {
+		title = nativeGetInternalTitle(args[0], args[1])
+	} else {
+		title = nativeGetInternalTitle(args[0], 0)
 	}
-	if len(args) > 1 {
-		return nativeGetInternalTitle(args[0], args[1]), nil
+	if title == "is_valid failed." {
+		return "", errWindowTitleUnavailable
 	}
-	return nativeGetInternalTitle(args[0], 0), nil
+	return title, nil
 }
 
 type waylandCoreWindowBackend struct {

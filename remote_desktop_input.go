@@ -273,7 +273,7 @@ func remoteDesktopEvent(fn func(context.Context) error) error {
 
 func finishRemoteDesktopMouseEvent(err error, extraDelay int) error {
 	if err == nil {
-		remoteDesktopMouseSleeper(MouseSleep + extraDelay)
+		remoteDesktopMouseSleeper(currentMouseDelay() + extraDelay)
 	}
 	return err
 }

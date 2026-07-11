@@ -12,11 +12,11 @@
 package robotgo
 
 import (
+	"context"
+	"fmt"
 	"image"
+	"image/png"
 	"os"
-	"os/exec"
-	"path/filepath"
-	"time"
 	"unsafe"
 
 	"github.com/vcaesar/imgo"
@@ -94,26 +94,69 @@ func Height(img image.Image) int {
 
 // RGBAToBitmap convert the standard image.RGBA to Bitmap
 func RGBAToBitmap(r1 *image.RGBA) (bit Bitmap) {
-	bit.Width = r1.Bounds().Size().X
-	bit.Height = r1.Bounds().Size().Y
-	bit.Bytewidth = r1.Stride
+	bit, _ = RGBAToBitmapE(r1)
+	return bit
+}
 
-	buf, src := ToUint8p(r1.Pix)
-	bit.ImgBuf = src
-	bit.buf = buf
-
-	bit.BitsPixel = 32
-	bit.BytesPerPixel = 32 / 8
-
-	return
+// RGBAToBitmapE validates and converts an image.RGBA to an owned Bitmap.
+func RGBAToBitmapE(r1 *image.RGBA) (bit Bitmap, err error) {
+	if r1 == nil {
+		return Bitmap{}, fmt.Errorf("image is nil")
+	}
+	bounds := r1.Bounds()
+	width, height := bounds.Dx(), bounds.Dy()
+	if width <= 0 || height <= 0 {
+		return Bitmap{}, fmt.Errorf("invalid image dimensions %dx%d", width, height)
+	}
+	maxInt := int(^uint(0) >> 1)
+	if width > maxInt/4 {
+		return Bitmap{}, fmt.Errorf("image row size overflows int")
+	}
+	bytewidth := width * 4
+	if r1.Stride < bytewidth || height-1 > (maxInt-bytewidth)/r1.Stride {
+		return Bitmap{}, fmt.Errorf("invalid RGBA stride %d for %dx%d image", r1.Stride, width, height)
+	}
+	required := (height-1)*r1.Stride + bytewidth
+	if len(r1.Pix) < required {
+		return Bitmap{}, fmt.Errorf("RGBA pixel buffer length %d is smaller than required size %d", len(r1.Pix), required)
+	}
+	metadata := Bitmap{Width: width, Height: height, Bytewidth: bytewidth, BitsPixel: 32, BytesPerPixel: 4}
+	total, err := bitmapBufferLen(metadata)
+	if err != nil {
+		return Bitmap{}, err
+	}
+	pixels := make([]byte, total)
+	for y := 0; y < height; y++ {
+		for x := 0; x < width; x++ {
+			sourceOffset := y*r1.Stride + x*4
+			targetOffset := y*bytewidth + x*4
+			pixels[targetOffset] = r1.Pix[sourceOffset+2]
+			pixels[targetOffset+1] = r1.Pix[sourceOffset+1]
+			pixels[targetOffset+2] = r1.Pix[sourceOffset]
+			pixels[targetOffset+3] = r1.Pix[sourceOffset+3]
+		}
+	}
+	return NewBitmap(pixels, width, height, bytewidth, 32, 4)
 }
 
 // ImgToBitmap convert the standard image.Image to Bitmap
 func ImgToBitmap(m image.Image) (bit Bitmap) {
+	bit, _ = ImgToBitmapE(m)
+	return bit
+}
+
+// ImgToBitmapE validates and converts an image.Image to an owned Bitmap.
+func ImgToBitmapE(m image.Image) (bit Bitmap, err error) {
+	if m == nil {
+		return Bitmap{}, fmt.Errorf("image is nil")
+	}
 	bit.Width = m.Bounds().Size().X
 	bit.Height = m.Bounds().Size().Y
 
-	pix, stride, _ := imgo.EncodeImg(m)
+	pix, stride, err := imgo.EncodeImg(m)
+	if err != nil {
+		return Bitmap{}, err
+	}
 	bit.Bytewidth = stride
 
 	buf, src := ToUint8p(pix)
@@ -122,7 +165,10 @@ func ImgToBitmap(m image.Image) (bit Bitmap) {
 
 	bit.BitsPixel = 32
 	bit.BytesPerPixel = 32 / 8
-	return
+	if _, err := bitmapBufferLen(bit); err != nil {
+		return Bitmap{}, err
+	}
+	return bit, nil
 }
 
 // ToUint8p convert the []uint8 to a uint8 pointer and backing slice
@@ -144,57 +190,65 @@ func ToUint8p(dst []uint8) ([]uint8, *uint8) {
 
 // ToRGBAGo convert Bitmap to standard image.RGBA
 func ToRGBAGo(bmp1 Bitmap) *image.RGBA {
-	img1 := image.NewRGBA(image.Rect(0, 0, bmp1.Width, bmp1.Height))
-	img1.Pix = make([]uint8, bmp1.Bytewidth*bmp1.Height)
-
-	copyToVUint8A(img1.Pix, bmp1.ImgBuf)
-	img1.Stride = bmp1.Bytewidth
-	return img1
+	img, _ := ToRGBAGoE(bmp1)
+	return img
 }
 
-func val(p *uint8, n int) uint8 {
-	p1 := (*uint8)(unsafe.Add(unsafe.Pointer(p), n))
-	return *p1
-}
-
-func copyToVUint8A(dst []uint8, src *uint8) {
-	for i := 0; i <= len(dst)-4; i += 4 {
-		dst[i] = val(src, i+2)
-		dst[i+1] = val(src, i+1)
-		dst[i+2] = val(src, i)
-		dst[i+3] = val(src, i+3)
+// ToRGBAGoE converts a validated four-byte BGRA Bitmap to image.RGBA.
+func ToRGBAGoE(bitmap Bitmap) (*image.RGBA, error) {
+	if bitmap.BytesPerPixel != 4 {
+		return nil, fmt.Errorf("unsupported bitmap bytesPerPixel=%d; RGBA conversion requires 4", bitmap.BytesPerPixel)
 	}
-}
-
-// GetText get the image text by tesseract ocr
-//
-// robotgo.GetText(imgPath, lang string)
-func GetText(imgPath string, args ...string) (string, error) {
-	var lang = "eng"
-
-	if len(args) > 0 {
-		lang = args[0]
-		if lang == "zh" {
-			lang = "chi_sim"
+	pixels, err := bitmapBytes(bitmap)
+	if err != nil {
+		return nil, err
+	}
+	for y := 0; y < bitmap.Height; y++ {
+		row := y * bitmap.Bytewidth
+		for x := 0; x < bitmap.Width; x++ {
+			offset := row + x*4
+			pixels[offset], pixels[offset+2] = pixels[offset+2], pixels[offset]
 		}
 	}
-
-	body, err := exec.Command("tesseract", imgPath,
-		"stdout", "-l", lang).Output()
-	if err != nil {
-		return "", err
-	}
-	return string(body), nil
+	return &image.RGBA{
+		Pix: pixels, Stride: bitmap.Bytewidth,
+		Rect: image.Rect(0, 0, bitmap.Width, bitmap.Height),
+	}, nil
 }
 
 // GetTextImg get text from image.Image by writing a temporary PNG and running OCR.
 func GetTextImg(img image.Image, args ...string) (string, error) {
-	tmp := filepath.Join(os.TempDir(), "robotgo-ocr-"+time.Now().Format("20060102-150405.000000000")+".png")
-	if err := SavePng(img, tmp); err != nil {
+	return GetTextImgContext(context.Background(), img, args...)
+}
+
+// GetTextImgContext writes an image to a private temporary file and runs OCR
+// with caller-controlled cancellation.
+func GetTextImgContext(ctx context.Context, img image.Image, args ...string) (result string, retErr error) {
+	if img == nil {
+		return "", fmt.Errorf("image is nil")
+	}
+	file, err := os.CreateTemp("", "robotgo-ocr-*.png")
+	if err != nil {
 		return "", err
 	}
+	path := file.Name()
+	closed := false
 	defer func() {
-		_ = os.Remove(tmp)
+		if !closed {
+			if closeErr := file.Close(); retErr == nil && closeErr != nil {
+				retErr = closeErr
+			}
+		}
+		if removeErr := os.Remove(path); retErr == nil && removeErr != nil {
+			retErr = removeErr
+		}
 	}()
-	return GetText(tmp, args...)
+	if err := png.Encode(file, img); err != nil {
+		return "", err
+	}
+	if err := file.Close(); err != nil {
+		return "", err
+	}
+	closed = true
+	return GetTextContext(ctx, path, args...)
 }

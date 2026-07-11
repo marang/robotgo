@@ -176,7 +176,8 @@ func TestOpenRemoteDesktopInvalidRequestPathClosesPrediction(t *testing.T) {
 			configure: func(portal *fakeRemoteDesktopPortal) {
 				portal.invalidCreatePath = true
 			},
-			wantToken: "create",
+			wantToken:    "create",
+			wantSessions: 1,
 		},
 		{
 			name: "select devices",
@@ -239,7 +240,7 @@ func TestOpenRemoteDesktopRejectedRequestCleansUp(t *testing.T) {
 	}
 }
 
-func TestOpenRemoteDesktopTimeoutClosesRequest(t *testing.T) {
+func TestOpenRemoteDesktopTimeoutClosesRequestAndPredictedSession(t *testing.T) {
 	portal := newFakeRemoteDesktopPortal()
 	portal.holdCreate = true
 	cleanupErr := errors.New("close timed-out request failed")
@@ -255,11 +256,29 @@ func TestOpenRemoteDesktopTimeoutClosesRequest(t *testing.T) {
 	if len(portal.closeRequests) != 1 || portal.closeRequests[0] != requestPath(portal.name, "create") {
 		t.Fatalf("closed requests = %v, want create request", portal.closeRequests)
 	}
-	if len(portal.closeSessions) != 0 {
-		t.Fatalf("session close count = %d, want 0", len(portal.closeSessions))
+	if len(portal.closeSessions) != 1 || portal.closeSessions[0] != sessionPath(portal.name, "session") {
+		t.Fatalf("closed sessions = %v, want predicted session", portal.closeSessions)
 	}
 	if !portal.closed {
 		t.Fatal("portal connection was not closed after timeout")
+	}
+}
+
+func TestOpenRemoteDesktopMalformedCreateResponseClosesPredictedSession(t *testing.T) {
+	portal := newFakeRemoteDesktopPortal()
+	portal.malformedCreate = true
+
+	_, err := openTestSession(context.Background(), portal, DevicePointer)
+	if err == nil || !strings.Contains(err.Error(), "missing session handle") {
+		t.Fatalf("openRemoteDesktop error = %v, want malformed session response", err)
+	}
+	portal.mu.Lock()
+	defer portal.mu.Unlock()
+	if len(portal.closeSessions) != 1 || portal.closeSessions[0] != sessionPath(portal.name, "session") {
+		t.Fatalf("closed sessions = %v, want predicted session", portal.closeSessions)
+	}
+	if !portal.closed {
+		t.Fatal("portal connection was not closed after malformed response")
 	}
 }
 

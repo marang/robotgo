@@ -35,8 +35,8 @@ func GetDisplayRect(i int) Rect {
 // Capture capture the screenshot, use the CaptureImg default
 func Capture(args ...int) (*image.RGBA, error) {
 	displayId := 0
-	if DisplayID != -1 {
-		displayId = DisplayID
+	if configured := currentDisplayID(); configured != -1 {
+		displayId = configured
 	}
 
 	if len(args) > 4 {

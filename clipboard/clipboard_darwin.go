@@ -8,7 +8,10 @@
 package clipboard
 
 import (
+	"context"
+	"fmt"
 	"os/exec"
+	"strings"
 )
 
 var (
@@ -16,39 +19,44 @@ var (
 	copyCmdArgs  = "pbcopy"
 )
 
-func getPasteCommand() *exec.Cmd {
-	return exec.Command(pasteCmdArgs)
-}
-
-func getCopyCommand() *exec.Cmd {
-	return exec.Command(copyCmdArgs)
-}
-
 func readAll() (string, error) {
-	pasteCmd := getPasteCommand()
+	ctx, cancel := context.WithTimeout(context.Background(), defaultCommandTimeout)
+	defer cancel()
+	return readAllContext(ctx, SelectionClipboard)
+}
+
+func readAllContext(ctx context.Context, selection Selection) (string, error) {
+	if selection != SelectionClipboard {
+		return "", fmt.Errorf("clipboard: primary selection is unsupported on macOS")
+	}
+	pasteCmd := exec.CommandContext(ctx, pasteCmdArgs)
 	out, err := pasteCmd.Output()
 	if err != nil {
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return "", ctxErr
+		}
 		return "", err
 	}
 	return string(out), nil
 }
 
 func writeAll(text string) error {
-	copyCmd := getCopyCommand()
-	in, err := copyCmd.StdinPipe()
-	if err != nil {
-		return err
-	}
+	ctx, cancel := context.WithTimeout(context.Background(), defaultCommandTimeout)
+	defer cancel()
+	return writeAllContext(ctx, text, SelectionClipboard)
+}
 
-	if err := copyCmd.Start(); err != nil {
+func writeAllContext(ctx context.Context, text string, selection Selection) error {
+	if selection != SelectionClipboard {
+		return fmt.Errorf("clipboard: primary selection is unsupported on macOS")
+	}
+	copyCmd := exec.CommandContext(ctx, copyCmdArgs)
+	copyCmd.Stdin = strings.NewReader(text)
+	if err := copyCmd.Run(); err != nil {
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return ctxErr
+		}
 		return err
 	}
-	if _, err := in.Write([]byte(text)); err != nil {
-		return err
-	}
-	if err := in.Close(); err != nil {
-		return err
-	}
-
-	return copyCmd.Wait()
+	return nil
 }

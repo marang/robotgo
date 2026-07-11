@@ -158,6 +158,7 @@ typedef struct _Bounds Bounds;
 
 	static void LoadAtoms (void){
 		Display *rDisplay = XOpenDisplay(NULL);
+		if (rDisplay == NULL) { return; }
 		WM_STATE   = XInternAtom(rDisplay, "_NET_WM_STATE",                True);
 		WM_ABOVE   = XInternAtom(rDisplay, "_NET_WM_STATE_ABOVE",          True);
 		WM_HIDDEN  = XInternAtom(rDisplay, "_NET_WM_STATE_HIDDEN",         True);
@@ -185,6 +186,10 @@ typedef struct _Bounds Bounds;
 		unsigned char* result = NULL;
 
 		Display *rDisplay = XOpenDisplay(NULL);
+		if (rDisplay == NULL) {
+			if (items != NULL) { *items = 0; }
+			return NULL;
+		}
 		// Check the atom
 		if (atom != None) {
 			// Retrieve and validate the specified property
@@ -219,6 +224,7 @@ typedef struct _Bounds Bounds;
 	//////
 	static void SetDesktopForWindow(MData win){
 		Display *rDisplay = XOpenDisplay(NULL);
+		if (rDisplay == NULL) { return; }
 		// Validate every atom that we want to use
 		if (WM_DESKTOP != None && WM_CURDESK != None) {
 			// Get desktop property
@@ -227,7 +233,11 @@ typedef struct _Bounds Bounds;
 			if (desktop != NULL) {
 				// Retrieve the screen number
 				XWindowAttributes attr = { 0 };
-				XGetWindowAttributes(rDisplay, win.XWin, &attr);
+				if (XGetWindowAttributes(rDisplay, win.XWin, &attr) == 0 || attr.screen == NULL) {
+					XFree(desktop);
+					XCloseDisplay(rDisplay);
+					return;
+				}
 				int s = XScreenNumberOfScreen(attr.screen);
 				Window root = XRootWindow(rDisplay, s);
 
