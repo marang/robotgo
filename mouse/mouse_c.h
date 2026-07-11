@@ -136,6 +136,12 @@
 	#endif
 #endif
 
+#if !defined(IS_LINUX)
+static int robotgo_wayland_mouse_backend_enabled(void) { return 0; }
+static int robotgo_wayland_mouse_ready(void) { return 0; }
+static void robotgo_wayland_mouse_close(void) { }
+#endif
+
 /* Some convenience macros for converting our enums to the system API types. */
 #if defined(IS_MACOSX)
 	CGEventType MMMouseDownToCGEventType(MMMouseButton button) {

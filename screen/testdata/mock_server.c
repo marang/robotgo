@@ -86,13 +86,6 @@ static void bind_screencopy_manager(struct wl_client *client, void *data, uint32
     wl_resource_set_implementation(res, &screencopy_impl, NULL, NULL);
 }
 
-struct zwp_linux_buffer_params_v1_interface {
-    void (*destroy)(struct wl_client *, struct wl_resource *);
-    void (*add)(struct wl_client *, struct wl_resource *, int32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t);
-    void (*create)(struct wl_client *, struct wl_resource *, int32_t, int32_t, uint32_t, uint32_t);
-    void (*create_immed)(struct wl_client *, struct wl_resource *, uint32_t, int32_t, int32_t, uint32_t, uint32_t);
-};
-
 static void params_destroy(struct wl_client *client, struct wl_resource *resource) {
     wl_resource_destroy(resource);
 }
