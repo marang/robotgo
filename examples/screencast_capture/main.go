@@ -58,5 +58,9 @@ func main() {
 		fmt.Fprintln(os.Stderr, "close output:", err)
 		os.Exit(1)
 	}
-	fmt.Printf("saved %s using one persistent portal session; restore token: %q\n", *output, robotgo.ScreenCastCaptureRestoreToken())
+	message := fmt.Sprintf("saved %s using one persistent portal session", *output)
+	if robotgo.ScreenCastCaptureRestoreToken() != "" {
+		message += "; a restore token is available and should be stored securely"
+	}
+	fmt.Println(message)
 }

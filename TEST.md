@@ -140,6 +140,8 @@ Purpose:
   file-descriptor ownership, and deterministic teardown
 - Reusable PipeWire consumer compilation and frame/crop behavior
 - Fractional logical-to-physical region mapping and repeated-frame lifecycle
+- Native C packed-pixel conversion plus SPA crop/transform metadata processing
+- Explicit cursor-metadata rejection for the image capture API
 
 Command:
 

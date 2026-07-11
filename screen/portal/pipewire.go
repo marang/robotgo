@@ -11,6 +11,7 @@ import (
 )
 
 type pipeWireFrameSource interface {
+	ready() error
 	frame(context.Context) (*image.RGBA, error)
 	interrupt()
 	close() error
@@ -41,7 +42,10 @@ func (c *PipeWireCapture) Ready() error {
 	case <-session.Closed():
 		return ErrScreenCastClosed
 	default:
-		return nil
+		if c.backend == nil {
+			return ErrPipeWireUnavailable
+		}
+		return c.backend.ready()
 	}
 }
 
@@ -50,6 +54,9 @@ func (c *PipeWireCapture) Ready() error {
 func OpenPipeWireCapture(ctx context.Context, options ScreenCastOptions, streamIndex int) (*PipeWireCapture, error) {
 	if streamIndex < 0 {
 		return nil, fmt.Errorf("%w: stream index=%d", ErrScreenCastNoStreams, streamIndex)
+	}
+	if options.Cursor == ScreenCastCursorMetadata {
+		return nil, fmt.Errorf("%w: cursor metadata is not supported by the image capture backend; use embedded or hidden cursor mode", ErrPipeWireUnavailable)
 	}
 	if !pipeWireCaptureCompiled() {
 		return nil, ErrPipeWireUnavailable
@@ -63,7 +70,7 @@ func OpenPipeWireCapture(ctx context.Context, options ScreenCastOptions, streamI
 		_ = session.Close()
 		return nil, fmt.Errorf("%w: stream index=%d streams=%d", ErrScreenCastNoStreams, streamIndex, len(streams))
 	}
-	backend, err := newPipeWireFrameSource(session, streams[streamIndex])
+	backend, err := newPipeWireFrameSource(ctx, session, streams[streamIndex])
 	if err != nil {
 		return nil, errors.Join(err, session.Close())
 	}

@@ -12,6 +12,7 @@ package portal
 #include <string.h>
 #include <unistd.h>
 #include <pipewire/pipewire.h>
+#include <spa/param/buffers.h>
 #include <spa/param/video/format-utils.h>
 
 #define ROBOTGO_PW_MAX_FRAME_BYTES (512u * 1024u * 1024u)
@@ -32,6 +33,8 @@ struct robotgo_pw_capture {
 	uint32_t transform;
 	uint64_t generation;
 	uint64_t delivered;
+	enum pw_stream_state state;
+	int frame_requested;
 	int failed;
 	char error[256];
 };
@@ -40,13 +43,17 @@ static void robotgo_pw_set_error(struct robotgo_pw_capture *capture, const char 
 	if (capture->failed) return;
 	capture->failed = 1;
 	snprintf(capture->error, sizeof(capture->error), "%s", message ? message : "PipeWire stream failed");
-	pw_thread_loop_signal(capture->loop, false);
+	if (capture->loop != NULL) pw_thread_loop_signal(capture->loop, false);
 }
 
 static void robotgo_pw_state_changed(void *userdata, enum pw_stream_state old,
 		enum pw_stream_state state, const char *error) {
-	(void)old;
 	struct robotgo_pw_capture *capture = userdata;
+	if (state == PW_STREAM_STATE_UNCONNECTED && old == PW_STREAM_STATE_UNCONNECTED) {
+		pw_thread_loop_signal(capture->loop, false);
+		return;
+	}
+	capture->state = state;
 	if (state == PW_STREAM_STATE_ERROR || state == PW_STREAM_STATE_UNCONNECTED)
 		robotgo_pw_set_error(capture, error ? error : "PipeWire stream disconnected");
 	else
@@ -62,6 +69,21 @@ static void robotgo_pw_param_changed(void *userdata, uint32_t id, const struct s
 	}
 	capture->width = capture->format.size.width;
 	capture->height = capture->format.size.height;
+	uint8_t meta_buffer[512];
+	struct spa_pod_builder builder = SPA_POD_BUILDER_INIT(meta_buffer, sizeof(meta_buffer));
+	const struct spa_pod *params[2];
+	params[0] = spa_pod_builder_add_object(&builder,
+		SPA_TYPE_OBJECT_ParamMeta, SPA_PARAM_Meta,
+		SPA_PARAM_META_type, SPA_POD_Id(SPA_META_VideoCrop),
+		SPA_PARAM_META_size, SPA_POD_Int(sizeof(struct spa_meta_region)));
+	params[1] = spa_pod_builder_add_object(&builder,
+		SPA_TYPE_OBJECT_ParamMeta, SPA_PARAM_Meta,
+		SPA_PARAM_META_type, SPA_POD_Id(SPA_META_VideoTransform),
+		SPA_PARAM_META_size, SPA_POD_Int(sizeof(struct spa_meta_videotransform)));
+	if (pw_stream_update_params(capture->stream, params, 2) < 0) {
+		robotgo_pw_set_error(capture, "negotiate PipeWire frame metadata");
+		return;
+	}
 	pw_thread_loop_signal(capture->loop, false);
 }
 
@@ -98,24 +120,17 @@ static void robotgo_pw_convert_row(uint8_t *dst, const uint8_t *src, uint32_t wi
 	}
 }
 
-static void robotgo_pw_process(void *userdata) {
-	struct robotgo_pw_capture *capture = userdata;
-	struct pw_buffer *buffer;
-	while ((buffer = pw_stream_dequeue_buffer(capture->stream)) != NULL) {
-		struct spa_buffer *spa = buffer->buffer;
-		if (spa->n_datas < 1 || spa->datas[0].chunk == NULL || capture->width == 0 || capture->height == 0) {
-			pw_stream_queue_buffer(capture->stream, buffer);
-			continue;
-		}
-		struct spa_data *data = &spa->datas[0];
-		if (data->data == NULL) {
-			pw_stream_queue_buffer(capture->stream, buffer);
-			if (data->type == SPA_DATA_DmaBuf)
-				robotgo_pw_set_error(capture, "PipeWire returned a non-mappable DMA-BUF frame");
-			else
-				robotgo_pw_set_error(capture, "PipeWire returned an unmapped frame buffer");
-			return;
-		}
+static int robotgo_pw_copy_buffer(struct robotgo_pw_capture *capture, struct spa_buffer *spa) {
+	if (spa == NULL || spa->n_datas < 1 || spa->datas[0].chunk == NULL || capture->width == 0 || capture->height == 0)
+		return 0;
+	struct spa_data *data = &spa->datas[0];
+	if (data->data == NULL) {
+		if (data->type == SPA_DATA_DmaBuf)
+			robotgo_pw_set_error(capture, "PipeWire returned a non-mappable DMA-BUF frame");
+		else
+			robotgo_pw_set_error(capture, "PipeWire returned an unmapped frame buffer");
+		return -1;
+	}
 		struct spa_chunk *chunk = data->chunk;
 		int bpp = robotgo_pw_pixel_size(capture->format.format);
 		int32_t stride = chunk->stride != 0 ? chunk->stride : (int32_t)(capture->width * bpp);
@@ -141,15 +156,13 @@ static void robotgo_pw_process(void *userdata) {
 			(data->maxsize != 0 && required > data->maxsize) ||
 			(chunk->size != 0 && required > chunk_end) ||
 			source_row_size > stride_size) {
-			pw_stream_queue_buffer(capture->stream, buffer);
 			robotgo_pw_set_error(capture, "PipeWire returned an unsupported or truncated frame");
-			return;
+			return -1;
 		}
 		uint8_t *pixels = realloc(capture->pixels, output_size);
 		if (pixels == NULL) {
-			pw_stream_queue_buffer(capture->stream, buffer);
 			robotgo_pw_set_error(capture, "allocate PipeWire frame");
-			return;
+			return -1;
 		}
 		capture->pixels = pixels;
 		capture->pixels_size = output_size;
@@ -163,8 +176,23 @@ static void robotgo_pw_process(void *userdata) {
 		capture->frame_width = frame_width;
 		capture->frame_height = frame_height;
 		capture->transform = frame_transform;
-		capture->generation++;
+	return 1;
+}
+
+static void robotgo_pw_process(void *userdata) {
+	struct robotgo_pw_capture *capture = userdata;
+	struct pw_buffer *buffer;
+	while ((buffer = pw_stream_dequeue_buffer(capture->stream)) != NULL) {
+		if (!capture->frame_requested) {
+			pw_stream_queue_buffer(capture->stream, buffer);
+			continue;
+		}
+		int result = robotgo_pw_copy_buffer(capture, buffer->buffer);
 		pw_stream_queue_buffer(capture->stream, buffer);
+		if (result < 0) return;
+		if (result == 0) continue;
+		capture->frame_requested = 0;
+		capture->generation++;
 		pw_thread_loop_signal(capture->loop, false);
 	}
 }
@@ -189,14 +217,15 @@ static struct robotgo_pw_capture *robotgo_pw_capture_new(int fd, uint32_t node_i
 	*error_out = NULL;
 	pw_init(NULL, NULL);
 	struct robotgo_pw_capture *capture = calloc(1, sizeof(*capture));
-	if (capture == NULL) { close(fd); *error_out = robotgo_pw_error("allocate PipeWire capture"); return NULL; }
+	if (capture == NULL) { close(fd); *error_out = robotgo_pw_error("allocate PipeWire capture"); pw_deinit(); return NULL; }
 	capture->loop = pw_thread_loop_new("robotgo-pipewire", NULL);
-	if (capture->loop == NULL) { close(fd); *error_out = robotgo_pw_error("create PipeWire loop"); free(capture); return NULL; }
+	if (capture->loop == NULL) { close(fd); *error_out = robotgo_pw_error("create PipeWire loop"); free(capture); pw_deinit(); return NULL; }
 	if (pw_thread_loop_start(capture->loop) < 0) {
 		close(fd);
 		*error_out = robotgo_pw_error("start PipeWire loop");
 		pw_thread_loop_destroy(capture->loop);
 		free(capture);
+		pw_deinit();
 		return NULL;
 	}
 	pw_thread_loop_lock(capture->loop);
@@ -228,6 +257,7 @@ static struct robotgo_pw_capture *robotgo_pw_capture_new(int fd, uint32_t node_i
 		SPA_FORMAT_VIDEO_framerate, SPA_POD_CHOICE_RANGE_Fraction(
 			&SPA_FRACTION(30, 1), &SPA_FRACTION(0, 1), &SPA_FRACTION(240, 1)));
 	uint32_t target = serial != 0 ? PW_ID_ANY : node_id;
+	capture->state = PW_STREAM_STATE_CONNECTING;
 	int result = pw_stream_connect(capture->stream, PW_DIRECTION_INPUT, target,
 		PW_STREAM_FLAG_AUTOCONNECT | PW_STREAM_FLAG_MAP_BUFFERS, params, 1);
 	pw_thread_loop_unlock(capture->loop);
@@ -235,14 +265,41 @@ static struct robotgo_pw_capture *robotgo_pw_capture_new(int fd, uint32_t node_i
 	return capture;
 }
 
+static int robotgo_pw_capture_ready(struct robotgo_pw_capture *capture, int timeout_ms, char **error_out) {
+	*error_out = NULL;
+	pw_thread_loop_lock(capture->loop);
+	struct timespec timeout;
+	int time_result = pw_thread_loop_get_time(capture->loop, &timeout, (int64_t)timeout_ms * 1000000LL);
+	if (time_result < 0) {
+		errno = -time_result;
+		*error_out = robotgo_pw_error("create PipeWire readiness deadline");
+		pw_thread_loop_unlock(capture->loop);
+		return -1;
+	}
+	while (!capture->failed && (capture->state == PW_STREAM_STATE_CONNECTING ||
+		((capture->state == PW_STREAM_STATE_PAUSED || capture->state == PW_STREAM_STATE_STREAMING) &&
+		(capture->width == 0 || capture->height == 0)))) {
+		int result = pw_thread_loop_timed_wait_full(capture->loop, &timeout);
+		if (result == -ETIMEDOUT) { pw_thread_loop_unlock(capture->loop); return 1; }
+		if (result < 0) { errno = -result; *error_out = robotgo_pw_error("wait for PipeWire readiness"); pw_thread_loop_unlock(capture->loop); return -1; }
+	}
+	if (capture->failed) { *error_out = strdup(capture->error); pw_thread_loop_unlock(capture->loop); return -1; }
+	int ready = (capture->state == PW_STREAM_STATE_PAUSED || capture->state == PW_STREAM_STATE_STREAMING) &&
+		capture->width > 0 && capture->height > 0 && robotgo_pw_pixel_size(capture->format.format) > 0;
+	pw_thread_loop_unlock(capture->loop);
+	return ready ? 0 : -1;
+}
+
 static int robotgo_pw_capture_frame(struct robotgo_pw_capture *capture, int timeout_ms,
 		uint8_t **pixels, size_t *size, uint32_t *width, uint32_t *height,
 		uint32_t *transform, char **error_out) {
 	*error_out = NULL; *pixels = NULL; *size = 0;
 	pw_thread_loop_lock(capture->loop);
+	capture->frame_requested = 1;
 	struct timespec timeout;
 	int time_result = pw_thread_loop_get_time(capture->loop, &timeout, (int64_t)timeout_ms * 1000000LL);
 	if (time_result < 0) {
+		capture->frame_requested = 0;
 		errno = -time_result;
 		*error_out = robotgo_pw_error("create PipeWire frame deadline");
 		pw_thread_loop_unlock(capture->loop);
@@ -250,10 +307,10 @@ static int robotgo_pw_capture_frame(struct robotgo_pw_capture *capture, int time
 	}
 	while (!capture->failed && capture->generation <= capture->delivered) {
 		int result = pw_thread_loop_timed_wait_full(capture->loop, &timeout);
-		if (result == -ETIMEDOUT) { pw_thread_loop_unlock(capture->loop); return 1; }
-		if (result < 0) { errno = -result; *error_out = robotgo_pw_error("wait for PipeWire frame"); pw_thread_loop_unlock(capture->loop); return -1; }
+		if (result == -ETIMEDOUT) { capture->frame_requested = 0; pw_thread_loop_unlock(capture->loop); return 1; }
+		if (result < 0) { capture->frame_requested = 0; errno = -result; *error_out = robotgo_pw_error("wait for PipeWire frame"); pw_thread_loop_unlock(capture->loop); return -1; }
 	}
-	if (capture->failed) { *error_out = strdup(capture->error); pw_thread_loop_unlock(capture->loop); return -1; }
+	if (capture->failed) { capture->frame_requested = 0; *error_out = strdup(capture->error); pw_thread_loop_unlock(capture->loop); return -1; }
 	uint8_t *copy = malloc(capture->pixels_size);
 	if (copy == NULL) { *error_out = robotgo_pw_error("copy PipeWire frame"); pw_thread_loop_unlock(capture->loop); return -1; }
 	memcpy(copy, capture->pixels, capture->pixels_size);
@@ -276,6 +333,41 @@ static void robotgo_pw_capture_free(struct robotgo_pw_capture *capture) {
 	}
 	free(capture->pixels);
 	free(capture);
+	pw_deinit();
+}
+
+static int robotgo_pw_test_copy_frame(const uint8_t *input, uint32_t input_size,
+		uint32_t width, uint32_t height, int32_t stride, uint32_t format,
+		int has_crop, int32_t crop_x, int32_t crop_y, uint32_t crop_width, uint32_t crop_height,
+		uint32_t transform, uint8_t **output, size_t *output_size,
+		uint32_t *output_width, uint32_t *output_height, uint32_t *output_transform,
+		char **error_out) {
+	struct robotgo_pw_capture capture = {0};
+	capture.width = width;
+	capture.height = height;
+	capture.format.format = format;
+	struct spa_chunk chunk = { .offset = 0, .size = input_size, .stride = stride };
+	struct spa_data data = { .type = SPA_DATA_MemPtr, .data = (void*)input, .maxsize = input_size, .chunk = &chunk };
+	struct spa_meta metas[2];
+	struct spa_meta_region crop = { .region = SPA_REGION(crop_x, crop_y, crop_width, crop_height) };
+	struct spa_meta_videotransform video_transform = { .transform = transform };
+	uint32_t n_metas = 0;
+	if (has_crop) metas[n_metas++] = (struct spa_meta){ .type = SPA_META_VideoCrop, .size = sizeof(crop), .data = &crop };
+	metas[n_metas++] = (struct spa_meta){ .type = SPA_META_VideoTransform, .size = sizeof(video_transform), .data = &video_transform };
+	struct spa_buffer spa = { .n_metas = n_metas, .metas = metas, .n_datas = 1, .datas = &data };
+	int result = robotgo_pw_copy_buffer(&capture, &spa);
+	if (result != 1) {
+		*error_out = strdup(capture.error[0] ? capture.error : "native frame conversion failed");
+		free(capture.pixels);
+		return -1;
+	}
+	*output = capture.pixels;
+	*output_size = capture.pixels_size;
+	*output_width = capture.frame_width;
+	*output_height = capture.frame_height;
+	*output_transform = capture.transform;
+	*error_out = NULL;
+	return 0;
 }
 */
 import "C"
@@ -299,6 +391,15 @@ const (
 	pipeWirePollInterval = 100 * time.Millisecond
 )
 
+const (
+	pipeWireTestFormatBGRx = uint32(C.SPA_VIDEO_FORMAT_BGRx)
+	pipeWireTestFormatBGRA = uint32(C.SPA_VIDEO_FORMAT_BGRA)
+	pipeWireTestFormatRGBx = uint32(C.SPA_VIDEO_FORMAT_RGBx)
+	pipeWireTestFormatRGBA = uint32(C.SPA_VIDEO_FORMAT_RGBA)
+	pipeWireTestFormatBGR  = uint32(C.SPA_VIDEO_FORMAT_BGR)
+	pipeWireTestFormatRGB  = uint32(C.SPA_VIDEO_FORMAT_RGB)
+)
+
 type cgoPipeWireFrameSource struct {
 	mu      sync.Mutex
 	stream  *C.struct_robotgo_pw_capture
@@ -307,7 +408,7 @@ type cgoPipeWireFrameSource struct {
 
 func pipeWireCaptureCompiled() bool { return true }
 
-func newPipeWireFrameSource(session ScreenCast, stream ScreenCastStream) (pipeWireFrameSource, error) {
+func newPipeWireFrameSource(ctx context.Context, session ScreenCast, stream ScreenCastStream) (pipeWireFrameSource, error) {
 	file, err := session.PipeWireFile()
 	if err != nil {
 		return nil, err
@@ -332,7 +433,74 @@ func newPipeWireFrameSource(session ScreenCast, stream ScreenCastStream) (pipeWi
 		}
 		return nil, fmt.Errorf("%w: %s", ErrPipeWireUnavailable, message)
 	}
-	return &cgoPipeWireFrameSource{stream: capture}, nil
+	source := &cgoPipeWireFrameSource{stream: capture}
+	if err := source.waitReady(ctx); err != nil {
+		_ = source.close()
+		return nil, err
+	}
+	return source, nil
+}
+
+func (s *cgoPipeWireFrameSource) waitReady(ctx context.Context) error {
+	deadline := time.Now().Add(pipeWireFrameTimeout)
+	if ctx != nil {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		if contextDeadline, ok := ctx.Deadline(); ok && contextDeadline.Before(deadline) {
+			deadline = contextDeadline
+		}
+	}
+	for {
+		if s.closing.Load() {
+			return ErrScreenCastClosed
+		}
+		if ctx != nil {
+			if err := ctx.Err(); err != nil {
+				return err
+			}
+		}
+		remaining := time.Until(deadline)
+		if remaining <= 0 {
+			return context.DeadlineExceeded
+		}
+		wait := min(remaining, pipeWirePollInterval)
+		var cError *C.char
+		result := C.robotgo_pw_capture_ready(s.stream, C.int((wait+time.Millisecond-1)/time.Millisecond), &cError)
+		if cError != nil {
+			message := C.GoString(cError)
+			C.free(unsafe.Pointer(cError))
+			return fmt.Errorf("%w: %s", ErrPipeWireUnavailable, message)
+		}
+		if result == 0 {
+			return nil
+		}
+		if result < 0 {
+			return ErrPipeWireUnavailable
+		}
+	}
+}
+
+func (s *cgoPipeWireFrameSource) ready() error {
+	if s == nil || s.closing.Load() {
+		return ErrScreenCastClosed
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.stream == nil {
+		return ErrScreenCastClosed
+	}
+	var cError *C.char
+	result := C.robotgo_pw_capture_ready(s.stream, 1, &cError)
+	if cError != nil {
+		message := C.GoString(cError)
+		C.free(unsafe.Pointer(cError))
+		return fmt.Errorf("%w: %s", ErrPipeWireUnavailable, message)
+	}
+	if result != 0 {
+		return ErrPipeWireUnavailable
+	}
+	return nil
 }
 
 func (s *cgoPipeWireFrameSource) frame(ctx context.Context) (*image.RGBA, error) {
@@ -430,6 +598,45 @@ func transformPipeWireFrame(source *image.RGBA, transform uint32) (*image.RGBA, 
 		}
 	}
 	return result, nil
+}
+
+func pipeWireNativeFrameForTest(input []byte, width, height, stride int, format uint32, crop image.Rectangle, hasCrop bool, transform uint32) (*image.RGBA, error) {
+	if len(input) == 0 {
+		return nil, errors.New("empty native PipeWire test frame")
+	}
+	cInput := C.CBytes(input)
+	defer C.free(cInput)
+	var output *C.uint8_t
+	var outputSize C.size_t
+	var outputWidth, outputHeight, outputTransform C.uint32_t
+	var cError *C.char
+	result := C.robotgo_pw_test_copy_frame(
+		(*C.uint8_t)(cInput), C.uint32_t(len(input)), C.uint32_t(width), C.uint32_t(height), C.int32_t(stride), C.uint32_t(format),
+		C.int(boolToInt(hasCrop)), C.int32_t(crop.Min.X), C.int32_t(crop.Min.Y), C.uint32_t(crop.Dx()), C.uint32_t(crop.Dy()), C.uint32_t(transform),
+		&output, &outputSize, &outputWidth, &outputHeight, &outputTransform, &cError,
+	)
+	if cError != nil {
+		message := C.GoString(cError)
+		C.free(unsafe.Pointer(cError))
+		return nil, fmt.Errorf("%w: %s", ErrPipeWireUnavailable, message)
+	}
+	if result != 0 || output == nil {
+		return nil, ErrPipeWireUnavailable
+	}
+	defer C.free(unsafe.Pointer(output))
+	w, h := int(outputWidth), int(outputHeight)
+	if uint64(outputSize) != uint64(w)*uint64(h)*4 {
+		return nil, fmt.Errorf("%w: invalid native test frame size", ErrPipeWireUnavailable)
+	}
+	pixels := C.GoBytes(unsafe.Pointer(output), C.int(outputSize))
+	return transformPipeWireFrame(&image.RGBA{Pix: pixels, Stride: w * 4, Rect: image.Rect(0, 0, w, h)}, uint32(outputTransform))
+}
+
+func boolToInt(value bool) int {
+	if value {
+		return 1
+	}
+	return 0
 }
 
 func (s *cgoPipeWireFrameSource) close() error {

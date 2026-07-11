@@ -60,3 +60,61 @@ func TestTransformPipeWireFrameRejectsUnknownOrientation(t *testing.T) {
 		t.Fatal("unknown transform unexpectedly accepted")
 	}
 }
+
+func TestNativePipeWirePackedPixelFormats(t *testing.T) {
+	tests := []struct {
+		name   string
+		format uint32
+		input  []byte
+		want   color.RGBA
+	}{
+		{"BGRx", pipeWireTestFormatBGRx, []byte{3, 2, 1, 0}, color.RGBA{1, 2, 3, 255}},
+		{"BGRA", pipeWireTestFormatBGRA, []byte{3, 2, 1, 4}, color.RGBA{1, 2, 3, 4}},
+		{"RGBx", pipeWireTestFormatRGBx, []byte{1, 2, 3, 0}, color.RGBA{1, 2, 3, 255}},
+		{"RGBA", pipeWireTestFormatRGBA, []byte{1, 2, 3, 4}, color.RGBA{1, 2, 3, 4}},
+		{"BGR", pipeWireTestFormatBGR, []byte{3, 2, 1}, color.RGBA{1, 2, 3, 255}},
+		{"RGB", pipeWireTestFormatRGB, []byte{1, 2, 3}, color.RGBA{1, 2, 3, 255}},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			frame, err := pipeWireNativeFrameForTest(test.input, 1, 1, len(test.input), test.format, image.Rectangle{}, false, 0)
+			if err != nil {
+				t.Fatalf("pipeWireNativeFrameForTest error: %v", err)
+			}
+			if got := frame.RGBAAt(0, 0); got != test.want {
+				t.Fatalf("pixel = %#v, want %#v", got, test.want)
+			}
+		})
+	}
+}
+
+func TestNativePipeWireCropAndTransformMetadata(t *testing.T) {
+	input := []byte{
+		1, 0, 0, 255, 2, 0, 0, 255,
+		3, 0, 0, 255, 4, 0, 0, 255,
+	}
+	frame, err := pipeWireNativeFrameForTest(input, 2, 2, 8, pipeWireTestFormatRGBA, image.Rect(1, 0, 2, 2), true, 2)
+	if err != nil {
+		t.Fatalf("pipeWireNativeFrameForTest error: %v", err)
+	}
+	if frame.Bounds() != image.Rect(0, 0, 1, 2) {
+		t.Fatalf("bounds = %v, want 1x2", frame.Bounds())
+	}
+	if got := []uint8{frame.RGBAAt(0, 0).R, frame.RGBAAt(0, 1).R}; !reflect.DeepEqual(got, []uint8{4, 2}) {
+		t.Fatalf("transformed crop = %v, want [4 2]", got)
+	}
+}
+
+func TestNativePipeWireNegativeStride(t *testing.T) {
+	input := []byte{
+		2, 0, 0, 255,
+		1, 0, 0, 255,
+	}
+	frame, err := pipeWireNativeFrameForTest(input, 1, 2, -4, pipeWireTestFormatRGBA, image.Rectangle{}, false, 0)
+	if err != nil {
+		t.Fatalf("pipeWireNativeFrameForTest error: %v", err)
+	}
+	if got := []uint8{frame.RGBAAt(0, 0).R, frame.RGBAAt(0, 1).R}; !reflect.DeepEqual(got, []uint8{1, 2}) {
+		t.Fatalf("negative-stride pixels = %v, want [1 2]", got)
+	}
+}

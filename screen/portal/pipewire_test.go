@@ -6,6 +6,7 @@ import (
 	"image"
 	"os"
 	"reflect"
+	"strings"
 	"sync"
 	"testing"
 )
@@ -17,16 +18,31 @@ func TestOpenPipeWireCaptureRejectsNegativeStreamBeforePortal(t *testing.T) {
 	}
 }
 
+func TestOpenPipeWireCaptureRejectsCursorMetadataBeforePortal(t *testing.T) {
+	_, err := OpenPipeWireCapture(context.Background(), ScreenCastOptions{
+		Sources: ScreenCastSourceMonitor,
+		Cursor:  ScreenCastCursorMetadata,
+	}, 0)
+	if !errors.Is(err, ErrPipeWireUnavailable) || !strings.Contains(err.Error(), "cursor metadata") {
+		t.Fatalf("OpenPipeWireCapture error = %v, want explicit cursor metadata error", err)
+	}
+}
+
 type fakePipeWireFrameSource struct {
 	frameImage *image.RGBA
 	events     *[]string
+	readyErr   error
 }
+
+func (s *fakePipeWireFrameSource) ready() error { return s.readyErr }
 
 type blockingPipeWireFrameSource struct {
 	entered     chan struct{}
 	interrupted chan struct{}
 	once        sync.Once
 }
+
+func (*blockingPipeWireFrameSource) ready() error { return nil }
 
 func (s *blockingPipeWireFrameSource) frame(context.Context) (*image.RGBA, error) {
 	close(s.entered)
@@ -123,6 +139,17 @@ func TestPipeWireCaptureReadyDetectsPortalClosure(t *testing.T) {
 	close(done)
 	if err := capture.Ready(); err != ErrScreenCastClosed {
 		t.Fatalf("Ready = %v, want ErrScreenCastClosed", err)
+	}
+}
+
+func TestPipeWireCaptureReadyReportsBackendFailure(t *testing.T) {
+	wantErr := errors.New("stream failed")
+	capture := &PipeWireCapture{
+		session: &fakePipeWireScreenCast{},
+		backend: &fakePipeWireFrameSource{readyErr: wantErr},
+	}
+	if err := capture.Ready(); !errors.Is(err, wantErr) {
+		t.Fatalf("Ready error = %v, want %v", err, wantErr)
 	}
 }
 

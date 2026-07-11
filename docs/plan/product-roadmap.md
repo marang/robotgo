@@ -95,7 +95,8 @@ owns its PipeWire remote and stream deterministically, returns repeated raw
 frames, converts supported RGB/BGR formats to RGBA, maps logical regions at
 fractional scale, applies all eight SPA video transforms and crop metadata,
 exposes stream/restore metadata, and provides hermetic plus opt-in runtime
-tests. `CaptureScreen` can reuse the active session after native
+tests. Native readiness is bounded, PipeWire initialization is balanced, and
+idle sessions do not convert unrequested frames. `CaptureScreen` can reuse the active session after native
 screencopy failure or select it explicitly. Output geometry, scale, and
 transform handling still need the complete real-compositor matrix required by
 this phase.

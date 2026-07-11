@@ -135,6 +135,15 @@ sudo apt install libpipewire-0.3-dev
 go build -tags "wayland pipewire" ./...
 ```
 
+On non-FHS systems where PipeWire headers and libraries are outside the default
+compiler paths, derive them from pkg-config before building:
+
+```bash
+export CGO_CFLAGS="$(pkg-config --cflags-only-I libpipewire-0.3)"
+export CGO_LDFLAGS="$(pkg-config --libs libpipewire-0.3)"
+go build -tags "wayland pipewire" ./...
+```
+
 Package names differ on other distributions. Optional runtime integrations:
 
 - `xdg-desktop-portal` plus the matching desktop backend provides screenshot
@@ -268,6 +277,13 @@ restored session. `CaptureScreen` continues to prefer native screencopy, then
 reuses an active ScreenCast session on native failure. Use
 `ROBOTGO_WAYLAND_BACKEND=screencast` only when the persistent session should be
 mandatory.
+
+The image capture backend supports hidden and embedded cursor modes. Raw cursor
+metadata remains available to lower-level `OpenScreenCast` consumers, but
+`OpenPipeWireCapture` rejects that mode explicitly because its `image.Image`
+result cannot represent separate cursor metadata. Starting a capture waits for
+the PipeWire stream to reach a usable state; an idle session recycles frames
+without converting them until a capture is requested.
 
 For explicit GNOME/KDE portal input, probe support without prompting and then
 call `StartRemoteDesktopInput` with the required device mask. While that session
