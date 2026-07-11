@@ -51,8 +51,8 @@ func TestNonCGOHighLevelPortalInput(t *testing.T) {
 	}
 	assertRemoteDesktopMouseDelays(t, *delays, []int{23, 23, 23, 30})
 	events, _ := session.snapshot()
-	if len(events) != 25 {
-		t.Fatalf("events = %#v, want 25", events)
+	if len(events) != 23 {
+		t.Fatalf("events = %#v, want 23", events)
 	}
 	wantTail := []string{
 		"keysym:65507:true",
@@ -65,8 +65,6 @@ func TestNonCGOHighLevelPortalInput(t *testing.T) {
 		"keysym:65293:false",
 		"keysym:65505:true",
 		"keysym:97:true",
-		"keysym:65505:false",
-		"keysym:65505:true",
 		"keysym:97:false",
 		"keysym:65505:false",
 	}

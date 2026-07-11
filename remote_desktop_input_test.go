@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"reflect"
 	"runtime"
 	"sync"
 	"testing"
@@ -288,6 +289,64 @@ func TestCloseRemoteDesktopInputCancelsPendingStart(t *testing.T) {
 	}
 	if err := <-startErr; !errors.Is(err, context.Canceled) {
 		t.Fatalf("StartRemoteDesktopInput error = %v, want context.Canceled", err)
+	}
+}
+
+func TestStartRemoteDesktopInputRejectsCloseAlreadyInProgress(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("RemoteDesktop portal input is Linux-specific")
+	}
+	t.Setenv("WAYLAND_DISPLAY", "robotgo-test-wayland")
+	t.Setenv("DISPLAY", "")
+
+	oldOpen := remoteDesktopInputOpen
+	openCalled := false
+	remoteDesktopInputOpen = func(context.Context, inputportal.OpenOptions) (remoteDesktopInputSession, error) {
+		openCalled = true
+		return nil, errors.New("unexpected portal open")
+	}
+	remoteDesktopInputPending.Lock()
+	remoteDesktopInputPending.closing++
+	remoteDesktopInputPending.Unlock()
+	t.Cleanup(func() {
+		remoteDesktopInputOpen = oldOpen
+		remoteDesktopInputPending.Lock()
+		remoteDesktopInputPending.closing--
+		remoteDesktopInputPending.Unlock()
+	})
+
+	err := StartRemoteDesktopInput(context.Background(), RemoteDesktopPointer)
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("StartRemoteDesktopInput error = %v, want context.Canceled", err)
+	}
+	if openCalled {
+		t.Fatal("portal open was called while close was already in progress")
+	}
+	remoteDesktopInputPending.Lock()
+	defer remoteDesktopInputPending.Unlock()
+	if remoteDesktopInputPending.start != nil {
+		t.Fatal("cancelled start remained registered")
+	}
+}
+
+func TestPortalModifiedKeyPreservesModifiersAcrossToggle(t *testing.T) {
+	session := &fakeHighLevelPortalSession{devices: inputportal.DeviceKeyboard}
+	if err := portalModifiedKey(session, 'a', []int32{0xffe3}, true, false); err != nil {
+		t.Fatalf("portal key down error: %v", err)
+	}
+	events, _ := session.snapshot()
+	wantDown := []string{"keysym:65507:true", "keysym:97:true"}
+	if !reflect.DeepEqual(events, wantDown) {
+		t.Fatalf("key-down events = %#v, want %#v", events, wantDown)
+	}
+
+	if err := portalModifiedKey(session, 'a', []int32{0xffe3}, false, false); err != nil {
+		t.Fatalf("portal key up error: %v", err)
+	}
+	events, _ = session.snapshot()
+	want := []string{"keysym:65507:true", "keysym:97:true", "keysym:97:false", "keysym:65507:false"}
+	if !reflect.DeepEqual(events, want) {
+		t.Fatalf("toggle events = %#v, want %#v", events, want)
 	}
 }
 

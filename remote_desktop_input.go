@@ -108,12 +108,6 @@ func StartRemoteDesktopInputWithOptions(ctx context.Context, options RemoteDeskt
 	}
 	remoteDesktopInputOperation.Lock()
 	defer remoteDesktopInputOperation.Unlock()
-	remoteDesktopInputPending.Lock()
-	if remoteDesktopInputPending.closing > 0 {
-		remoteDesktopInputPending.Unlock()
-		return context.Canceled
-	}
-	remoteDesktopInputPending.Unlock()
 
 	if ctx == nil {
 		ctx = context.Background()
@@ -121,6 +115,11 @@ func StartRemoteDesktopInputWithOptions(ctx context.Context, options RemoteDeskt
 	openCtx, cancel := context.WithCancel(ctx)
 	pending := &remoteDesktopPendingStart{cancel: cancel}
 	remoteDesktopInputPending.Lock()
+	if remoteDesktopInputPending.closing > 0 {
+		remoteDesktopInputPending.Unlock()
+		cancel()
+		return context.Canceled
+	}
 	remoteDesktopInputPending.start = pending
 	remoteDesktopInputPending.Unlock()
 	defer func() {
@@ -280,6 +279,18 @@ func finishRemoteDesktopMouseEvent(err error, extraDelay int) error {
 }
 
 func portalModifiedKey(session remoteDesktopInputSession, key int32, modifiers []int32, down bool, tap bool) error {
+	if !tap && !down {
+		eventErr := remoteDesktopEvent(func(ctx context.Context) error {
+			return session.KeyboardKeysym(ctx, key, false)
+		})
+		for i := len(modifiers) - 1; i >= 0; i-- {
+			eventErr = errors.Join(eventErr, remoteDesktopEvent(func(ctx context.Context) error {
+				return session.KeyboardKeysym(ctx, modifiers[i], false)
+			}))
+		}
+		return eventErr
+	}
+
 	pressed := 0
 	releaseModifiers := func() error {
 		var releaseErr error
@@ -305,6 +316,9 @@ func portalModifiedKey(session remoteDesktopInputSession, key int32, modifiers [
 		eventErr = remoteDesktopEvent(func(ctx context.Context) error {
 			return session.KeyboardKeysym(ctx, key, false)
 		})
+	}
+	if !tap && eventErr == nil {
+		return nil
 	}
 	return errors.Join(eventErr, releaseModifiers())
 }
