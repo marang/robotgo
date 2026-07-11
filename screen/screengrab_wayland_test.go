@@ -31,6 +31,19 @@ func cleanupMockServer(t *testing.T, done <-chan struct{}) {
 	}
 }
 
+func waitForMockServer(t *testing.T, runtimeDir, socket string) {
+	t.Helper()
+	path := filepath.Join(runtimeDir, socket)
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		if _, err := os.Stat(path); err == nil {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatalf("mock Wayland server did not create socket %q", path)
+}
+
 // TestScreencopyDmabuf ensures CaptureScreen handles linux_dmabuf/buffer_done events.
 func TestScreencopyDmabuf(t *testing.T) {
 	dir := t.TempDir()
@@ -39,6 +52,7 @@ func TestScreencopyDmabuf(t *testing.T) {
 	t.Setenv("WAYLAND_DISPLAY", sock)
 	t.Setenv("ROBOTGO_DISABLE_PORTAL", "1")
 	robotgo.SetWaylandBackend(robotgo.WaylandBackendDmabuf)
+	t.Cleanup(func() { robotgo.SetWaylandBackend(robotgo.WaylandBackendAuto) })
 
 	var maj, min uint32
 	found := false
@@ -66,7 +80,7 @@ func TestScreencopyDmabuf(t *testing.T) {
 	startMockServer(sock, maj, min, 0, done)
 	t.Cleanup(func() { cleanupMockServer(t, done) })
 
-	time.Sleep(100 * time.Millisecond)
+	waitForMockServer(t, dir, sock)
 
 	if _, err := CaptureScreen(); err != nil {
 		if errors.Is(err, robotgo.ErrDmabufImport) || errors.Is(err, robotgo.ErrDmabufMap) || errors.Is(err, robotgo.ErrDmabufDevice) || errors.Is(err, robotgo.ErrDmabufModifiers) {
@@ -86,12 +100,13 @@ func TestScreencopyWlShm(t *testing.T) {
 	t.Setenv("XDG_RUNTIME_DIR", dir)
 	t.Setenv("WAYLAND_DISPLAY", sock)
 	robotgo.SetWaylandBackend(robotgo.WaylandBackendWlShm)
+	t.Cleanup(func() { robotgo.SetWaylandBackend(robotgo.WaylandBackendAuto) })
 
 	done := make(chan struct{})
 	startMockServer(sock, 0, 0, 0, done)
 	t.Cleanup(func() { cleanupMockServer(t, done) })
 
-	time.Sleep(100 * time.Millisecond)
+	waitForMockServer(t, dir, sock)
 
 	if _, err := CaptureScreen(); err != nil {
 		t.Fatalf("capture failed: %v", err)
@@ -107,12 +122,13 @@ func TestScreencopyPortalFallback(t *testing.T) {
 	t.Setenv("ROBOTGO_PORTAL_STUB_GREEN", "1")
 	t.Setenv("ROBOTGO_DISABLE_PORTAL", "1")
 	robotgo.SetWaylandBackend(robotgo.WaylandBackendDmabuf)
+	t.Cleanup(func() { robotgo.SetWaylandBackend(robotgo.WaylandBackendAuto) })
 
 	done := make(chan struct{})
 	startMockServer(sock, 0, 0, 1, done)
 	t.Cleanup(func() { cleanupMockServer(t, done) })
 
-	time.Sleep(100 * time.Millisecond)
+	waitForMockServer(t, dir, sock)
 
 	img, err := robotgo.CaptureImg()
 	if err != nil {
@@ -143,7 +159,7 @@ func TestScreencopyTimeoutIsBounded(t *testing.T) {
 	t.Cleanup(func() {
 		cleanupMockServer(t, done)
 	})
-	time.Sleep(100 * time.Millisecond)
+	waitForMockServer(t, dir, sock)
 
 	started := time.Now()
 	bit, err := robotgo.CaptureScreen()
@@ -176,7 +192,7 @@ func TestScreencopyDmabufFailureDoesNotCloseStdin(t *testing.T) {
 	t.Cleanup(func() {
 		cleanupMockServer(t, done)
 	})
-	time.Sleep(100 * time.Millisecond)
+	waitForMockServer(t, dir, sock)
 
 	bit, err := robotgo.CaptureScreen()
 	if bit != nil {

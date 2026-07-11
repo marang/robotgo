@@ -15,6 +15,7 @@
 package robotgo
 
 import (
+	"os"
 	"testing"
 
 	"github.com/vcaesar/tt"
@@ -213,11 +214,12 @@ func TestPs(t *testing.T) {
 	tt.IsType(t, "[]robotgo.Nps", ps)
 	tt.Nil(t, e)
 
-	b, e := PidExists(id[0])
+	currentPID := os.Getpid()
+	b, e := PidExists(currentPID)
 	tt.Bool(t, b)
 	tt.Nil(t, e)
 
-	n, e := FindName(id[0])
+	n, e := FindName(currentPID)
 	tt.NotEmpty(t, n)
 	tt.Nil(t, e)
 

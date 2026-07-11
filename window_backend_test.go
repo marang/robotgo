@@ -13,8 +13,13 @@ import (
 
 func writeStubCommand(t *testing.T, dir, name string) {
 	t.Helper()
+	contents := []byte("#!/bin/sh\nexit 0\n")
+	if runtime.GOOS == "windows" {
+		name += ".bat"
+		contents = []byte("@exit /b 0\r\n")
+	}
 	path := filepath.Join(dir, name)
-	if err := os.WriteFile(path, []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
+	if err := os.WriteFile(path, contents, 0o755); err != nil {
 		t.Fatalf("write stub command %q: %v", name, err)
 	}
 }
