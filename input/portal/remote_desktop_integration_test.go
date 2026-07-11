@@ -8,7 +8,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/marang/robotgo"
 	portalinput "github.com/marang/robotgo/input/portal"
 )
 
@@ -26,37 +25,79 @@ func TestRemoteDesktopPortalRuntime(t *testing.T) {
 		t.Fatalf("Probe error: %v", err)
 	}
 	devices := portalinput.DeviceKeyboard | portalinput.DevicePointer
+	if capability.Supports(portalinput.DeviceTouchscreen) {
+		devices |= portalinput.DeviceTouchscreen
+	}
 	if !capability.Supports(devices) {
 		t.Fatalf("RemoteDesktop portal does not advertise keyboard and pointer input: %+v", capability)
+	}
+	if !capability.SupportsSources(portalinput.SourceMonitor) {
+		t.Fatalf("ScreenCast portal does not advertise monitor sources: %+v", capability)
+	}
+	if !capability.SupportsCursorMode(portalinput.CursorHidden) {
+		t.Fatalf("ScreenCast portal does not advertise hidden cursor mode: %+v", capability)
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
-	if err := robotgo.StartRemoteDesktopInput(ctx, robotgo.RemoteDesktopKeyboard|robotgo.RemoteDesktopPointer); err != nil {
-		t.Fatalf("StartRemoteDesktopInput error: %v", err)
+	options := portalinput.OpenOptions{
+		Devices: devices, Sources: portalinput.SourceMonitor,
+		CursorMode: portalinput.CursorHidden,
+	}
+	session, err := portalinput.OpenWithOptions(ctx, options)
+	if err != nil {
+		t.Fatalf("OpenWithOptions error: %v", err)
 	}
 	closed := false
 	defer func() {
 		if !closed {
-			_ = robotgo.CloseRemoteDesktopInput()
+			_ = session.Close()
 		}
 	}()
-	if err := robotgo.RemoteDesktopInputReady(robotgo.RemoteDesktopKeyboard | robotgo.RemoteDesktopPointer); err != nil {
-		t.Fatalf("RemoteDesktopInputReady error: %v", err)
+	if granted := session.Devices(); granted&devices != devices {
+		t.Fatalf("granted devices=%d, want all requested devices=%d", granted, devices)
 	}
-	if err := robotgo.MoveRelativeE(1, 0); err != nil {
-		t.Fatalf("first MoveRelativeE error: %v", err)
+	runPortalEvent(t, "first PointerMotion", func(eventCtx context.Context) error {
+		return session.PointerMotion(eventCtx, 1, 0)
+	})
+	runPortalEvent(t, "second PointerMotion", func(eventCtx context.Context) error {
+		return session.PointerMotion(eventCtx, -1, 0)
+	})
+	streams := session.Streams()
+	if len(streams) == 0 {
+		t.Fatal("portal session returned no ScreenCast streams")
 	}
-	if err := robotgo.MoveRelativeE(-1, 0); err != nil {
-		t.Fatalf("second MoveRelativeE error: %v", err)
+	stream := streams[0]
+	runPortalEvent(t, "PointerMotionAbsolute", func(eventCtx context.Context) error {
+		return session.PointerMotionAbsolute(eventCtx, stream.NodeID, 1, 1)
+	})
+	if devices&portalinput.DeviceTouchscreen != 0 {
+		runPortalEvent(t, "TouchDown", func(eventCtx context.Context) error {
+			return session.TouchDown(eventCtx, stream.NodeID, 0, 1, 1)
+		})
+		runPortalEvent(t, "TouchUp", func(eventCtx context.Context) error {
+			return session.TouchUp(eventCtx, 0)
+		})
 	}
 	// A modifier-only tap validates keyboard injection without typing text into
 	// whichever application happens to own focus on the interactive runner.
-	if err := robotgo.KeyTap("shift"); err != nil {
-		t.Fatalf("KeyTap error: %v", err)
-	}
-	if err := robotgo.CloseRemoteDesktopInput(); err != nil {
-		t.Fatalf("CloseRemoteDesktopInput error: %v", err)
+	runPortalEvent(t, "modifier press", func(eventCtx context.Context) error {
+		return session.KeyboardKeysym(eventCtx, 0xffe1, true)
+	})
+	runPortalEvent(t, "modifier release", func(eventCtx context.Context) error {
+		return session.KeyboardKeysym(eventCtx, 0xffe1, false)
+	})
+	if err := session.Close(); err != nil {
+		t.Fatalf("portal session Close error: %v", err)
 	}
 	closed = true
+}
+
+func runPortalEvent(t *testing.T, action string, event func(context.Context) error) {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := event(ctx); err != nil {
+		t.Fatalf("portal %s error: %v", action, err)
+	}
 }

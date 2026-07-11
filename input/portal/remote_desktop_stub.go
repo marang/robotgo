@@ -19,6 +19,11 @@ func Open(context.Context, DeviceType) (*Session, error) {
 	return nil, ErrUnavailable
 }
 
+// OpenWithOptions reports that the RemoteDesktop portal is unavailable.
+func OpenWithOptions(context.Context, OpenOptions) (*Session, error) {
+	return nil, ErrUnavailable
+}
+
 // Close is a no-op for the unsupported stub.
 func (*Session) Close() error { return nil }
 
@@ -32,8 +37,19 @@ func (*Session) Closed() <-chan struct{} {
 // Devices reports no granted devices for the unsupported stub.
 func (*Session) Devices() DeviceType { return 0 }
 
+// Streams reports no attached ScreenCast streams.
+func (*Session) Streams() []Stream { return nil }
+
+// RestoreToken reports no persistent session token.
+func (*Session) RestoreToken() string { return "" }
+
 // PointerMotion reports that portal input is unavailable.
 func (*Session) PointerMotion(context.Context, float64, float64) error { return ErrUnavailable }
+
+// PointerMotionAbsolute reports that portal input is unavailable.
+func (*Session) PointerMotionAbsolute(context.Context, uint32, float64, float64) error {
+	return ErrUnavailable
+}
 
 // PointerButton reports that portal input is unavailable.
 func (*Session) PointerButton(context.Context, int32, bool) error { return ErrUnavailable }
@@ -51,3 +67,16 @@ func (*Session) KeyboardKeycode(context.Context, int32, bool) error { return Err
 
 // KeyboardKeysym reports that portal input is unavailable.
 func (*Session) KeyboardKeysym(context.Context, int32, bool) error { return ErrUnavailable }
+
+// TouchDown reports that portal input is unavailable.
+func (*Session) TouchDown(context.Context, uint32, uint32, float64, float64) error {
+	return ErrUnavailable
+}
+
+// TouchMotion reports that portal input is unavailable.
+func (*Session) TouchMotion(context.Context, uint32, uint32, float64, float64) error {
+	return ErrUnavailable
+}
+
+// TouchUp reports that portal input is unavailable.
+func (*Session) TouchUp(context.Context, uint32) error { return ErrUnavailable }

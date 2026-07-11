@@ -189,7 +189,7 @@ var (
 
 func probeRemoteDesktopCapability() FeatureCapability {
 	capability, err := remoteDesktopCapabilityProbe()
-	if err != nil {
+	if err != nil && capability.ScreenCastIssue == "" {
 		return FeatureCapability{
 			Available: false,
 			Backend:   "portal-remote-desktop",
@@ -202,16 +202,23 @@ func probeRemoteDesktopCapability() FeatureCapability {
 	if !available {
 		reason = "RemoteDesktop portal advertises no input devices"
 	}
+	notes := fmt.Sprintf(
+		"interface version=%d device-mask=%d; screencast version=%d source-mask=%d cursor-mask=%d; explicit consent session available through input/portal",
+		capability.Version,
+		capability.AvailableDevices,
+		capability.ScreenCastVersion,
+		capability.AvailableSources,
+		capability.AvailableCursorModes,
+	)
+	if capability.ScreenCastIssue != "" {
+		notes += "; ScreenCast capability degraded: " + capability.ScreenCastIssue
+	}
 	return FeatureCapability{
 		Available: available,
 		Fallback:  false,
 		Backend:   "portal-remote-desktop",
 		Reason:    reason,
-		Notes: fmt.Sprintf(
-			"interface version=%d device-mask=%d; explicit consent session available through input/portal",
-			capability.Version,
-			capability.AvailableDevices,
-		),
+		Notes:     notes,
 	}
 }
 
@@ -1726,8 +1733,12 @@ func Move(x, y int, displayId ...int) {
 func MoveE(x, y int, displayId ...int) error {
 	unlock := lockWaylandMouse()
 	defer unlock()
-	if err := ensureWaylandMouseReady(); err != nil {
-		return err
+	if nativeErr := ensureWaylandMouseReady(); nativeErr != nil {
+		used, err := tryRemoteDesktopMoveAbsolute(x, y, displayId)
+		if used {
+			return finishRemoteDesktopMouseEvent(err, 0)
+		}
+		return nativeErr
 	}
 	x, y = MoveScale(x, y, displayId...)
 
@@ -1849,10 +1860,7 @@ func MoveRelativeE(x, y int) error {
 	if nativeErr := ensureWaylandMouseReady(); nativeErr != nil {
 		used, err := tryRemoteDesktopMoveRelative(x, y)
 		if used {
-			if err == nil {
-				MilliSleep(MouseSleep)
-			}
-			return err
+			return finishRemoteDesktopMouseEvent(err, 0)
 		}
 		return nativeErr
 	}
@@ -1931,10 +1939,7 @@ func ClickE(args ...interface{}) error {
 	if nativeErr := ensureWaylandMouseReady(); nativeErr != nil {
 		used, err := tryRemoteDesktopClick(name, double)
 		if used {
-			if err == nil {
-				MilliSleep(MouseSleep)
-			}
-			return err
+			return finishRemoteDesktopMouseEvent(err, 0)
 		}
 		return nativeErr
 	}
@@ -2042,10 +2047,7 @@ func ScrollE(x, y int, args ...int) error {
 	if nativeErr := ensureWaylandMouseReady(); nativeErr != nil {
 		used, err := tryRemoteDesktopScroll(x, y)
 		if used {
-			if err == nil {
-				MilliSleep(MouseSleep + msDelay)
-			}
-			return err
+			return finishRemoteDesktopMouseEvent(err, msDelay)
 		}
 		return nativeErr
 	}

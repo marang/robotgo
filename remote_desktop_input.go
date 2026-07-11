@@ -13,6 +13,8 @@ import (
 
 const remoteDesktopEventTimeout = 5 * time.Second
 
+var remoteDesktopMouseSleeper = MilliSleep
+
 // RemoteDesktopDevice is a device mask for consent-aware portal input.
 type RemoteDesktopDevice = inputportal.DeviceType
 
@@ -21,6 +23,35 @@ const (
 	RemoteDesktopKeyboard RemoteDesktopDevice = inputportal.DeviceKeyboard
 	// RemoteDesktopPointer requests pointer injection permission.
 	RemoteDesktopPointer RemoteDesktopDevice = inputportal.DevicePointer
+	// RemoteDesktopTouchscreen requests touch injection and requires ScreenCast sources.
+	RemoteDesktopTouchscreen RemoteDesktopDevice = inputportal.DeviceTouchscreen
+)
+
+// RemoteDesktopSource is a ScreenCast source mask used for absolute input.
+type RemoteDesktopSource = inputportal.SourceType
+
+// RemoteDesktopCursorMode controls cursor representation in selected streams.
+type RemoteDesktopCursorMode = inputportal.CursorMode
+
+// RemoteDesktopPersistMode controls portal permission persistence.
+type RemoteDesktopPersistMode = inputportal.PersistMode
+
+// RemoteDesktopInputOptions configures devices and optional ScreenCast sources.
+type RemoteDesktopInputOptions = inputportal.OpenOptions
+
+// RemoteDesktopStream describes a selected stream's logical coordinate space.
+type RemoteDesktopStream = inputportal.Stream
+
+const (
+	RemoteDesktopSourceMonitor   = inputportal.SourceMonitor
+	RemoteDesktopSourceWindow    = inputportal.SourceWindow
+	RemoteDesktopSourceVirtual   = inputportal.SourceVirtual
+	RemoteDesktopCursorHidden    = inputportal.CursorHidden
+	RemoteDesktopCursorEmbedded  = inputportal.CursorEmbedded
+	RemoteDesktopCursorMetadata  = inputportal.CursorMetadata
+	RemoteDesktopPersistNone     = inputportal.PersistNone
+	RemoteDesktopPersistApp      = inputportal.PersistApplication
+	RemoteDesktopPersistExplicit = inputportal.PersistExplicit
 )
 
 type remoteDesktopInputSession interface {
@@ -28,9 +59,15 @@ type remoteDesktopInputSession interface {
 	Closed() <-chan struct{}
 	Close() error
 	PointerMotion(context.Context, float64, float64) error
+	PointerMotionAbsolute(context.Context, uint32, float64, float64) error
 	PointerButton(context.Context, int32, bool) error
 	PointerAxisDiscrete(context.Context, inputportal.PointerAxis, int32) error
 	KeyboardKeysym(context.Context, int32, bool) error
+	Streams() []inputportal.Stream
+	RestoreToken() string
+	TouchDown(context.Context, uint32, uint32, float64, float64) error
+	TouchMotion(context.Context, uint32, uint32, float64, float64) error
+	TouchUp(context.Context, uint32) error
 }
 
 type remoteDesktopPendingStart struct {
@@ -38,8 +75,9 @@ type remoteDesktopPendingStart struct {
 }
 
 var (
-	remoteDesktopInputOpen = func(ctx context.Context, devices inputportal.DeviceType) (remoteDesktopInputSession, error) {
-		return inputportal.Open(ctx, devices)
+	remoteDesktopStatusProbe = inputportal.Probe
+	remoteDesktopInputOpen   = func(ctx context.Context, options inputportal.OpenOptions) (remoteDesktopInputSession, error) {
+		return inputportal.OpenWithOptions(ctx, options)
 	}
 	remoteDesktopInputOperation sync.Mutex
 	remoteDesktopInputPending   struct {
@@ -49,7 +87,9 @@ var (
 	}
 	remoteDesktopInputState struct {
 		sync.RWMutex
-		session remoteDesktopInputSession
+		session    remoteDesktopInputSession
+		permission RemoteDesktopPermissionStatus
+		reason     string
 	}
 )
 
@@ -57,6 +97,12 @@ var (
 // available to supported high-level input APIs when native Wayland input is
 // unavailable. Replacing an existing session closes the old one.
 func StartRemoteDesktopInput(ctx context.Context, devices RemoteDesktopDevice) error {
+	return StartRemoteDesktopInputWithOptions(ctx, RemoteDesktopInputOptions{Devices: devices})
+}
+
+// StartRemoteDesktopInputWithOptions opens a consent-aware input session and
+// optionally selects ScreenCast sources for absolute pointer and touch input.
+func StartRemoteDesktopInputWithOptions(ctx context.Context, options RemoteDesktopInputOptions) error {
 	if runtime.GOOS != "linux" || DetectDisplayServer() != DisplayServerWayland {
 		return fmt.Errorf("%w: RemoteDesktop portal input requires a Linux Wayland session", ErrNotSupported)
 	}
@@ -86,8 +132,15 @@ func StartRemoteDesktopInput(ctx context.Context, devices RemoteDesktopDevice) e
 		remoteDesktopInputPending.Unlock()
 	}()
 
-	session, err := remoteDesktopInputOpen(openCtx, inputportal.DeviceType(devices))
+	session, err := remoteDesktopInputOpen(openCtx, inputportal.OpenOptions(options))
 	if err != nil {
+		remoteDesktopInputState.Lock()
+		if remoteDesktopInputState.session == nil || remoteDesktopSessionClosed(remoteDesktopInputState.session) {
+			remoteDesktopInputState.session = nil
+			remoteDesktopInputState.permission = permissionStatusForError(err)
+			remoteDesktopInputState.reason = err.Error()
+		}
+		remoteDesktopInputState.Unlock()
 		return err
 	}
 
@@ -100,6 +153,8 @@ func StartRemoteDesktopInput(ctx context.Context, devices RemoteDesktopDevice) e
 			remoteDesktopInputState.Lock()
 			if remoteDesktopInputState.session == previous {
 				remoteDesktopInputState.session = nil
+				remoteDesktopInputState.permission = RemoteDesktopPermissionUnavailable
+				remoteDesktopInputState.reason = err.Error()
 			}
 			remoteDesktopInputState.Unlock()
 			return errors.Join(
@@ -110,8 +165,22 @@ func StartRemoteDesktopInput(ctx context.Context, devices RemoteDesktopDevice) e
 	}
 	remoteDesktopInputState.Lock()
 	remoteDesktopInputState.session = session
+	remoteDesktopInputState.permission = RemoteDesktopPermissionGranted
+	remoteDesktopInputState.reason = "portal consent session is active"
 	remoteDesktopInputState.Unlock()
 	return nil
+}
+
+func remoteDesktopSessionClosed(session remoteDesktopInputSession) bool {
+	if session == nil {
+		return true
+	}
+	select {
+	case <-session.Closed():
+		return true
+	default:
+		return false
+	}
 }
 
 func wrapRemoteDesktopCloseError(action string, err error) error {
@@ -162,7 +231,16 @@ func CloseRemoteDesktopInput() error {
 
 	remoteDesktopInputState.Lock()
 	session := remoteDesktopInputState.session
+	alreadyClosed := remoteDesktopSessionClosed(session)
 	remoteDesktopInputState.session = nil
+	if session != nil {
+		remoteDesktopInputState.permission = RemoteDesktopPermissionClosed
+		if alreadyClosed {
+			remoteDesktopInputState.reason = "portal session was already closed before application cleanup"
+		} else {
+			remoteDesktopInputState.reason = "portal session was closed by the application"
+		}
+	}
 	remoteDesktopInputState.Unlock()
 	if session == nil {
 		return nil
@@ -192,6 +270,13 @@ func remoteDesktopEvent(fn func(context.Context) error) error {
 	ctx, cancel := context.WithTimeout(context.Background(), remoteDesktopEventTimeout)
 	defer cancel()
 	return fn(ctx)
+}
+
+func finishRemoteDesktopMouseEvent(err error, extraDelay int) error {
+	if err == nil {
+		remoteDesktopMouseSleeper(MouseSleep + extraDelay)
+	}
+	return err
 }
 
 func portalModifiedKey(session remoteDesktopInputSession, key int32, modifiers []int32, down bool, tap bool) error {

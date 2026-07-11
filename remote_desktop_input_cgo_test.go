@@ -13,10 +13,18 @@ func TestHighLevelInputFallsBackToActiveRemoteDesktopSession(t *testing.T) {
 	t.Setenv(envDisplay, "")
 	stubCaptureCapabilityProbes(t, false, false)
 	oldMouseSleep, oldKeySleep := MouseSleep, KeySleep
-	MouseSleep, KeySleep = 0, 0
+	MouseSleep, KeySleep = 23, 0
 	t.Cleanup(func() { MouseSleep, KeySleep = oldMouseSleep, oldKeySleep })
+	delays := installRemoteDesktopMouseDelayRecorder(t)
 
 	session := installFakeHighLevelPortalSession(t, inputportal.DeviceKeyboard|inputportal.DevicePointer)
+	session.streams = []inputportal.Stream{{
+		NodeID: 77, Position: inputportal.Point{X: -1920, Y: 0}, HasPosition: true,
+		Size: inputportal.Size{Width: 1920, Height: 1080}, HasSize: true,
+	}}
+	if err := MoveE(-1900, 100); err != nil {
+		t.Fatalf("MoveE absolute portal fallback error: %v", err)
+	}
 	if err := MoveRelativeE(4, -3); err != nil {
 		t.Fatalf("MoveRelativeE error: %v", err)
 	}
@@ -26,7 +34,7 @@ func TestHighLevelInputFallsBackToActiveRemoteDesktopSession(t *testing.T) {
 	if err := Toggle("right"); err != nil {
 		t.Fatalf("Toggle error: %v", err)
 	}
-	if err := ScrollE(2, -3, 0); err != nil {
+	if err := ScrollE(2, -3, 7); err != nil {
 		t.Fatalf("ScrollE error: %v", err)
 	}
 	if err := KeyTap("a"); err != nil {
@@ -48,9 +56,11 @@ func TestHighLevelInputFallsBackToActiveRemoteDesktopSession(t *testing.T) {
 	if capabilities.Mouse.Backend != "portal-remote-desktop" || !capabilities.Mouse.Available {
 		t.Fatalf("mouse capability did not select active portal session: %+v", capabilities.Mouse)
 	}
+	assertRemoteDesktopMouseDelays(t, *delays, []int{23, 23, 23, 30})
 
 	events, _ := session.snapshot()
 	wantPrefixes := []string{
+		"absolute:77:20:100",
 		"motion:4:-3",
 		"button:272:true",
 		"button:272:false",

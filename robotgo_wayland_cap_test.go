@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"sync"
 	"testing"
 
@@ -257,7 +258,8 @@ func TestGetLinuxCapabilitiesReportsRemoteDesktopPortal(t *testing.T) {
 		return inputportal.Capability{
 			Version:          2,
 			AvailableDevices: inputportal.DeviceKeyboard | inputportal.DevicePointer,
-		}, nil
+			ScreenCastIssue:  "ScreenCast property probe timed out",
+		}, inputportal.ErrUnavailable
 	}
 
 	capabilities := GetLinuxCapabilities()
@@ -266,6 +268,9 @@ func TestGetLinuxCapabilitiesReportsRemoteDesktopPortal(t *testing.T) {
 	}
 	if capabilities.RemoteDesktop.Backend != "portal-remote-desktop" {
 		t.Fatalf("unexpected RemoteDesktop backend %q", capabilities.RemoteDesktop.Backend)
+	}
+	if !strings.Contains(capabilities.RemoteDesktop.Notes, "ScreenCast property probe timed out") {
+		t.Fatalf("ScreenCast degradation missing from notes: %+v", capabilities.RemoteDesktop)
 	}
 }
 

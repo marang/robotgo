@@ -143,7 +143,7 @@ func GetLinuxCapabilities() LinuxCapabilities {
 		ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
 		portalCapability, err := inputportal.Probe(ctx)
 		cancel()
-		if err != nil {
+		if err != nil && portalCapability.ScreenCastIssue == "" {
 			capabilities.RemoteDesktop = FeatureCapability{
 				Available: false,
 				Backend:   "portal-remote-desktop",
@@ -151,11 +151,20 @@ func GetLinuxCapabilities() LinuxCapabilities {
 				Notes:     "the pure-Go RemoteDesktop client remains usable without CGO when a portal backend is available",
 			}
 		} else {
+			notes := fmt.Sprintf(
+				"interface version=%d device-mask=%d; screencast version=%d source-mask=%d cursor-mask=%d",
+				portalCapability.Version, portalCapability.AvailableDevices,
+				portalCapability.ScreenCastVersion, portalCapability.AvailableSources,
+				portalCapability.AvailableCursorModes,
+			)
+			if portalCapability.ScreenCastIssue != "" {
+				notes += "; ScreenCast capability degraded: " + portalCapability.ScreenCastIssue
+			}
 			capabilities.RemoteDesktop = FeatureCapability{
 				Available: portalCapability.AvailableDevices != 0,
 				Backend:   "portal-remote-desktop",
 				Reason:    "RemoteDesktop portal capability probed without CGO",
-				Notes:     fmt.Sprintf("interface version=%d device-mask=%d", portalCapability.Version, portalCapability.AvailableDevices),
+				Notes:     notes,
 			}
 		}
 		if err := RemoteDesktopInputReady(RemoteDesktopKeyboard); err == nil {
@@ -344,15 +353,21 @@ func CharCodeAt(s string, n int) rune {
 	return 0
 }
 
-func Move(int, int, ...int)        {}
-func MoveE(int, int, ...int) error { return ErrNotSupported }
-func MoveRelative(x, y int)        { _ = MoveRelativeE(x, y) }
+func Move(x, y int, displayID ...int) { _ = MoveE(x, y, displayID...) }
+func MoveE(x, y int, displayID ...int) error {
+	used, err := tryRemoteDesktopMoveAbsolute(x, y, displayID)
+	if !used {
+		return ErrNotSupported
+	}
+	return finishRemoteDesktopMouseEvent(err, 0)
+}
+func MoveRelative(x, y int) { _ = MoveRelativeE(x, y) }
 func MoveRelativeE(x, y int) error {
 	used, err := tryRemoteDesktopMoveRelative(x, y)
 	if !used {
 		return ErrNotSupported
 	}
-	return err
+	return finishRemoteDesktopMouseEvent(err, 0)
 }
 func MoveSmooth(int, int, ...interface{}) bool    { return false }
 func MoveSmoothRelative(int, int, ...interface{}) {}
@@ -368,7 +383,7 @@ func ClickE(args ...interface{}) error {
 	if !used {
 		return ErrNotSupported
 	}
-	return err
+	return finishRemoteDesktopMouseEvent(err, 0)
 }
 func Toggle(args ...interface{}) error {
 	name := "left"
@@ -383,12 +398,16 @@ func Toggle(args ...interface{}) error {
 	return err
 }
 func Scroll(x, y int, args ...int) { _ = ScrollE(x, y, args...) }
-func ScrollE(x, y int, _ ...int) error {
+func ScrollE(x, y int, args ...int) error {
+	msDelay := 10
+	if len(args) > 0 {
+		msDelay = args[0]
+	}
 	used, err := tryRemoteDesktopScroll(x, y)
 	if !used {
 		return ErrNotSupported
 	}
-	return err
+	return finishRemoteDesktopMouseEvent(err, msDelay)
 }
 func ScrollDir(int, ...interface{})  {}
 func Location() (int, int)           { return 0, 0 }
