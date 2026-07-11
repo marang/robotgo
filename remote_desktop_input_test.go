@@ -543,6 +543,7 @@ func TestGetRemoteDesktopInputStatusReportsLastConsentFailure(t *testing.T) {
 		err  error
 		want RemoteDesktopPermissionStatus
 	}{
+		{name: "session closed", err: inputportal.ErrClosed, want: RemoteDesktopPermissionClosed},
 		{name: "request failed", err: inputportal.ErrRejected, want: RemoteDesktopPermissionFailed},
 		{name: "device denied", err: inputportal.ErrDeviceNotGranted, want: RemoteDesktopPermissionDenied},
 		{name: "cancelled", err: inputportal.ErrCancelled, want: RemoteDesktopPermissionCancelled},

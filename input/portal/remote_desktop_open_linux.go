@@ -257,6 +257,8 @@ func (n remoteDesktopNegotiation) waitRequest(token string, sessions map[dbus.Ob
 			return parseResponse(signal)
 		case <-n.ctx.Done():
 			return nil, errors.Join(n.ctx.Err(), n.closeRequest(returned))
+		case <-n.portal.connectionDone():
+			return nil, ErrUnavailable
 		}
 	}
 }

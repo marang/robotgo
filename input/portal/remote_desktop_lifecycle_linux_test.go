@@ -263,6 +263,25 @@ func TestOpenRemoteDesktopTimeoutClosesRequest(t *testing.T) {
 	}
 }
 
+func TestOpenRemoteDesktopConnectionLossUnblocksRequest(t *testing.T) {
+	portal := newFakeRemoteDesktopPortal()
+	portal.holdCreate = true
+	portal.disconnect()
+
+	_, err := openTestSession(context.Background(), portal, DevicePointer)
+	if !errors.Is(err, ErrUnavailable) {
+		t.Fatalf("openRemoteDesktop error = %v, want ErrUnavailable", err)
+	}
+	portal.mu.Lock()
+	defer portal.mu.Unlock()
+	if len(portal.closeRequests) != 0 {
+		t.Fatalf("disconnected portal received request cleanup calls: %v", portal.closeRequests)
+	}
+	if !portal.closed {
+		t.Fatal("portal transport was not closed after connection loss")
+	}
+}
+
 func TestOpenRemoteDesktopInvokeFailureAfterCancellationJoinsCleanupError(t *testing.T) {
 	portal := newFakeRemoteDesktopPortal()
 	portal.createErr = context.Canceled

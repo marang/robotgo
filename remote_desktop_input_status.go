@@ -44,6 +44,8 @@ type RemoteDesktopInputStatus struct {
 
 func permissionStatusForError(err error) RemoteDesktopPermissionStatus {
 	switch {
+	case errors.Is(err, inputportal.ErrClosed):
+		return RemoteDesktopPermissionClosed
 	case errors.Is(err, inputportal.ErrCancelled), errors.Is(err, context.Canceled):
 		return RemoteDesktopPermissionCancelled
 	case errors.Is(err, context.DeadlineExceeded):

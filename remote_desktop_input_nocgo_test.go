@@ -33,6 +33,7 @@ func TestNonCGOHighLevelPortalInput(t *testing.T) {
 	if err := TypeStrE("x"); err != nil {
 		t.Fatalf("TypeStrE error: %v", err)
 	}
+	TypeStrDelay("y", 0)
 	if err := UnicodeTypeE('€'); err != nil {
 		t.Fatalf("UnicodeTypeE error: %v", err)
 	}
@@ -50,8 +51,8 @@ func TestNonCGOHighLevelPortalInput(t *testing.T) {
 	}
 	assertRemoteDesktopMouseDelays(t, *delays, []int{23, 23, 23, 30})
 	events, _ := session.snapshot()
-	if len(events) != 23 {
-		t.Fatalf("events = %#v, want 23", events)
+	if len(events) != 25 {
+		t.Fatalf("events = %#v, want 25", events)
 	}
 	wantTail := []string{
 		"keysym:65507:true",

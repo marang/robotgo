@@ -340,7 +340,10 @@ func TypeStrE(text string, args ...int) error {
 	}
 	return err
 }
-func TypeStrDelay(string, int)   {}
+func TypeStrDelay(text string, delay int) {
+	TypeStr(text)
+	MilliSleep(delay)
+}
 func PasteStr(string) error      { return ErrNotSupported }
 func ReadAll() (string, error)   { return clipboard.ReadAll() }
 func WriteAll(text string) error { return clipboard.WriteAll(text) }

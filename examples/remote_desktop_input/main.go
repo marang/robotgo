@@ -24,7 +24,10 @@ func main() {
 	capability, err := portalinput.Probe(probeCtx)
 	cancelProbe()
 	if err != nil {
-		log.Fatalf("RemoteDesktop portal probe failed: %v", err)
+		if capability.ScreenCastIssue == "" {
+			log.Fatalf("RemoteDesktop portal probe failed: %v", err)
+		}
+		log.Printf("ScreenCast portal probe degraded; relative keyboard and pointer input remain available: %v", err)
 	}
 	fmt.Printf("RemoteDesktop portal version=%d devices=%d; ScreenCast version=%d sources=%d cursors=%d\n",
 		capability.Version, capability.AvailableDevices, capability.ScreenCastVersion,
