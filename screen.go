@@ -34,6 +34,9 @@ func GetDisplayRect(i int) Rect {
 
 // Capture capture the screenshot, use the CaptureImg default
 func Capture(args ...int) (*image.RGBA, error) {
+	if err := validateCaptureArguments(args); err != nil {
+		return nil, err
+	}
 	displayId := 0
 	if configured := currentDisplayID(); configured != -1 {
 		displayId = configured
@@ -48,6 +51,9 @@ func Capture(args ...int) (*image.RGBA, error) {
 		x, y, w, h = args[0], args[1], args[2], args[3]
 	} else {
 		x, y, w, h = GetDisplayBounds(displayId)
+	}
+	if err := validateCaptureRegionRequest(x, y, w, h); err != nil {
+		return nil, err
 	}
 
 	return screenshot.Capture(x, y, w, h)

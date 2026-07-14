@@ -12,6 +12,11 @@ import (
 )
 
 func main() {
+	runtimeInfo := robotgo.GetRuntimeBackendInfo()
+	fmt.Printf("RobotGo build: implementation=%s cgo=%t platform=%s/%s display=%s\n",
+		runtimeInfo.BuildImplementation, runtimeInfo.CGOEnabled,
+		runtimeInfo.GOOS, runtimeInfo.GOARCH, runtimeInfo.DisplayServer)
+
 	if runtime.GOOS != "linux" {
 		fmt.Println("GetLinuxCapabilities is Linux-specific")
 		return

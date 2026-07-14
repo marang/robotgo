@@ -16,9 +16,10 @@ import (
 )
 
 type fakeScreenshotPortal struct {
-	matched  dbus.ObjectPath
-	signalCh chan<- *dbus.Signal
-	uri      string
+	matched         dbus.ObjectPath
+	signalCh        chan<- *dbus.Signal
+	uri             string
+	screenshotCalls int
 }
 
 func (p *fakeScreenshotPortal) uniqueName() string { return ":1.42" }
@@ -39,6 +40,7 @@ func (p *fakeScreenshotPortal) removeSignals(ch chan<- *dbus.Signal) {
 	}
 }
 func (p *fakeScreenshotPortal) screenshot(_ context.Context, options map[string]dbus.Variant) (dbus.ObjectPath, error) {
+	p.screenshotCalls++
 	token, _ := options["handle_token"].Value().(string)
 	path := dbus.ObjectPath("/org/freedesktop/portal/desktop/request/1_42/" + token)
 	// Deliver synchronously, before returning from the method call. This proves
@@ -105,10 +107,67 @@ func TestCaptureRegionImageHonorsCallerDeadline(t *testing.T) {
 	}
 }
 
+func TestCaptureRegionImageRejectsInvalidRegionBeforeRequest(t *testing.T) {
+	tests := []struct {
+		name string
+		w    int
+		h    int
+	}{
+		{name: "missing width", w: 0, h: 2},
+		{name: "missing height", w: 2, h: 0},
+		{name: "negative width", w: -1, h: 2},
+		{name: "negative height", w: 2, h: -1},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			portal := &fakeScreenshotPortal{}
+			if _, err := captureRegionImage(context.Background(), portal, 0, 0, test.w, test.h); err == nil {
+				t.Fatal("expected invalid-region error")
+			}
+			if portal.screenshotCalls != 0 {
+				t.Fatalf("screenshot requests = %d, want 0", portal.screenshotCalls)
+			}
+		})
+	}
+	portal := &fakeScreenshotPortal{}
+	maxInt := int(^uint(0) >> 1)
+	if _, err := captureRegionImage(context.Background(), portal, maxInt, 0, 1, 1); err == nil {
+		t.Fatal("expected coordinate-overflow error")
+	}
+	if portal.screenshotCalls != 0 {
+		t.Fatalf("overflow screenshot requests = %d, want 0", portal.screenshotCalls)
+	}
+	if _, err := captureRegionImage(context.Background(), portal, 1, 0, 0, 0); err == nil {
+		t.Fatal("expected non-zero full-screen origin error")
+	}
+	if portal.screenshotCalls != 0 {
+		t.Fatalf("non-zero-origin screenshot requests = %d, want 0", portal.screenshotCalls)
+	}
+}
+
 func TestCropImageRejectsDisjointRegion(t *testing.T) {
 	_, err := cropImage(image.NewRGBA(image.Rect(0, 0, 4, 4)), 20, 20, 2, 2)
 	if err == nil {
 		t.Fatal("expected out-of-bounds error")
+	}
+}
+
+func TestCropImageOnlyTreatsZeroByZeroAsFullScreenshot(t *testing.T) {
+	source := image.NewRGBA(image.Rect(0, 0, 4, 4))
+	full, err := cropImage(source, 0, 0, 0, 0)
+	if err != nil {
+		t.Fatalf("full screenshot: %v", err)
+	}
+	if full != source {
+		t.Fatal("full screenshot should return the source image")
+	}
+	if _, err := cropImage(source, 1, 0, 0, 0); err == nil {
+		t.Fatal("non-zero-origin full screenshot unexpectedly succeeded")
+	}
+	for _, size := range [][2]int{{0, 1}, {1, 0}, {-1, 1}, {1, -1}} {
+		if _, err := cropImage(source, 0, 0, size[0], size[1]); err == nil {
+			t.Fatalf("crop size %dx%d unexpectedly succeeded", size[0], size[1])
+		}
 	}
 }
 

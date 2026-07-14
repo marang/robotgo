@@ -70,6 +70,7 @@ const (
 	BackendPortal     CaptureBackend = "portal"
 	BackendScreenCast CaptureBackend = "screencast"
 	BackendX11        CaptureBackend = "x11"
+	BackendPureGo     CaptureBackend = "pure-go"
 )
 
 type WaylandBackend int
@@ -150,9 +151,19 @@ func GetLinuxCapabilities() LinuxCapabilities {
 		Hook:           unsupported,
 		Events:         unsupported,
 	}
+	overrideCapture, captureOverridden := pureGoCaptureOverrideCapability()
+	if captureOverridden {
+		capabilities.Capture = overrideCapture
+	}
 	if runtime.GOOS == "linux" && ds == DisplayServerWayland {
+		if !captureOverridden {
+			capabilities.Capture = pureGoPortalCaptureCapability(
+				"Pure-Go Wayland capture uses the screenshot portal",
+				"capture APIs may prompt for consent",
+			)
+		}
 		ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
-		portalCapability, err := inputportal.Probe(ctx)
+		portalCapability, err := remoteDesktopStatusProbe(ctx)
 		cancel()
 		if err != nil && portalCapability.ScreenCastIssue == "" {
 			capabilities.RemoteDesktop = FeatureCapability{
@@ -197,16 +208,74 @@ func GetLinuxCapabilities() LinuxCapabilities {
 			}
 		}
 	}
+	if runtime.GOOS == "linux" && ds == DisplayServerX11 && !captureOverridden {
+		compiled := pureGoScreenshotSupported(runtime.GOOS, runtime.GOARCH)
+		conflict := pureGoX11EnvironmentConflict()
+		capabilities.Capture = FeatureCapability{
+			Available: compiled && !conflict,
+			Backend:   capabilityBackendPureGoX11,
+			Reason:    "Pure-Go X11 screenshot backend is selected; runtime access is not probed",
+			Notes:     "runtime X server access is validated when capture starts",
+		}
+		if !compiled {
+			capabilities.Capture.Reason = fmt.Sprintf("Pure-Go X11 capture is not compiled for %s/%s", runtime.GOOS, runtime.GOARCH)
+			capabilities.Capture.Notes = ErrNotSupported.Error()
+		} else if conflict {
+			capabilities.Capture.Reason = envXDGSessionType + " selects Wayland while DISPLAY selects X11"
+			capabilities.Capture.Notes = "capture refuses the screenshot dependency's implicit portal fallback"
+		}
+	}
 	return capabilities
 }
 
-func LastBackend() CaptureBackend            { return BackendNone }
-func SetWaylandBackend(WaylandBackend)       {}
-func MilliSleep(tm int)                      { time.Sleep(time.Duration(tm) * time.Millisecond) }
-func Sleep(tm int)                           { time.Sleep(time.Duration(tm) * time.Second) }
-func FreeBitmap(CBitmap)                     {}
-func CaptureScreen(...int) (CBitmap, error)  { return nil, ErrNotSupported }
-func CaptureImg(...int) (image.Image, error) { return nil, ErrNotSupported }
+func pureGoCaptureOverrideCapability() (FeatureCapability, bool) {
+	if runtime.GOOS != "linux" {
+		return FeatureCapability{}, false
+	}
+	override := pureGoWaylandBackendOverride()
+	if override == waylandBackendScreenCast {
+		return FeatureCapability{
+			Backend: string(BackendScreenCast),
+			Reason:  "persistent ScreenCast capture requires a CGO PipeWire backend",
+			Notes:   ErrNotSupported.Error(),
+		}, true
+	}
+	if !pureGoPortalForced(override) {
+		return FeatureCapability{}, false
+	}
+	return pureGoPortalCaptureCapability(
+		"screenshot portal capture is forced by runtime configuration",
+		"capture APIs may prompt for consent",
+	), true
+}
+
+func pureGoPortalCaptureCapability(reason, notes string) FeatureCapability {
+	capability := FeatureCapability{
+		Backend: string(BackendPortal),
+		Reason:  reason,
+		Notes:   notes,
+	}
+	if os.Getenv(envDisablePortal) != "" {
+		capability.Reason = "screenshot portal disabled by " + envDisablePortal
+		capability.Notes = "remove the override to enable consent-aware Pure-Go capture"
+		return capability
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+	available, err := pureGoPortalAvailable(ctx)
+	cancel()
+	capability.Available = available && err == nil
+	if err != nil {
+		capability.Reason = err.Error()
+	} else if !available {
+		capability.Reason = "screenshot portal service is not available"
+	}
+	return capability
+}
+
+func SetWaylandBackend(WaylandBackend) {}
+func MilliSleep(tm int)                { time.Sleep(time.Duration(tm) * time.Millisecond) }
+func Sleep(tm int)                     { time.Sleep(time.Duration(tm) * time.Second) }
+func FreeBitmap(CBitmap)               {}
 
 func alertArgs(args ...string) (string, string) {
 	defaultButton := "Ok"
@@ -434,7 +503,6 @@ func GetPixelColor(int, int, ...int) (string, error) {
 	return "", ErrNotSupported
 }
 func GetPxColor(int, int, ...int) (uint32, error) { return 0, ErrNotSupported }
-func CaptureGo(...int) (Bitmap, error)            { return Bitmap{}, ErrNotSupported }
 func ToBitmap(bit CBitmap) Bitmap {
 	if bit == nil {
 		return Bitmap{}

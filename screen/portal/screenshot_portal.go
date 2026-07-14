@@ -136,6 +136,9 @@ func portalSenderPath(uniqueName string) string {
 // capture a full-screen image and crops it client-side to x,y,w,h when a
 // non-empty region is requested. The portal may prompt the user.
 func CaptureRegionImage(ctx context.Context, x, y, w, h int) (img image.Image, retErr error) {
+	if err := validateCaptureRegion(x, y, w, h); err != nil {
+		return nil, err
+	}
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -153,6 +156,9 @@ func CaptureRegionImage(ctx context.Context, x, y, w, h int) (img image.Image, r
 }
 
 func captureRegionImage(ctx context.Context, portal screenshotPortal, x, y, w, h int) (image.Image, error) {
+	if err := validateCaptureRegion(x, y, w, h); err != nil {
+		return nil, err
+	}
 	ctx, cancel := context.WithTimeout(ctx, portalTimeout)
 	defer cancel()
 
@@ -207,6 +213,22 @@ func captureRegionImage(ctx context.Context, portal screenshotPortal, x, y, w, h
 			return nil, fmt.Errorf("portal: wait for response: %w", ctx.Err())
 		}
 	}
+}
+
+func validateCaptureRegion(x, y, w, h int) error {
+	if w == 0 && h == 0 {
+		if x != 0 || y != 0 {
+			return fmt.Errorf("portal: full-screen capture requires zero origin, got %d,%d", x, y)
+		}
+		return nil
+	}
+	if w <= 0 || h <= 0 {
+		return fmt.Errorf("portal: invalid capture region size %dx%d", w, h)
+	}
+	if x+w < x || y+h < y {
+		return fmt.Errorf("portal: capture region overflows integer coordinates: %d,%d %dx%d", x, y, w, h)
+	}
+	return nil
 }
 
 func responseURI(sig *dbus.Signal) (string, error) {
@@ -271,7 +293,10 @@ func cropImage(img image.Image, x, y, w, h int) (image.Image, error) {
 	if img == nil {
 		return nil, errors.New("portal: nil screenshot")
 	}
-	if w <= 0 || h <= 0 {
+	if err := validateCaptureRegion(x, y, w, h); err != nil {
+		return nil, err
+	}
+	if w == 0 && h == 0 {
 		return img, nil
 	}
 	requested := image.Rect(x, y, x+w, y+h)

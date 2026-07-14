@@ -12,7 +12,7 @@ go test ./...
 
 This is the baseline suite used for regular development and should stay green.
 
-The explicit unsupported non-CGO variant is also part of CI:
+The non-CGO contract is also part of CI:
 
 ```bash
 CGO_ENABLED=0 go test ./...
@@ -21,6 +21,10 @@ CGO_ENABLED=0 go test -tags "ocr" ./...
 # Optional in-process OCR backend (requires Tesseract and Leptonica development files)
 go test -tags "ocr" ./...
 ```
+
+The non-CGO suite runs on Linux, macOS, and Windows in CI. It also verifies
+runtime build introspection and the hermetic Pure-Go capture dispatch for X11,
+Windows, and the Wayland screenshot portal.
 
 ## Special Test Suites (Build Tags)
 

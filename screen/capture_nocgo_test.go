@@ -1,4 +1,4 @@
-//go:build !cgo
+//go:build !cgo && linux
 
 package screen
 
@@ -10,6 +10,8 @@ import (
 )
 
 func TestCaptureReportsUnsupportedWithoutBackend(t *testing.T) {
+	t.Setenv("WAYLAND_DISPLAY", "")
+	t.Setenv("DISPLAY", "")
 	_, err := robotgo.CaptureImg()
 	if !errors.Is(err, robotgo.ErrNotSupported) {
 		t.Fatalf("CaptureImg error = %v, want ErrNotSupported", err)

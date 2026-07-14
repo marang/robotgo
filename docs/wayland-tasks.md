@@ -11,6 +11,12 @@ Current implementation baseline:
 - `ROBOTGO_CAPTURE_DEBUG=1` logs backend selection/fallback details.
 - Linux runtime capability introspection is available via `GetLinuxCapabilities`,
   including hook/event capability status.
+- Platform-neutral build introspection is available via
+  `GetRuntimeBackendInfo`, including CGO/Pure-Go mode and display-server
+  detection without portal or compositor probes.
+- Non-CGO `CaptureImg`/`CaptureScreen` and their Go-bitmap/string variants use
+  the hardened screenshot portal on Wayland and the Pure-Go screenshot backend
+  on X11/Windows; unsupported targets fail explicitly.
 - Capability introspection probes the live screencopy protocol, desktop portal
   D-Bus owner, virtual pointer and virtual keyboard instead of inferring support
   solely from session environment variables.
