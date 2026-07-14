@@ -131,13 +131,13 @@ Current status: the non-CGO API surface compiles and returns explicit
 unsupported errors. `GetRuntimeBackendInfo` reports build facts without probes,
 while `GetRuntimeCapabilities` reports feature backends, permission state,
 fallbacks, and actionable reasons without opening consent dialogs. `Capture`,
-`CaptureImg`, `CaptureScreen`, `CaptureGo`, and `CaptureBitmapStr` provide
-non-CGO capture through CoreGraphics on macOS, native Windows/X11 paths, and the
-hardened screenshot portal on Wayland. macOS display enumeration, Screen
-Recording preflight, RGBA conversion, and CoreGraphics ownership are covered
-hermetically on both supported architectures. Runtime benchmark harnesses are
-present; recorded native-vs-Pure-Go evidence is still required before any
-default backend switch.
+`CaptureImg`, `CaptureScreen`, `CaptureGo`, `CaptureBitmapStr`, and the pixel
+color APIs provide non-CGO capture through CoreGraphics on macOS, native
+Windows/X11 paths, and the hardened screenshot portal on Wayland. macOS display
+enumeration, Screen Recording preflight, RGBA conversion, and CoreGraphics
+ownership are covered hermetically on both supported architectures. Runtime
+benchmark harnesses are present; recorded native-vs-Pure-Go evidence is still
+required before any default backend switch.
 
 Exit criteria:
 

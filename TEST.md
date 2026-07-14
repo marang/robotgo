@@ -23,10 +23,11 @@ go test -tags "ocr" ./...
 ```
 
 The non-CGO suite runs on Linux, macOS, and Windows in CI. It also verifies
-runtime build/feature introspection and hermetic Pure-Go capture dispatch for
-CoreGraphics, X11, Windows, and the Wayland screenshot portal. macOS tests use
-fake CoreGraphics bindings for deterministic permission, pixel, bounds, and
-resource-lifecycle coverage; they do not require a Screen Recording grant.
+runtime build/feature introspection, pixel-color parity, and hermetic Pure-Go
+capture dispatch for CoreGraphics, X11, Windows, and the Wayland screenshot
+portal. macOS tests use fake CoreGraphics bindings for deterministic permission,
+pixel, bounds, and resource-lifecycle coverage; they do not require a Screen
+Recording grant.
 
 Opt-in macOS runtime capture benchmark:
 

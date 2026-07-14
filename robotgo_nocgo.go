@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"image"
+	"image/color"
 	"os"
 	"runtime"
 	"time"
@@ -529,10 +530,34 @@ func GetScreenRect(displayID ...int) Rect {
 }
 func GetScaleSize(...int) (int, int) { return GetScreenSize() }
 func DisplaysNum() int               { return platformDisplayCount() }
-func GetPixelColor(int, int, ...int) (string, error) {
-	return "", ErrNotSupported
+
+// GetPixelColor returns the pixel color at (x, y) as a six-digit RGB string.
+func GetPixelColor(x, y int, displayID ...int) (string, error) {
+	value, err := GetPxColor(x, y, displayID...)
+	if err != nil {
+		return "", err
+	}
+	return PadHex(value), nil
 }
-func GetPxColor(int, int, ...int) (uint32, error) { return 0, ErrNotSupported }
+
+// GetPxColor returns the pixel color at (x, y) through the active Pure-Go
+// capture backend. The optional display index follows CaptureImg semantics.
+func GetPxColor(x, y int, displayID ...int) (uint32, error) {
+	args := []int{x, y, 1, 1}
+	if len(displayID) > 0 {
+		args = append(args, displayID[0])
+	}
+	img, err := CaptureImg(args...)
+	if err != nil {
+		return 0, err
+	}
+	bounds := img.Bounds()
+	if bounds.Empty() {
+		return 0, errors.New("Pure-Go pixel capture returned an empty image")
+	}
+	pixel := color.NRGBAModel.Convert(img.At(bounds.Min.X, bounds.Min.Y)).(color.NRGBA)
+	return RgbToHex(pixel.R, pixel.G, pixel.B), nil
+}
 func ToBitmap(bit CBitmap) Bitmap {
 	if bit == nil {
 		return Bitmap{}

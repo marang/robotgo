@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"image"
+	"image/color"
 	"runtime"
 	"strings"
 	"testing"
@@ -291,6 +292,64 @@ func TestPureGoCaptureImgUsesX11Backend(t *testing.T) {
 	}
 	if decoded.Width != 3 || decoded.Height != 2 {
 		t.Fatalf("decoded bitmap = %+v, want 3x2", decoded)
+	}
+}
+
+func TestPureGoPixelColorUsesCaptureBackend(t *testing.T) {
+	if !pureGoScreenshotSupported(runtime.GOOS, runtime.GOARCH) {
+		t.Skip("Pure-Go X11 screenshot dependency is unsupported on this architecture")
+	}
+	preservePureGoCaptureFakes(t)
+	t.Setenv("WAYLAND_DISPLAY", "")
+	t.Setenv("DISPLAY", ":99")
+	t.Setenv(envXDGSessionType, "x11")
+	pureGoCaptureImage = func(args ...int) (image.Image, error) {
+		want := []int{-10, 20, 1, 1, 2}
+		if len(args) != len(want) {
+			t.Fatalf("capture args = %v, want %v", args, want)
+		}
+		for i := range want {
+			if args[i] != want[i] {
+				t.Fatalf("capture args = %v, want %v", args, want)
+			}
+		}
+		img := image.NewNRGBA(image.Rect(4, 7, 5, 8))
+		img.SetNRGBA(4, 7, color.NRGBA{R: 0x0a, G: 0xb0, B: 0x0c, A: 0x80})
+		return img, nil
+	}
+
+	value, err := GetPxColor(-10, 20, 2)
+	if err != nil {
+		t.Fatalf("GetPxColor error: %v", err)
+	}
+	if value != 0x0ab00c {
+		t.Fatalf("GetPxColor = %#06x, want %#06x", value, uint32(0x0ab00c))
+	}
+	hex, err := GetPixelColor(-10, 20, 2)
+	if err != nil {
+		t.Fatalf("GetPixelColor error: %v", err)
+	}
+	if hex != "0ab00c" {
+		t.Fatalf("GetPixelColor = %q, want %q", hex, "0ab00c")
+	}
+}
+
+func TestPureGoPixelColorPreservesCaptureError(t *testing.T) {
+	if !pureGoScreenshotSupported(runtime.GOOS, runtime.GOARCH) {
+		t.Skip("Pure-Go X11 screenshot dependency is unsupported on this architecture")
+	}
+	preservePureGoCaptureFakes(t)
+	t.Setenv("WAYLAND_DISPLAY", "")
+	t.Setenv("DISPLAY", ":99")
+	t.Setenv(envXDGSessionType, "x11")
+	wantErr := errors.New("pixel capture failed")
+	pureGoCaptureImage = func(...int) (image.Image, error) { return nil, wantErr }
+
+	if _, err := GetPxColor(1, 2); !errors.Is(err, wantErr) {
+		t.Fatalf("GetPxColor error = %v, want wrapped capture error", err)
+	}
+	if _, err := GetPixelColor(1, 2); !errors.Is(err, wantErr) {
+		t.Fatalf("GetPixelColor error = %v, want wrapped capture error", err)
 	}
 }
 

@@ -17,9 +17,9 @@ Current implementation baseline:
 - Platform-neutral feature introspection is available via
   `GetRuntimeCapabilities`; macOS non-CGO builds report CoreGraphics capture,
   display bounds, and Screen Recording permission state without prompting.
-- Non-CGO `CaptureImg`/`CaptureScreen` and their Go-bitmap/string variants use
-  the hardened screenshot portal on Wayland and the Pure-Go screenshot backend
-  on X11/Windows; unsupported targets fail explicitly.
+- Non-CGO `CaptureImg`/`CaptureScreen`, their Go-bitmap/string variants, and
+  pixel-color queries use the hardened screenshot portal on Wayland and the
+  Pure-Go screenshot backend on X11/Windows; unsupported targets fail explicitly.
 - Capability introspection probes the live screencopy protocol, desktop portal
   D-Bus owner, virtual pointer and virtual keyboard instead of inferring support
   solely from session environment variables.
