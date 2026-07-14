@@ -28,13 +28,13 @@ The July 2026 hardening work establishes the foundation for this roadmap:
 - CI covers lint, default tests on Linux/macOS/Windows, non-CGO, Wayland, portal,
   Weston integration, race, and vet variants.
 
-## Execution Status (2026-07-11)
+## Execution Status (2026-07-14)
 
 | Area | Status | Delivered | Exit criteria still open |
 |---|---|---|---|
 | Current baseline | Complete in branch | Native screencopy, screenshot portal fallback, bounded waits, cleanup, live capability probes, error APIs, non-CGO contract, dedicated race/vet jobs | Confirm new CI jobs on remote branch |
 | 1. Wayland input | Implementation complete; runtime validation blocked | Native virtual keyboard/pointer, consent-aware RemoteDesktop fallback, shared ScreenCast stream mapping, absolute pointer/touch, restore tokens, diagnostics and E2E harness | Register GNOME/KDE/wlroots runners and collect green CGO/non-CGO evidence |
-| 2. Capture | Active; persistent backend implemented | Reliable one-shot paths plus one consent-aware ScreenCast session, reusable PipeWire frames, logical region crop, raw pixel conversion, metadata/restore tokens, cleanup and integration harness | Real GNOME/KDE/wlroots evidence and full multi-output/fractional-scale/transform/leak gates |
+| 2. Capture | Hermetic implementation complete | Reliable one-shot paths plus one consent-aware ScreenCast session, reusable PipeWire frames, logical region crop, raw pixel conversion, metadata/restore tokens, cleanup, integration harness, and blocking geometry/transform matrix | Real GNOME/KDE/wlroots evidence and sanitizer-backed native leak gate |
 | 3. Pure-Go | Foundation only | Non-CGO builds fail explicitly instead of degrading silently | Useful selected Pure-Go backends, parity tests, benchmarks, backend introspection |
 | 4. API/compositor gaps | Parity surface delivered; runtime support partial | Window-state error APIs, bitmap string helpers, `FindColorCS`, hook/event capability reporting, Sway/Hyprland/wlroots resolver | Compositor-backed state operations and cross-platform/runtime matrix coverage |
 | 5. Reliability product | Partial | Capability API/example and expanded CI variants | Versioned compatibility matrix, richer diagnostics, dedicated compositor jobs, sanitizer/leak gates |
@@ -98,8 +98,10 @@ exposes stream/restore metadata, and provides hermetic plus opt-in runtime
 tests. Native readiness is bounded, PipeWire initialization is balanced, and
 idle sessions do not convert unrequested frames. `CaptureScreen` can reuse the active session after native
 screencopy failure or select it explicitly. Output geometry, scale, and
-transform handling still need the complete real-compositor matrix required by
-this phase.
+transform handling now share enclosing-edge crop semantics and have a blocking
+hermetic matrix for negative output origins, fractional scale, clipped regions,
+overflow boundaries, and all eight transforms. The complete real-compositor
+matrix is still required by this phase.
 
 Exit criteria:
 

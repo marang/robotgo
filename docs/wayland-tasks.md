@@ -99,11 +99,13 @@ Window backend support matrix (current):
   - `GetLinuxCapabilities` reports hook/event status explicitly.
 
 - Screen Capture:
-  - Validate on wlroots, GNOME and KDE.
-  - Validate and harden existing scale/transform mapping for fractional scale
-    and every output transform.
-  - Complete multi-output selection and bounds tests using `xdg-output`.
-  - Region-crop correctness tests across backends.
+  - The blocking hermetic matrix now covers positive/negative output origins,
+    fractional scaling, clipped/overflowing regions, and all eight transforms
+    across native screencopy and PipeWire mapping.
+  - Validate the same scale/transform and region-crop behavior on real wlroots,
+    GNOME, and KDE sessions.
+  - Complete real-compositor multi-output selection and bounds evidence using
+    `xdg-output`.
 - Portal Path:
   - Expand troubleshooting for xdg-desktop-portal backend selection and consent prompts.
   - Validate the existing high-level RemoteDesktop input fallback on GNOME/KDE.
