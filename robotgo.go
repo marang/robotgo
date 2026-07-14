@@ -128,7 +128,7 @@ const (
 	DisplayServerUnknown DisplayServer = "unknown"
 )
 
-// FeatureCapability describes runtime availability for a Linux feature path.
+// FeatureCapability describes runtime availability for a feature backend.
 type FeatureCapability struct {
 	Available bool
 	Fallback  bool
@@ -491,16 +491,17 @@ func selectedWaylandBackend() WaylandBackend {
 }
 
 var (
-	ErrWaylandDisplay  = errors.New("wayland connect failed")
-	ErrNoScreencopy    = errors.New("screencopy manager not available")
-	ErrNoOutputs       = errors.New("no outputs")
-	ErrDmabufDevice    = errors.New("screencopy dmabuf device unsupported")
-	ErrDmabufModifiers = errors.New("screencopy dmabuf modifiers unsupported")
-	ErrDmabufImport    = errors.New("screencopy dmabuf import failed")
-	ErrDmabufMap       = errors.New("screencopy dmabuf map failed")
-	ErrWaylandFailed   = errors.New("wayland capture failed")
-	ErrPortalFailed    = errors.New("portal capture failed")
-	ErrNotSupported    = errors.New("operation not supported on current platform/backend")
+	ErrWaylandDisplay   = errors.New("wayland connect failed")
+	ErrNoScreencopy     = errors.New("screencopy manager not available")
+	ErrNoOutputs        = errors.New("no outputs")
+	ErrDmabufDevice     = errors.New("screencopy dmabuf device unsupported")
+	ErrDmabufModifiers  = errors.New("screencopy dmabuf modifiers unsupported")
+	ErrDmabufImport     = errors.New("screencopy dmabuf import failed")
+	ErrDmabufMap        = errors.New("screencopy dmabuf map failed")
+	ErrWaylandFailed    = errors.New("wayland capture failed")
+	ErrPortalFailed     = errors.New("portal capture failed")
+	ErrNotSupported     = errors.New("operation not supported on current platform/backend")
+	ErrPermissionDenied = errors.New("permission denied by desktop security policy")
 )
 
 func waylandWindowNotSupported(op string) error {

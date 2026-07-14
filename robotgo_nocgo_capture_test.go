@@ -48,7 +48,8 @@ func TestPureGoScreenshotPlatformSupport(t *testing.T) {
 		{goos: "freebsd", goarch: "amd64", supported: true, backend: BackendX11},
 		{goos: "linux", goarch: "s390x", supported: false, backend: BackendX11},
 		{goos: "linux", goarch: "ppc64le", supported: false, backend: BackendX11},
-		{goos: "darwin", goarch: "amd64", supported: false, backend: BackendPureGo},
+		{goos: "darwin", goarch: "amd64", supported: true, backend: BackendPureGo},
+		{goos: "darwin", goarch: "arm64", supported: true, backend: BackendPureGo},
 	}
 	for _, test := range tests {
 		t.Run(test.goos+"/"+test.goarch, func(t *testing.T) {
@@ -96,8 +97,12 @@ func TestPureGoLinuxCaptureCapabilities(t *testing.T) {
 		t.Setenv(envXDGSessionType, "x11")
 		capture := GetLinuxCapabilities().Capture
 		wantAvailable := pureGoScreenshotSupported(runtime.GOOS, runtime.GOARCH)
-		if capture.Available != wantAvailable || capture.Backend != capabilityBackendPureGoX11 {
+		if capture.Available != wantAvailable || capture.Backend != featureBackendPureGoX11 {
 			t.Fatalf("capture capability = %+v", capture)
+		}
+		bounds := GetLinuxCapabilities().Bounds
+		if bounds.Available != wantAvailable || bounds.Backend != featureBackendPureGoX11 {
+			t.Fatalf("bounds capability = %+v", bounds)
 		}
 	})
 	t.Run("Wayland portal ready", func(t *testing.T) {

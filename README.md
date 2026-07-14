@@ -37,9 +37,10 @@ Current technical differences include:
 - Sway, Hyprland, generic wlroots, and Wayland-core window backend resolution,
   with partial operations reported honestly instead of universal support being
   implied.
-- A defined non-CGO contract: Pure-Go capture is available on Windows and X11,
-  Wayland capture uses the consent-aware Screenshot portal, and unavailable GUI
-  operations return `ErrNotSupported` rather than plausible zero values.
+- A defined non-CGO contract: Pure-Go capture is available through CoreGraphics
+  on macOS, native APIs on Windows, and X11; Wayland capture uses the
+  consent-aware Screenshot portal, and unavailable GUI operations return
+  `ErrNotSupported` rather than plausible zero values.
 - Hermetic portal/compositor tests, tagged Wayland integration suites, and CI
   coverage for Linux, macOS, Windows, Wayland, portal, lint, and non-CGO modes.
 - Open, auditable native and Go backend code, including explicit resource
@@ -60,21 +61,22 @@ for this fork.
 | Windows | Active window, title, close, minimize/maximize, topmost queries/setters, bounds/client geometry, and compositor-specific Wayland variants where supported |
 | Processes | Enumerate, inspect, find, activate, and terminate processes |
 | Images | Go image/bitmap conversion, template helpers, encoding, saving, and optional OCR |
-| Diagnostics | Display-server detection, selected capture backend, and Linux feature capability/fallback reporting |
+| Diagnostics | Build/backend detection plus feature-level capability, permission, fallback, and unsupported reporting |
 
 Availability is platform- and backend-dependent. Prefer error-returning APIs
-and inspect `GetLinuxCapabilities` on Linux when an operation is required for a
-workflow.
+and inspect `GetRuntimeCapabilities` when an operation is required for a
+workflow. `GetLinuxCapabilities` provides additional compositor detail.
 
 ## Support overview
 
 | Platform/session | Build | Current behavior |
 |---|---|---|
 | macOS | CGO-enabled default build | Native mouse, keyboard, capture, window, and process paths; macOS permissions still apply |
+| macOS | `CGO_ENABLED=0` | Pure-Go CoreGraphics capture and display bounds with explicit Screen Recording permission diagnostics; other unavailable GUI operations return `ErrNotSupported` |
 | Windows | CGO-enabled default build | Native mouse, keyboard, capture, window, and process paths |
 | Linux/X11 | CGO-enabled default build | X11/XTest input, capture, window, and process paths |
 | Linux/Wayland | `-tags wayland` for native protocols; add `pipewire` for persistent ScreenCast frames | Native wlroots capture/input where compositor protocols exist, one-shot Screenshot fallback, reusable ScreenCast/PipeWire capture, explicit RemoteDesktop portal sessions, capability-aware window support |
-| Any platform without CGO | `CGO_ENABLED=0` | Pure-Go capture works on Windows and Linux/X11; Linux/Wayland uses the Screenshot portal; explicit RemoteDesktop sessions provide limited Pure-Go Wayland input; remaining unavailable operations return `ErrNotSupported` |
+| Other supported platforms without CGO | `CGO_ENABLED=0` | Pure-Go capture works on Windows and Linux/X11; Linux/Wayland uses the Screenshot portal; explicit RemoteDesktop sessions provide limited Pure-Go Wayland input; remaining unavailable operations return `ErrNotSupported` |
 
 Wayland compositors intentionally restrict global automation. GNOME and KDE can
 use consent-aware Screenshot and RemoteDesktop portal paths. The explicit
@@ -393,11 +395,24 @@ fmt.Println("platform:", info.GOOS, info.GOARCH)
 fmt.Println("display:", info.DisplayServer)
 ```
 
-In a `CGO_ENABLED=0` build, `CaptureImg`, `CaptureScreen`, `CaptureGo`, and
-`CaptureBitmapStr` now use the Pure-Go Windows or X11 screenshot backend where
-available. Wayland sessions use this fork's hardened screenshot portal and
-preserve `ROBOTGO_DISABLE_PORTAL`; unsupported targets return
-`ErrNotSupported` explicitly.
+`GetRuntimeCapabilities` adds feature-level status. It may perform bounded
+runtime probes, but never opens a consent dialog:
+
+```go
+caps := robotgo.GetRuntimeCapabilities()
+fmt.Println("capture:", caps.Capture.Available, caps.Capture.Backend, caps.Capture.Reason)
+fmt.Println("bounds:", caps.Bounds.Available, caps.Bounds.Backend, caps.Bounds.Reason)
+fmt.Println("keyboard:", caps.Keyboard.Available, caps.Keyboard.Backend, caps.Keyboard.Reason)
+fmt.Println("process:", caps.Process.Available, caps.Process.Backend)
+```
+
+In a `CGO_ENABLED=0` build, `Capture`, `CaptureImg`, `CaptureScreen`,
+`CaptureGo`, and `CaptureBitmapStr` use the Pure-Go CoreGraphics, Windows, or
+X11 screenshot backend where available. Wayland sessions use this fork's
+hardened screenshot portal and preserve `ROBOTGO_DISABLE_PORTAL`; unsupported
+targets return `ErrNotSupported` explicitly. On macOS, capture returns
+`ErrPermissionDenied` with remediation when Screen Recording access is absent;
+capability inspection never requests that permission implicitly.
 
 Use `CaptureImg()` with no arguments for a full-screen capture. Region capture
 requires at least `x, y, width, height`; partial argument lists, non-positive
@@ -436,6 +451,7 @@ The checked-in examples use this fork's module path and track the current API:
 - [Screen capture and pixels](examples/screen/main.go)
 - [Full-screen capture with backend reporting](examples/screen_full/main.go)
 - [Linux capabilities](examples/linux_capabilities/main.go)
+- [Cross-platform runtime capabilities](examples/runtime_capabilities/main.go)
 - [Consent-aware RemoteDesktop portal input](examples/remote_desktop_input/main.go)
 - [Persistent ScreenCast/PipeWire capture](examples/screencast_capture/main.go)
 - [Window and process helpers](examples/window/main.go)

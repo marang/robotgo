@@ -14,6 +14,9 @@ Current implementation baseline:
 - Platform-neutral build introspection is available via
   `GetRuntimeBackendInfo`, including CGO/Pure-Go mode and display-server
   detection without portal or compositor probes.
+- Platform-neutral feature introspection is available via
+  `GetRuntimeCapabilities`; macOS non-CGO builds report CoreGraphics capture,
+  display bounds, and Screen Recording permission state without prompting.
 - Non-CGO `CaptureImg`/`CaptureScreen` and their Go-bitmap/string variants use
   the hardened screenshot portal on Wayland and the Pure-Go screenshot backend
   on X11/Windows; unsupported targets fail explicitly.

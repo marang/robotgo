@@ -82,16 +82,17 @@ const (
 )
 
 var (
-	ErrWaylandDisplay  = errors.New("wayland connect failed")
-	ErrNoScreencopy    = errors.New("screencopy manager not available")
-	ErrNoOutputs       = errors.New("no outputs")
-	ErrDmabufDevice    = errors.New("screencopy dmabuf device unsupported")
-	ErrDmabufModifiers = errors.New("screencopy dmabuf modifiers unsupported")
-	ErrDmabufImport    = errors.New("screencopy dmabuf import failed")
-	ErrDmabufMap       = errors.New("screencopy dmabuf map failed")
-	ErrWaylandFailed   = errors.New("wayland capture failed")
-	ErrPortalFailed    = errors.New("portal capture failed")
-	ErrNotSupported    = errors.New("operation not supported on current platform/backend")
+	ErrWaylandDisplay   = errors.New("wayland connect failed")
+	ErrNoScreencopy     = errors.New("screencopy manager not available")
+	ErrNoOutputs        = errors.New("no outputs")
+	ErrDmabufDevice     = errors.New("screencopy dmabuf device unsupported")
+	ErrDmabufModifiers  = errors.New("screencopy dmabuf modifiers unsupported")
+	ErrDmabufImport     = errors.New("screencopy dmabuf import failed")
+	ErrDmabufMap        = errors.New("screencopy dmabuf map failed")
+	ErrWaylandFailed    = errors.New("wayland capture failed")
+	ErrPortalFailed     = errors.New("portal capture failed")
+	ErrNotSupported     = errors.New("operation not supported on current platform/backend")
+	ErrPermissionDenied = errors.New("permission denied by desktop security policy")
 )
 
 type (
@@ -213,7 +214,7 @@ func GetLinuxCapabilities() LinuxCapabilities {
 		conflict := pureGoX11EnvironmentConflict()
 		capabilities.Capture = FeatureCapability{
 			Available: compiled && !conflict,
-			Backend:   capabilityBackendPureGoX11,
+			Backend:   featureBackendPureGoX11,
 			Reason:    "Pure-Go X11 screenshot backend is selected; runtime access is not probed",
 			Notes:     "runtime X server access is validated when capture starts",
 		}
@@ -223,6 +224,19 @@ func GetLinuxCapabilities() LinuxCapabilities {
 		} else if conflict {
 			capabilities.Capture.Reason = envXDGSessionType + " selects Wayland while DISPLAY selects X11"
 			capabilities.Capture.Notes = "capture refuses the screenshot dependency's implicit portal fallback"
+		}
+		capabilities.Bounds = FeatureCapability{
+			Available: compiled && !conflict,
+			Backend:   featureBackendPureGoX11,
+			Reason:    "Pure-Go X11 display enumeration is selected; runtime access is not probed",
+			Notes:     "runtime X server access is validated when bounds are queried",
+		}
+		if !compiled {
+			capabilities.Bounds.Reason = fmt.Sprintf("Pure-Go X11 bounds are not compiled for %s/%s", runtime.GOOS, runtime.GOARCH)
+			capabilities.Bounds.Notes = ErrNotSupported.Error()
+		} else if conflict {
+			capabilities.Bounds.Reason = envXDGSessionType + " selects Wayland while DISPLAY selects X11"
+			capabilities.Bounds.Notes = "bounds refuse the screenshot dependency's implicit portal fallback"
 		}
 	}
 	return capabilities
@@ -490,15 +504,31 @@ func ScrollE(x, y int, args ...int) error {
 	}
 	return finishRemoteDesktopMouseEvent(err, msDelay)
 }
-func ScrollDir(int, ...interface{})  {}
-func Location() (int, int)           { return 0, 0 }
-func LocationE() (int, int, error)   { return 0, 0, ErrNotSupported }
-func MouseReady() error              { return RemoteDesktopInputReady(RemoteDesktopPointer) }
-func CloseWaylandInput()             { _ = CloseRemoteDesktopInput() }
-func GetScreenSize() (int, int)      { return 0, 0 }
-func GetScreenRect(...int) Rect      { return Rect{} }
-func GetScaleSize(...int) (int, int) { return 0, 0 }
-func DisplaysNum() int               { return 0 }
+func ScrollDir(int, ...interface{}) {}
+func Location() (int, int)          { return 0, 0 }
+func LocationE() (int, int, error)  { return 0, 0, ErrNotSupported }
+func MouseReady() error             { return RemoteDesktopInputReady(RemoteDesktopPointer) }
+func CloseWaylandInput()            { _ = CloseRemoteDesktopInput() }
+func GetScreenSize() (int, int) {
+	displayID := currentDisplayID()
+	if displayID < 0 {
+		displayID = 0
+	}
+	_, _, width, height := GetDisplayBounds(displayID)
+	return width, height
+}
+func GetScreenRect(displayID ...int) Rect {
+	id := currentDisplayID()
+	if id < 0 {
+		id = 0
+	}
+	if len(displayID) > 0 {
+		id = displayID[0]
+	}
+	return GetDisplayRect(id)
+}
+func GetScaleSize(...int) (int, int) { return GetScreenSize() }
+func DisplaysNum() int               { return platformDisplayCount() }
 func GetPixelColor(int, int, ...int) (string, error) {
 	return "", ErrNotSupported
 }

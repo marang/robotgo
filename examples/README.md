@@ -1,189 +1,36 @@
-# Robotgo examples
+# RobotGo examples
 
-## Install:
-```
-go get -u github.com/go-vgo/robotgo  
-```
+These examples use this fork's module path:
 
-## [Examples:](https://github.com/go-vgo/robotgo/blob/master/examples)
-
-#### [Linux Capabilities](https://github.com/go-vgo/robotgo/blob/master/examples/linux_capabilities/main.go)
-
-```Go
-package main
-
-import (
-	"encoding/json"
-	"fmt"
-	"log"
-
-	"github.com/go-vgo/robotgo"
-)
-
-func main() {
-	caps := robotgo.GetLinuxCapabilities()
-	data, err := json.MarshalIndent(caps, "", "  ")
-	if err != nil {
-		log.Fatal(err)
-	}
-	fmt.Println(string(data))
-}
+```bash
+go get github.com/marang/robotgo
 ```
 
-#### [Mouse](https://github.com/go-vgo/robotgo/blob/master/examples/mouse/main.go)
+Run an example from the repository root, for example:
 
-```Go
-package main
-
-import (
-	"github.com/go-vgo/robotgo"
-)
-
-func main() {
-  // robotgo.ScrollMouse(10, "up")
-  robotgo.Scroll(0, 10)
-  robotgo.MouseClick("left", true)
-  robotgo.MoveSmooth(100, 200, 1.0, 100.0)
-} 
-``` 
-
-#### [Keyboard](https://github.com/go-vgo/robotgo/blob/master/examples/key/main.go)
-
-```Go
-package main
-
-import (
-  "fmt"
-
-  "github.com/go-vgo/robotgo"
-)
-
-func main() {
-  robotgo.TypeStr("Hello World")
-  // robotgo.TypeStr("だんしゃり")
-  robotgo.TypeStr("だんしゃり")
-  // ustr := uint32(robotgo.CharCodeAt("だんしゃり", 0))
-  // robotgo.UnicodeType(ustr)
-
-  robotgo.KeyTap("enter")
-  robotgo.TypeStr("en")
-  robotgo.KeyTap("i", "alt", "command")
-  arr := []string{"alt", "command"}
-  robotgo.KeyTap("i", arr)
-
-  robotgo.WriteAll("Test")
-  text, err := robotgo.ReadAll()
-  if err == nil {
-    fmt.Println(text)
-  }
-} 
+```bash
+go run ./examples/runtime_capabilities
+go run ./examples/screen_full
 ```
 
-#### [Screen](https://github.com/go-vgo/robotgo/blob/master/examples/screen/main.go)
+Available examples:
 
-```Go
-package main
+- [`runtime_capabilities`](runtime_capabilities/main.go): cross-platform build,
+  backend, feature, permission, and unsupported diagnostics.
+- [`linux_capabilities`](linux_capabilities/main.go): detailed Linux display
+  server, compositor, portal, and fallback diagnostics.
+- [`screen`](screen/main.go): capture, pixel, bitmap, and display operations.
+- [`screen_full`](screen_full/main.go): full-screen capture with selected
+  backend reporting.
+- [`screencast_capture`](screencast_capture/main.go): persistent
+  ScreenCast/PipeWire capture on supported Wayland builds.
+- [`remote_desktop_input`](remote_desktop_input/main.go): explicit,
+  consent-aware RemoteDesktop portal input.
+- [`mouse`](mouse/main.go): pointer movement, clicks, and scrolling.
+- [`key`](key/main.go): keyboard and clipboard operations.
+- [`window`](window/main.go): window and process helpers.
+- [`scale`](scale/main.go): display scaling information.
 
-import (
-	"fmt"
-
-	"github.com/go-vgo/robotgo"
-)
-
-func main() {
-  x, y := robotgo.Location()
-  fmt.Println("pos:", x, y)
-  color := robotgo.GetPixelColor(100, 200)
-  fmt.Println("color----", color)
-} 
-```
-
-#### [Bitmap](https://github.com/go-vgo/robotgo/blob/master/examples/bitmap/main.go)
-
-```Go
-package main
-
-import (
-	"fmt"
-
-	"github.com/go-vgo/robotgo"
-)
-
-func main() {
-  bitmap := robotgo.CaptureScreen(10, 20, 30, 40)
-  // use `defer robotgo.FreeBitmap(bit)` to free the bitmap
-  defer robotgo.FreeBitmap(bitmap)
-  fmt.Println("...", bitmap)
-
-  fx, fy := robotgo.FindBitmap(bitmap)
-  fmt.Println("FindBitmap------", fx, fy)
-
-  robotgo.SaveBitmap(bitmap, "test.png")
-} 
-```
-
-#### [Event](https://github.com/go-vgo/robotgo/blob/master/examples/event/main.go)
-
-```Go
-package main
-
-import (
-	"fmt"
-
-	"github.com/go-vgo/robotgo"
-)
-
-func main() {
-  keve := robotgo.AddEvent("k")
-  if keve {
-    fmt.Println("you press...", "k")
-  }
-
-  mleft := robotgo.AddEvent("mleft")
-  if mleft {
-    fmt.Println("you press...", "mouse left button")
-  }
-} 
-```
-
-#### [Window](https://github.com/go-vgo/robotgo/blob/master/examples/window/main.go)
-
-```Go
-package main
-
-import (
-	"fmt"
-
-	"github.com/go-vgo/robotgo"
-)
-
-func main() {
-  fpid, err := robotgo.FindIds("Google")
-  if err == nil {
-    fmt.Println("pids...", fpid)
-
-    if len(fpid) > 0 {
-      robotgo.ActivePID(fpid[0])
-
-      robotgo.Kill(fpid[0])
-    }
-  }
-
-  robotgo.ActiveName("chrome")
-
-  isExist, err := robotgo.PidExists(100)
-  if err == nil && isExist {
-    fmt.Println("pid exists is", isExist)
-
-    robotgo.Kill(100)
-  }
-
-  abool := robotgo.ShowAlert("test", "robotgo")
-  if abool == 0 {
- 	  fmt.Println("ok@@@", "ok")
-  }
-
-  title := robotgo.GetTitle()
-  fmt.Println("title@@@", title)
-} 
-```
+Examples perform real desktop actions. Inspect them before running, especially
+the input and window/process examples. Portal examples may show a consent dialog
+only when explicitly asked to connect or demonstrate an operation.
