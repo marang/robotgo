@@ -445,6 +445,7 @@ const (
 	BackendPortal     CaptureBackend = "portal"
 	BackendScreenCast CaptureBackend = "screencast"
 	BackendX11        CaptureBackend = "x11"
+	BackendPureGo     CaptureBackend = "pure-go"
 )
 
 var (
@@ -1209,6 +1210,10 @@ func GetScaleSize(displayId ...int) (int, int) {
 //
 // robotgo.CaptureScreen(x, y, w, h int)
 func CaptureScreen(args ...int) (CBitmap, error) {
+	argX, argY, argW, argH, argErr := captureRegionFromArgs(args)
+	if argErr != nil {
+		return nil, argErr
+	}
 	var x, y, w, h C.int32_t
 	displayId := -1
 	if configured := currentDisplayID(); configured != -1 {
@@ -1222,10 +1227,10 @@ func CaptureScreen(args ...int) (CBitmap, error) {
 	ds := DetectDisplayServer()
 
 	if len(args) > 3 {
-		x = C.int32_t(args[0])
-		y = C.int32_t(args[1])
-		w = C.int32_t(args[2])
-		h = C.int32_t(args[3])
+		x = C.int32_t(argX)
+		y = C.int32_t(argY)
+		w = C.int32_t(argW)
+		h = C.int32_t(argH)
 	} else {
 		if runtime.GOOS != "linux" || ds == DisplayServerX11 {
 			if runtime.GOOS == "linux" && !x11MainDisplayAvailable() {
@@ -1233,6 +1238,9 @@ func CaptureScreen(args ...int) (CBitmap, error) {
 			}
 			// Get the main screen rect.
 			rect := GetScreenRect(displayId)
+			if err := validateCaptureRegionRequest(rect.X, rect.Y, rect.W, rect.H); err != nil {
+				return nil, err
+			}
 			if runtime.GOOS == "windows" {
 				x = C.int32_t(rect.X)
 				y = C.int32_t(rect.Y)

@@ -115,7 +115,11 @@ jobs:
       - name: Test
         run: go test -v ./...
   nocgo:
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macOS-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -124,12 +128,15 @@ jobs:
         uses: actions/setup-go@v6
         with:
           go-version: 1.25.x
-      - name: Test explicit unsupported non-CGO build
+      - name: Test Pure-Go build
         env:
           CGO_ENABLED: "0"
-        run: |
-          go test -v ./...
-          go test -tags ocr ./...
+        run: go test -v ./...
+      - name: Test non-CGO OCR compatibility stubs
+        if: runner.os == 'Linux'
+        env:
+          CGO_ENABLED: "0"
+        run: go test -tags ocr ./...
   ocr:
     runs-on: ubuntu-latest
     steps:

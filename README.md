@@ -37,7 +37,8 @@ Current technical differences include:
 - Sway, Hyprland, generic wlroots, and Wayland-core window backend resolution,
   with partial operations reported honestly instead of universal support being
   implied.
-- A defined non-CGO contract: builds remain possible, while unavailable GUI
+- A defined non-CGO contract: Pure-Go capture is available on Windows and X11,
+  Wayland capture uses the consent-aware Screenshot portal, and unavailable GUI
   operations return `ErrNotSupported` rather than plausible zero values.
 - Hermetic portal/compositor tests, tagged Wayland integration suites, and CI
   coverage for Linux, macOS, Windows, Wayland, portal, lint, and non-CGO modes.
@@ -73,7 +74,7 @@ workflow.
 | Windows | CGO-enabled default build | Native mouse, keyboard, capture, window, and process paths |
 | Linux/X11 | CGO-enabled default build | X11/XTest input, capture, window, and process paths |
 | Linux/Wayland | `-tags wayland` for native protocols; add `pipewire` for persistent ScreenCast frames | Native wlroots capture/input where compositor protocols exist, one-shot Screenshot fallback, reusable ScreenCast/PipeWire capture, explicit RemoteDesktop portal sessions, capability-aware window support |
-| Any platform without CGO | `CGO_ENABLED=0` | The portable high-level API remains available; native GUI operations return `ErrNotSupported`, while explicit Linux RemoteDesktop portal sessions provide a limited Pure-Go input path |
+| Any platform without CGO | `CGO_ENABLED=0` | Pure-Go capture works on Windows and Linux/X11; Linux/Wayland uses the Screenshot portal; explicit RemoteDesktop sessions provide limited Pure-Go Wayland input; remaining unavailable operations return `ErrNotSupported` |
 
 Wayland compositors intentionally restrict global automation. GNOME and KDE can
 use consent-aware Screenshot and RemoteDesktop portal paths. The explicit
@@ -368,6 +369,10 @@ Useful capture controls:
 Wayland applications can call `CloseWaylandInput` to release persistent virtual
 pointer and keyboard objects; later input calls reconnect lazily.
 
+Successful non-CGO capture reports `BackendX11` on supported X11 systems,
+`BackendPortal` on Linux/Wayland, and `BackendPureGo` on other supported
+Pure-Go platforms.
+
 Global pointer position and global foreign-window control are not universally
 available in Wayland core. `LocationE` and unsupported window operations return
 `ErrNotSupported`. Sway, Hyprland, and some wlroots environments have partial
@@ -375,6 +380,32 @@ window support through compositor-specific tools; inspect capabilities instead
 of assuming parity with X11.
 
 ### Runtime diagnostics
+
+`GetRuntimeBackendInfo` is platform-neutral and reports whether the current
+binary contains native CGO backends or the Pure-Go compatibility build. It does
+not open portals or contact a compositor:
+
+```go
+info := robotgo.GetRuntimeBackendInfo()
+fmt.Println("implementation:", info.BuildImplementation)
+fmt.Println("cgo:", info.CGOEnabled)
+fmt.Println("platform:", info.GOOS, info.GOARCH)
+fmt.Println("display:", info.DisplayServer)
+```
+
+In a `CGO_ENABLED=0` build, `CaptureImg`, `CaptureScreen`, `CaptureGo`, and
+`CaptureBitmapStr` now use the Pure-Go Windows or X11 screenshot backend where
+available. Wayland sessions use this fork's hardened screenshot portal and
+preserve `ROBOTGO_DISABLE_PORTAL`; unsupported targets return
+`ErrNotSupported` explicitly.
+
+Use `CaptureImg()` with no arguments for a full-screen capture. Region capture
+requires at least `x, y, width, height`; partial argument lists, non-positive
+region dimensions other than the explicit `0x0` full-screen request,
+coordinate overflow, and a non-zero origin combined with a
+`0x0` full-screen request are rejected before a portal request is created.
+Explicit regions whose 32-bit RGBA buffer would exceed 512 MiB are also
+rejected before a backend allocates capture memory.
 
 `GetLinuxCapabilities` reports the detected session, compositor, selected
 feature backends, fallbacks, and unsupported reasons:

@@ -35,7 +35,7 @@ The July 2026 hardening work establishes the foundation for this roadmap:
 | Current baseline | Complete in branch | Native screencopy, screenshot portal fallback, bounded waits, cleanup, live capability probes, error APIs, non-CGO contract, dedicated race/vet jobs | Confirm new CI jobs on remote branch |
 | 1. Wayland input | Implementation complete; runtime validation blocked | Native virtual keyboard/pointer, consent-aware RemoteDesktop fallback, shared ScreenCast stream mapping, absolute pointer/touch, restore tokens, diagnostics and E2E harness | Register GNOME/KDE/wlroots runners and collect green CGO/non-CGO evidence |
 | 2. Capture | Hermetic implementation complete | Reliable one-shot paths plus one consent-aware ScreenCast session, reusable PipeWire frames, logical region crop, raw pixel conversion, metadata/restore tokens, cleanup, integration harness, and blocking geometry/transform matrix | Real GNOME/KDE/wlroots evidence and sanitizer-backed native leak gate |
-| 3. Pure-Go | Foundation only | Non-CGO builds fail explicitly instead of degrading silently | Useful selected Pure-Go backends, parity tests, benchmarks, backend introspection |
+| 3. Pure-Go | First backend active | Build introspection plus non-CGO Windows/X11 and Wayland-portal capture with parity/error tests and a three-OS CI matrix | Additional selectively justified backends, runtime benchmarks, and broader feature-level introspection |
 | 4. API/compositor gaps | Parity surface delivered; runtime support partial | Window-state error APIs, bitmap string helpers, `FindColorCS`, hook/event capability reporting, Sway/Hyprland/wlroots resolver | Compositor-backed state operations and cross-platform/runtime matrix coverage |
 | 5. Reliability product | Partial | Capability API/example and expanded CI variants | Versioned compatibility matrix, richer diagnostics, dedicated compositor jobs, sanitizer/leak gates |
 
@@ -127,8 +127,13 @@ Priority order:
    DMA-BUF path and deterministic resource handling.
 
 Current status: the non-CGO API surface compiles and returns explicit
-unsupported errors. No useful Pure-Go GUI backend is enabled yet; this is a
-safety baseline, not completion of the phase.
+unsupported errors. `GetRuntimeBackendInfo` now reports the platform, display
+server, CGO mode, and whether the binary contains native-CGO or Pure-Go build
+paths without triggering runtime probes. `CaptureImg`, `CaptureScreen`,
+`CaptureGo`, and `CaptureBitmapStr` now provide useful non-CGO capture through
+the Pure-Go Windows/X11 implementation and the hardened screenshot portal on
+Wayland, with explicit unsupported and portal-failure contracts. This is the
+first selectively enabled GUI backend, not completion of the phase.
 
 Exit criteria:
 
