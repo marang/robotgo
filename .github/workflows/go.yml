@@ -178,5 +178,5 @@ jobs:
           # Compile the consent-driven harness; real runs use remote-desktop-e2e.yml.
           go test -tags "integration" ./input/portal -run '^$'
           go test -tags "wayland test" ./screen -run TestScreencopy -v
-          go test -tags "wayland test" . -run TestDrmFindRenderNode -v
+          go test -tags "wayland test" . -run 'Test(DrmFindRenderNode|Wayland)' -v
           go test -tags "wayland integration" . ./mouse ./window -v

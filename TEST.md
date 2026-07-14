@@ -30,13 +30,15 @@ Some tests are intentionally gated because they require OS-specific runtime depe
 
 Purpose:
 - Linux Wayland screencopy/mock-server coverage
+- Hermetic native crop mapping for multi-output coordinates, fractional scale,
+  overflow boundaries, and all eight output transforms
 - DRM helper tests
 
 Typical command:
 
 ```bash
 go test -tags "wayland test" ./screen -run TestScreencopy -v
-go test -tags "wayland test" . -run TestDrmFindRenderNode -v
+go test -tags "wayland test" . -run 'Test(DrmFindRenderNode|Wayland)' -v
 ```
 
 Prerequisites:
@@ -144,6 +146,8 @@ Purpose:
   file-descriptor ownership, and deterministic teardown
 - Reusable PipeWire consumer compilation and frame/crop behavior
 - Fractional logical-to-physical region mapping and repeated-frame lifecycle
+- Multi-output positions (including negative origins), clipped regions, and
+  non-zero frame origins
 - Native C packed-pixel conversion plus SPA crop/transform metadata processing
 - Explicit cursor-metadata rejection for the image capture API
 

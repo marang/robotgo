@@ -150,29 +150,80 @@ func cropPipeWireFrame(frame *image.RGBA, stream ScreenCastStream, x, y, width, 
 	if width <= 0 || height <= 0 {
 		return nil, fmt.Errorf("PipeWire capture region has invalid size %dx%d", width, height)
 	}
-	logical := image.Rect(0, 0, frame.Bounds().Dx(), frame.Bounds().Dy())
+	frameBounds := frame.Bounds()
+	logicalWidth, logicalHeight := int64(frameBounds.Dx()), int64(frameBounds.Dy())
 	if stream.HasSize {
 		if stream.Size.Width <= 0 || stream.Size.Height <= 0 {
 			return nil, fmt.Errorf("PipeWire stream has invalid logical size %dx%d", stream.Size.Width, stream.Size.Height)
 		}
-		logical = image.Rect(0, 0, int(stream.Size.Width), int(stream.Size.Height))
+		logicalWidth, logicalHeight = int64(stream.Size.Width), int64(stream.Size.Height)
 	}
-	localX, localY := x, y
+	localX, localY := int64(x), int64(y)
 	if stream.HasPosition {
-		localX -= int(stream.Position.X)
-		localY -= int(stream.Position.Y)
+		localX = saturatingAdd64(localX, -int64(stream.Position.X))
+		localY = saturatingAdd64(localY, -int64(stream.Position.Y))
 	}
-	requested := image.Rect(localX, localY, localX+width, localY+height).Intersect(logical)
-	if requested.Empty() {
-		return nil, fmt.Errorf("PipeWire capture region %v is outside stream bounds %v", image.Rect(localX, localY, localX+width, localY+height), logical)
+	requestedRight := saturatingAdd64(localX, int64(width))
+	requestedBottom := saturatingAdd64(localY, int64(height))
+	left := max64(localX, 0)
+	top := max64(localY, 0)
+	right := min64(requestedRight, logicalWidth)
+	bottom := min64(requestedBottom, logicalHeight)
+	if left >= right || top >= bottom {
+		return nil, fmt.Errorf(
+			"PipeWire capture region (%d,%d)-(%d,%d) is outside stream bounds (0,0)-(%d,%d)",
+			localX, localY, requestedRight, requestedBottom, logicalWidth, logicalHeight,
+		)
 	}
-	frameBounds := frame.Bounds()
-	left := requested.Min.X * frameBounds.Dx() / logical.Dx()
-	top := requested.Min.Y * frameBounds.Dy() / logical.Dy()
-	right := (requested.Max.X*frameBounds.Dx() + logical.Dx() - 1) / logical.Dx()
-	bottom := (requested.Max.Y*frameBounds.Dy() + logical.Dy() - 1) / logical.Dy()
-	pixelRegion := image.Rect(left, top, right, bottom).Intersect(frameBounds)
+	pixelRegion := image.Rect(
+		frameBounds.Min.X+int(scaleFloor(left, int64(frameBounds.Dx()), logicalWidth)),
+		frameBounds.Min.Y+int(scaleFloor(top, int64(frameBounds.Dy()), logicalHeight)),
+		frameBounds.Min.X+int(scaleCeil(right, int64(frameBounds.Dx()), logicalWidth)),
+		frameBounds.Min.Y+int(scaleCeil(bottom, int64(frameBounds.Dy()), logicalHeight)),
+	).Intersect(frameBounds)
 	result := image.NewRGBA(image.Rect(0, 0, pixelRegion.Dx(), pixelRegion.Dy()))
 	draw.Draw(result, result.Bounds(), frame, pixelRegion.Min, draw.Src)
 	return result, nil
+}
+
+// scaleFloor and scaleCeil map a non-negative logical coordinate into a pixel
+// extent without overflowing when the pixel extent is close to the int limit.
+func scaleFloor(value, extent, logicalExtent int64) int64 {
+	return (extent/logicalExtent)*value + (extent%logicalExtent)*value/logicalExtent
+}
+
+func scaleCeil(value, extent, logicalExtent int64) int64 {
+	quotient := (extent / logicalExtent) * value
+	remainder := (extent % logicalExtent) * value
+	result := quotient + remainder/logicalExtent
+	if remainder%logicalExtent != 0 {
+		result++
+	}
+	return result
+}
+
+func min64(a, b int64) int64 {
+	if a < b {
+		return a
+	}
+	return b
+}
+
+func max64(a, b int64) int64 {
+	if a > b {
+		return a
+	}
+	return b
+}
+
+func saturatingAdd64(a, b int64) int64 {
+	const maxInt64 = int64(^uint64(0) >> 1)
+	const minInt64 = -maxInt64 - 1
+	if b > 0 && a > maxInt64-b {
+		return maxInt64
+	}
+	if b < 0 && a < minInt64-b {
+		return minInt64
+	}
+	return a + b
 }
