@@ -220,6 +220,33 @@ Prerequisites:
 Status:
 - Experimental tag. Keep this isolated from default CI until the broader Wayland-tagged compile path is fully stabilized in all environments.
 
+### `x11integration` (Pure-Go X11 input)
+
+Purpose:
+
+- Black-box validation of the Linux X11 input backend with `CGO_ENABLED=0`
+- Independent pointer-position checks through XGB
+- Real keyboard, pointer-button, and scroll delivery to a mapped X11 window
+- Capability/readiness probes plus deterministic `CloseMainDisplay` reconnect
+
+Command:
+
+```bash
+CGO_ENABLED=0 xvfb-run -a -s "-screen 0 1280x720x24 -nolisten tcp" \
+  env -u WAYLAND_DISPLAY go test -tags "x11integration" \
+  -run '^TestPureGoX11' -count=1 -timeout=30s -v .
+```
+
+Prerequisites:
+
+- Linux
+- `CGO_ENABLED=0`
+- An X11 server with the XTEST extension; `xvfb` and `xauth` are sufficient
+
+The suite skips cleanly when `DISPLAY` or XTEST is unavailable. The Linux
+non-CGO CI job runs it under Xvfb as a blocking gate, so a skip is not expected
+there.
+
 ## Useful Environment Variables
 
 - `WAYLAND_DISPLAY`

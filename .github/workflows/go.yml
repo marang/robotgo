@@ -137,6 +137,16 @@ jobs:
         env:
           CGO_ENABLED: "0"
         run: go test -tags ocr ./...
+      - name: Test Pure-Go X11 input with Xvfb
+        if: runner.os == 'Linux'
+        env:
+          CGO_ENABLED: "0"
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends xvfb xauth
+          xvfb-run -a -s "-screen 0 1280x720x24 -nolisten tcp" \
+            env -u WAYLAND_DISPLAY go test -tags x11integration \
+            -run '^TestPureGoX11' -count=1 -timeout=30s -v .
   ocr:
     runs-on: ubuntu-latest
     steps:
