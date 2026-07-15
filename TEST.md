@@ -23,8 +23,25 @@ go test -tags "ocr" ./...
 ```
 
 The non-CGO suite runs on Linux, macOS, and Windows in CI. It also verifies
-runtime build introspection and the hermetic Pure-Go capture dispatch for X11,
-Windows, and the Wayland screenshot portal.
+runtime build/feature introspection, pixel-color parity, and hermetic Pure-Go
+capture dispatch for CoreGraphics, X11, Windows, and the Wayland screenshot
+portal. macOS tests use fake CoreGraphics bindings for deterministic permission,
+pixel, bounds, and resource-lifecycle coverage; they do not require a Screen
+Recording grant.
+
+Opt-in macOS runtime capture benchmark:
+
+```bash
+ROBOTGO_CAPTURE_BENCHMARK=1 \
+  go test -run '^$' -bench BenchmarkCaptureImgRuntime -benchmem .
+CGO_ENABLED=0 ROBOTGO_CAPTURE_BENCHMARK=1 \
+  go test -run '^$' -bench BenchmarkCaptureImgRuntime -benchmem .
+```
+
+Run this from a GUI session after granting Screen Recording access to the test
+binary or terminal. Running the same benchmark with and without CGO provides a
+direct backend comparison. The hermetic macOS conversion benchmark is available
+without a real capture using `-bench BenchmarkDarwinCapturePipeline`.
 
 ## Special Test Suites (Build Tags)
 

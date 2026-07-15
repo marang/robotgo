@@ -13,14 +13,11 @@ package robotgo
 
 import (
 	"image"
-
-	// "github.com/kbinani/screenshot"
-	"github.com/vcaesar/screenshot"
 )
 
 // GetDisplayBounds gets the display screen bounds
 func GetDisplayBounds(i int) (x, y, w, h int) {
-	bs := screenshot.GetDisplayBounds(i)
+	bs := platformDisplayBounds(i)
 	return bs.Min.X, bs.Min.Y, bs.Dx(), bs.Dy()
 }
 
@@ -56,7 +53,7 @@ func Capture(args ...int) (*image.RGBA, error) {
 		return nil, err
 	}
 
-	return screenshot.Capture(x, y, w, h)
+	return platformCapture(x, y, w, h)
 }
 
 // SaveCapture capture screen and save the screenshot to image

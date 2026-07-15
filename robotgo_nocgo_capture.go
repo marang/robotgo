@@ -19,15 +19,14 @@ import (
 )
 
 const (
-	envCaptureDebug            = "ROBOTGO_CAPTURE_DEBUG"
-	envWaylandBackend          = "ROBOTGO_WAYLAND_BACKEND"
-	envForcePortal             = "ROBOTGO_FORCE_PORTAL"
-	envDisablePortal           = "ROBOTGO_DISABLE_PORTAL"
-	envXDGSessionType          = "XDG_SESSION_TYPE"
-	sessionTypeWayland         = "wayland"
-	waylandBackendPortalName   = "portal"
-	waylandBackendScreenCast   = "screencast"
-	capabilityBackendPureGoX11 = "pure-go-x11"
+	envCaptureDebug          = "ROBOTGO_CAPTURE_DEBUG"
+	envWaylandBackend        = "ROBOTGO_WAYLAND_BACKEND"
+	envForcePortal           = "ROBOTGO_FORCE_PORTAL"
+	envDisablePortal         = "ROBOTGO_DISABLE_PORTAL"
+	envXDGSessionType        = "XDG_SESSION_TYPE"
+	sessionTypeWayland       = "wayland"
+	waylandBackendPortalName = "portal"
+	waylandBackendScreenCast = "screencast"
 )
 
 var (
@@ -151,6 +150,8 @@ func pureGoScreenshotSupported(goos, goarch string) bool {
 		return false
 	}
 	switch goos {
+	case "darwin":
+		return goarch == "amd64" || goarch == "arm64"
 	case "windows", "linux", "freebsd", "openbsd", "netbsd":
 		return true
 	default:

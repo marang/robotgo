@@ -21,6 +21,25 @@ func TestGetRuntimeBackendInfo(t *testing.T) {
 	}
 }
 
+func TestGetRuntimeCapabilitiesIncludeBuildAndPortableHelpers(t *testing.T) {
+	capabilities := GetRuntimeCapabilities()
+	if runtime.GOOS == "linux" {
+		// Live Wayland capability probes may initialize reusable native protocol
+		// objects. Keep this cross-platform contract test isolated from tests that
+		// intentionally replace the display environment.
+		CloseWaylandInput()
+	}
+	if capabilities.Runtime != GetRuntimeBackendInfo() {
+		t.Fatalf("runtime capabilities build info = %+v, want %+v", capabilities.Runtime, GetRuntimeBackendInfo())
+	}
+	if !capabilities.Process.Available || capabilities.Process.Backend == "" {
+		t.Fatalf("process capability = %+v, want available backend", capabilities.Process)
+	}
+	if !capabilities.Clipboard.Available || capabilities.Clipboard.Backend == "" {
+		t.Fatalf("clipboard capability = %+v, want available backend", capabilities.Clipboard)
+	}
+}
+
 func TestGetRuntimeBackendInfoDetectsLinuxDisplayServerWithoutProbes(t *testing.T) {
 	if runtime.GOOS != "linux" {
 		t.Skip("Linux display-server detection test")
