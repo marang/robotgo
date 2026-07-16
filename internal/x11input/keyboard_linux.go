@@ -1,41 +1,31 @@
-//go:build linux && !cgo
+//go:build linux
 
-package robotgo
+package x11input
 
 import (
 	"errors"
 	"fmt"
 	"math"
-	"strconv"
-	"strings"
 	"time"
-	"unicode"
-	"unicode/utf8"
 
 	"github.com/jezek/xgb/xproto"
-	"github.com/jezek/xgb/xtest"
 )
 
-const (
-	x11KeysymF1 = 0xffbe
-)
-
-var x11KeyHoldDelay = 5 * time.Millisecond
-var x11BeforeTextTapHook func()
-
-var x11ModifierNames = map[string]struct{}{
-	"none": {},
-	"alt":  {}, "lalt": {}, "ralt": {},
-	"cmd": {}, "command": {}, "lcmd": {}, "rcmd": {},
-	"ctrl": {}, "control": {}, "lctrl": {}, "rctrl": {},
-	"shift": {}, "lshift": {}, "rshift": {}, "right_shift": {},
+// KeyEvent is a normalized X11 keysym transaction. Public key names and
+// aliases are resolved by the caller before entering the stateful core.
+type KeyEvent struct {
+	Keysym       uint32
+	Modifiers    []uint32
+	Down         bool
+	Tap          bool
+	AllowScratch bool
+	ForceScratch bool
 }
 
-var x11ShiftedSpecialKeys = map[rune]rune{
-	'`': '~', '1': '!', '2': '@', '3': '#', '4': '$', '5': '%',
-	'6': '^', '7': '&', '8': '*', '9': '(', '0': ')', '-': '_',
-	'=': '+', '[': '{', ']': '}', '\\': '|', ';': ':', '\'': '"',
-	',': '<', '.': '>', '/': '?',
+// TextEvent is one prevalidated text transaction expressed as X11 keysyms.
+type TextEvent struct {
+	Keysyms []uint32
+	Delay   time.Duration
 }
 
 type x11ResolvedKey struct {
@@ -59,7 +49,7 @@ type x11HeldKey struct {
 	modifiers []xproto.Keycode
 }
 
-func (backend *x11InputBackend) KeyboardReady() error {
+func (backend *Backend) KeyboardReady() error {
 	backend.mu.Lock()
 	defer backend.mu.Unlock()
 	if err := backend.openLocked(); err != nil {
@@ -71,20 +61,20 @@ func (backend *x11InputBackend) KeyboardReady() error {
 	return nil
 }
 
-func (backend *x11InputBackend) loadKeyboardMapLocked() error {
-	setup := xproto.Setup(backend.conn)
-	if setup == nil {
-		return errors.New("missing setup information")
+func (backend *Backend) loadKeyboardMapLocked() error {
+	setup, err := backend.conn.Setup()
+	if err != nil {
+		return errors.Join(errX11Connection, err)
 	}
 	count := int(setup.MaxKeycode) - int(setup.MinKeycode) + 1
 	if count <= 0 || count > math.MaxUint8 {
 		return fmt.Errorf("invalid keycode range %d..%d", setup.MinKeycode, setup.MaxKeycode)
 	}
-	reply, err := xproto.GetKeyboardMapping(backend.conn, setup.MinKeycode, byte(count)).Reply()
+	reply, err := backend.conn.KeyboardMapping(setup.MinKeycode, byte(count))
 	if err != nil {
 		return err
 	}
-	if reply == nil || reply.KeysymsPerKeycode == 0 {
+	if reply.KeysymsPerKeycode == 0 {
 		return errors.New("server returned an empty keyboard map")
 	}
 	expected := count * int(reply.KeysymsPerKeycode)
@@ -108,16 +98,13 @@ func (backend *x11InputBackend) loadKeyboardMapLocked() error {
 	return nil
 }
 
-func (backend *x11InputBackend) modifierKeycodesLocked() (map[xproto.Keycode]struct{}, error) {
-	reply, err := xproto.GetModifierMapping(backend.conn).Reply()
+func (backend *Backend) modifierKeycodesLocked() (map[xproto.Keycode]struct{}, error) {
+	keycodes, err := backend.conn.ModifierMapping()
 	if err != nil {
 		return nil, errors.Join(errX11Connection, err)
 	}
-	if reply == nil {
-		return nil, errors.Join(errX11Connection, errors.New("server returned an empty modifier map"))
-	}
 	modifiers := make(map[xproto.Keycode]struct{})
-	for _, code := range reply.Keycodes {
+	for _, code := range keycodes {
 		if code != 0 {
 			modifiers[code] = struct{}{}
 		}
@@ -203,30 +190,20 @@ func x11MappingOwnedBy(mapping []xproto.Keysym, keysym uint32) bool {
 	return true
 }
 
-func (backend *x11InputBackend) updateScratchStateLocked(keyboard *x11KeyboardMap) error {
+func (backend *Backend) updateScratchStateLocked(keyboard *x11KeyboardMap) error {
 	if !backend.scratchInitialized {
-		per := int(keyboard.perKeycode)
-		for offset := 0; offset+per <= len(keyboard.keysyms); offset += per {
-			code := keyboard.minimum + xproto.Keycode(offset/per)
-			if _, modifier := keyboard.modifiers[code]; modifier {
-				continue
-			}
-			if x11MappingIs(keyboard.keysyms[offset:offset+per], 0) {
-				backend.scratchSlots = append(backend.scratchSlots, x11ScratchSlot{
-					code: code,
-				})
-			}
-		}
-		backend.scratchInitialized = true
-		backend.scratchPerKeycode = keyboard.perKeycode
-		backend.scratchByKeysym = make(map[uint32]xproto.Keycode)
+		backend.initializeScratchStateLocked(keyboard)
 		return nil
 	}
 	if keyboard.perKeycode != backend.scratchPerKeycode {
+		if len(backend.scratchByKeysym) == 0 {
+			backend.initializeScratchStateLocked(keyboard)
+			return nil
+		}
 		return fmt.Errorf("X11 keysyms-per-keycode changed from %d to %d while RobotGo owns scratch mappings",
 			backend.scratchPerKeycode, keyboard.perKeycode)
 	}
-	kept := backend.scratchSlots[:0]
+	kept := make([]x11ScratchSlot, 0, len(backend.scratchSlots))
 	for _, slot := range backend.scratchSlots {
 		if _, modifier := keyboard.modifiers[slot.code]; modifier {
 			if slot.keysym != 0 {
@@ -253,8 +230,26 @@ func (backend *x11InputBackend) updateScratchStateLocked(keyboard *x11KeyboardMa
 	return nil
 }
 
-func x11ScratchMappingCanRestore(current *xproto.GetKeyboardMappingReply, keysym uint32) (byte, bool, error) {
-	if current == nil || current.KeysymsPerKeycode == 0 {
+func (backend *Backend) initializeScratchStateLocked(keyboard *x11KeyboardMap) {
+	per := int(keyboard.perKeycode)
+	slots := make([]x11ScratchSlot, 0)
+	for offset := 0; offset+per <= len(keyboard.keysyms); offset += per {
+		code := keyboard.minimum + xproto.Keycode(offset/per)
+		if _, modifier := keyboard.modifiers[code]; modifier {
+			continue
+		}
+		if x11MappingIs(keyboard.keysyms[offset:offset+per], 0) {
+			slots = append(slots, x11ScratchSlot{code: code})
+		}
+	}
+	backend.scratchInitialized = true
+	backend.scratchPerKeycode = keyboard.perKeycode
+	backend.scratchSlots = slots
+	backend.scratchByKeysym = make(map[uint32]xproto.Keycode)
+}
+
+func x11ScratchMappingCanRestore(current KeyboardMapping, keysym uint32) (byte, bool, error) {
+	if current.KeysymsPerKeycode == 0 {
 		return 0, false, errors.New("server returned an empty scratch-key mapping")
 	}
 	width := int(current.KeysymsPerKeycode)
@@ -264,7 +259,7 @@ func x11ScratchMappingCanRestore(current *xproto.GetKeyboardMappingReply, keysym
 	return current.KeysymsPerKeycode, x11MappingOwnedBy(current.Keysyms[:width], keysym), nil
 }
 
-func (backend *x11InputBackend) restoreScratchMappingsLocked() error {
+func (backend *Backend) restoreScratchMappingsLocked() error {
 	if backend.conn == nil || backend.scratchPerKeycode == 0 {
 		return nil
 	}
@@ -278,7 +273,7 @@ func (backend *x11InputBackend) restoreScratchMappingsLocked() error {
 			if slot.keysym == 0 {
 				continue
 			}
-			current, err := xproto.GetKeyboardMapping(backend.conn, slot.code, 1).Reply()
+			current, err := backend.conn.KeyboardMapping(slot.code, 1)
 			if err != nil {
 				restoreErr = errors.Join(restoreErr, errX11Connection,
 					fmt.Errorf("query X11 scratch keycode %d during cleanup: %w", slot.code, err))
@@ -320,9 +315,7 @@ func (backend *x11InputBackend) restoreScratchMappingsLocked() error {
 				continue
 			}
 			empty := make([]xproto.Keysym, int(width))
-			if err := xproto.ChangeKeyboardMappingChecked(
-				backend.conn, 1, slot.code, width, empty,
-			).Check(); err != nil {
+			if err := backend.conn.ChangeKeyboardMapping(slot.code, width, empty); err != nil {
 				restoreErr = errors.Join(restoreErr, errX11Connection,
 					fmt.Errorf("restore X11 scratch keycode %d: %w", slot.code, err))
 				continue
@@ -334,34 +327,12 @@ func (backend *x11InputBackend) restoreScratchMappingsLocked() error {
 	})
 }
 
-func x11KeysymForKey(key string) (uint32, error) {
-	if key == "" || !utf8.ValidString(key) {
-		return 0, fmt.Errorf("%w: invalid X11 keyboard key %q", ErrNotSupported, key)
-	}
-	if named, ok := portalNamedKeysyms[strings.ToLower(key)]; ok {
-		return uint32(named), nil
-	}
-	lower := strings.ToLower(key)
-	if strings.HasPrefix(lower, "f") {
-		number, err := strconv.Atoi(strings.TrimPrefix(lower, "f"))
-		if err == nil && number >= 1 && number <= 24 {
-			return x11KeysymF1 + uint32(number-1), nil
-		}
-	}
-	if utf8.RuneCountInString(key) == 1 {
-		value, _ := utf8.DecodeRuneInString(key)
-		keysym, err := portalKeysymForRune(value)
-		return uint32(keysym), err
-	}
-	return 0, fmt.Errorf("%w: X11 keyboard key %q", ErrNotSupported, key)
-}
-
-func (backend *x11InputBackend) sendKeyLocked(code xproto.Keycode, down bool) error {
+func (backend *Backend) sendKeyLocked(code xproto.Keycode, down bool) error {
 	eventType := byte(xproto.KeyRelease)
 	if down {
 		eventType = byte(xproto.KeyPress)
 	}
-	if err := xtest.FakeInputChecked(backend.conn, eventType, byte(code), 0, backend.root, 0, 0, 0).Check(); err != nil {
+	if err := backend.conn.FakeInput(eventType, byte(code), backend.root, 0, 0); err != nil {
 		return errors.Join(errX11Connection, err)
 	}
 	return nil
@@ -379,26 +350,19 @@ func appendUniqueKeycode(codes []xproto.Keycode, code xproto.Keycode) []xproto.K
 	return append(codes, code)
 }
 
-func (backend *x11InputBackend) modifierCodesLocked(names []string) ([]xproto.Keycode, error) {
-	codes := make([]xproto.Keycode, 0, len(names)+2)
-	for _, name := range names {
-		if strings.EqualFold(name, "none") {
-			continue
-		}
-		keysym, err := x11KeysymForKey(name)
-		if err != nil {
-			return nil, err
-		}
+func (backend *Backend) modifierCodesLocked(keysyms []uint32) ([]xproto.Keycode, error) {
+	codes := make([]xproto.Keycode, 0, len(keysyms)+2)
+	for _, keysym := range keysyms {
 		modifier, ok := backend.keyboard.resolveModifier(keysym)
 		if !ok {
-			return nil, fmt.Errorf("%w: modifier %q is absent from the active X11 keymap", ErrNotSupported, name)
+			return nil, fmt.Errorf("%w: modifier keysym %#x is absent from the active X11 modifier map", ErrUnsupported, keysym)
 		}
 		codes = appendUniqueKeycode(codes, modifier.code)
 	}
 	return codes, nil
 }
 
-func (backend *x11InputBackend) reserveScratchMappingsLocked(keysyms []uint32) error {
+func (backend *Backend) reserveScratchMappingsLocked(keysyms []uint32) error {
 	return backend.withServerGrabLocked(func() error {
 		// Refresh after grabbing the server. Another client may have claimed an
 		// originally empty keycode before this transaction; never overwrite it.
@@ -409,7 +373,7 @@ func (backend *x11InputBackend) reserveScratchMappingsLocked(keysyms []uint32) e
 	})
 }
 
-func (backend *x11InputBackend) reserveScratchMappingsUnderGrabLocked(keysyms []uint32) error {
+func (backend *Backend) reserveScratchMappingsUnderGrabLocked(keysyms []uint32) error {
 	pressed, err := backend.pressedKeysLocked()
 	if err != nil {
 		return err
@@ -428,7 +392,7 @@ func (backend *x11InputBackend) reserveScratchMappingsUnderGrabLocked(keysyms []
 	return nil
 }
 
-func (backend *x11InputBackend) validateScratchCapacityLocked(keysyms []uint32, pressed []byte) error {
+func (backend *Backend) validateScratchCapacityLocked(keysyms []uint32, pressed []byte) error {
 	missing := make(map[uint32]struct{}, len(keysyms))
 	for _, keysym := range keysyms {
 		if _, assigned := backend.scratchByKeysym[keysym]; !assigned {
@@ -443,12 +407,12 @@ func (backend *x11InputBackend) validateScratchCapacityLocked(keysyms []uint32, 
 	}
 	if len(missing) > available {
 		return fmt.Errorf("%w: X11 keyboard input requires %d new stable scratch keycodes, but only %d are available; call CloseMainDisplayE after the target has processed prior keyboard input to reset the pool",
-			ErrNotSupported, len(missing), available)
+			ErrUnsupported, len(missing), available)
 	}
 	return nil
 }
 
-func (backend *x11InputBackend) assignScratchMappingLocked(keysym uint32, pressed []byte) (xproto.Keycode, error) {
+func (backend *Backend) assignScratchMappingLocked(keysym uint32, pressed []byte) (xproto.Keycode, error) {
 	if code, assigned := backend.scratchByKeysym[keysym]; assigned {
 		return code, nil
 	}
@@ -461,9 +425,9 @@ func (backend *x11InputBackend) assignScratchMappingLocked(keysym uint32, presse
 		for column := range replacement {
 			replacement[column] = xproto.Keysym(keysym)
 		}
-		if err := xproto.ChangeKeyboardMappingChecked(
-			backend.conn, 1, slot.code, backend.keyboard.perKeycode, replacement,
-		).Check(); err != nil {
+		if err := backend.conn.ChangeKeyboardMapping(
+			slot.code, backend.keyboard.perKeycode, replacement,
+		); err != nil {
 			return 0, errors.Join(errX11Connection, err)
 		}
 		slot.keysym = keysym
@@ -475,19 +439,19 @@ func (backend *x11InputBackend) assignScratchMappingLocked(keysym uint32, presse
 		copy(mapping, replacement)
 		return slot.code, nil
 	}
-	return 0, fmt.Errorf("%w: no stable X11 scratch keycode is available", ErrNotSupported)
+	return 0, fmt.Errorf("%w: no stable X11 scratch keycode is available", ErrUnsupported)
 }
 
 // prepareKeysymUnderGrabLocked must run while this X client owns the server
 // grab and after loadKeyboardMapLocked refreshed the global keymap.
-func (backend *x11InputBackend) prepareKeysymUnderGrabLocked(keysym uint32, allowScratch, forceScratch bool) (x11ResolvedKey, error) {
+func (backend *Backend) prepareKeysymUnderGrabLocked(keysym uint32, allowScratch, forceScratch bool) (x11ResolvedKey, error) {
 	if !forceScratch {
 		if resolved, ok := backend.keyboard.resolve(keysym); ok {
 			return resolved, nil
 		}
 	}
 	if !allowScratch {
-		return x11ResolvedKey{}, fmt.Errorf("%w: keysym %#x has no unambiguous mapping in the active X11 keymap", ErrNotSupported, keysym)
+		return x11ResolvedKey{}, fmt.Errorf("%w: keysym %#x has no unambiguous mapping in the active X11 keymap", ErrUnsupported, keysym)
 	}
 	if err := backend.reserveScratchMappingsUnderGrabLocked([]uint32{keysym}); err != nil {
 		return x11ResolvedKey{}, err
@@ -495,65 +459,15 @@ func (backend *x11InputBackend) prepareKeysymUnderGrabLocked(keysym uint32, allo
 	return x11ResolvedKey{code: backend.scratchByKeysym[keysym]}, nil
 }
 
-func x11LiteralKey(key string) bool {
-	if !utf8.ValidString(key) {
-		return false
-	}
-	if _, named := portalNamedKeysyms[strings.ToLower(key)]; named {
-		return false
-	}
-	if utf8.RuneCountInString(key) != 1 {
-		return false
-	}
-	_, size := utf8.DecodeRuneInString(key)
-	return size > 0
-}
-
-func validateX11KeyEvent(event pureGoKeyEvent) error {
-	if !event.Tap && event.Down && x11LiteralKey(event.Key) {
-		return fmt.Errorf("%w: Pure-Go X11 cannot safely hold literal keys across XKB layout groups; use KeyTap, KeyPress, or a named key", ErrNotSupported)
-	}
-	for _, modifier := range event.Modifiers {
-		if _, supported := x11ModifierNames[strings.ToLower(modifier)]; !supported {
-			return fmt.Errorf("%w: Pure-Go X11 modifier %q is not a supported modifier key", ErrNotSupported, modifier)
-		}
-	}
-	return nil
-}
-
-func x11EventKeysym(event pureGoKeyEvent) (uint32, error) {
-	key := event.Key
-	if x11LiteralKey(key) && x11EventHasShift(event.Modifiers) {
-		value, _ := utf8.DecodeRuneInString(key)
-		if shifted, ok := x11ShiftedSpecialKeys[value]; ok {
-			value = shifted
-		} else {
-			value = unicode.ToUpper(value)
-		}
-		key = string(value)
-	}
-	return x11KeysymForKey(key)
-}
-
-func x11EventHasShift(modifiers []string) bool {
-	for _, modifier := range modifiers {
-		switch strings.ToLower(modifier) {
-		case "shift", "lshift", "rshift", "right_shift":
-			return true
-		}
-	}
-	return false
-}
-
-func (backend *x11InputBackend) pressedKeysLocked() ([]byte, error) {
-	reply, err := xproto.QueryKeymap(backend.conn).Reply()
+func (backend *Backend) pressedKeysLocked() ([]byte, error) {
+	keys, err := backend.conn.PressedKeys()
 	if err != nil {
 		return nil, errors.Join(errX11Connection, err)
 	}
-	if reply == nil || len(reply.Keys) != 32 {
+	if len(keys) != 32 {
 		return nil, errors.Join(errX11Connection, errors.New("X11 returned an invalid pressed-key map"))
 	}
-	return reply.Keys, nil
+	return keys, nil
 }
 
 func x11KeycodePressed(keys []byte, code xproto.Keycode) bool {
@@ -561,7 +475,7 @@ func x11KeycodePressed(keys []byte, code xproto.Keycode) bool {
 	return index < len(keys) && keys[index]&(1<<uint(code%8)) != 0
 }
 
-func (backend *x11InputBackend) acquireModifierLocked(code xproto.Keycode, pressed []byte) (bool, error) {
+func (backend *Backend) acquireModifierLocked(code xproto.Keycode, pressed []byte) (bool, error) {
 	if backend.keyRefs == nil {
 		backend.keyRefs = make(map[xproto.Keycode]int)
 	}
@@ -580,7 +494,7 @@ func (backend *x11InputBackend) acquireModifierLocked(code xproto.Keycode, press
 	return true, nil
 }
 
-func (backend *x11InputBackend) acquireMainKeyLocked(code xproto.Keycode, pressed []byte) error {
+func (backend *Backend) acquireMainKeyLocked(code xproto.Keycode, pressed []byte) error {
 	if backend.keyRefs[code] > 0 || x11KeycodePressed(pressed, code) {
 		return fmt.Errorf("robotgo: X11 keycode %d is already held; refusing to alter foreign input state", code)
 	}
@@ -595,7 +509,7 @@ func (backend *x11InputBackend) acquireMainKeyLocked(code xproto.Keycode, presse
 	return nil
 }
 
-func (backend *x11InputBackend) releaseOwnedKeyLocked(code xproto.Keycode) error {
+func (backend *Backend) releaseOwnedKeyLocked(code xproto.Keycode) error {
 	refs := backend.keyRefs[code]
 	if refs <= 0 {
 		return nil
@@ -624,7 +538,7 @@ func removeX11Keycode(codes []xproto.Keycode, code xproto.Keycode) []xproto.Keyc
 	return codes
 }
 
-func (backend *x11InputBackend) releaseOwnedModifiersLocked(codes []xproto.Keycode) error {
+func (backend *Backend) releaseOwnedModifiersLocked(codes []xproto.Keycode) error {
 	var releaseErr error
 	for index := len(codes) - 1; index >= 0; index-- {
 		releaseErr = errors.Join(releaseErr, backend.releaseOwnedKeyLocked(codes[index]))
@@ -632,7 +546,7 @@ func (backend *x11InputBackend) releaseOwnedModifiersLocked(codes []xproto.Keyco
 	return releaseErr
 }
 
-func (backend *x11InputBackend) acquireModifiersLocked(codes []xproto.Keycode, pressed []byte) ([]xproto.Keycode, error) {
+func (backend *Backend) acquireModifiersLocked(codes []xproto.Keycode, pressed []byte) ([]xproto.Keycode, error) {
 	owned := make([]xproto.Keycode, 0, len(codes))
 	for _, code := range codes {
 		acquired, err := backend.acquireModifierLocked(code, pressed)
@@ -646,7 +560,7 @@ func (backend *x11InputBackend) acquireModifiersLocked(codes []xproto.Keycode, p
 	return owned, nil
 }
 
-func (backend *x11InputBackend) tapResolvedLocked(resolved x11ResolvedKey, modifierCodes []xproto.Keycode) error {
+func (backend *Backend) tapResolvedLocked(resolved x11ResolvedKey, modifierCodes []xproto.Keycode) error {
 	pressed, err := backend.pressedKeysLocked()
 	if err != nil {
 		return err
@@ -658,13 +572,13 @@ func (backend *x11InputBackend) tapResolvedLocked(resolved x11ResolvedKey, modif
 	mainDown := backend.acquireMainKeyLocked(resolved.code, pressed)
 	var mainUp error
 	if mainDown == nil {
-		time.Sleep(x11KeyHoldDelay)
+		backend.config.Sleep(backend.config.KeyHoldDelay)
 		mainUp = backend.releaseOwnedKeyLocked(resolved.code)
 	}
 	return errors.Join(mainDown, mainUp, backend.releaseOwnedModifiersLocked(ownedModifiers))
 }
 
-func (backend *x11InputBackend) tapKeysymLocked(keysym uint32, modifiers []string, allowScratch, forceScratch bool) error {
+func (backend *Backend) tapKeysymLocked(keysym uint32, modifiers []uint32, allowScratch, forceScratch bool) error {
 	return backend.withServerGrabLocked(func() error {
 		if err := backend.loadKeyboardMapLocked(); err != nil {
 			return errors.Join(errX11KeyboardMap, err)
@@ -681,7 +595,7 @@ func (backend *x11InputBackend) tapKeysymLocked(keysym uint32, modifiers []strin
 	})
 }
 
-func (backend *x11InputBackend) toggleDownResolvedLocked(keysym uint32, resolved x11ResolvedKey, modifierCodes []xproto.Keycode) error {
+func (backend *Backend) toggleDownResolvedLocked(keysym uint32, resolved x11ResolvedKey, modifierCodes []xproto.Keycode) error {
 	if backend.heldKeys != nil {
 		if _, held := backend.heldKeys[keysym]; held {
 			return nil
@@ -705,7 +619,7 @@ func (backend *x11InputBackend) toggleDownResolvedLocked(keysym uint32, resolved
 	return nil
 }
 
-func (backend *x11InputBackend) toggleDownKeysymLocked(keysym uint32, modifiers []string) error {
+func (backend *Backend) toggleDownKeysymLocked(keysym uint32, modifiers []uint32) error {
 	return backend.withServerGrabLocked(func() error {
 		if err := backend.loadKeyboardMapLocked(); err != nil {
 			return errors.Join(errX11KeyboardMap, err)
@@ -722,7 +636,7 @@ func (backend *x11InputBackend) toggleDownKeysymLocked(keysym uint32, modifiers 
 	})
 }
 
-func (backend *x11InputBackend) toggleUpLocked(keysym uint32) error {
+func (backend *Backend) toggleUpLocked(keysym uint32) error {
 	held, ok := backend.heldKeys[keysym]
 	if !ok {
 		return fmt.Errorf("robotgo: X11 key %#x is not held by this RobotGo backend", keysym)
@@ -737,17 +651,8 @@ func (backend *x11InputBackend) toggleUpLocked(keysym uint32) error {
 	return err
 }
 
-func (backend *x11InputBackend) Key(event pureGoKeyEvent) (err error) {
-	if event.PID != 0 {
-		return fmt.Errorf("%w: Pure-Go X11 input cannot target a process", ErrNotSupported)
-	}
-	if err := validateX11KeyEvent(event); err != nil {
-		return err
-	}
-	keysym, err := x11EventKeysym(event)
-	if err != nil {
-		return err
-	}
+func (backend *Backend) Key(event KeyEvent) (err error) {
+	keysym := event.Keysym
 	backend.mu.Lock()
 	defer backend.mu.Unlock()
 	if err := backend.openLocked(); err != nil {
@@ -761,7 +666,7 @@ func (backend *x11InputBackend) Key(event pureGoKeyEvent) (err error) {
 		return err
 	}
 	if event.Tap {
-		err = backend.tapKeysymLocked(keysym, event.Modifiers, true, x11LiteralKey(event.Key))
+		err = backend.tapKeysymLocked(keysym, event.Modifiers, event.AllowScratch, event.ForceScratch)
 	} else {
 		err = backend.toggleDownKeysymLocked(keysym, event.Modifiers)
 	}
@@ -771,37 +676,24 @@ func (backend *x11InputBackend) Key(event pureGoKeyEvent) (err error) {
 	return err
 }
 
-func (backend *x11InputBackend) Text(event pureGoTextEvent) (err error) {
-	if event.PID != 0 {
-		return fmt.Errorf("%w: Pure-Go X11 input cannot target a process", ErrNotSupported)
-	}
+func (backend *Backend) Text(event TextEvent) (err error) {
 	if event.Delay < 0 {
 		return errors.New("robotgo: text delay must be non-negative")
-	}
-	if !utf8.ValidString(event.Text) {
-		return errors.New("robotgo: text is not valid UTF-8")
 	}
 	backend.mu.Lock()
 	defer backend.mu.Unlock()
 	if err := backend.openLocked(); err != nil {
 		return err
 	}
-	keysyms := make([]uint32, 0, utf8.RuneCountInString(event.Text))
-	for _, value := range event.Text {
-		keysym, keysymErr := portalKeysymForRune(value)
-		if keysymErr != nil {
-			return keysymErr
-		}
-		keysyms = append(keysyms, uint32(keysym))
-	}
+	keysyms := append([]uint32(nil), event.Keysyms...)
 	if reserveErr := backend.reserveScratchMappingsLocked(keysyms); reserveErr != nil {
 		if errors.Is(reserveErr, errX11Connection) || errors.Is(reserveErr, errX11KeyboardMap) {
 			return backend.failLocked("prepare Unicode keyboard mappings", reserveErr)
 		}
 		return reserveErr
 	}
-	if x11BeforeTextTapHook != nil {
-		x11BeforeTextTapHook()
+	if backend.beforeTextTap != nil {
+		backend.beforeTextTap()
 	}
 	for _, keysym := range keysyms {
 		tapErr := backend.tapKeysymLocked(keysym, nil, true, true)
@@ -812,7 +704,7 @@ func (backend *x11InputBackend) Text(event pureGoTextEvent) (err error) {
 			}
 			return err
 		}
-		MilliSleep(event.Delay)
+		backend.config.Sleep(event.Delay)
 	}
 	return nil
 }

@@ -104,8 +104,14 @@ Window backend support matrix (current):
     configured-display lifecycle/target, live XTEST readiness, and an XTEST-disabled negative
     contract. A versioned decision-grade sample retains native CGO as the X11
     default while keeping Pure-Go supported for CGO-disabled builds. Protecting
-    the checks, making the Pure-Go core race-testable and its scratch-map
-    lifecycle crash-safe, and evaluating further backends remain open.
+    the checks, collecting current guardian-path performance evidence, and
+    evaluating further backends remain open. The Pure-Go core is now
+    race-testable, and a separate X11 guardian uses an authenticated abstract
+    Unix socket with kernel-verified peer credentials, bounded request dispatch,
+    and deadline-bounded cleanup after an application-process `SIGKILL`. It
+    releases owned input and restores only an exact unchanged, unpressed,
+    non-modifier scratch claim. Foreign final images are preserved; exact-image
+    ABA replacement is not observable in X11.
   - 6. Publish versioned compatibility data and expand diagnostics with
     protocol versions, permissions, and actionable remediation.
   - 7. Promote race/vet and native leak/sanitizer checks to blocking release
@@ -168,8 +174,10 @@ Window backend support matrix (current):
     smoke green, including the native XTEST-disabled negative contract and
     display-lifecycle stress; the resulting remote checks still need branch
     protection.
-  - Extract the Pure-Go X11 core into a race-testable package and design a
-    scoped or crash-safe lifecycle for its server-global keyboard scratch map.
+  - Keep the extracted Pure-Go X11 core in the blocking race job and its
+    guardian-backed application-`SIGKILL` recovery in the non-skipping Xvfb
+    manifest; guardian/host/X-server loss and X11 transport stalls beyond the
+    cleanup deadline remain outside that scoped guarantee.
   - Provision the existing dedicated GNOME, KDE, and wlroots runtime workflow.
   - Keep the race/vet CI jobs green and protect them; add leak/sanitizer and
     bounds-across-outputs gates.

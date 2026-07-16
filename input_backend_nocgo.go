@@ -75,7 +75,8 @@ func pureGoInputCapabilities() (keyboard, mouse FeatureCapability) {
 		Notes:     "call MouseReady for a live backend check; capability inspection does not open a display connection",
 	}
 	if backendName == featureBackendPureGoX11 {
-		keyboard.Notes += "; key taps and text may use server-global scratch keycodes: call CloseMainDisplayE after targets process all prior keyboard input; abnormal termination can leave mappings behind"
+		keyboard.Notes += "; key taps and text may use server-global scratch keycodes: call CloseMainDisplayE after targets process all prior keyboard input; a separate Pure-Go guardian performs bounded crash cleanup and restores only exact unchanged, unpressed, non-modifier scratch claims"
+		mouse.Notes += "; vertical scrolling is supported; horizontal scrolling returns ErrNotSupported because core XTEST button 6/7 state is not safely observable"
 		if pureGoX11EnvironmentConflict() {
 			reason := envXDGSessionType + " selects Wayland while DISPLAY selects X11"
 			keyboard.Available, keyboard.Reason = false, reason

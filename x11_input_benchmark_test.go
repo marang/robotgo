@@ -92,11 +92,6 @@ func BenchmarkX11InputRuntime(b *testing.B) {
 			return robotgo.ScrollE(0, 1, 0)
 		})
 	})
-	b.Run("ScrollHorizontal1", func(b *testing.B) {
-		benchmarkX11Operation(b, harness, func(_ int) error {
-			return robotgo.ScrollE(1, 0, 0)
-		})
-	})
 	b.Run("KeyTogglePairEnter", func(b *testing.B) {
 		benchmarkX11Operation(b, harness, func(_ int) error {
 			if err := robotgo.KeyToggle("enter", "down"); err != nil {

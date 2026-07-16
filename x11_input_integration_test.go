@@ -44,6 +44,7 @@ func (h *x11InputHarness) findEmptyNonModifierKeycode() (xproto.Keycode, []xprot
 	setup := xproto.Setup(h.conn)
 	if setup == nil {
 		h.t.Fatal("X11 connection has no setup while finding an empty keycode")
+		return 0, nil
 	}
 	count := int(setup.MaxKeycode) - int(setup.MinKeycode) + 1
 	reply, err := xproto.GetKeyboardMapping(h.conn, setup.MinKeycode, byte(count)).Reply()
@@ -104,6 +105,7 @@ func (h *x11InputHarness) keymapContains(keysym uint32) bool {
 	setup := xproto.Setup(h.conn)
 	if setup == nil {
 		h.t.Fatal("X11 connection has no setup while scanning the keymap")
+		return false
 	}
 	count := int(setup.MaxKeycode) - int(setup.MinKeycode) + 1
 	reply, err := xproto.GetKeyboardMapping(h.conn, setup.MinKeycode, byte(count)).Reply()
@@ -155,6 +157,20 @@ func TestPureGoX11PointerInput(t *testing.T) {
 	if err := robotgo.Toggle("wheelLeft", "down"); !errors.Is(err, robotgo.ErrNotSupported) {
 		t.Fatalf("persistent horizontal-wheel toggle error = %v, want ErrNotSupported", err)
 	}
+	for _, operation := range []struct {
+		name string
+		run  func() error
+	}{
+		{name: "wheel-left click", run: func() error { return robotgo.ClickE("wheelLeft") }},
+		{name: "wheel-right click", run: func() error { return robotgo.ClickE("wheelRight") }},
+		{name: "horizontal scroll", run: func() error { return robotgo.ScrollE(1, 0, 0) }},
+		{name: "mixed-axis scroll", run: func() error { return robotgo.ScrollE(-1, 1, 0) }},
+	} {
+		if err := operation.run(); !errors.Is(err, robotgo.ErrNotSupported) {
+			t.Fatalf("%s error = %v, want ErrNotSupported", operation.name, err)
+		}
+	}
+	harness.assertNoInputEvent("input event from rejected Pure-Go horizontal-wheel operation", 100*time.Millisecond)
 	const targetX, targetY = 180, 170
 	if err := robotgo.MoveE(targetX, targetY); err != nil {
 		t.Fatalf("MoveE: %v", err)
@@ -219,16 +235,14 @@ func TestPureGoX11PointerInput(t *testing.T) {
 		t.Fatalf("right-button up events = %+v, want %+v", got, want)
 	}
 
-	if err := robotgo.ScrollE(1, 1, 0); err != nil {
+	if err := robotgo.ScrollE(0, 1, 0); err != nil {
 		t.Fatalf("ScrollE: %v", err)
 	}
-	if got, want := harness.waitForButtonEvents(4), []x11ButtonEvent{
-		{pressed: true, button: x11ButtonWheelLeft},
-		{button: x11ButtonWheelLeft},
+	if got, want := harness.waitForButtonEvents(2), []x11ButtonEvent{
 		{pressed: true, button: x11ButtonWheelUp},
 		{button: x11ButtonWheelUp},
 	}; !reflect.DeepEqual(got, want) {
-		t.Fatalf("scroll events = %+v, want %+v", got, want)
+		t.Fatalf("vertical scroll events = %+v, want %+v", got, want)
 	}
 	if err := robotgo.Toggle("wheelUp", "down"); err != nil {
 		t.Fatalf("hold wheel button before ScrollE: %v", err)
