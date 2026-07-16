@@ -4,6 +4,7 @@ import (
 	"errors"
 	"math"
 	"reflect"
+	"runtime"
 	"testing"
 )
 
@@ -194,6 +195,9 @@ func TestPublicInputValidationRunsBeforeBackendSelection(t *testing.T) {
 }
 
 func TestGetLocationColorPropagatesWaylandLocationError(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("Wayland location failure is Linux-specific")
+	}
 	t.Setenv(envWaylandDisplay, "robotgo-location-color-test")
 	t.Setenv(envDisplay, "")
 	color, err := GetLocationColor()
