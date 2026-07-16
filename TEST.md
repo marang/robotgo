@@ -82,7 +82,7 @@ must be new, empty, or contain its valid evidence sentinel. The run starts with
 a complete status only after all behavior and benchmark checks pass. Only a
 clean detached snapshot with at least five balanced cycles and a duration of at
 least `500ms`, expressed as integer milliseconds, seconds, minutes, or hours,
-is marked decision-grade. It also requires 11 matching benchmark
+is marked decision-grade. It also requires 10 matching benchmark
 names in both outputs, the expected sample count, and `ns/op`, `B/op`, and
 `allocs/op` for every result. The generated summary identifies the commit and
 measurement setup and labels CI smoke data as report-only. Use full results for
@@ -314,6 +314,12 @@ Purpose:
 - Preservation of keys and pointer buttons held by another X11 client
 - Event-drain stress coverage plus deterministic owned-input release,
   error-reporting `CloseMainDisplayE`, mapping restoration, and lazy reconnect
+- A real application-process `SIGKILL` test: a separately re-executed workload
+  leaves Unicode scratch state plus a held key/button behind, while the
+  surviving Pure-Go guardian must restore the canonical core map, modifier map,
+  XKB description, key state, pointer state, and button mask. The emergency
+  test cleanup is claim-bounded: it restores only an exact unchanged scratch
+  final image that is unpressed and absent from the modifier map
 - Side-effect-free capability selection plus explicit readiness probes against
   the live X server
 - Adversarial replacement of a reserved mapping before injection; the default
@@ -339,6 +345,14 @@ CGO_ENABLED=0 ROBOTGO_REQUIRE_X11_INTEGRATION=1 \
   '
 ```
 
+The extracted core is also exercised with the Linux race detector in a normal
+CGO-enabled test process; the production backend remains a `CGO_ENABLED=0`
+implementation:
+
+```bash
+go test -race -count=20 -timeout=2m ./internal/x11input
+```
+
 Native missing-XTEST contract:
 
 ```bash
@@ -361,8 +375,17 @@ Prerequisites:
 - CGO-enabled builds need X11/XTest development files; the deep Pure-Go suite
   uses `CGO_ENABLED=0`
 - An X11 server with XTEST 2.2 or newer
-- `xvfb`, `xauth`, `setxkbmap` (Debian/Ubuntu package `x11-xkb-utils`),
-  `xkbcli` (`libxkbcommon-tools`), and `stdbuf` (`coreutils`)
+- `xvfb`, `xauth`, `setxkbmap` and `xkbcomp` (Debian/Ubuntu package
+  `x11-xkb-utils`), `xkbcli` (`libxkbcommon-tools`), and `stdbuf` (`coreutils`)
+- A mounted, readable Linux procfs with an executable `/proc/self/exe`; the
+  runtime sandbox/service must permit re-executing the current test/program,
+  Linux abstract Unix sockets, and `SO_PEERCRED` peer verification. Dependency
+  initializers that run before RobotGo's guardian initializer must not block or
+  terminate the re-executed helper
+- The crash proof additionally needs Linux child-subreaper support and readable
+  `/proc/<pid>/task/<tid>/children` files so it can verify the exact guardian
+  child is adopted, exits successfully, and is reaped. Normal guardian runtime
+  cleanup does not inspect that child-listing file
 
 Without `ROBOTGO_REQUIRE_X11_INTEGRATION=1`, the normal suite skips cleanly when
 `DISPLAY` or XTEST is unavailable. Linux CI sets that variable, configures both
@@ -371,6 +394,17 @@ The explicit missing-XTEST test is the exception: it requires a reachable X
 server and expects the XTEST probe to fail. The tagged suite verifies the active
 `us,de` layout itself; the default non-CGO unit suite separately proves that a
 Wayland-primary session never selects this backend through implicit Xwayland.
+The crash contract covers termination of the application process while its
+guardian and X server continue running and respond within the bounded cleanup
+deadline. Scratch restoration requires the current mapping to equal the exact
+recorded final image and the keycode to be unpressed and non-modifier. Foreign
+final images are preserved; an ABA change that returns to the same exact image
+cannot be detected by the X11 protocol. A simultaneous guardian/container/host
+kill, X-server loss, or pathologically blocked X11 transport cannot provide
+synchronous restoration. Normal dispatch and cleanup have independent
+deadlines; the parent kills and reaps a helper that does not exit afterward.
+Explicit `CloseMainDisplayE` reports actionable cleanup/transport failures;
+intentionally preserving a foreign replacement is not itself an error.
 
 ## Useful Environment Variables
 

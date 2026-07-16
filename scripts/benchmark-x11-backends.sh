@@ -44,6 +44,7 @@ readonly -a PUREGO_ONLY_BEHAVIOR_TESTS=(
 	'TestPureGoX11PointerInput'
 	'TestPureGoX11KeyboardInput'
 	'TestPureGoX11TextReachesDelayedXKBClient'
+	'TestPureGoX11CrashRestoresScratchAndOwnedInput'
 	'TestPureGoX11ExplicitShiftReachesXKBClient'
 	'TestPureGoX11ScratchReservationSkipsPressedEmptyKeycode'
 	'TestPureGoX11ScratchCleanupCanRetryAfterForeignRelease'
@@ -66,7 +67,6 @@ readonly -a EXPECTED_BENCHMARK_NAMES=(
 	'BenchmarkX11InputRuntime/ButtonTogglePair'
 	'BenchmarkX11InputRuntime/ClickLeft'
 	'BenchmarkX11InputRuntime/ScrollVertical1'
-	'BenchmarkX11InputRuntime/ScrollHorizontal1'
 	'BenchmarkX11InputRuntime/KeyTogglePairEnter'
 	'BenchmarkX11InputRuntime/KeyPressEnter'
 	'BenchmarkX11InputRuntime/TypeASCII8'
@@ -606,6 +606,7 @@ require_command git
 require_command xvfb-run
 require_command Xvfb
 require_command setxkbmap
+require_command xkbcomp
 require_command tee
 require_command pkg-config
 

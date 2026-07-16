@@ -1,6 +1,6 @@
-//go:build linux && !cgo
+//go:build linux
 
-package robotgo
+package x11input
 
 import (
 	"errors"
@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/jezek/xgb/xproto"
-	"github.com/jezek/xgb/xtest"
 )
 
 const (
@@ -20,16 +19,27 @@ const (
 )
 
 const (
-	x11ButtonLeft       byte = 1
-	x11ButtonMiddle     byte = 2
-	x11ButtonRight      byte = 3
-	x11ButtonWheelUp    byte = 4
-	x11ButtonWheelDown  byte = 5
-	x11ButtonWheelLeft  byte = 6
-	x11ButtonWheelRight byte = 7
+	ButtonLeft       Button = 1
+	ButtonMiddle     Button = 2
+	ButtonRight      Button = 3
+	ButtonWheelUp    Button = 4
+	ButtonWheelDown  Button = 5
+	ButtonWheelLeft  Button = 6
+	ButtonWheelRight Button = 7
+
+	x11ButtonLeft       = ButtonLeft
+	x11ButtonMiddle     = ButtonMiddle
+	x11ButtonRight      = ButtonRight
+	x11ButtonWheelUp    = ButtonWheelUp
+	x11ButtonWheelDown  = ButtonWheelDown
+	x11ButtonWheelLeft  = ButtonWheelLeft
+	x11ButtonWheelRight = ButtonWheelRight
 )
 
-func (backend *x11InputBackend) MouseReady() error {
+// Button is an X11 core pointer-button number.
+type Button = byte
+
+func (backend *Backend) MouseReady() error {
 	backend.mu.Lock()
 	defer backend.mu.Unlock()
 	if err := backend.openLocked(); err != nil {
@@ -39,27 +49,6 @@ func (backend *x11InputBackend) MouseReady() error {
 		return backend.failLocked("query pointer", err)
 	}
 	return nil
-}
-
-func x11MouseButton(name string) (byte, error) {
-	switch name {
-	case "", "left":
-		return x11ButtonLeft, nil
-	case "center", "middle":
-		return x11ButtonMiddle, nil
-	case "right":
-		return x11ButtonRight, nil
-	case "wheelUp":
-		return x11ButtonWheelUp, nil
-	case "wheelDown":
-		return x11ButtonWheelDown, nil
-	case "wheelLeft":
-		return x11ButtonWheelLeft, nil
-	case "wheelRight":
-		return x11ButtonWheelRight, nil
-	default:
-		return 0, fmt.Errorf("robotgo: invalid X11 pointer button %q", name)
-	}
 }
 
 func x11Coordinate(value int) (int16, error) {
@@ -81,12 +70,12 @@ func x11Coordinates(x, y int) (int16, int16, error) {
 	return xCoordinate, yCoordinate, nil
 }
 
-func (backend *x11InputBackend) sendButtonLocked(button byte, down bool) error {
+func (backend *Backend) sendButtonLocked(button byte, down bool) error {
 	eventType := byte(xproto.ButtonRelease)
 	if down {
 		eventType = byte(xproto.ButtonPress)
 	}
-	if err := xtest.FakeInputChecked(backend.conn, eventType, button, 0, backend.root, 0, 0, 0).Check(); err != nil {
+	if err := backend.conn.FakeInput(eventType, button, backend.root, 0, 0); err != nil {
 		return errors.Join(errX11Connection, err)
 	}
 	return nil
@@ -113,7 +102,7 @@ func x11ButtonStateObservable(button byte) bool {
 	return x11ButtonMask(button) != 0
 }
 
-func (backend *x11InputBackend) acquireButtonLocked(button byte, pointerMask uint16) error {
+func (backend *Backend) acquireButtonLocked(button byte, pointerMask uint16) error {
 	if _, held := backend.buttons[button]; held {
 		return fmt.Errorf("robotgo: X11 button %d is already held by this RobotGo backend", button)
 	}
@@ -131,7 +120,7 @@ func (backend *x11InputBackend) acquireButtonLocked(button byte, pointerMask uin
 	return nil
 }
 
-func (backend *x11InputBackend) releaseOwnedButtonLocked(button byte) error {
+func (backend *Backend) releaseOwnedButtonLocked(button byte) error {
 	if _, held := backend.buttons[button]; !held {
 		return fmt.Errorf("robotgo: X11 button %d is not held by this RobotGo backend", button)
 	}
@@ -155,35 +144,33 @@ func removeX11Button(buttons []byte, button byte) []byte {
 	return buttons
 }
 
-func (backend *x11InputBackend) moveLocked(x, y int) error {
+func (backend *Backend) moveLocked(x, y int) error {
 	xCoordinate, yCoordinate, err := x11Coordinates(x, y)
 	if err != nil {
 		return err
 	}
-	if err := xtest.FakeInputChecked(
-		backend.conn, byte(xproto.MotionNotify), 0, 0, backend.root,
-		xCoordinate, yCoordinate, 0,
-	).Check(); err != nil {
+	if err := backend.conn.FakeInput(
+		byte(xproto.MotionNotify), 0, backend.root, xCoordinate, yCoordinate,
+	); err != nil {
 		return errors.Join(errX11Connection, err)
 	}
 	return nil
 }
 
-func (backend *x11InputBackend) moveRelativeLocked(x, y int) error {
+func (backend *Backend) moveRelativeLocked(x, y int) error {
 	xDelta, yDelta, err := x11Coordinates(x, y)
 	if err != nil {
 		return err
 	}
-	if err := xtest.FakeInputChecked(
-		backend.conn, byte(xproto.MotionNotify), x11RelativeMotion, 0,
-		xproto.Window(0), xDelta, yDelta, 0,
-	).Check(); err != nil {
+	if err := backend.conn.FakeInput(
+		byte(xproto.MotionNotify), x11RelativeMotion, xproto.Window(0), xDelta, yDelta,
+	); err != nil {
 		return errors.Join(errX11Connection, err)
 	}
 	return nil
 }
 
-func (backend *x11InputBackend) MoveAbsolute(x, y int, _ []int) error {
+func (backend *Backend) MoveAbsolute(x, y int, _ []int) error {
 	if _, _, err := x11Coordinates(x, y); err != nil {
 		return err
 	}
@@ -198,18 +185,15 @@ func (backend *x11InputBackend) MoveAbsolute(x, y int, _ []int) error {
 	return nil
 }
 
-func (backend *x11InputBackend) pointerStateLocked() (*xproto.QueryPointerReply, error) {
-	reply, err := xproto.QueryPointer(backend.conn, backend.root).Reply()
+func (backend *Backend) pointerStateLocked() (PointerState, error) {
+	reply, err := backend.conn.QueryPointer(backend.root)
 	if err != nil {
-		return nil, errors.Join(errX11Connection, err)
-	}
-	if reply == nil {
-		return nil, errors.Join(errX11Connection, errors.New("server returned no pointer reply"))
+		return PointerState{}, errors.Join(errX11Connection, err)
 	}
 	return reply, nil
 }
 
-func (backend *x11InputBackend) pointerLocationLocked() (int, int, error) {
+func (backend *Backend) pointerLocationLocked() (int, int, error) {
 	reply, err := backend.pointerStateLocked()
 	if err != nil {
 		return 0, 0, err
@@ -217,7 +201,7 @@ func (backend *x11InputBackend) pointerLocationLocked() (int, int, error) {
 	return int(reply.RootX), int(reply.RootY), nil
 }
 
-func (backend *x11InputBackend) MoveRelative(x, y int) error {
+func (backend *Backend) MoveRelative(x, y int) error {
 	if _, _, err := x11Coordinates(x, y); err != nil {
 		return err
 	}
@@ -250,7 +234,13 @@ func validateX11SmoothMove(x, y int, lowDelay, highDelay float64) error {
 	return nil
 }
 
-func (backend *x11InputBackend) planSmoothMoveLocked(x, y int, relative bool, lowDelay, highDelay float64) (x11SmoothMovePlan, error) {
+func validSmoothDelayRange(lowDelay, highDelay float64) bool {
+	return !math.IsNaN(lowDelay) && !math.IsNaN(highDelay) &&
+		!math.IsInf(lowDelay, 0) && !math.IsInf(highDelay, 0) &&
+		lowDelay >= 0 && highDelay >= lowDelay
+}
+
+func (backend *Backend) planSmoothMoveLocked(x, y int, relative bool, lowDelay, highDelay float64) (x11SmoothMovePlan, error) {
 	plan := x11SmoothMovePlan{relative: relative, targetX: x, targetY: y}
 	if !relative {
 		startX, startY, err := backend.pointerLocationLocked()
@@ -272,7 +262,7 @@ func (backend *x11InputBackend) planSmoothMoveLocked(x, y int, relative bool, lo
 	return plan, nil
 }
 
-func (backend *x11InputBackend) executeSmoothMoveLocked(plan x11SmoothMovePlan) error {
+func (backend *Backend) executeSmoothMoveLocked(plan x11SmoothMovePlan) error {
 	lastX, lastY := plan.startX, plan.startY
 	for step := 1; step <= plan.steps; step++ {
 		progress := float64(step) / float64(plan.steps)
@@ -298,13 +288,13 @@ func (backend *x11InputBackend) executeSmoothMoveLocked(plan x11SmoothMovePlan) 
 		}
 		lastX, lastY = currentX, currentY
 		if plan.delay > 0 && step != plan.steps {
-			time.Sleep(plan.delay)
+			backend.config.Sleep(plan.delay)
 		}
 	}
 	return nil
 }
 
-func (backend *x11InputBackend) MoveSmooth(x, y int, relative bool, lowDelay, highDelay float64) error {
+func (backend *Backend) MoveSmooth(x, y int, relative bool, lowDelay, highDelay float64) error {
 	if err := validateX11SmoothMove(x, y, lowDelay, highDelay); err != nil {
 		return err
 	}
@@ -323,7 +313,7 @@ func (backend *x11InputBackend) MoveSmooth(x, y int, relative bool, lowDelay, hi
 	return nil
 }
 
-func (backend *x11InputBackend) DragSmooth(x, y int, lowDelay, highDelay float64) error {
+func (backend *Backend) DragSmooth(x, y int, lowDelay, highDelay float64) error {
 	if err := validateX11SmoothMove(x, y, lowDelay, highDelay); err != nil {
 		return err
 	}
@@ -341,7 +331,7 @@ func (backend *x11InputBackend) DragSmooth(x, y int, lowDelay, highDelay float64
 		return downErr
 	}
 	if downErr == nil {
-		time.Sleep(50 * time.Millisecond)
+		backend.config.Sleep(50 * time.Millisecond)
 	}
 	moveErr := downErr
 	if downErr == nil {
@@ -358,7 +348,7 @@ func (backend *x11InputBackend) DragSmooth(x, y int, lowDelay, highDelay float64
 	return nil
 }
 
-func (backend *x11InputBackend) Location() (int, int, error) {
+func (backend *Backend) Location() (int, int, error) {
 	backend.mu.Lock()
 	defer backend.mu.Unlock()
 	if err := backend.openLocked(); err != nil {
@@ -371,10 +361,9 @@ func (backend *x11InputBackend) Location() (int, int, error) {
 	return x, y, nil
 }
 
-func (backend *x11InputBackend) Click(name string, double bool) error {
-	button, err := x11MouseButton(name)
-	if err != nil {
-		return err
+func (backend *Backend) Click(button Button, double bool) error {
+	if !x11ButtonStateObservable(button) {
+		return fmt.Errorf("%w: Pure-Go X11 cannot safely click button %d because core X11 exposes state only for buttons 1-5", ErrUnsupported, button)
 	}
 	backend.mu.Lock()
 	defer backend.mu.Unlock()
@@ -393,7 +382,7 @@ func (backend *x11InputBackend) Click(name string, double bool) error {
 			break
 		}
 		if click+1 < clicks {
-			time.Sleep(x11DoubleClickGap)
+			backend.config.Sleep(x11DoubleClickGap)
 		}
 	}
 	if eventErr != nil {
@@ -405,13 +394,9 @@ func (backend *x11InputBackend) Click(name string, double bool) error {
 	return nil
 }
 
-func (backend *x11InputBackend) Toggle(name string, down bool) error {
-	button, err := x11MouseButton(name)
-	if err != nil {
-		return err
-	}
+func (backend *Backend) Toggle(button Button, down bool) error {
 	if !x11ButtonStateObservable(button) {
-		return fmt.Errorf("%w: Pure-Go X11 cannot safely own button %d because core X11 exposes state only for buttons 1-5", ErrNotSupported, button)
+		return fmt.Errorf("%w: Pure-Go X11 cannot safely own button %d because core X11 exposes state only for buttons 1-5", ErrUnsupported, button)
 	}
 	backend.mu.Lock()
 	defer backend.mu.Unlock()
@@ -446,7 +431,7 @@ func x11ScrollSteps(value int) (uint64, error) {
 	return steps, nil
 }
 
-func (backend *x11InputBackend) scrollWheelLocked(button byte, count uint64) error {
+func (backend *Backend) scrollWheelLocked(button byte, count uint64) error {
 	for step := uint64(0); step < count; step++ {
 		if err := backend.pulseButtonTransactionLocked(button); err != nil {
 			return err
@@ -455,7 +440,7 @@ func (backend *x11InputBackend) scrollWheelLocked(button byte, count uint64) err
 	return nil
 }
 
-func (backend *x11InputBackend) pulseButtonTransactionLocked(button byte) error {
+func (backend *Backend) pulseButtonTransactionLocked(button byte) error {
 	return backend.withServerGrabLocked(func() error {
 		pointer, err := backend.pointerStateLocked()
 		if err != nil {
@@ -468,10 +453,9 @@ func (backend *x11InputBackend) pulseButtonTransactionLocked(button byte) error 
 	})
 }
 
-func (backend *x11InputBackend) Scroll(x, y int) error {
-	xSteps, err := x11ScrollSteps(x)
-	if err != nil {
-		return err
+func (backend *Backend) Scroll(x, y int) error {
+	if x != 0 {
+		return fmt.Errorf("%w: Pure-Go X11 cannot safely scroll horizontally because core X11 does not expose buttons 6-7 state", ErrUnsupported)
 	}
 	ySteps, err := x11ScrollSteps(y)
 	if err != nil {
@@ -481,18 +465,6 @@ func (backend *x11InputBackend) Scroll(x, y int) error {
 	defer backend.mu.Unlock()
 	if err := backend.openLocked(); err != nil {
 		return err
-	}
-	if x != 0 {
-		button := x11ButtonWheelLeft
-		if x < 0 {
-			button = x11ButtonWheelRight
-		}
-		if err := backend.scrollWheelLocked(button, xSteps); err != nil {
-			if errors.Is(err, errX11Connection) {
-				return backend.failLocked("scroll pointer horizontally", err)
-			}
-			return err
-		}
 	}
 	if y != 0 {
 		button := x11ButtonWheelUp
@@ -509,7 +481,7 @@ func (backend *x11InputBackend) Scroll(x, y int) error {
 	return nil
 }
 
-func (backend *x11InputBackend) acquireButtonTransactionLocked(button byte) error {
+func (backend *Backend) acquireButtonTransactionLocked(button byte) error {
 	return backend.withServerGrabLocked(func() error {
 		pointer, err := backend.pointerStateLocked()
 		if err != nil {
@@ -519,13 +491,13 @@ func (backend *x11InputBackend) acquireButtonTransactionLocked(button byte) erro
 	})
 }
 
-func (backend *x11InputBackend) releaseButtonTransactionLocked(button byte) error {
+func (backend *Backend) releaseButtonTransactionLocked(button byte) error {
 	return backend.withServerGrabLocked(func() error {
 		return backend.releaseOwnedButtonLocked(button)
 	})
 }
 
-func (backend *x11InputBackend) clickButtonTransactionLocked(button byte) error {
+func (backend *Backend) clickButtonTransactionLocked(button byte) error {
 	return backend.withServerGrabLocked(func() error {
 		pointer, err := backend.pointerStateLocked()
 		if err != nil {
@@ -533,7 +505,7 @@ func (backend *x11InputBackend) clickButtonTransactionLocked(button byte) error 
 		}
 		downErr := backend.acquireButtonLocked(button, pointer.Mask)
 		if downErr == nil {
-			time.Sleep(x11KeyHoldDelay)
+			backend.config.Sleep(backend.config.KeyHoldDelay)
 		}
 		var upErr error
 		if downErr == nil {

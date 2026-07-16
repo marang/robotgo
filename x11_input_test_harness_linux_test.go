@@ -95,6 +95,7 @@ func newX11InputHarness(t x11TestingT) *x11InputHarness {
 		conn.Close()
 		if version == nil {
 			x11Unavailable(t, "X11 integration test received no XTEST version reply")
+			return nil
 		}
 		x11Unavailable(
 			t,
@@ -110,6 +111,7 @@ func newX11InputHarness(t x11TestingT) *x11InputHarness {
 	if screen == nil {
 		conn.Close()
 		t.Fatal("X11 connection has no default screen")
+		return nil
 	}
 	windowID, err := xproto.NewWindowId(conn)
 	if err != nil {
@@ -412,6 +414,7 @@ func (h *x11InputHarness) findKeycode(keysym uint32) (xproto.Keycode, []xproto.K
 	setup := xproto.Setup(h.conn)
 	if setup == nil {
 		h.t.Fatal("X11 connection has no setup while finding a keysym")
+		return 0, nil
 	}
 	count := int(setup.MaxKeycode) - int(setup.MinKeycode) + 1
 	reply, err := xproto.GetKeyboardMapping(h.conn, setup.MinKeycode, byte(count)).Reply()

@@ -3,6 +3,7 @@
 package robotgo_test
 
 import (
+	"errors"
 	"fmt"
 	"image/color"
 	"os"
@@ -19,6 +20,7 @@ const (
 	envExpectedX11Implementation = "ROBOTGO_EXPECT_X11_IMPLEMENTATION"
 	x11KeysymControlL            = 0xffe3
 	x11KeysymControlR            = 0xffe4
+	x11ParityButtonWheelRight    = 7
 )
 
 type x11ObservedKeyEvent struct {
@@ -141,14 +143,54 @@ func TestX11BackendBehavioralParity(t *testing.T) {
 			{button: x11ButtonRight},
 		})
 
-		if err := robotgo.ScrollE(1, 1, 0); err != nil {
+		if err := robotgo.ScrollE(0, 1, 0); err != nil {
 			t.Fatalf("ScrollE: %v", err)
 		}
-		assertButtonEvents(t, harness.waitForButtonEvents(4), []x11ButtonEvent{
-			{pressed: true, button: x11ButtonWheelLeft},
-			{button: x11ButtonWheelLeft},
+		assertButtonEvents(t, harness.waitForButtonEvents(2), []x11ButtonEvent{
 			{pressed: true, button: x11ButtonWheelUp},
 			{button: x11ButtonWheelUp},
+		})
+	})
+
+	t.Run("horizontal wheel backend contract", func(t *testing.T) {
+		harness.drainEvents()
+		if err := robotgo.MoveE(x11WindowX+10, x11WindowY+10); err != nil {
+			t.Fatalf("position pointer for horizontal-wheel contract: %v", err)
+		}
+		harness.waitForEvent("pointer motion before horizontal-wheel contract", func(event xgb.Event) bool {
+			motion, ok := event.(xproto.MotionNotifyEvent)
+			return ok && int(motion.RootX) == x11WindowX+10 && int(motion.RootY) == x11WindowY+10
+		})
+		harness.drainEvents()
+		if robotgo.GetRuntimeBackendInfo().BuildImplementation == robotgo.RuntimeImplementationPureGo {
+			for _, operation := range []struct {
+				name string
+				run  func() error
+			}{
+				{name: "scroll", run: func() error { return robotgo.ScrollE(1, 0, 0) }},
+				{name: "wheel-left click", run: func() error { return robotgo.ClickE("wheelLeft") }},
+				{name: "wheel-right click", run: func() error { return robotgo.ClickE("wheelRight") }},
+			} {
+				if err := operation.run(); !errors.Is(err, robotgo.ErrNotSupported) {
+					t.Fatalf("Pure-Go %s error = %v, want ErrNotSupported", operation.name, err)
+				}
+			}
+			harness.assertNoInputEvent("input event from rejected Pure-Go horizontal-wheel operation", 100*time.Millisecond)
+			return
+		}
+		if err := robotgo.ScrollE(1, 0, 0); err != nil {
+			t.Fatalf("native horizontal ScrollE: %v", err)
+		}
+		assertButtonEvents(t, harness.waitForButtonEvents(2), []x11ButtonEvent{
+			{pressed: true, button: x11ButtonWheelLeft},
+			{button: x11ButtonWheelLeft},
+		})
+		if err := robotgo.ClickE("wheelRight"); err != nil {
+			t.Fatalf("native wheel-right ClickE: %v", err)
+		}
+		assertButtonEvents(t, harness.waitForButtonEvents(2), []x11ButtonEvent{
+			{pressed: true, button: x11ParityButtonWheelRight},
+			{button: x11ParityButtonWheelRight},
 		})
 	})
 
@@ -296,6 +338,7 @@ func (h *x11InputHarness) keyboardState() x11KeyboardState {
 	setup := xproto.Setup(h.conn)
 	if setup == nil {
 		h.t.Fatal("X11 connection has no setup while snapshotting keyboard state")
+		return x11KeyboardState{}
 	}
 	count := int(setup.MaxKeycode) - int(setup.MinKeycode) + 1
 	keyboard, err := xproto.GetKeyboardMapping(h.conn, setup.MinKeycode, byte(count)).Reply()

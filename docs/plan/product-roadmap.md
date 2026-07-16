@@ -35,7 +35,7 @@ The July 2026 hardening work establishes the foundation for this roadmap:
 | Current baseline | Complete in branch | Native screencopy, screenshot portal fallback, bounded waits, cleanup, live capability probes, error APIs, non-CGO contract, dedicated race/vet jobs | Confirm all required jobs after the branch is pushed and protect them |
 | 1. Wayland input | Implementation complete; runtime validation blocked | Native virtual keyboard/pointer, consent-aware RemoteDesktop fallback, shared ScreenCast stream mapping, absolute pointer/touch, restore tokens, diagnostics and E2E harness | Register GNOME/KDE/wlroots runners and collect green CGO/non-CGO evidence |
 | 2. Capture | Hermetic implementation complete | Reliable one-shot paths plus one consent-aware ScreenCast session, reusable PipeWire frames, logical region crop, raw pixel conversion, metadata/restore tokens, cleanup, integration harness, and a non-skipping geometry/transform CI matrix | Real GNOME/KDE/wlroots evidence and sanitizer-backed native leak gate |
-| 3. Pure-Go | X11 evaluation complete; broader phase partial | Build and feature-level introspection; non-CGO macOS CoreGraphics, Windows, X11, and Wayland-portal capture; Linux/X11 XGB/XTEST input; permission/error contracts; shared behavioral parity; reproducible balanced benchmark tooling; versioned decision-grade evidence; explicit decision to retain native CGO as the X11 default; three-OS CI; non-skipping multi-layout Xvfb input tests | Protect the remote CI checks, make the Pure-Go X11 core race-testable and its scratch-map lifecycle crash-safe, then assess further backends selectively |
+| 3. Pure-Go | X11 hardening complete; broader phase partial | Build and feature-level introspection; non-CGO macOS CoreGraphics, Windows, X11, and Wayland-portal capture; Linux/X11 XGB/XTEST input; permission/error contracts; shared behavioral parity; reproducible balanced benchmark tooling; versioned decision-grade evidence; explicit decision to retain native CGO as the X11 default; race-testable internal X11 core; re-exec guardian with application-`SIGKILL` recovery; three-OS CI; non-skipping multi-layout Xvfb input tests | Protect the remote CI checks, collect current guardian performance evidence, then assess further backends selectively |
 | 4. API/compositor gaps | Parity surface delivered; runtime support partial | Window-state error APIs, bitmap string helpers, `FindColorCS`, hook/event capability reporting, Sway/Hyprland/wlroots resolver | Compositor-backed state operations and cross-platform/runtime matrix coverage |
 | 5. Reliability product | Partial | Capability API/example and expanded CI variants | Versioned compatibility matrix, richer diagnostics, dedicated compositor jobs, sanitizer/leak gates |
 
@@ -157,23 +157,35 @@ reproducible balanced benchmark script records raw observations, medians,
 quartiles, ratios, metadata, and runs a report-only CI smoke. The versioned
 decision-grade sample retains native CGO as the Linux/X11 default: Pure-Go wins
 pointer-movement latency and build portability, while native wins capture, most
-input operations, allocations, and Unicode crash isolation. The comparison also
-exposed and fixed native
+input operations and allocations. At the measured revision, native also had
+stronger Unicode crash isolation; the later Pure-Go guardian closes the targeted
+application-process-kill gap without changing that historical performance
+sample. The comparison also exposed and fixed native
 modifier-release ordering and unsafe server-global Unicode mapping. Native X11
 now preflights complete text and modified keys before injection. Its Xlib
 display, capture, input, readiness, replacement, and close paths share a locked
 configured-display lifecycle; separate XGB connections use the same configured
 target and close deterministically. Live readiness requires XTEST 2.2 and has a
 dedicated negative CI contract. The Pure-Go backend retains its broader,
-explicitly managed Unicode mapping support.
-
-The non-CGO backend itself cannot currently run under Go's CGO-dependent Linux
-race detector; its concurrency stress tests remain mandatory while extracting
-the X11 core into a race-testable internal package is tracked. A scoped
-keyboard-input lifecycle (or equivalent crash-safe cleanup strategy) is also
-still needed to eliminate the server-global scratch-mapping risk after abnormal
-process termination. Those tasks and selective evaluation of additional
-backends keep the broader Phase 3 partial.
+explicitly managed Unicode mapping support. Its stateful X11 implementation now
+lives in a Linux internal package that is built by the normal CGO-enabled race
+job as well as the production non-CGO adapter. A separate Pure-Go guardian owns
+the live X11 connection through a randomly named, token-authenticated Linux
+abstract Unix socket whose peer PID/UID the parent verifies. No live control FD
+crosses the re-exec initialization phase. The guardian detects application death
+through control-socket EOF, bounds normal request dispatch independently from
+cleanup, and the parent kills and reaps a helper that misses its exit deadline.
+Cleanup releases RobotGo-owned input and
+restores a verified scratch before-image only when the exact recorded final
+image remains, the keycode is unpressed, and it is not a modifier. Foreign final
+images are preserved; X11 cannot identify an ABA replacement that returns to
+the same exact image. The blocking Xvfb contract sends a real `SIGKILL` to the
+application workload and compares core, modifier, XKB, key, pointer, and button
+state. The guarantee requires the guardian and responsive X server to survive;
+guardian/host loss or a transport blocked beyond the cleanup deadline still
+needs later reconciliation. Protecting the remote checks, refreshing
+performance evidence for the guardian path, and selectively evaluating
+additional backends keep the broader Phase 3 partial.
 
 Exit criteria:
 

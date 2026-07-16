@@ -76,7 +76,7 @@ workflow. `GetLinuxCapabilities` provides additional compositor detail.
 | macOS | `CGO_ENABLED=0` | Pure-Go CoreGraphics capture and display bounds with explicit Screen Recording permission diagnostics; other unavailable GUI operations return `ErrNotSupported` |
 | Windows | CGO-enabled default build | Native mouse, keyboard, capture, window, and process paths |
 | Linux/X11 | CGO-enabled default build | X11/XTest input, capture, window, and process paths |
-| Linux/X11 | `CGO_ENABLED=0` | Pure-Go X11 capture/bounds plus XTEST mouse, keyboard, text/Unicode, pointer-location, smooth-move/drag, scroll, and live readiness probes |
+| Linux/X11 | `CGO_ENABLED=0` | Pure-Go X11 capture/bounds plus XTEST mouse, keyboard, text/Unicode, pointer-location, smooth-move/drag, vertical scroll, and live readiness probes; horizontal scroll is explicitly unsupported |
 | Linux/Wayland | `-tags wayland` for native protocols; add `pipewire` for persistent ScreenCast frames | Native wlroots capture/input where compositor protocols exist, one-shot Screenshot fallback, reusable ScreenCast/PipeWire capture, explicit RemoteDesktop portal sessions, capability-aware window support |
 | Other supported platforms without CGO | `CGO_ENABLED=0` | Pure-Go capture works on macOS and Windows; Linux/Wayland uses the Screenshot portal; explicit RemoteDesktop sessions provide limited Pure-Go Wayland input; remaining unavailable operations return `ErrNotSupported` |
 
@@ -288,8 +288,9 @@ movement/drag, scroll, pointer location, and live
 1,000 steps per axis. XTEST input is global; process-target (`pid`) arguments
 are rejected explicitly.
 Single-character keys are tap-only; persistent key state requires a named key.
-Persistent pointer-button toggles are limited to core X11 buttons 1–5; use
-`ScrollE` for wheel input.
+Persistent pointer-button toggles are limited to core X11 buttons 1–5. Pure-Go
+X11 supports vertical `ScrollE`; horizontal scrolling returns
+`ErrNotSupported` because core XTEST button 6/7 state is not observable safely.
 `GetRuntimeCapabilities` reports the selected `pure-go-x11` backend.
 Key taps without an unambiguous active mapping and text use a bounded pool of
 originally unmapped X11 keycodes so delayed XKB clients still decode input
@@ -297,9 +298,42 @@ correctly. If one connection exhausts that server-dependent pool of distinct
 symbols, the operation fails before injecting more input. Call
 `CloseMainDisplayE` only after targets have processed all prior keyboard input
 to restore the mappings, verify cleanup, and reset the pool. Place that call in
-a scope whose lifetime includes any delayed target processing. These mappings
-are server-global: omitting cleanup or terminating abnormally can leave the
-formerly unused keycodes mapped until the X11 keymap is reset. A later RobotGo
+a scope whose lifetime includes any delayed target processing.
+
+These mappings are server-global, so the Pure-Go backend owns its X11
+connection in a separate, re-executed guardian process. If the application
+process exits unexpectedly or receives `SIGKILL`, control-socket EOF makes the
+guardian run a bounded, conditional cleanup: it releases RobotGo-owned
+keys/buttons, allows up to two seconds for already delivered text events, and
+restores a scratch before-image only while the current mapping still exactly
+matches RobotGo's recorded final image and that keycode is neither pressed nor
+a modifier. A different final image is treated as another client's state and
+is preserved. X11 cannot reveal an ABA change where another client changes a
+mapping and later puts back the exact same image, so that case is inherently
+indistinguishable from RobotGo's ownership.
+
+Guardian startup requires Linux procfs to expose `/proc/self/exe` and the
+sandbox/service policy to permit re-executing the current program and using
+Linux abstract Unix sockets. The parent accepts only the authenticated socket
+peer whose kernel credentials match the helper it started; no control file
+descriptor is inherited through the re-exec initialization phase. Re-exec can
+still repeat dependency initializers that run before RobotGo's guardian
+initializer. Those initializers must not block or terminate the helper; if they
+prevent its authenticated handshake, startup fails before an X11 input
+connection is exposed. Failure is explicit, the failed helper is reaped, and
+there is no silent in-process X11 fallback. Crash cleanup also requires the
+guardian and X server to remain alive and responsive. A
+simultaneous guardian/container/host kill, X-server loss, or an X11 transport
+that remains blocked beyond the cleanup deadline cannot be restored
+synchronously. Request dispatch and cleanup are deadline-bounded; on a blocked
+transport the guardian initiates connection close and exits, while the parent
+kills and reaps a helper that misses its final exit deadline.
+
+Explicit `CloseMainDisplayE` remains the deterministic path because it reports
+actionable cleanup/transport errors and lets callers choose when even
+arbitrarily delayed target clients have finished processing input. A foreign
+mapping replacement is deliberately relinquished without being reported as a
+cleanup failure because overwriting it would be unsafe. A later RobotGo
 operation reconnects lazily. In a Wayland-primary session the backend remains
 disabled, even when `DISPLAY` points to Xwayland.
 If cleanup reports that a scratch keycode is pressed or became a modifier,
@@ -585,11 +619,14 @@ contract and benchmark smoke to native CGO and Pure-Go binaries. It also proves
 that native readiness rejects a reachable X server with XTEST disabled. Missing
 X11 runtime support fails instead of skipping; see
 [the testing guide](TEST.md#x11integration-native-and-pure-go-x11-input) for
-the exact commands and prerequisites. The
+the exact commands and prerequisites. The crash proof additionally inspects
+`/proc/<pid>/task/<tid>/children` under a Linux child subreaper to verify that
+the reported guardian is the exact child that exits and is reaped. The
 [versioned decision-grade comparison](docs/performance/data/x11-2026-07-16-d5fd51c/summary.md)
 retains native CGO as the X11 default and Pure-Go as the supported CGO-disabled
-backend. Protecting the resulting remote checks remains a roadmap exit
-criterion.
+backend. That sample predates the guardian IPC layer; it remains the
+default-selection record, not a current guardian performance measurement.
+Protecting the resulting remote checks remains a roadmap exit criterion.
 
 Wayland and portal code has additional tagged suites:
 
@@ -619,10 +656,11 @@ Real Wayland input results are tracked in the
 The active product slice remains selective Phase 3 Pure-Go hardening. The
 Linux/X11 evaluation is complete: shared behavior is blocking CI,
 decision-grade evidence is versioned, and native CGO remains the default while
-Pure-Go supports CGO-disabled builds. Race-testable Pure-Go internals,
-crash-safe Unicode scratch cleanup, protected remote checks, and further
-backend evaluations remain. Real GNOME/KDE/wlroots validation is an independent
-Wayland release gate.
+Pure-Go supports CGO-disabled builds. The Pure-Go X11 core is race-testable and
+its separate guardian performs bounded, claim-checked cleanup after an
+application-process crash. Protecting remote checks and evaluating further
+backends remain. Real GNOME/KDE/wlroots validation is an independent Wayland
+release gate.
 
 ## Upstream and attribution
 

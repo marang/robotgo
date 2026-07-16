@@ -54,6 +54,8 @@ jobs:
             libgbm-dev libdrm-dev
       - name: Run race detector
         run: go test -race ./...
+      - name: Stress race-testable Pure-Go X11 core
+        run: go test -race -count=20 -timeout=2m ./internal/x11input
   lint:
     runs-on: ubuntu-latest
     steps:
@@ -161,6 +163,7 @@ jobs:
                 TestPureGoX11PointerInput \
                 TestPureGoX11KeyboardInput \
                 TestPureGoX11TextReachesDelayedXKBClient \
+                TestPureGoX11CrashRestoresScratchAndOwnedInput \
                 TestPureGoX11ExplicitShiftReachesXKBClient \
                 TestPureGoX11ScratchReservationSkipsPressedEmptyKeycode \
                 TestPureGoX11ScratchCleanupCanRetryAfterForeignRelease \

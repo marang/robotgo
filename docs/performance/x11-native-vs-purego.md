@@ -12,7 +12,9 @@ Both binaries must pass the same black-box test against one isolated Xvfb:
   keyboard/pointer readiness
 - 640x480 capture bounds, known black/white pixels, and `BackendX11`
 - absolute/relative pointer movement plus independent location observation
-- click, persistent button, and horizontal/vertical scroll event order
+- click, persistent button, vertical-scroll event order, and the
+  backend-specific horizontal-scroll contract (native delivery; explicit
+  Pure-Go unsupported error)
 - named-key press/release and canonical `Ctrl down, key down, key up, Ctrl up`
 - ASCII text received by an independent XKB client
 - byte-identical keyboard and modifier maps after cleanup
@@ -32,7 +34,13 @@ cleanup conflicts, reconnect, and event-drain stress.
 ## Reproduce
 
 Install a C compiler, X11/XTest development files, `git`, `xvfb`, `xauth`,
-`setxkbmap`, `xkbcli`, and coreutils (`stdbuf` and `tee`), then run:
+`setxkbmap`, `xkbcomp`, `xkbcli`, and coreutils (`stdbuf` and `tee`), then run:
+
+The crash-recovery contract also requires executable Linux procfs
+(`/proc/self/exe` and readable `/proc/<pid>/task/<tid>/children`), Linux
+abstract Unix sockets with `SO_PEERCRED`, and child-subreaper support. See the
+[X11 integration prerequisites](../../TEST.md#x11integration-native-and-pure-go-x11-input)
+for the complete runtime contract.
 
 ```bash
 scripts/benchmark-x11-backends.sh /tmp/robotgo-x11-backend-evidence
@@ -60,7 +68,7 @@ script-owned, protected by a sentinel, and locked against concurrent writers;
 a non-empty foreign directory is never modified. Only a clean detached snapshot
 with at least five balanced cycles and a duration of at least `500ms`, expressed
 as integer milliseconds, seconds, minutes, or hours, is marked decision-grade.
-The comparison requires 11 matching benchmark names in both
+The current comparison requires 10 matching benchmark names in both
 outputs, the expected sample count, and all three metrics (`ns/op`, `B/op`,
 `allocs/op`). CI uses one iteration only to catch broken benchmark paths; its
 self-contained summary is explicitly report-only and never fails on
@@ -92,20 +100,31 @@ is stored with its raw output, behavior logs, metadata, and completion record in
 implementations passed the complete shared contract and their exact
 backend-specific safety manifests.
 
+The table below is historical evidence for that exact commit. The current
+Pure-Go backend subsequently moved its X11 connection into a re-executed
+guardian and moved its state machine into a race-testable internal package.
+Those changes close the targeted application-process-crash gap but add IPC, so
+the stored measurements must not be presented as guardian-path performance.
+
 | Criterion | Evidence | Decision impact |
 |---|---|---|
 | Capture | Pure-Go/native median latency ratio `3.493x`; 115 versus 2 Go allocations per operation | Native has a material throughput and allocation advantage |
 | Stateful buttons and keys | Pure-Go/native median latency ratios `1.395x` for button toggles, `1.347x` for key toggles, and `1.627x` for key presses | Native remains preferable for common input sequences |
-| Scroll | Pure-Go/native median latency ratios `2.017x` horizontal and `2.083x` vertical | Native remains preferable |
+| Scroll at sampled commit | Pure-Go/native median latency ratios `2.017x` horizontal and `2.083x` vertical; the current shared comparison retains vertical only because Pure-Go now rejects unobservable horizontal button state explicitly | Native remains preferable; do not present the historical horizontal number as current supported behavior |
 | Pointer queries and moves | Location is effectively equal at `1.016x`; Pure-Go absolute and relative move ratios are `0.565x` and `0.398x` | Pure-Go has a real pointer-movement advantage, but not enough to outweigh the broader default-path costs |
 | Delayed click and ASCII text | Ratios are `1.016x` and `1.012x`; configured user-visible delays dominate | No meaningful default-selection signal |
 | Build and Unicode behavior | Pure-Go removes the C/Xlib build dependency and retains managed Unicode scratch mappings; native avoids server-global temporary mappings | Keep Pure-Go useful and supported for CGO-disabled builds |
-| Lifecycle risk | Pure-Go scratch mappings are conflict-aware, but abnormal process termination still lacks a scoped or crash-safe cleanup mechanism | Do not make Pure-Go the general default yet |
+| Lifecycle risk at sampled commit | Pure-Go scratch mappings were conflict-aware, but abnormal process termination still lacked a scoped or crash-safe cleanup mechanism | Do not use this historical sample to claim guardian crash behavior or performance |
 
 **Decision:** retain native CGO as the Linux/X11 default when CGO is enabled.
 Keep the Pure-Go X11 backend as the supported CGO-disabled implementation. This
 is not a rejection of Pure-Go: it already wins pointer-movement latency and
 build portability, while native currently wins capture, most input operations,
-allocation cost, and crash-isolation of Unicode handling. Revisit the decision
-after the scratch-map lifecycle is crash-safe, the Pure-Go core is race-testable,
-and a new decision-grade sample passes the same contract.
+and allocation cost. Native also avoids server-global Unicode mappings
+entirely; the Pure-Go guardian now restores those mappings after a targeted
+application-process kill while it and a responsive X server survive. Its
+cleanup is deadline-bounded and restores only an exact unchanged, unpressed,
+non-modifier final image; foreign final images are preserved, while an
+exact-image ABA replacement is not observable in X11. Revisit the default only
+after a new decision-grade sample measures the guardian path and passes the
+same behavioral, race, and crash-recovery contracts.
