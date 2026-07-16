@@ -6,7 +6,6 @@ import (
 	"bufio"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"os/exec"
 	"reflect"
@@ -452,19 +451,41 @@ func (h *x11InputHarness) rootChildren() map[xproto.Window]struct{} {
 	return children
 }
 
-func (h *x11InputHarness) waitForNewRootChild(previous map[xproto.Window]struct{}) xproto.Window {
+func (h *x11InputHarness) waitForNewRootChild(
+	previous map[xproto.Window]struct{}, processDone <-chan error, stderr *strings.Builder,
+) xproto.Window {
 	h.t.Helper()
-	deadline := time.Now().Add(x11EventTimeout)
-	for time.Now().Before(deadline) {
+	ticker := time.NewTicker(x11PollInterval)
+	defer ticker.Stop()
+	deadline := time.NewTimer(x11EventTimeout)
+	defer deadline.Stop()
+	for {
 		for child := range h.rootChildren() {
 			if _, existed := previous[child]; !existed {
 				return child
 			}
 		}
-		time.Sleep(x11PollInterval)
+		select {
+		case err := <-processDone:
+			detail := strings.TrimSpace(stderr.String())
+			if detail == "" {
+				detail = "no stderr output"
+			}
+			h.t.Fatalf("XKB oracle exited before creating a window: %v (%s)", err, detail)
+		case <-ticker.C:
+		case <-deadline.C:
+			h.t.Fatalf("timed out after %s waiting for XKB oracle window", x11EventTimeout)
+		}
 	}
-	h.t.Fatalf("timed out after %s waiting for XKB oracle window", x11EventTimeout)
-	return 0
+}
+
+func xkbOracleArgs(path string) []string {
+	args := []string{"interactive-x11"}
+	help, _ := exec.Command(path, "interactive-x11", "--help").CombinedOutput()
+	if strings.Contains(string(help), "--uniline") {
+		args = append(args, "--uniline")
+	}
+	return args
 }
 
 func startXKBOracle(t *testing.T, harness *x11InputHarness) (xproto.Window, <-chan string, *os.Process) {
@@ -478,30 +499,65 @@ func startXKBOracle(t *testing.T, harness *x11InputHarness) (xproto.Window, <-ch
 		x11Unavailable(t, "X11 text integration requires stdbuf: %v", err)
 	}
 	previousChildren := harness.rootChildren()
-	command := exec.Command(stdbufPath, "-oL", path, "interactive-x11", "--uniline")
+	commandArgs := append([]string{"-oL", path}, xkbOracleArgs(path)...)
+	command := exec.Command(stdbufPath, commandArgs...)
 	command.Env = os.Environ()
 	stdout, err := command.StdoutPipe()
 	if err != nil {
 		t.Fatalf("create xkbcli stdout pipe: %v", err)
 	}
-	command.Stderr = io.Discard
+	var stderr strings.Builder
+	command.Stderr = &stderr
 	if err := command.Start(); err != nil {
 		x11Unavailable(t, "start xkbcli X11 oracle: %v", err)
 	}
 	lines := make(chan string, 32)
+	stopLines := make(chan struct{})
+	scanDone := make(chan error, 1)
 	go func() {
 		defer close(lines)
 		scanner := bufio.NewScanner(stdout)
+		discard := false
 		for scanner.Scan() {
-			lines <- scanner.Text()
+			if !discard {
+				select {
+				case <-stopLines:
+					discard = true
+				default:
+				}
+			}
+			if discard {
+				continue
+			}
+			select {
+			case lines <- scanner.Text():
+			case <-stopLines:
+				discard = true
+			}
 		}
+		scanDone <- scanner.Err()
+	}()
+	processDone := make(chan error, 1)
+	go func() {
+		scanErr := <-scanDone
+		waitErr := command.Wait()
+		if scanErr != nil {
+			waitErr = errors.Join(waitErr, fmt.Errorf("read xkbcli stdout: %w", scanErr))
+		}
+		processDone <- waitErr
+		close(processDone)
 	}()
 	t.Cleanup(func() {
 		_ = command.Process.Signal(syscall.SIGCONT)
+		close(stopLines)
 		_ = command.Process.Kill()
-		_ = command.Wait()
+		select {
+		case <-processDone:
+		case <-time.After(x11EventTimeout):
+			t.Errorf("XKB oracle process %d did not exit during cleanup", command.Process.Pid)
+		}
 	})
-	window := harness.waitForNewRootChild(previousChildren)
+	window := harness.waitForNewRootChild(previousChildren, processDone, &stderr)
 	if err := xproto.SetInputFocusChecked(
 		harness.conn, xproto.InputFocusPointerRoot, window, xproto.TimeCurrentTime,
 	).Check(); err != nil {
@@ -541,7 +597,12 @@ func waitForXKBOracleText(t *testing.T, lines <-chan string, count int) []rune {
 				t.Fatalf("xkbcli oracle exited after text %q", string(result))
 			}
 			observed = append(observed, line)
-			if !strings.Contains(line, "down") {
+			// Older xkbcli releases only report key presses and have no event-type
+			// field. Newer releases report both directions, so keep only down.
+			if !strings.Contains(line, "down") && !strings.Contains(line, "keycode [") {
+				continue
+			}
+			if strings.Contains(line, "up") && !strings.Contains(line, "down") {
 				continue
 			}
 			const unicodeMarker = "unicode [ "
