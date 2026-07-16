@@ -585,8 +585,11 @@ contract and benchmark smoke to native CGO and Pure-Go binaries. It also proves
 that native readiness rejects a reachable X server with XTEST disabled. Missing
 X11 runtime support fails instead of skipping; see
 [the testing guide](TEST.md#x11integration-native-and-pure-go-x11-input) for
-the exact commands and prerequisites. Protecting the resulting remote checks
-remains a roadmap exit criterion.
+the exact commands and prerequisites. The
+[versioned decision-grade comparison](docs/performance/data/x11-2026-07-16-d5fd51c/summary.md)
+retains native CGO as the X11 default and Pure-Go as the supported CGO-disabled
+backend. Protecting the resulting remote checks remains a roadmap exit
+criterion.
 
 Wayland and portal code has additional tagged suites:
 
@@ -613,11 +616,13 @@ Real Wayland input results are tracked in the
 - [Product roadmap](docs/plan/product-roadmap.md)
 - [Wayland implementation history](docs/wayland-history.md)
 
-The active product slice is Phase 3: hardening and measuring selective Pure-Go
-backends. Linux/X11 input is implemented; shared native/Pure-Go behavior and a
-report-only benchmark smoke are blocking CI. A versioned full benchmark sample
-and explicit default-backend decision are still required. Real
-GNOME/KDE/wlroots validation remains an independent Wayland release gate.
+The active product slice remains selective Phase 3 Pure-Go hardening. The
+Linux/X11 evaluation is complete: shared behavior is blocking CI,
+decision-grade evidence is versioned, and native CGO remains the default while
+Pure-Go supports CGO-disabled builds. Race-testable Pure-Go internals,
+crash-safe Unicode scratch cleanup, protected remote checks, and further
+backend evaluations remain. Real GNOME/KDE/wlroots validation is an independent
+Wayland release gate.
 
 ## Upstream and attribution
 

@@ -102,8 +102,10 @@ Window backend support matrix (current):
     behavioral contract run in non-skipping Xvfb/XTEST CI. A balanced benchmark
     smoke is report-only. Native X11 now has atomic input preflight, one shared
     configured-display lifecycle/target, live XTEST readiness, and an XTEST-disabled negative
-    contract. Protecting the checks, recording a versioned full sample, and any
-    default switch remain open.
+    contract. A versioned decision-grade sample retains native CGO as the X11
+    default while keeping Pure-Go supported for CGO-disabled builds. Protecting
+    the checks, making the Pure-Go core race-testable and its scratch-map
+    lifecycle crash-safe, and evaluating further backends remain open.
   - 6. Publish versioned compatibility data and expand diagnostics with
     protocol versions, permissions, and actionable remediation.
   - 7. Promote race/vet and native leak/sanitizer checks to blocking release

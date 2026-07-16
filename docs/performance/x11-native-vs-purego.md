@@ -86,5 +86,26 @@ negative contract with the command in [TEST.md](../../TEST.md#x11integration-nat
 
 ## Current decision
 
-No default backend switch has been approved. A versioned full sample and
-explicit decision table remain required.
+The decision-grade sample for commit `d5fd51c72702a719fd60fb06e0ef246018dc8b4e`
+is stored with its raw output, behavior logs, metadata, and completion record in
+[data/x11-2026-07-16-d5fd51c](data/x11-2026-07-16-d5fd51c/summary.md). Both
+implementations passed the complete shared contract and their exact
+backend-specific safety manifests.
+
+| Criterion | Evidence | Decision impact |
+|---|---|---|
+| Capture | Pure-Go/native median latency ratio `3.493x`; 115 versus 2 Go allocations per operation | Native has a material throughput and allocation advantage |
+| Stateful buttons and keys | Pure-Go/native median latency ratios `1.395x` for button toggles, `1.347x` for key toggles, and `1.627x` for key presses | Native remains preferable for common input sequences |
+| Scroll | Pure-Go/native median latency ratios `2.017x` horizontal and `2.083x` vertical | Native remains preferable |
+| Pointer queries and moves | Location is effectively equal at `1.016x`; Pure-Go absolute and relative move ratios are `0.565x` and `0.398x` | Pure-Go has a real pointer-movement advantage, but not enough to outweigh the broader default-path costs |
+| Delayed click and ASCII text | Ratios are `1.016x` and `1.012x`; configured user-visible delays dominate | No meaningful default-selection signal |
+| Build and Unicode behavior | Pure-Go removes the C/Xlib build dependency and retains managed Unicode scratch mappings; native avoids server-global temporary mappings | Keep Pure-Go useful and supported for CGO-disabled builds |
+| Lifecycle risk | Pure-Go scratch mappings are conflict-aware, but abnormal process termination still lacks a scoped or crash-safe cleanup mechanism | Do not make Pure-Go the general default yet |
+
+**Decision:** retain native CGO as the Linux/X11 default when CGO is enabled.
+Keep the Pure-Go X11 backend as the supported CGO-disabled implementation. This
+is not a rejection of Pure-Go: it already wins pointer-movement latency and
+build portability, while native currently wins capture, most input operations,
+allocation cost, and crash-isolation of Unicode handling. Revisit the decision
+after the scratch-map lifecycle is crash-safe, the Pure-Go core is race-testable,
+and a new decision-grade sample passes the same contract.
