@@ -17,6 +17,7 @@ package robotgo
 import "C"
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"runtime"
@@ -340,13 +341,34 @@ func CmdCtrl() string {
 }
 
 // It sends a key press and release to the active application
-func tapKeyCode(code C.MMKeyCode, flags C.MMKeyFlags, pid C.uintptr) {
-	C.toggleKeyCode(code, true, flags, pid)
-	MilliSleep(3)
-	C.toggleKeyCode(code, false, flags, pid)
+func tapKeyCode(code C.MMKeyCode, flags C.MMKeyFlags, pid C.uintptr) error {
+	return nativeKeyStatusError(C.robotgo_tap_key_code(code, flags, pid), "tap key")
 }
 
 var errInvalidKeyFlag = errors.New("invalid key flag specified")
+
+func nativeKeyStatusError(status C.int, operation string) error {
+	switch int(status) {
+	case int(C.ROBOTGO_KEY_OK):
+		return nil
+	case int(C.ROBOTGO_KEY_UNMAPPED):
+		return fmt.Errorf("%w: %s: key is absent from the active keymap", ErrNotSupported, operation)
+	case int(C.ROBOTGO_KEY_UNSUPPORTED):
+		return fmt.Errorf("%w: %s", ErrNotSupported, operation)
+	case int(C.ROBOTGO_KEY_NO_DISPLAY):
+		return fmt.Errorf("robotgo: %s: X11 display is unavailable", operation)
+	case int(C.ROBOTGO_KEY_INJECTION_FAILED):
+		return fmt.Errorf("robotgo: %s: native keyboard injection failed", operation)
+	case int(C.ROBOTGO_KEY_INVALID):
+		return fmt.Errorf("robotgo: %s: invalid key value", operation)
+	case int(C.ROBOTGO_KEY_STATE_CONFLICT):
+		return fmt.Errorf("robotgo: %s: active modifier or lock state cannot safely produce the requested input", operation)
+	case int(C.ROBOTGO_KEY_OWNERSHIP_CONFLICT):
+		return fmt.Errorf("%w: %s: key state is owned by another input source or has no matching RobotGo key-down", ErrInputOwnership, operation)
+	default:
+		return fmt.Errorf("robotgo: %s: unknown native keyboard status %d", operation, int(status))
+	}
+}
 
 var (
 	errWaylandKeyboardUnavailable = errors.New("wayland virtual keyboard unavailable")
@@ -365,25 +387,57 @@ func waylandKeyboardBackendCompiled() bool {
 	return int(C.robotgo_wayland_keyboard_backend_enabled()) != 0
 }
 
-var waylandKeyboardMu sync.Mutex
+var linuxKeyboardMu sync.Mutex
 
-func lockWaylandKeyboard() func() {
-	if runtime.GOOS == "linux" && DetectDisplayServer() == DisplayServerWayland {
-		waylandKeyboardMu.Lock()
-		return waylandKeyboardMu.Unlock
+func lockLinuxKeyboard() func() {
+	if runtime.GOOS == "linux" {
+		linuxKeyboardMu.Lock()
+		return linuxKeyboardMu.Unlock
 	}
 	return func() {}
 }
 
-func ensureWaylandKeyboardReady() error {
-	if runtime.GOOS != "linux" || DetectDisplayServer() != DisplayServerWayland {
+func lockNativeKeyboardDisplay(server DisplayServer) func() {
+	if runtime.GOOS == "linux" && nativeX11BackendCompiled() &&
+		server == DisplayServerX11 {
+		return lockNativeX11Display()
+	}
+	return func() {}
+}
+
+// runNativeKeyboardOperation keeps the X11 display lease scoped to the native
+// probe and operation. Callers keep linuxKeyboardMu while deciding whether to
+// use the RemoteDesktop portal, but portal I/O never runs under the X11 lease.
+func runNativeKeyboardOperation(server DisplayServer, operation func() error) (ready bool, err error) {
+	unlockDisplay := lockNativeKeyboardDisplay(server)
+	defer unlockDisplay()
+	if err := ensureWaylandKeyboardReady(server); err != nil {
+		return false, err
+	}
+	return true, operation()
+}
+
+func shouldTryRemoteDesktopAfterNative(server DisplayServer, ready bool, err error) bool {
+	return runtime.GOOS == "linux" && server == DisplayServerWayland &&
+		(!ready || errors.Is(err, ErrNotSupported))
+}
+
+func ensureWaylandKeyboardReady(server DisplayServer) error {
+	if runtime.GOOS != "linux" {
 		return nil
 	}
-	if !waylandKeyboardBackendCompiled() {
-		return errWaylandKeyboardNotBuilt
-	}
-	if int(C.robotgo_wayland_keyboard_ready()) == 0 {
-		return nil
+	switch server {
+	case DisplayServerX11:
+		return nativeX11InputReadyLocked()
+	case DisplayServerWayland:
+		if !waylandKeyboardBackendCompiled() {
+			return errWaylandKeyboardNotBuilt
+		}
+		if int(C.robotgo_wayland_keyboard_ready()) == 0 {
+			return nil
+		}
+	default:
+		return fmt.Errorf("%w: no supported display server is selected", ErrNotSupported)
 	}
 
 	code := int(C.robotgo_wayland_keyboard_last_error())
@@ -412,23 +466,44 @@ func ensureWaylandKeyboardReady() error {
 // KeyboardReady reports whether the active display backend can inject
 // keyboard input. On Wayland it performs a real virtual-keyboard probe.
 func KeyboardReady() error {
-	nativeErr := nativeWaylandKeyboardReady()
+	unlockKeyboard := lockLinuxKeyboard()
+	defer unlockKeyboard()
+	server := selectedDisplayServer()
+	_, nativeErr := runNativeKeyboardOperation(server, func() error { return nil })
 	if nativeErr == nil {
 		return nil
 	}
-	if used, err := withRemoteDesktopInput(inputportal.DeviceKeyboard, func(remoteDesktopInputSession) error { return nil }); used {
-		return err
+	if server == DisplayServerWayland {
+		if used, err := withRemoteDesktopInput(inputportal.DeviceKeyboard, func(remoteDesktopInputSession) error { return nil }); used {
+			return err
+		}
 	}
 	return nativeErr
 }
 
 func nativeWaylandKeyboardReady() error {
-	unlock := lockWaylandKeyboard()
-	defer unlock()
-	return ensureWaylandKeyboardReady()
+	unlockKeyboard := lockLinuxKeyboard()
+	defer unlockKeyboard()
+	server := selectedDisplayServer()
+	_, err := runNativeKeyboardOperation(server, func() error { return nil })
+	return err
 }
 
 func closeWaylandKeyboard() { C.robotgo_wayland_keyboard_close() }
+
+func syncWaylandKeyboardForTest() int {
+	return int(C.robotgo_wayland_keyboard_sync())
+}
+
+// releaseNativeX11KeyboardOwnershipLocked releases RobotGo-owned XTEST keys
+// before the shared display connection is closed or retargeted. The caller
+// holds linuxKeyboardMu followed by nativeX11DisplayMu.
+func releaseNativeX11KeyboardOwnershipLocked() error {
+	return nativeKeyStatusError(
+		C.robotgo_x11_release_owned_keys(),
+		"release owned X11 keys",
+	)
+}
 
 func checkKeyCodes(k string) (key C.MMKeyCode, err error) {
 	if k == "" {
@@ -500,20 +575,249 @@ func getFlagsFromValue(value []string) (flags C.MMKeyFlags, err error) {
 	return flags, nil
 }
 
-func tryPortalKey(key string, modifiers []string, pid int, down bool, tap bool) (bool, error) {
-	if runtime.GOOS != "linux" || DetectDisplayServer() != DisplayServerWayland {
+type keyboardHoldID struct {
+	keysym int32
+	flags  uint32
+	pid    int
+}
+
+type keyboardHold struct {
+	backend          persistentInputBackend
+	server           DisplayServer
+	portalGeneration uint64
+	portalMain       int32
+	portalModifiers  []int32
+}
+
+type portalKeyboardRefID struct {
+	generation uint64
+	keysym     int32
+}
+
+var (
+	keyboardHolds         = make(map[keyboardHoldID]keyboardHold)
+	portalKeyboardKeyRefs = make(map[portalKeyboardRefID]uint)
+)
+
+func keyboardHoldIdentity(key string, flags C.MMKeyFlags, pid int) (keyboardHoldID, error) {
+	keysym, _, err := portalKeysymsPure(key, nil)
+	if err != nil {
+		return keyboardHoldID{}, err
+	}
+	return keyboardHoldID{keysym: keysym, flags: uint32(flags), pid: pid}, nil
+}
+
+func clearPortalKeyboardStateLocked() {
+	clear(portalKeyboardKeyRefs)
+	for id, hold := range keyboardHolds {
+		if hold.backend == persistentInputBackendPortal {
+			delete(keyboardHolds, id)
+		}
+	}
+}
+
+func clearNativeKeyboardStateLocked(server DisplayServer) {
+	for id, hold := range keyboardHolds {
+		matches := hold.server == server ||
+			server == DisplayServerX11 && hold.server != DisplayServerWayland
+		if hold.backend == persistentInputBackendNative && matches {
+			delete(keyboardHolds, id)
+		}
+	}
+}
+
+func clearPortalKeyboardGenerationLocked(generation uint64) {
+	for id := range portalKeyboardKeyRefs {
+		if id.generation == generation {
+			delete(portalKeyboardKeyRefs, id)
+		}
+	}
+	for id, hold := range keyboardHolds {
+		if hold.backend == persistentInputBackendPortal &&
+			hold.portalGeneration == generation {
+			delete(keyboardHolds, id)
+		}
+	}
+}
+
+func releasePortalKeyboardRef(
+	session remoteDesktopInputSession, generation uint64, keysym int32,
+) error {
+	id := portalKeyboardRefID{generation: generation, keysym: keysym}
+	owners := portalKeyboardKeyRefs[id]
+	if owners == 0 {
+		return ErrInputOwnership
+	}
+	if owners > 1 {
+		portalKeyboardKeyRefs[id] = owners - 1
+		return nil
+	}
+	if err := remoteDesktopEvent(func(ctx context.Context) error {
+		return session.KeyboardKeysym(ctx, keysym, false)
+	}); err != nil {
+		return err
+	}
+	delete(portalKeyboardKeyRefs, id)
+	return nil
+}
+
+func pressPortalKeyboardHold(
+	session remoteDesktopInputSession,
+	generation uint64,
+	mainKey int32,
+	modifiers []int32,
+) (keyboardHold, error) {
+	hold := keyboardHold{
+		backend:          persistentInputBackendPortal,
+		server:           DisplayServerWayland,
+		portalGeneration: generation,
+		portalMain:       mainKey,
+		portalModifiers:  make([]int32, 0, len(modifiers)),
+	}
+	mainID := portalKeyboardRefID{generation: generation, keysym: mainKey}
+	if portalKeyboardKeyRefs[mainID] != 0 {
+		return keyboardHold{}, ErrInputOwnership
+	}
+
+	seen := make(map[int32]struct{}, len(modifiers))
+	for _, modifier := range modifiers {
+		if modifier == mainKey {
+			continue
+		}
+		if _, duplicate := seen[modifier]; duplicate {
+			continue
+		}
+		seen[modifier] = struct{}{}
+		id := portalKeyboardRefID{generation: generation, keysym: modifier}
+		if portalKeyboardKeyRefs[id] == 0 {
+			if err := remoteDesktopEvent(func(ctx context.Context) error {
+				return session.KeyboardKeysym(ctx, modifier, true)
+			}); err != nil {
+				var rollbackErr error
+				for index := len(hold.portalModifiers) - 1; index >= 0; index-- {
+					rollbackErr = errors.Join(rollbackErr, releasePortalKeyboardRef(
+						session, generation, hold.portalModifiers[index],
+					))
+				}
+				return keyboardHold{}, errors.Join(err, rollbackErr)
+			}
+		}
+		portalKeyboardKeyRefs[id]++
+		hold.portalModifiers = append(hold.portalModifiers, modifier)
+	}
+
+	if err := remoteDesktopEvent(func(ctx context.Context) error {
+		return session.KeyboardKeysym(ctx, mainKey, true)
+	}); err != nil {
+		var rollbackErr error
+		for index := len(hold.portalModifiers) - 1; index >= 0; index-- {
+			rollbackErr = errors.Join(rollbackErr, releasePortalKeyboardRef(
+				session, generation, hold.portalModifiers[index],
+			))
+		}
+		return keyboardHold{}, errors.Join(err, rollbackErr)
+	}
+	portalKeyboardKeyRefs[mainID] = 1
+	return hold, nil
+}
+
+func releasePortalKeyboardHold(
+	session remoteDesktopInputSession, hold keyboardHold,
+) error {
+	firstErr := releasePortalKeyboardRef(
+		session, hold.portalGeneration, hold.portalMain,
+	)
+	for index := len(hold.portalModifiers) - 1; index >= 0; index-- {
+		firstErr = errors.Join(firstErr, releasePortalKeyboardRef(
+			session, hold.portalGeneration, hold.portalModifiers[index],
+		))
+	}
+	return firstErr
+}
+
+func portalKeyboardPayload(key string, modifiers []string, pid int) (int32, []int32, error) {
+	if pid != 0 {
+		return 0, nil, fmt.Errorf("%w: RemoteDesktop portal input cannot target a process", ErrNotSupported)
+	}
+	return portalKeysymsPure(key, modifiers)
+}
+
+func tryPortalKeyTap(
+	server DisplayServer, key string, modifiers []string, pid int,
+) (bool, error) {
+	if runtime.GOOS != "linux" || server != DisplayServerWayland {
 		return false, nil
 	}
-	return withRemoteDesktopInput(inputportal.DeviceKeyboard, func(session remoteDesktopInputSession) error {
-		if pid != 0 {
-			return fmt.Errorf("%w: RemoteDesktop portal input cannot target a process", ErrNotSupported)
-		}
-		mainKey, portalModifiers, err := portalKeysymsPure(key, modifiers)
-		if err != nil {
+	used, generation, err := withRemoteDesktopInputLease(
+		inputportal.DeviceKeyboard, nil,
+		func(session remoteDesktopInputSession, generation uint64) error {
+			mainKey, portalModifiers, err := portalKeyboardPayload(key, modifiers, pid)
+			if err != nil {
+				return err
+			}
+			hold, err := pressPortalKeyboardHold(
+				session, generation, mainKey, portalModifiers,
+			)
+			if err != nil {
+				return err
+			}
+			return releasePortalKeyboardHold(session, hold)
+		},
+	)
+	if used && portalInputFailureInvalidatesSession(err) {
+		closeErr := CloseRemoteDesktopInput()
+		clearPortalKeyboardGenerationLocked(generation)
+		return true, errors.Join(err, closeErr)
+	}
+	return used, err
+}
+
+func tryPortalKeyDown(
+	server DisplayServer, key string, modifiers []string, pid int,
+) (bool, keyboardHold, error) {
+	if runtime.GOOS != "linux" || server != DisplayServerWayland {
+		return false, keyboardHold{}, nil
+	}
+	var hold keyboardHold
+	used, generation, err := withRemoteDesktopInputLease(
+		inputportal.DeviceKeyboard, nil,
+		func(session remoteDesktopInputSession, generation uint64) error {
+			mainKey, portalModifiers, err := portalKeyboardPayload(key, modifiers, pid)
+			if err != nil {
+				return err
+			}
+			hold, err = pressPortalKeyboardHold(
+				session, generation, mainKey, portalModifiers,
+			)
 			return err
-		}
-		return portalModifiedKey(session, mainKey, portalModifiers, down, tap)
-	})
+		},
+	)
+	if used && portalInputFailureInvalidatesSession(err) {
+		closeErr := CloseRemoteDesktopInput()
+		clearPortalKeyboardGenerationLocked(generation)
+		return true, keyboardHold{}, errors.Join(err, closeErr)
+	}
+	return used, hold, err
+}
+
+func tryPortalKeyUp(hold keyboardHold) (bool, error) {
+	expected := hold.portalGeneration
+	used, currentGeneration, err := withRemoteDesktopInputLease(
+		inputportal.DeviceKeyboard, &expected,
+		func(session remoteDesktopInputSession, _ uint64) error {
+			return releasePortalKeyboardHold(session, hold)
+		},
+	)
+	if errors.Is(err, ErrInputOwnership) || errors.Is(err, inputportal.ErrClosed) || !used {
+		clearPortalKeyboardGenerationLocked(hold.portalGeneration)
+		return used, errors.Join(ErrInputOwnership, err)
+	}
+	if err != nil {
+		closeErr := CloseRemoteDesktopInput()
+		clearPortalKeyboardGenerationLocked(currentGeneration)
+		return true, errors.Join(err, closeErr)
+	}
+	return true, nil
 }
 
 func keyTaps(k string, keyArr []string, pid int) error {
@@ -521,10 +825,21 @@ func keyTaps(k string, keyArr []string, pid int) error {
 	if err != nil {
 		return err
 	}
-	unlock := lockWaylandKeyboard()
-	defer unlock()
-	if nativeErr := ensureWaylandKeyboardReady(); nativeErr != nil {
-		if used, err := tryPortalKey(k, keyArr, pid, true, true); used {
+	unlockKeyboard := lockLinuxKeyboard()
+	defer unlockKeyboard()
+	server := selectedDisplayServer()
+	ready, nativeErr := runNativeKeyboardOperation(server, func() error {
+		key, err := checkKeyCodes(k)
+		if err != nil {
+			return fmt.Errorf("%w: native keyboard backend cannot map key %q; use TypeStrE or UnicodeTypeE for text", ErrNotSupported, k)
+		}
+		return tapKeyCode(key, flags, C.uintptr(pid))
+	})
+	if nativeErr != nil {
+		if !shouldTryRemoteDesktopAfterNative(server, ready, nativeErr) {
+			return nativeErr
+		}
+		if used, err := tryPortalKeyTap(server, k, keyArr, pid); used {
 			if err == nil {
 				MilliSleep(currentKeyDelay())
 			}
@@ -532,17 +847,6 @@ func keyTaps(k string, keyArr []string, pid int) error {
 		}
 		return nativeErr
 	}
-	key, err := checkKeyCodes(k)
-	if err != nil {
-		if used, portalErr := tryPortalKey(k, keyArr, pid, true, true); used {
-			if portalErr == nil {
-				MilliSleep(currentKeyDelay())
-			}
-			return portalErr
-		}
-		return fmt.Errorf("%w: native keyboard backend cannot map key %q; use TypeStrE or UnicodeTypeE for text", ErrNotSupported, k)
-	}
-	tapKeyCode(key, flags, C.uintptr(pid))
 	MilliSleep(currentKeyDelay())
 	return nil
 }
@@ -552,28 +856,95 @@ func keyTogglesB(k string, down bool, keyArr []string, pid int) error {
 	if err != nil {
 		return err
 	}
-	unlock := lockWaylandKeyboard()
-	defer unlock()
-	if nativeErr := ensureWaylandKeyboardReady(); nativeErr != nil {
-		if used, err := tryPortalKey(k, keyArr, pid, down, false); used {
+	unlockKeyboard := lockLinuxKeyboard()
+	defer unlockKeyboard()
+	if runtime.GOOS != "linux" {
+		key, err := checkKeyCodes(k)
+		if err != nil {
+			return fmt.Errorf("%w: native keyboard backend cannot map key %q; use TypeStrE or UnicodeTypeE for text", ErrNotSupported, k)
+		}
+		nativeErr := nativeKeyStatusError(
+			C.toggleKeyCode(key, C.bool(down), flags, C.uintptr(pid)),
+			"toggle key",
+		)
+		if nativeErr == nil {
+			MilliSleep(currentKeyDelay())
+		}
+		return nativeErr
+	}
+	id, err := keyboardHoldIdentity(k, flags, pid)
+	if err != nil {
+		return err
+	}
+	server := selectedDisplayServer()
+
+	if !down {
+		hold, ok := keyboardHolds[id]
+		if !ok {
+			return ErrInputOwnership
+		}
+		if hold.backend == persistentInputBackendPortal {
+			_, err := tryPortalKeyUp(hold)
+			delete(keyboardHolds, id)
 			if err == nil {
+				MilliSleep(currentKeyDelay())
+			}
+			return err
+		}
+		_, nativeErr := runNativeKeyboardOperation(hold.server, func() error {
+			key, err := checkKeyCodes(k)
+			if err != nil {
+				return fmt.Errorf("%w: native keyboard backend cannot map key %q; use TypeStrE or UnicodeTypeE for text", ErrNotSupported, k)
+			}
+			return nativeKeyStatusError(
+				C.toggleKeyCode(key, C.bool(false), flags, C.uintptr(pid)),
+				"toggle key",
+			)
+		})
+		if nativeErr == nil || errors.Is(nativeErr, ErrInputOwnership) {
+			delete(keyboardHolds, id)
+		}
+		if nativeErr == nil {
+			MilliSleep(currentKeyDelay())
+		}
+		return nativeErr
+	}
+
+	if existing, ok := keyboardHolds[id]; ok {
+		if existing.backend != persistentInputBackendPortal ||
+			existing.portalGeneration == remoteDesktopInputGeneration() {
+			return ErrInputOwnership
+		}
+		clearPortalKeyboardGenerationLocked(existing.portalGeneration)
+	}
+
+	ready, nativeErr := runNativeKeyboardOperation(server, func() error {
+		key, err := checkKeyCodes(k)
+		if err != nil {
+			return fmt.Errorf("%w: native keyboard backend cannot map key %q; use TypeStrE or UnicodeTypeE for text", ErrNotSupported, k)
+		}
+		return nativeKeyStatusError(
+			C.toggleKeyCode(key, C.bool(true), flags, C.uintptr(pid)),
+			"toggle key",
+		)
+	})
+	if nativeErr != nil {
+		if !shouldTryRemoteDesktopAfterNative(server, ready, nativeErr) {
+			return nativeErr
+		}
+		if used, hold, err := tryPortalKeyDown(server, k, keyArr, pid); used {
+			if err == nil {
+				keyboardHolds[id] = hold
 				MilliSleep(currentKeyDelay())
 			}
 			return err
 		}
 		return nativeErr
 	}
-	key, err := checkKeyCodes(k)
-	if err != nil {
-		if used, portalErr := tryPortalKey(k, keyArr, pid, down, false); used {
-			if portalErr == nil {
-				MilliSleep(currentKeyDelay())
-			}
-			return portalErr
-		}
-		return fmt.Errorf("%w: native keyboard backend cannot map key %q; use TypeStrE or UnicodeTypeE for text", ErrNotSupported, k)
+	keyboardHolds[id] = keyboardHold{
+		backend: persistentInputBackendNative,
+		server:  server,
 	}
-	C.toggleKeyCode(key, C.bool(down), flags, C.uintptr(pid))
 	MilliSleep(currentKeyDelay())
 	return nil
 }
@@ -753,20 +1124,25 @@ func UnicodeTypeE(str uint32, args ...int) error {
 	if err := validateUnicodeScalar(str); err != nil {
 		return err
 	}
-	unlock := lockWaylandKeyboard()
-	defer unlock()
-	if nativeErr := ensureWaylandKeyboardReady(); nativeErr != nil {
+	unlockKeyboard := lockLinuxKeyboard()
+	defer unlockKeyboard()
+	server := selectedDisplayServer()
+	if usesNativeX11KeyboardFor(server) && (str < minNativeX11DirectRune || str > maxNativeX11DirectRune) {
+		return fmt.Errorf("%w: native X11 Unicode input cannot safely map %U without changing the server keymap; use a Pure-Go build for full Unicode input", ErrNotSupported, str)
+	}
+	ready, nativeErr := runNativeKeyboardOperation(server, func() error {
+		return unicodeType(str, args...)
+	})
+	if nativeErr != nil && shouldTryRemoteDesktopAfterNative(server, ready, nativeErr) {
 		used, err := tryRemoteDesktopUnicode(rune(str), args)
 		if used {
 			return err
 		}
-		return nativeErr
 	}
-	unicodeType(str, args...)
-	return nil
+	return nativeErr
 }
 
-func unicodeType(str uint32, args ...int) {
+func unicodeType(str uint32, args ...int) error {
 	cstr := C.uint(str)
 	pid := 0
 	if len(args) > 0 {
@@ -778,7 +1154,7 @@ func unicodeType(str uint32, args ...int) {
 		isPid = args[1]
 	}
 
-	C.unicodeType(cstr, C.uintptr(pid), C.int8_t(isPid))
+	return nativeKeyStatusError(C.unicodeType(cstr, C.uintptr(pid), C.int8_t(isPid)), "type Unicode code point")
 }
 
 // ToUC trans string to unicode []string
@@ -809,10 +1185,23 @@ func inputUTF(str string) {
 func inputUTFUnsafe(str string) error {
 	cstr := C.CString(str)
 	defer C.free(unsafe.Pointer(cstr))
-	if int(C.input_utf(cstr)) != 0 {
-		return errors.New("failed to inject UTF-8 text")
+	return nativeKeyStatusError(C.input_utf(cstr), "type UTF-8 text")
+}
+
+func typeWaylandTextExact(str string, delay int) error {
+	codepoints := exactTextCodepoints(str)
+	values := make([]C.uint32_t, len(codepoints))
+	for index, value := range codepoints {
+		values[index] = C.uint32_t(value)
 	}
-	return nil
+	var valuesPtr *C.uint32_t
+	if len(values) > 0 {
+		valuesPtr = &values[0]
+	}
+	return nativeKeyStatusError(
+		C.robotgo_wayland_type_codepoints(valuesPtr, C.size_t(len(values)), C.uint64_t(delay)),
+		"type native Wayland text",
+	)
 }
 
 // TypeStr send a string (supported UTF-8)
@@ -829,59 +1218,74 @@ func TypeStr(str string, args ...int) {
 
 // TypeStrE sends a UTF-8 string and reports backend or key injection errors.
 func TypeStrE(str string, args ...int) error {
-	if _, _, err := parseTextInput(str, args); err != nil {
+	pid, tm, err := parseTextInput(str, args)
+	if err != nil {
 		return err
 	}
-	unlock := lockWaylandKeyboard()
-	defer unlock()
-	if nativeErr := ensureWaylandKeyboardReady(); nativeErr != nil {
+	unlockKeyboard := lockLinuxKeyboard()
+	defer unlockKeyboard()
+	server := selectedDisplayServer()
+	if err := validateNativeX11Text(str, server); err != nil {
+		return err
+	}
+	ready, nativeErr := runNativeKeyboardOperation(server, func() error {
+		if usesNativeX11KeyboardFor(server) {
+			cText := C.CString(str)
+			defer C.free(unsafe.Pointer(cText))
+			return nativeKeyStatusError(
+				C.robotgo_x11_type_text(cText, C.uint64_t(tm)),
+				"type native X11 text",
+			)
+		}
+		if runtime.GOOS == "linux" {
+			_ = pid // Native Wayland input is global and cannot target a process.
+			return typeWaylandTextExact(str, tm)
+		}
+
+		for i := 0; i < len([]rune(str)); i++ {
+			ustr := uint32(CharCodeAt(str, i))
+			if err := unicodeType(ustr, pid); err != nil {
+				return err
+			}
+			MilliSleep(tm)
+		}
+		MilliSleep(currentKeyDelay())
+		return nil
+	})
+	if nativeErr != nil && shouldTryRemoteDesktopAfterNative(server, ready, nativeErr) {
 		used, err := tryRemoteDesktopText(str, args)
 		if used {
 			return err
 		}
-		return nativeErr
 	}
-	var tm, tm1 = 0, 7
+	return nativeErr
+}
 
-	if len(args) > 1 {
-		tm = args[1]
-	}
-	if len(args) > 2 {
-		tm1 = args[2]
-	}
-	pid := 0
-	if len(args) > 0 {
-		pid = args[0]
-	}
+const (
+	minNativeX11DirectRune = 0x20
+	maxNativeX11DirectRune = 0x7e
+)
 
-	if runtime.GOOS == "linux" {
-		strUc := ToUC(str)
-		for i := 0; i < len(strUc); i++ {
-			ru := []rune(strUc[i])
-			if len(ru) <= 1 {
-				ustr := uint32(CharCodeAt(strUc[i], 0))
-				unicodeType(ustr, pid)
-			} else {
-				if err := inputUTFUnsafe(strUc[i]); err != nil {
-					return err
-				}
-				MilliSleep(tm1)
-			}
-
-			MilliSleep(tm)
-		}
+func validateNativeX11Text(text string, server DisplayServer) error {
+	if !usesNativeX11KeyboardFor(server) {
 		return nil
 	}
-
-	for i := 0; i < len([]rune(str)); i++ {
-		ustr := uint32(CharCodeAt(str, i))
-		unicodeType(ustr, pid)
-		// if len(args) > 0 {
-		MilliSleep(tm)
-		// }
+	for _, value := range text {
+		encoded := ToUC(string(value))
+		if value < minNativeX11DirectRune || value > maxNativeX11DirectRune ||
+			len(encoded) != 1 || len([]rune(encoded[0])) != 1 {
+			return fmt.Errorf(
+				"%w: native X11 text input cannot safely map %U without changing the server keymap; use a Pure-Go build for full Unicode input",
+				ErrNotSupported,
+				value,
+			)
+		}
 	}
-	MilliSleep(currentKeyDelay())
 	return nil
+}
+
+func usesNativeX11KeyboardFor(server DisplayServer) bool {
+	return nativeX11BackendCompiled() && server == DisplayServerX11
 }
 
 // PasteStr paste a string (support UTF-8),

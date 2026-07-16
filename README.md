@@ -225,6 +225,16 @@ backend may support a single non-ASCII rune directly (the RemoteDesktop portal
 and Pure-Go X11 do), while another native keymap can return `ErrNotSupported`.
 Use `TypeStrE` or `UnicodeTypeE` when the intent is text input.
 
+On native Linux and RemoteDesktop portal paths, stateful `KeyDown`/`KeyUp`
+and `MouseDown`/`MouseUp` pairs are backend- and session-affine. Equivalent
+key aliases such as `esc`/`escape` match the same hold. A duplicate Down, an
+Up without a successful RobotGo-owned Down, or an Up after its portal session
+was replaced returns `ErrInputOwnership` without sending input on another
+backend. Callers can distinguish this contract with
+`errors.Is(err, robotgo.ErrInputOwnership)`. Closing or retargeting a native
+backend releases RobotGo-owned state; closing a portal session delegates that
+release to the compositor.
+
 Low-level helpers whose signatures directly expose `C.*` types remain CGO-only.
 Portable callers should use `Bitmap`, `CHex`, `Handle`, the error-returning APIs,
 and the high-level capture, input, and window functions instead.
@@ -256,9 +266,13 @@ The normal Linux build uses the X11 backend:
 go build ./...
 ```
 
-An X11 session requires `DISPLAY` and an accessible X server. RobotGo does not
-silently route a Wayland-primary operation through X11 merely because Xwayland
-is present.
+RobotGo normally detects an X11 session through `DISPLAY` and requires an
+accessible X server. Native CGO builds may instead select an explicit target
+with `SetXDisplayName`, even when both display-server environment variables are
+empty. `DetectDisplayServer` remains an environment-only observation; runtime
+backend information and capabilities report the explicitly selected X11
+target. A Wayland environment remains authoritative, so RobotGo does not route
+a Wayland-primary operation through X11 merely because Xwayland is present.
 
 Linux/X11 also supports capture, bounds, and input without a C compiler or X11
 development headers:
@@ -297,9 +311,25 @@ cannot attribute simultaneous physical input, or another press while RobotGo
 intentionally holds a key/button; state ownership in those cases remains
 best-effort. Avoid mixing automation with concurrent human or synthetic input.
 
+The native CGO X11 path never installs temporary server-global key mappings.
+It types printable ASCII represented by the active keymap and preflights the
+complete string before the first event, so an unmapped later character cannot
+leave partial text or a held modifier. `UnicodeTypeE` follows the same
+fail-closed rule for non-ASCII code points. Compound input never releases a
+main key or modifier that was already held outside RobotGo. Active Shift,
+Level3/Level5, and lock state is preserved and reused only when it produces the
+requested character exactly; conflicting shortcut state fails before mutation.
+Persistent native `KeyUp` must match a successful RobotGo `KeyDown`, and only
+RobotGo-owned keycodes are released. Use the Pure-Go X11 build when full Unicode
+text and its explicit scratch-mapping lifecycle are required. Native
+`KeyboardReady`/`MouseReady` also verify a live XTEST 2.2 connection. Xlib
+operations share a locked configured-display lifecycle; separate XGB resolver
+connections use the same configured target and close deterministically.
+
 Error-returning window APIs no longer report success for native operations that
 have no implementation. In particular, the current X11 minimize/maximize path
-returns `ErrNotSupported` instead of silently doing nothing.
+returns `ErrNotSupported` instead of silently doing nothing. Native `GetTitleE`
+also returns an explicit error when a title is empty or cannot be retrieved.
 
 ### Wayland
 
@@ -308,6 +338,11 @@ Build the native Wayland paths explicitly:
 ```bash
 go build -tags wayland ./...
 ```
+
+This is a Wayland-targeted build, not a dual X11/Wayland window backend. In a
+pure X11 session it reports Window and Hook capabilities as unavailable;
+error-returning window operations return `ErrNotSupported`. Use the default
+Linux build for an X11 session.
 
 Capture selection is:
 
@@ -361,9 +396,15 @@ without converting them until a capture is requested.
 For explicit GNOME/KDE portal input, probe support without prompting and then
 call `StartRemoteDesktopInput` with the required device mask. While that session
 is active, relative movement, buttons/clicks, scrolling, key taps/toggles, text,
-and Unicode can fall back to it when native input is unavailable. The lower-level
-`input/portal` package additionally exposes relative pointer motion, smooth and
-discrete axes, pointer buttons, and keycode/keysym events.
+and Unicode can fall back to it when native input is unavailable. Native
+Wayland `TypeStrE` preflights the complete rune sequence and injects supported
+text exactly. If a rune is absent from the active keymap, it produces zero
+native input and safely uses an active keyboard-granted RemoteDesktop session;
+without one it returns `ErrNotSupported`. Runtime seat removal or keyboard
+capability changes are processed without blocking and reconnect to the next
+deterministic capable seat. The lower-level `input/portal` package additionally
+exposes relative pointer motion, smooth and discrete axes, pointer buttons, and
+keycode/keysym events.
 `StartRemoteDesktopInputWithOptions` can attach monitor/window/virtual
 ScreenCast sources to the same consent session. Selected stream position and
 logical size then let `MoveE` map global coordinates to absolute portal input;
@@ -473,6 +514,10 @@ coordinate overflow, and a non-zero origin combined with a
 Explicit regions whose 32-bit RGBA buffer would exceed 512 MiB are also
 rejected before a backend allocates capture memory.
 
+On Linux, `GetPixelColor` and `GetPxColor` use the selected capture backend for
+a 1x1 region. Out-of-bounds coordinates and capture failures therefore return
+an error instead of being indistinguishable from a valid black pixel.
+
 `GetLinuxCapabilities` reports the detected session, compositor, selected
 feature backends, fallbacks, and unsupported reasons:
 
@@ -534,12 +579,14 @@ CGO_ENABLED=0 go test ./...
 go test -race ./input/portal
 ```
 
-Linux Pure-Go X11 input has a non-skipping Xvfb/XTEST CI test. It uses `us,de`
-layouts and fails its Linux non-CGO CI leg instead of skipping when the X11
-runtime is missing; see
-[the testing guide](TEST.md#x11integration-pure-go-x11-input) for the exact
-command and prerequisites. Protecting the resulting remote check remains a
-roadmap exit criterion.
+Linux X11 input has non-skipping Xvfb/XTEST CI checks. The deep Pure-Go suite
+uses `us,de` layouts; a separate job applies the same public behavioral
+contract and benchmark smoke to native CGO and Pure-Go binaries. It also proves
+that native readiness rejects a reachable X server with XTEST disabled. Missing
+X11 runtime support fails instead of skipping; see
+[the testing guide](TEST.md#x11integration-native-and-pure-go-x11-input) for
+the exact commands and prerequisites. Protecting the resulting remote checks
+remains a roadmap exit criterion.
 
 Wayland and portal code has additional tagged suites:
 
@@ -561,15 +608,16 @@ Real Wayland input results are tracked in the
 - [Go API reference](https://pkg.go.dev/github.com/marang/robotgo)
 - [Key names and conversion](docs/keys.md)
 - [Testing guide](TEST.md)
+- [X11 native-vs-Pure-Go evidence](docs/performance/x11-native-vs-purego.md)
 - [Current Wayland support and backlog](docs/wayland-tasks.md)
 - [Product roadmap](docs/plan/product-roadmap.md)
 - [Wayland implementation history](docs/wayland-history.md)
 
 The active product slice is Phase 3: hardening and measuring selective Pure-Go
-backends. Linux/X11 input is implemented and covered in CI; native-vs-Pure-Go
-behavioral and benchmark evidence is still required before any default backend
-switch. Real GNOME/KDE/wlroots validation remains an independent Wayland release
-gate.
+backends. Linux/X11 input is implemented; shared native/Pure-Go behavior and a
+report-only benchmark smoke are blocking CI. A versioned full benchmark sample
+and explicit default-backend decision are still required. Real
+GNOME/KDE/wlroots validation remains an independent Wayland release gate.
 
 ## Upstream and attribution
 

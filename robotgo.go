@@ -261,7 +261,7 @@ func GetLinuxCapabilities() LinuxCapabilities {
 		return LinuxCapabilities{}
 	}
 
-	ds := DetectDisplayServer()
+	ds := selectedDisplayServer()
 	c := LinuxCapabilities{
 		DisplayServer:  ds,
 		Compositor:     "",
@@ -316,7 +316,9 @@ func GetLinuxCapabilities() LinuxCapabilities {
 			}
 		}
 
+		unlockDisplay := lockNativeX11Display()
 		size := C.getMainDisplaySize()
+		unlockDisplay()
 		if int(size.w) > 0 && int(size.h) > 0 {
 			c.Bounds = FeatureCapability{
 				Available: true,
@@ -415,12 +417,31 @@ func GetLinuxCapabilities() LinuxCapabilities {
 		c.Events = c.Hook
 
 	case DisplayServerX11:
-		c.Capture = FeatureCapability{Available: true, Backend: "x11", Reason: "x11 session detected", Notes: "x11 capture path"}
-		c.Bounds = FeatureCapability{Available: true, Backend: "x11", Reason: "x11 session detected", Notes: "x11 bounds path"}
-		c.Keyboard = FeatureCapability{Available: true, Backend: "x11", Reason: "x11 session detected", Notes: "x11 keyboard path"}
-		c.Mouse = FeatureCapability{Available: true, Backend: "x11", Reason: "x11 session detected", Notes: "x11 mouse path"}
-		c.Window = FeatureCapability{Available: true, Backend: "x11", Reason: "x11 session detected", Notes: "x11 window management path"}
-		c.Hook = FeatureCapability{Available: true, Backend: "x11", Reason: "x11 session detected", Notes: "x11 hook/event path"}
+		displayErr, inputErr := nativeX11CapabilityErrors()
+		if capabilityProbeSucceeded(displayErr) {
+			c.Capture = FeatureCapability{Available: true, Backend: "x11", Reason: "X11 display connection is available", Notes: "native X11 capture path"}
+			c.Bounds = FeatureCapability{Available: true, Backend: "x11", Reason: "X11 display connection is available", Notes: "native X11 bounds path"}
+		} else {
+			c.Capture = FeatureCapability{Available: false, Backend: "x11", Reason: displayErr.Error(), Notes: "check DISPLAY and X11 server access"}
+			c.Bounds = c.Capture
+		}
+		if capabilityProbeSucceeded(inputErr) {
+			c.Keyboard = FeatureCapability{Available: true, Backend: "x11", Reason: "XTEST 2.2 or newer is available", Notes: "native X11 keyboard path"}
+			c.Mouse = FeatureCapability{Available: true, Backend: "x11", Reason: "XTEST 2.2 or newer is available", Notes: "native X11 mouse path"}
+		} else {
+			c.Keyboard = FeatureCapability{Available: false, Backend: "x11", Reason: inputErr.Error(), Notes: "enable XTEST 2.2 or newer on the selected X11 server"}
+			c.Mouse = c.Keyboard
+		}
+		if capabilityProbeSucceeded(displayErr) && nativeX11BackendCompiled() {
+			c.Window = FeatureCapability{Available: true, Backend: "x11", Reason: "X11 display connection is available", Notes: "native X11 activation, title, and close path"}
+		} else {
+			c.Window = FeatureCapability{Available: false, Backend: "x11", Reason: displayErr.Error(), Notes: "build the native X11 backend and verify the configured X11 display"}
+		}
+		if capabilityProbeSucceeded(displayErr) && nativeX11BackendCompiled() {
+			c.Hook = FeatureCapability{Available: true, Backend: "x11", Reason: "X11 display connection is available", Notes: "native X11 hook/event path"}
+		} else {
+			c.Hook = FeatureCapability{Available: false, Backend: "x11", Reason: displayErr.Error(), Notes: "build the native X11 backend and verify the configured X11 display"}
+		}
 		c.Events = c.Hook
 
 	default:
@@ -434,6 +455,10 @@ func GetLinuxCapabilities() LinuxCapabilities {
 	}
 
 	return c
+}
+
+func capabilityProbeSucceeded(err error) bool {
+	return err == nil
 }
 
 // CaptureBackend reports which backend handled the most recent screen capture.
@@ -1077,13 +1102,13 @@ func RgbToHex(r, g, b uint8) C.uint32_t {
 	return C.color_rgb_to_hex(C.uint8_t(r), C.uint8_t(g), C.uint8_t(b))
 }
 
-// GetPxColor returns the pixel color at (x,y). On Wayland this function
-// falls back to capturing a 1x1 region using the Wayland backend. An error is
-// returned if capturing fails or no suitable backend is available.
+// GetPxColor returns the pixel color at (x,y). On Linux it captures a 1x1
+// region through the selected capture backend so invalid coordinates and
+// backend failures are returned as errors instead of looking like black.
 func GetPxColor(x, y int, displayId ...int) (C.MMRGBHex, error) {
 	display := displayIdx(displayId...)
 
-	if runtime.GOOS == "linux" && (DetectDisplayServer() == DisplayServerWayland || os.Getenv(envForcePortal) != "") {
+	if runtime.GOOS == "linux" {
 		bit, err := CaptureScreen(x, y, 1, 1, display)
 		if err != nil {
 			return 0, err
@@ -1092,9 +1117,7 @@ func GetPxColor(x, y int, displayId ...int) (C.MMRGBHex, error) {
 		return C.mmrgb_hex_at(C.MMBitmapRef(bit), 0, 0), nil
 	}
 
-	cx := C.int32_t(x)
-	cy := C.int32_t(y)
-	color := C.get_px_color(cx, cy, C.int32_t(display))
+	color := C.get_px_color(C.int32_t(x), C.int32_t(y), C.int32_t(display))
 	return color, nil
 }
 
@@ -1109,7 +1132,10 @@ func GetPixelColor(x, y int, displayId ...int) (string, error) {
 
 // GetLocationColor gets the color of the current mouse location.
 func GetLocationColor(displayId ...int) (string, error) {
-	x, y := Location()
+	x, y, err := LocationE()
+	if err != nil {
+		return "", err
+	}
 	return GetPixelColor(x, y, displayId...)
 }
 
@@ -1138,8 +1164,21 @@ func GetHWNDByPid(pid int) int {
 // SysScale get the sys scale
 func SysScale(displayId ...int) float64 {
 	display := displayIdx(displayId...)
-	s := C.sys_scale(C.int32_t(display))
-	return float64(s)
+	unlock := lockNativeX11Display()
+	defer unlock()
+	return sysScaleLocked(display)
+}
+
+func sysScaleLocked(display int) float64 {
+	return float64(C.sys_scale(C.int32_t(display)))
+}
+
+func scaleFLocked(displayId ...int) float64 {
+	f := sysScaleLocked(displayIdx(displayId...))
+	if f == 0.0 {
+		return 1.0
+	}
+	return f
 }
 
 // Scaled get the screen scaled return scale size
@@ -1160,7 +1199,9 @@ func Scaled1(x int, f float64) int {
 
 // GetScreenSize get the screen size
 func GetScreenSize() (int, int) {
+	unlock := lockNativeX11Display()
 	size := C.getMainDisplaySize()
+	unlock()
 	w := int(size.w)
 	h := int(size.h)
 	if w > 0 && h > 0 {
@@ -1179,10 +1220,25 @@ func GetScreenRect(displayId ...int) Rect {
 		display = displayId[0]
 	}
 
+	unlock := lockNativeX11Display()
+	rect := getScreenRectLocked(display, false)
+	unlock()
+	if (rect.W <= 0 || rect.H <= 0) && isWaylandSession() {
+		if wlRect, ok := waylandScreenBoundsFallback(); ok {
+			return wlRect
+		}
+	}
+	return rect
+}
+
+// getScreenRectLocked returns the native screen rectangle while the caller
+// holds the native X11 display lease. The lease is a no-op on platforms that
+// do not compile the native X11 backend.
+func getScreenRectLocked(display int, waylandSession bool) Rect {
 	rect := C.getScreenRect(C.int32_t(display))
 	x, y, w, h := int(rect.origin.x), int(rect.origin.y),
 		int(rect.size.w), int(rect.size.h)
-	if (w <= 0 || h <= 0) && isWaylandSession() {
+	if (w <= 0 || h <= 0) && waylandSession {
 		if wlRect, ok := waylandScreenBoundsFallback(); ok {
 			x, y, w, h = wlRect.X, wlRect.Y, wlRect.W, wlRect.H
 		}
@@ -1225,32 +1281,28 @@ func CaptureScreen(args ...int) (CBitmap, error) {
 		displayId = args[4]
 	}
 
-	ds := DetectDisplayServer()
+	ds := selectedDisplayServer()
 
 	if len(args) > 3 {
 		x = C.int32_t(argX)
 		y = C.int32_t(argY)
 		w = C.int32_t(argW)
 		h = C.int32_t(argH)
-	} else {
-		if runtime.GOOS != "linux" || ds == DisplayServerX11 {
-			if runtime.GOOS == "linux" && !x11MainDisplayAvailable() {
-				return nil, errors.New("no display server found")
-			}
-			// Get the main screen rect.
-			rect := GetScreenRect(displayId)
-			if err := validateCaptureRegionRequest(rect.X, rect.Y, rect.W, rect.H); err != nil {
-				return nil, err
-			}
-			if runtime.GOOS == "windows" {
-				x = C.int32_t(rect.X)
-				y = C.int32_t(rect.Y)
-			}
-
-			w = C.int32_t(rect.W)
-			h = C.int32_t(rect.H)
+	} else if runtime.GOOS != "linux" {
+		// Get the main screen rect on non-Linux platforms. Linux resolves X11
+		// bounds while holding the native display lease in the X11 branch below;
+		// Wayland and portal backends accept an empty rectangle as full-screen.
+		rect := getScreenRectLocked(displayId, false)
+		if err := validateCaptureRegionRequest(rect.X, rect.Y, rect.W, rect.H); err != nil {
+			return nil, err
 		}
-		// On Wayland without explicit dimensions, x,y,w,h remain 0
+		if runtime.GOOS == "windows" {
+			x = C.int32_t(rect.X)
+			y = C.int32_t(rect.Y)
+		}
+
+		w = C.int32_t(rect.W)
+		h = C.int32_t(rect.H)
 	}
 
 	isPid := 0
@@ -1262,6 +1314,23 @@ func CaptureScreen(args ...int) (CBitmap, error) {
 		// Allow tests or environments to force the portal backend regardless
 		// of the detected display server.
 		backendOverride := strings.ToLower(strings.TrimSpace(os.Getenv(envWaylandBackend)))
+		forcePortal := os.Getenv(envForcePortal) != "" || backendOverride == waylandBackendPortalName
+		if len(args) <= 3 && ds == DisplayServerX11 &&
+			(forcePortal || backendOverride == waylandBackendScreenCast) {
+			// Preserve argumentless X11 crop semantics without holding the native
+			// display lease during portal or PipeWire I/O.
+			unlockDisplay := lockNativeX11Display()
+			if x11MainDisplayAvailableLocked() {
+				rect := getScreenRectLocked(displayId, false)
+				if validateCaptureRegionRequest(rect.X, rect.Y, rect.W, rect.H) == nil {
+					x = C.int32_t(rect.X)
+					y = C.int32_t(rect.Y)
+					w = C.int32_t(rect.W)
+					h = C.int32_t(rect.H)
+				}
+			}
+			unlockDisplay()
+		}
 		if backendOverride == waylandBackendScreenCast {
 			bitmap, err := captureViaPersistentScreenCast(x, y, w, h)
 			if err != nil {
@@ -1270,7 +1339,6 @@ func CaptureScreen(args ...int) (CBitmap, error) {
 			captureDebugf("forced persistent ScreenCast backend (rect=%d,%d %dx%d)", int(x), int(y), int(w), int(h))
 			return bitmap, nil
 		}
-		forcePortal := os.Getenv(envForcePortal) != "" || backendOverride == waylandBackendPortalName
 		if forcePortal {
 			if cb, pErr := captureViaPortalScreenshot(x, y, w, h); pErr == nil {
 				captureDebugf("forced portal screenshot backend (display=%d, rect=%d,%d %dx%d)", displayId, int(x), int(y), int(w), int(h))
@@ -1326,8 +1394,23 @@ func CaptureScreen(args ...int) (CBitmap, error) {
 			setLastBackend(BackendScreencopy)
 			return CBitmap(bit), nil
 		case DisplayServerX11:
-			if !x11MainDisplayAvailable() {
+			// The shared X11 connection is borrowed by bounds and capture. Keep
+			// the lease scoped to those native operations; portal, ScreenCast,
+			// and Wayland I/O above never run while this mutex is held.
+			unlockDisplay := lockNativeX11Display()
+			defer unlockDisplay()
+			if !x11MainDisplayAvailableLocked() {
 				return nil, errors.New("no display server found")
+			}
+			if len(args) <= 3 {
+				rect := getScreenRectLocked(displayId, false)
+				if err := validateCaptureRegionRequest(rect.X, rect.Y, rect.W, rect.H); err != nil {
+					return nil, err
+				}
+				x = C.int32_t(rect.X)
+				y = C.int32_t(rect.Y)
+				w = C.int32_t(rect.W)
+				h = C.int32_t(rect.H)
 			}
 			bit := C.capture_screen(x, y, w, h, C.int32_t(displayId), C.int8_t(isPid))
 			if bit == nil {
@@ -1510,31 +1593,65 @@ func ByteToCBitmapE(by []byte) (CBitmap, error) {
 
 // SetXDisplayName set XDisplay name (Linux)
 func SetXDisplayName(name string) error {
+	if strings.IndexByte(name, 0) >= 0 {
+		return errors.New("robotgo: X11 display name contains NUL")
+	}
+	unlockMouse := lockLinuxMouse()
+	defer unlockMouse()
+	unlockKeyboard := lockLinuxKeyboard()
+	defer unlockKeyboard()
+	unlockDisplay := lockNativeX11Display()
+	defer unlockDisplay()
+	mouseReleaseErr := releaseNativeMouseHoldsLocked(DisplayServerX11)
+	releaseErr := releaseNativeX11KeyboardOwnershipLocked()
+	clearNativeKeyboardStateLocked(DisplayServerX11)
 	cname := C.CString(name)
+	defer C.free(unsafe.Pointer(cname))
 	str := C.set_XDisplay_name(cname)
-	C.free(unsafe.Pointer(cname))
-
-	return toErr(str)
+	if err := toErr(str); err != nil {
+		return errors.Join(mouseReleaseErr, releaseErr, err)
+	}
+	return errors.Join(mouseReleaseErr, releaseErr)
 }
 
 // GetXDisplayName get XDisplay name (Linux)
 func GetXDisplayName() string {
+	unlock := lockNativeX11Display()
+	defer unlock()
 	name := C.get_XDisplay_name()
-	gname := C.GoString(name)
-	C.free(unsafe.Pointer(name))
+	if name == nil {
+		return ""
+	}
+	defer C.free(unsafe.Pointer(name))
+	return C.GoString(name)
+}
 
-	return gname
+func getXDisplayNameLocked() string {
+	name := C.get_XDisplay_name_borrowed()
+	if name == nil {
+		return ""
+	}
+	return C.GoString(name)
 }
 
 // CloseMainDisplay closes the main display and ignores cleanup errors for
 // compatibility. Prefer CloseMainDisplayE in new code.
 func CloseMainDisplay() { _ = CloseMainDisplayE() }
 
-// CloseMainDisplayE closes the native main display. Native CGO cleanup does not
-// currently expose an error result.
+// CloseMainDisplayE releases RobotGo-owned native X11 keys and closes the
+// native main display.
 func CloseMainDisplayE() error {
+	unlockMouse := lockLinuxMouse()
+	defer unlockMouse()
+	unlockKeyboard := lockLinuxKeyboard()
+	defer unlockKeyboard()
+	unlockDisplay := lockNativeX11Display()
+	defer unlockDisplay()
+	mouseReleaseErr := releaseNativeMouseHoldsLocked(DisplayServerX11)
+	releaseErr := releaseNativeX11KeyboardOwnershipLocked()
+	clearNativeKeyboardStateLocked(DisplayServerX11)
 	C.close_main_display()
-	return nil
+	return errors.Join(mouseReleaseErr, releaseErr)
 }
 
 // Deprecated: use the ScaledF(),
@@ -1584,58 +1701,286 @@ func MoveScale(x, y int, displayId ...int) (int, int) {
 	return x, y
 }
 
+func moveScaleLocked(x, y int, displayId ...int) (int, int) {
+	if currentScale() || runtime.GOOS == "windows" {
+		f := scaleFLocked(displayId...)
+		x, y = Scaled1(x, f), Scaled1(y, f)
+	}
+	return x, y
+}
+
 var waylandMouseMu sync.Mutex
 
-func lockWaylandMouse() func() {
-	if runtime.GOOS == "linux" && DetectDisplayServer() == DisplayServerWayland {
+type mouseHold struct {
+	backend          persistentInputBackend
+	server           DisplayServer
+	portalGeneration uint64
+	portalButton     int32
+}
+
+type portalMouseRefID struct {
+	generation uint64
+	button     int32
+}
+
+var (
+	mouseHolds            = make(map[string]mouseHold)
+	portalMouseButtonRefs = make(map[portalMouseRefID]uint)
+)
+
+func canonicalMouseHoldName(name string) string {
+	switch name {
+	case "", "left":
+		return "left"
+	case "middle":
+		return "center"
+	default:
+		return name
+	}
+}
+
+func nativeMouseStatusError(status C.int, operation string) error {
+	switch status {
+	case C.ROBOTGO_MOUSE_OK:
+		return nil
+	case C.ROBOTGO_MOUSE_NO_DISPLAY:
+		return fmt.Errorf("%w: %s: native mouse display is unavailable", ErrNotSupported, operation)
+	case C.ROBOTGO_MOUSE_UNSUPPORTED:
+		return fmt.Errorf("%w: %s", ErrNotSupported, operation)
+	case C.ROBOTGO_MOUSE_INJECTION_FAILED:
+		return fmt.Errorf("robotgo: %s: native mouse injection failed", operation)
+	case C.ROBOTGO_MOUSE_OWNERSHIP_CONFLICT:
+		return fmt.Errorf("%w: %s", ErrInputOwnership, operation)
+	case C.ROBOTGO_MOUSE_INVALID:
+		return fmt.Errorf("robotgo: %s: invalid native mouse button", operation)
+	default:
+		return fmt.Errorf("robotgo: %s: unknown native mouse status %d", operation, int(status))
+	}
+}
+
+func nativeWaylandMouseButtonCodeForTest(name string) (uint32, error) {
+	var code C.uint32_t
+	var index C.uint
+	status := C.robotgo_wayland_mouse_button_code(
+		CheckMouse(canonicalMouseHoldName(name)), &code, &index,
+	)
+	return uint32(code), nativeMouseStatusError(status, "map Wayland mouse button")
+}
+
+func nativeWaylandMouseBackendSelectedForTest() bool {
+	return bool(C.robotgo_wayland_mouse_backend_selected())
+}
+
+func clearPortalMouseStateLocked() {
+	clear(portalMouseButtonRefs)
+	for name, hold := range mouseHolds {
+		if hold.backend == persistentInputBackendPortal {
+			delete(mouseHolds, name)
+		}
+	}
+}
+
+func clearPortalMouseGenerationLocked(generation uint64) {
+	for id := range portalMouseButtonRefs {
+		if id.generation == generation {
+			delete(portalMouseButtonRefs, id)
+		}
+	}
+	for name, hold := range mouseHolds {
+		if hold.backend == persistentInputBackendPortal &&
+			hold.portalGeneration == generation {
+			delete(mouseHolds, name)
+		}
+	}
+}
+
+func releaseNativeMouseHoldsLocked(server DisplayServer) error {
+	var releaseErr error
+	if server == DisplayServerX11 {
+		releaseErr = nativeMouseStatusError(
+			C.robotgo_x11_release_owned_buttons(),
+			"release owned X11 mouse buttons",
+		)
+	}
+	for name, hold := range mouseHolds {
+		matches := hold.server == server ||
+			server == DisplayServerX11 && hold.server != DisplayServerWayland
+		if hold.backend != persistentInputBackendNative || !matches {
+			continue
+		}
+		if server == DisplayServerWayland {
+			releaseErr = errors.Join(releaseErr, nativeMouseStatusError(
+				C.toggleMouse(C.bool(false), CheckMouse(name)),
+				"release owned Wayland mouse button",
+			))
+		}
+		delete(mouseHolds, name)
+	}
+	return releaseErr
+}
+
+func tryPortalMouseDown(server DisplayServer, name string) (bool, mouseHold, error) {
+	if runtime.GOOS != "linux" || server != DisplayServerWayland {
+		return false, mouseHold{}, nil
+	}
+	var hold mouseHold
+	used, generation, err := withRemoteDesktopInputLease(
+		inputportal.DevicePointer, nil,
+		func(session remoteDesktopInputSession, generation uint64) error {
+			button, err := portalPointerButton(name)
+			if err != nil {
+				return err
+			}
+			id := portalMouseRefID{generation: generation, button: button}
+			if portalMouseButtonRefs[id] != 0 {
+				return ErrInputOwnership
+			}
+			if err := remoteDesktopEvent(func(ctx context.Context) error {
+				return session.PointerButton(ctx, button, true)
+			}); err != nil {
+				return err
+			}
+			portalMouseButtonRefs[id] = 1
+			hold = mouseHold{
+				backend:          persistentInputBackendPortal,
+				server:           DisplayServerWayland,
+				portalGeneration: generation,
+				portalButton:     button,
+			}
+			return nil
+		},
+	)
+	if used && portalInputFailureInvalidatesSession(err) {
+		closeErr := CloseRemoteDesktopInput()
+		clearPortalMouseGenerationLocked(generation)
+		return true, mouseHold{}, errors.Join(err, closeErr)
+	}
+	return used, hold, err
+}
+
+func tryPortalMouseUp(hold mouseHold) (bool, error) {
+	expected := hold.portalGeneration
+	used, currentGeneration, err := withRemoteDesktopInputLease(
+		inputportal.DevicePointer, &expected,
+		func(session remoteDesktopInputSession, generation uint64) error {
+			id := portalMouseRefID{
+				generation: generation,
+				button:     hold.portalButton,
+			}
+			if portalMouseButtonRefs[id] != 1 {
+				return ErrInputOwnership
+			}
+			if err := remoteDesktopEvent(func(ctx context.Context) error {
+				return session.PointerButton(ctx, hold.portalButton, false)
+			}); err != nil {
+				return err
+			}
+			delete(portalMouseButtonRefs, id)
+			return nil
+		},
+	)
+	if errors.Is(err, ErrInputOwnership) || errors.Is(err, inputportal.ErrClosed) || !used {
+		clearPortalMouseGenerationLocked(hold.portalGeneration)
+		return used, errors.Join(ErrInputOwnership, err)
+	}
+	if err != nil {
+		closeErr := CloseRemoteDesktopInput()
+		clearPortalMouseGenerationLocked(currentGeneration)
+		return true, errors.Join(err, closeErr)
+	}
+	return true, nil
+}
+
+func lockLinuxMouse() func() {
+	if runtime.GOOS == "linux" {
 		waylandMouseMu.Lock()
 		return waylandMouseMu.Unlock
 	}
 	return func() {}
 }
 
-func ensureWaylandMouseReady() error {
-	if runtime.GOOS != "linux" || DetectDisplayServer() != DisplayServerWayland {
+func lockNativeMouseDisplay(server DisplayServer) func() {
+	if runtime.GOOS == "linux" && nativeX11BackendCompiled() &&
+		server == DisplayServerX11 {
+		return lockNativeX11Display()
+	}
+	return func() {}
+}
+
+// runNativeMouseOperation scopes the shared X11 display lease to the native
+// probe and event only. Callers retain the Linux mouse transaction lock while
+// selecting a portal fallback, but portal I/O never holds nativeX11DisplayMu.
+func runNativeMouseOperation(server DisplayServer, operation func() error) (ready bool, err error) {
+	unlockDisplay := lockNativeMouseDisplay(server)
+	defer unlockDisplay()
+	if err := ensureWaylandMouseReady(server); err != nil {
+		return false, err
+	}
+	return true, operation()
+}
+
+func ensureWaylandMouseReady(server DisplayServer) error {
+	if runtime.GOOS != "linux" {
 		return nil
 	}
-	if int(C.robotgo_wayland_mouse_backend_enabled()) == 0 {
-		return fmt.Errorf("%w: robotgo was built without the Wayland mouse backend (build with -tags wayland)", ErrNotSupported)
+	switch server {
+	case DisplayServerX11:
+		return nativeX11InputReadyLocked()
+	case DisplayServerWayland:
+		if int(C.robotgo_wayland_mouse_backend_enabled()) == 0 {
+			return fmt.Errorf("%w: robotgo was built without the Wayland mouse backend (build with -tags wayland)", ErrNotSupported)
+		}
+		if int(C.robotgo_wayland_mouse_ready()) == 0 {
+			return fmt.Errorf("%w: zwlr_virtual_pointer_v1 is unavailable", ErrNotSupported)
+		}
+		return nil
+	default:
+		return fmt.Errorf("%w: no supported display server is selected", ErrNotSupported)
 	}
-	if int(C.robotgo_wayland_mouse_ready()) == 0 {
-		return fmt.Errorf("%w: zwlr_virtual_pointer_v1 is unavailable", ErrNotSupported)
-	}
-	return nil
 }
 
 // MouseReady reports whether the active display backend can inject mouse
 // input. On Wayland it performs a real virtual-pointer protocol probe.
 func MouseReady() error {
-	nativeErr := nativeWaylandMouseReady()
+	unlockMouse := lockLinuxMouse()
+	defer unlockMouse()
+	server := selectedDisplayServer()
+	_, nativeErr := runNativeMouseOperation(server, func() error { return nil })
 	if nativeErr == nil {
 		return nil
 	}
-	if used, err := withRemoteDesktopInput(inputportal.DevicePointer, func(remoteDesktopInputSession) error { return nil }); used {
-		return err
+	if server == DisplayServerWayland {
+		if used, err := withRemoteDesktopInput(inputportal.DevicePointer, func(remoteDesktopInputSession) error { return nil }); used {
+			return err
+		}
 	}
 	return nativeErr
 }
 
 func nativeWaylandMouseReady() error {
-	unlock := lockWaylandMouse()
-	defer unlock()
-	return ensureWaylandMouseReady()
+	unlockMouse := lockLinuxMouse()
+	defer unlockMouse()
+	server := selectedDisplayServer()
+	_, err := runNativeMouseOperation(server, func() error { return nil })
+	return err
 }
 
 // CloseWaylandInput releases persistent virtual-pointer and virtual-keyboard
 // protocol objects. A later input call reconnects lazily.
 func CloseWaylandInput() {
+	// Cancel portal I/O before waiting for a device transaction lock. Portal
+	// operations hold one of these locks while using their cancellable context.
+	_ = CloseRemoteDesktopInput()
 	waylandMouseMu.Lock()
 	defer waylandMouseMu.Unlock()
-	waylandKeyboardMu.Lock()
-	defer waylandKeyboardMu.Unlock()
+	linuxKeyboardMu.Lock()
+	defer linuxKeyboardMu.Unlock()
+	_ = releaseNativeMouseHoldsLocked(DisplayServerWayland)
 	C.robotgo_wayland_mouse_close()
 	closeWaylandKeyboard()
-	_ = CloseRemoteDesktopInput()
+	clearNativeKeyboardStateLocked(DisplayServerWayland)
+	clearPortalMouseStateLocked()
+	clearPortalKeyboardStateLocked()
 }
 
 // Move move the mouse to (x, y)
@@ -1651,20 +1996,23 @@ func Move(x, y int, displayId ...int) {
 // MoveE moves the mouse to (x, y) and reports backend availability errors.
 // Prefer it over Move when the caller must know whether injection succeeded.
 func MoveE(x, y int, displayId ...int) error {
-	unlock := lockWaylandMouse()
-	defer unlock()
-	if nativeErr := ensureWaylandMouseReady(); nativeErr != nil {
-		used, err := tryRemoteDesktopMoveAbsolute(x, y, displayId)
-		if used {
-			return finishRemoteDesktopMouseEvent(err, 0)
+	unlockMouse := lockLinuxMouse()
+	defer unlockMouse()
+	server := selectedDisplayServer()
+	ready, nativeErr := runNativeMouseOperation(server, func() error {
+		x, y = moveScaleLocked(x, y, displayId...)
+		C.moveMouse(C.MMPointInt32Make(C.int32_t(x), C.int32_t(y)))
+		return nil
+	})
+	if nativeErr != nil {
+		if shouldTryRemoteDesktopAfterNative(server, ready, nativeErr) {
+			used, err := tryRemoteDesktopMoveAbsolute(x, y, displayId)
+			if used {
+				return finishRemoteDesktopMouseEvent(err, 0)
+			}
 		}
 		return nativeErr
 	}
-	x, y = MoveScale(x, y, displayId...)
-
-	cx := C.int32_t(x)
-	cy := C.int32_t(y)
-	C.moveMouse(C.MMPointInt32Make(cx, cy))
 
 	MilliSleep(currentMouseDelay())
 	return nil
@@ -1675,22 +2023,21 @@ func MoveE(x, y int, displayId ...int) error {
 // Drag drag the mouse to (x, y),
 // It's not valid now, use the DragSmooth()
 func Drag(x, y int, args ...string) {
-	unlock := lockWaylandMouse()
-	defer unlock()
-	if err := ensureWaylandMouseReady(); err != nil {
+	unlockMouse := lockLinuxMouse()
+	defer unlockMouse()
+	server := selectedDisplayServer()
+	_, err := runNativeMouseOperation(server, func() error {
+		x, y = moveScaleLocked(x, y)
+		button := C.MMMouseButton(C.LEFT_BUTTON)
+		if len(args) > 0 {
+			button = CheckMouse(args[0])
+		}
+		C.dragMouse(C.MMPointInt32Make(C.int32_t(x), C.int32_t(y)), button)
+		return nil
+	})
+	if err != nil {
 		return
 	}
-	x, y = MoveScale(x, y)
-
-	var button C.MMMouseButton = C.LEFT_BUTTON
-	cx := C.int32_t(x)
-	cy := C.int32_t(y)
-
-	if len(args) > 0 {
-		button = CheckMouse(args[0])
-	}
-
-	C.dragMouse(C.MMPointInt32Make(cx, cy), button)
 	MilliSleep(currentMouseDelay())
 }
 
@@ -1727,27 +2074,23 @@ func MoveSmooth(x, y int, args ...interface{}) bool {
 	if !ok {
 		return false
 	}
-	unlock := lockWaylandMouse()
-	defer unlock()
-	if err := ensureWaylandMouseReady(); err != nil {
+	unlockMouse := lockLinuxMouse()
+	defer unlockMouse()
+	server := selectedDisplayServer()
+	var moved bool
+	_, err := runNativeMouseOperation(server, func() error {
+		x, y = moveScaleLocked(x, y)
+		moved = bool(C.smoothlyMoveMouse(
+			C.MMPointInt32Make(C.int32_t(x), C.int32_t(y)),
+			C.double(lowDelay), C.double(highDelay),
+		))
+		return nil
+	})
+	if err != nil {
 		return false
 	}
-	// if runtime.GOOS == "windows" {
-	// 	f := ScaleF()
-	// 	x, y = Scaled0(x, f), Scaled0(y, f)
-	// }
-	x, y = MoveScale(x, y)
-
-	cx := C.int32_t(x)
-	cy := C.int32_t(y)
-
-	low := C.double(lowDelay)
-	high := C.double(highDelay)
-
-	cbool := C.smoothlyMoveMouse(C.MMPointInt32Make(cx, cy), low, high)
 	MilliSleep(currentMouseDelay() + mouseDelay)
-
-	return bool(cbool)
+	return moved
 }
 
 // MoveArgs get the mouse relative args
@@ -1767,23 +2110,28 @@ func MoveRelative(x, y int) {
 // MoveRelativeE moves the mouse by a relative delta and reports backend
 // availability errors.
 func MoveRelativeE(x, y int) error {
-	unlock := lockWaylandMouse()
-	defer unlock()
-	if nativeErr := ensureWaylandMouseReady(); nativeErr != nil {
-		used, err := tryRemoteDesktopMoveRelative(x, y)
-		if used {
-			return finishRemoteDesktopMouseEvent(err, 0)
+	if runtime.GOOS != "linux" {
+		return MoveE(MoveArgs(x, y))
+	}
+	unlockMouse := lockLinuxMouse()
+	defer unlockMouse()
+	server := selectedDisplayServer()
+	ready, nativeErr := runNativeMouseOperation(server, func() error {
+		dx, dy := moveScaleLocked(x, y)
+		C.moveMouseRelative(C.int32_t(dx), C.int32_t(dy))
+		return nil
+	})
+	if nativeErr != nil {
+		if shouldTryRemoteDesktopAfterNative(server, ready, nativeErr) {
+			used, err := tryRemoteDesktopMoveRelative(x, y)
+			if used {
+				return finishRemoteDesktopMouseEvent(err, 0)
+			}
 		}
 		return nativeErr
 	}
-	if runtime.GOOS == "linux" && DetectDisplayServer() == DisplayServerWayland {
-		dx, dy := x, y
-		dx, dy = MoveScale(dx, dy)
-		C.moveMouseRelative(C.int32_t(dx), C.int32_t(dy))
-		MilliSleep(currentMouseDelay())
-		return nil
-	}
-	return MoveE(MoveArgs(x, y))
+	MilliSleep(currentMouseDelay())
+	return nil
 }
 
 // MoveSmoothRelative move mouse smooth with relative
@@ -1805,15 +2153,28 @@ func Location() (int, int) {
 // expose a trustworthy global pointer location, so it returns ErrNotSupported
 // instead of presenting the last injected position as an observation.
 func LocationE() (int, int, error) {
-	if runtime.GOOS == "linux" && DetectDisplayServer() == DisplayServerWayland {
-		return 0, 0, fmt.Errorf("%w: global pointer location is not exposed by Wayland", ErrNotSupported)
+	unlock := func() {}
+	if runtime.GOOS == "linux" {
+		switch selectedDisplayServer() {
+		case DisplayServerWayland:
+			return 0, 0, fmt.Errorf("%w: global pointer location is not exposed by Wayland", ErrNotSupported)
+		case DisplayServerX11:
+		default:
+			return 0, 0, fmt.Errorf("%w: no supported display server is selected", ErrNotSupported)
+		}
+		unlock = lockNativeX11Display()
+		if err := nativeX11DisplayReadyLocked(); err != nil {
+			unlock()
+			return 0, 0, err
+		}
 	}
+	defer unlock()
 	pos := C.location()
 	x := int(pos.x)
 	y := int(pos.y)
 
 	if currentScale() || runtime.GOOS == "windows" {
-		f := ScaleF()
+		f := scaleFLocked()
 		x, y = Scaled0(x, f), Scaled0(y, f)
 	}
 
@@ -1839,21 +2200,30 @@ func ClickE(args ...interface{}) error {
 	if err != nil {
 		return err
 	}
-	unlock := lockWaylandMouse()
-	defer unlock()
+	unlockMouse := lockLinuxMouse()
+	defer unlockMouse()
+	name = canonicalMouseHoldName(name)
+	if runtime.GOOS == "linux" {
+		if _, held := mouseHolds[name]; held {
+			return ErrInputOwnership
+		}
+	}
+	server := selectedDisplayServer()
 	button := CheckMouse(name)
-	if nativeErr := ensureWaylandMouseReady(); nativeErr != nil {
-		used, err := tryRemoteDesktopClick(name, double)
-		if used {
-			return finishRemoteDesktopMouseEvent(err, 0)
+	ready, nativeErr := runNativeMouseOperation(server, func() error {
+		if !double {
+			return nativeMouseStatusError(C.clickMouse(button), "click mouse button")
+		}
+		return nativeMouseStatusError(C.doubleClick(button), "double-click mouse button")
+	})
+	if nativeErr != nil {
+		if shouldTryRemoteDesktopAfterNative(server, ready, nativeErr) {
+			used, err := tryRemoteDesktopClick(name, double)
+			if used {
+				return finishRemoteDesktopMouseEvent(err, 0)
+			}
 		}
 		return nativeErr
-	}
-
-	if !double {
-		C.clickMouse(button)
-	} else {
-		C.doubleClick(button)
 	}
 
 	MilliSleep(currentMouseDelay())
@@ -1897,17 +2267,75 @@ func Toggle(key ...interface{}) error {
 	if err != nil {
 		return err
 	}
-	unlock := lockWaylandMouse()
-	defer unlock()
-	button := CheckMouse(name)
-	if nativeErr := ensureWaylandMouseReady(); nativeErr != nil {
-		used, err := tryRemoteDesktopToggle(name, down)
-		if used {
+	unlockMouse := lockLinuxMouse()
+	defer unlockMouse()
+	name = canonicalMouseHoldName(name)
+	if runtime.GOOS != "linux" {
+		if err := nativeMouseStatusError(
+			C.toggleMouse(C.bool(down), CheckMouse(name)),
+			"toggle mouse button",
+		); err != nil {
 			return err
+		}
+		if len(key) > 2 {
+			MilliSleep(currentMouseDelay())
+		}
+		return nil
+	}
+	server := selectedDisplayServer()
+
+	if !down {
+		hold, ok := mouseHolds[name]
+		if !ok {
+			return ErrInputOwnership
+		}
+		if hold.backend == persistentInputBackendPortal {
+			_, err := tryPortalMouseUp(hold)
+			delete(mouseHolds, name)
+			return err
+		}
+		button := CheckMouse(name)
+		_, nativeErr := runNativeMouseOperation(hold.server, func() error {
+			return nativeMouseStatusError(
+				C.toggleMouse(C.bool(false), button),
+				"release mouse button",
+			)
+		})
+		if nativeErr == nil || errors.Is(nativeErr, ErrInputOwnership) {
+			delete(mouseHolds, name)
 		}
 		return nativeErr
 	}
-	C.toggleMouse(C.bool(down), button)
+
+	if existing, ok := mouseHolds[name]; ok {
+		if existing.backend != persistentInputBackendPortal ||
+			existing.portalGeneration == remoteDesktopInputGeneration() {
+			return ErrInputOwnership
+		}
+		clearPortalMouseGenerationLocked(existing.portalGeneration)
+	}
+	button := CheckMouse(name)
+	ready, nativeErr := runNativeMouseOperation(server, func() error {
+		return nativeMouseStatusError(
+			C.toggleMouse(C.bool(true), button),
+			"press mouse button",
+		)
+	})
+	if nativeErr != nil {
+		if shouldTryRemoteDesktopAfterNative(server, ready, nativeErr) {
+			if used, hold, err := tryPortalMouseDown(server, name); used {
+				if err == nil {
+					mouseHolds[name] = hold
+				}
+				return err
+			}
+		}
+		return nativeErr
+	}
+	mouseHolds[name] = mouseHold{
+		backend: persistentInputBackendNative,
+		server:  server,
+	}
 	if len(key) > 2 {
 		MilliSleep(currentMouseDelay())
 	}
@@ -1945,20 +2373,22 @@ func ScrollE(x, y int, args ...int) error {
 	if validationErr != nil {
 		return validationErr
 	}
-	unlock := lockWaylandMouse()
-	defer unlock()
-	if nativeErr := ensureWaylandMouseReady(); nativeErr != nil {
-		used, err := tryRemoteDesktopScroll(x, y)
-		if used {
-			return finishRemoteDesktopMouseEvent(err, msDelay)
+	unlockMouse := lockLinuxMouse()
+	defer unlockMouse()
+	server := selectedDisplayServer()
+	ready, nativeErr := runNativeMouseOperation(server, func() error {
+		C.scrollMouseXY(C.int(x), C.int(y))
+		return nil
+	})
+	if nativeErr != nil {
+		if shouldTryRemoteDesktopAfterNative(server, ready, nativeErr) {
+			used, err := tryRemoteDesktopScroll(x, y)
+			if used {
+				return finishRemoteDesktopMouseEvent(err, msDelay)
+			}
 		}
 		return nativeErr
 	}
-
-	cx := C.int(x)
-	cy := C.int(y)
-
-	C.scrollMouseXY(cx, cy)
 	MilliSleep(currentMouseDelay() + msDelay)
 	return nil
 }
@@ -2066,6 +2496,8 @@ func alertArgs(args ...string) (string, string) {
 
 // IsValid valid the window
 func IsValid() bool {
+	unlock := lockNativeX11Display()
+	defer unlock()
 	abool := C.is_valid()
 	gbool := bool(abool)
 	return gbool
@@ -2147,10 +2579,14 @@ func SetActiveE(win Handle) error {
 
 // SetActiveC set the window active
 func SetActiveC(win C.MData) {
+	unlock := lockNativeX11Display()
+	defer unlock()
 	_ = C.set_active(win)
 }
 
 func nativeSetActive(win Handle) bool {
+	unlock := lockNativeX11Display()
+	defer unlock()
 	return bool(C.set_active(C.MData(win)))
 }
 
@@ -2159,6 +2595,8 @@ func nativeMinWindow(pid int, state bool, isPid bool) bool {
 	if isPid {
 		flag = 1
 	}
+	unlock := lockNativeX11Display()
+	defer unlock()
 	return bool(C.min_window(C.uintptr(pid), C.bool(state), C.int8_t(flag)))
 }
 
@@ -2167,10 +2605,14 @@ func nativeMaxWindow(pid int, state bool, isPid bool) bool {
 	if isPid {
 		flag = 1
 	}
+	unlock := lockNativeX11Display()
+	defer unlock()
 	return bool(C.max_window(C.uintptr(pid), C.bool(state), C.int8_t(flag)))
 }
 
 func nativeCloseMainWindow() bool {
+	unlock := lockNativeX11Display()
+	defer unlock()
 	return bool(C.close_main_window())
 }
 
@@ -2179,11 +2621,19 @@ func nativeCloseWindowByPid(pid int, isPid bool) bool {
 	if isPid {
 		flag = 1
 	}
+	unlock := lockNativeX11Display()
+	defer unlock()
 	return bool(C.close_window_by_PId(C.uintptr(pid), C.int8_t(flag)))
 }
 
 func nativeGetMainTitle() string {
+	unlock := lockNativeX11Display()
+	defer unlock()
 	title := C.get_main_title()
+	if title == nil {
+		return ""
+	}
+	defer C.free(unsafe.Pointer(title))
 	return C.GoString(title)
 }
 
@@ -2198,6 +2648,8 @@ func GetActive() Handle {
 
 // GetActiveC get the active window
 func GetActiveC() C.MData {
+	unlock := lockNativeX11Display()
+	defer unlock()
 	mdata := C.get_active()
 	// fmt.Println("active----", mdata)
 	return mdata
@@ -2318,6 +2770,8 @@ func CloseWindowKill(args ...int) error {
 // SetHandle set the window handle
 func SetHandle(hwnd int) {
 	chwnd := C.uintptr(hwnd)
+	unlock := lockNativeX11Display()
+	defer unlock()
 	C.setHandle(chwnd)
 }
 
@@ -2328,6 +2782,8 @@ func SetHandlePid(pid int, args ...int) {
 		isPid = 1
 	}
 
+	unlock := lockNativeX11Display()
+	defer unlock()
 	C.set_handle_pid_mData(C.uintptr(pid), C.int8_t(isPid))
 }
 
@@ -2359,11 +2815,15 @@ func GetHandByPidC(pid int, args ...int) C.MData {
 		isPid = 1
 	}
 
+	unlock := lockNativeX11Display()
+	defer unlock()
 	return C.set_handle_pid(C.uintptr(pid), C.int8_t(isPid))
 }
 
 // GetHandle get the window handle
 func GetHandle() int {
+	unlock := lockNativeX11Display()
+	defer unlock()
 	hwnd := C.get_handle()
 	ghwnd := int(hwnd)
 	// fmt.Println("gethwnd---", ghwnd)
@@ -2377,6 +2837,8 @@ func GetHandle() int {
 // This function will be removed in version v1.0.0
 func GetBHandle() int {
 	tt.Drop("GetBHandle", "GetHandle")
+	unlock := lockNativeX11Display()
+	defer unlock()
 	hwnd := C.b_get_handle()
 	ghwnd := int(hwnd)
 	//fmt.Println("gethwnd---", ghwnd)
@@ -2384,10 +2846,18 @@ func GetBHandle() int {
 }
 
 func cgetTitle(pid, isPid int) string {
-	title := C.get_title_by_pid(C.uintptr(pid), C.int8_t(isPid))
-	gtitle := C.GoString(title)
+	unlock := lockNativeX11Display()
+	defer unlock()
+	return cgetTitleLocked(pid, isPid)
+}
 
-	return gtitle
+func cgetTitleLocked(pid, isPid int) string {
+	title := C.get_title_by_pid(C.uintptr(pid), C.int8_t(isPid))
+	if title == nil {
+		return ""
+	}
+	defer C.free(unsafe.Pointer(title))
+	return C.GoString(title)
 }
 
 // GetTitle get the window title return string
@@ -2411,18 +2881,32 @@ func GetTitleE(args ...int) (string, error) {
 
 // GetPid get the process id return int32
 func GetPid() int {
+	unlock := lockNativeX11Display()
+	defer unlock()
 	pid := C.get_PID()
 	return int(pid)
 }
 
 // internalGetBounds get the window bounds
 func internalGetBounds(pid, isPid int) (int, int, int, int) {
+	unlock := lockNativeX11Display()
+	defer unlock()
+	return internalGetBoundsLocked(pid, isPid)
+}
+
+func internalGetBoundsLocked(pid, isPid int) (int, int, int, int) {
 	bounds := C.get_bounds(C.uintptr(pid), C.int8_t(isPid))
 	return int(bounds.X), int(bounds.Y), int(bounds.W), int(bounds.H)
 }
 
 // internalGetClient get the window client bounds
 func internalGetClient(pid, isPid int) (int, int, int, int) {
+	unlock := lockNativeX11Display()
+	defer unlock()
+	return internalGetClientLocked(pid, isPid)
+}
+
+func internalGetClientLocked(pid, isPid int) (int, int, int, int) {
 	bounds := C.get_client(C.uintptr(pid), C.int8_t(isPid))
 	return int(bounds.X), int(bounds.Y), int(bounds.W), int(bounds.H)
 }
@@ -2433,8 +2917,14 @@ func Is64Bit() bool {
 	return bool(b)
 }
 
-func internalActive(pid, isPid int) {
-	C.active_PID(C.uintptr(pid), C.int8_t(isPid))
+func internalActive(pid, isPid int) bool {
+	unlock := lockNativeX11Display()
+	defer unlock()
+	return internalActiveLocked(pid, isPid)
+}
+
+func internalActiveLocked(pid, isPid int) bool {
+	return bool(C.active_PID(C.uintptr(pid), C.int8_t(isPid)))
 }
 
 // ActivePid active the window by Pid,

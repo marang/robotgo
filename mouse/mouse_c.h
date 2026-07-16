@@ -3,6 +3,16 @@
 #include "../base/microsleep.h"
 
 #include <math.h> /* For floor() */
+#include <string.h>
+
+enum RobotGoMouseStatus {
+	ROBOTGO_MOUSE_OK = 0,
+	ROBOTGO_MOUSE_NO_DISPLAY = 1,
+	ROBOTGO_MOUSE_UNSUPPORTED = 2,
+	ROBOTGO_MOUSE_INJECTION_FAILED = 3,
+	ROBOTGO_MOUSE_OWNERSHIP_CONFLICT = 4,
+	ROBOTGO_MOUSE_INVALID = 5
+};
 #if defined(IS_MACOSX)
 	// #include </System/Library/Frameworks/ApplicationServices.framework/Headers/ApplicationServices.h>
 	#include <ApplicationServices/ApplicationServices.h>
@@ -11,6 +21,126 @@
 #if !defined(DISPLAY_SERVER_WAYLAND)
         #include <X11/Xlib.h>
         #include <X11/extensions/XTest.h>
+	Display *XGetMainDisplay(void);
+	unsigned long XGetMainDisplayGeneration(void);
+
+	enum { ROBOTGO_X11_MOUSE_BUTTON_COUNT = 8 };
+	static bool rg_x11_owned_buttons[ROBOTGO_X11_MOUSE_BUTTON_COUNT];
+	static unsigned long rg_x11_mouse_generation = 0;
+
+	static void rg_x11_sync_mouse_generation(void) {
+		unsigned long generation = XGetMainDisplayGeneration();
+		if (rg_x11_mouse_generation != generation) {
+			memset(rg_x11_owned_buttons, 0, sizeof(rg_x11_owned_buttons));
+			rg_x11_mouse_generation = generation;
+		}
+	}
+
+	static unsigned int rg_x11_button_mask(MMMouseButton button) {
+		switch (button) {
+		case LEFT_BUTTON: return Button1Mask;
+		case CENTER_BUTTON: return Button2Mask;
+		case RIGHT_BUTTON: return Button3Mask;
+		case WheelDown: return Button4Mask;
+		case WheelUp: return Button5Mask;
+		default: return 0;
+		}
+	}
+
+	static int rg_x11_toggle_mouse(Display *display, bool down,
+	                               MMMouseButton button) {
+		if (display == NULL) {
+			return ROBOTGO_MOUSE_NO_DISPLAY;
+		}
+		if (button == 0 || button >= ROBOTGO_X11_MOUSE_BUTTON_COUNT) {
+			return ROBOTGO_MOUSE_INVALID;
+		}
+		rg_x11_sync_mouse_generation();
+		unsigned int expected_mask = rg_x11_button_mask(button);
+		if (expected_mask == 0) {
+			/* XQueryPointer exposes ownership only for core buttons 1-5.
+			 * Stateful horizontal-wheel toggles therefore cannot be made
+			 * ownership-safe. Stateless clicks use a separate path below. */
+			return ROBOTGO_MOUSE_UNSUPPORTED;
+		}
+		if (down) {
+			if (rg_x11_owned_buttons[button]) {
+				return ROBOTGO_MOUSE_OWNERSHIP_CONFLICT;
+			}
+			Window root = 0, child = 0;
+			int root_x = 0, root_y = 0, win_x = 0, win_y = 0;
+			unsigned int state = 0;
+			if (!XQueryPointer(display, DefaultRootWindow(display),
+			                   &root, &child, &root_x, &root_y,
+			                   &win_x, &win_y, &state)) {
+				return ROBOTGO_MOUSE_INJECTION_FAILED;
+			}
+			if ((state & expected_mask) != 0) {
+				return ROBOTGO_MOUSE_OWNERSHIP_CONFLICT;
+			}
+		} else if (!rg_x11_owned_buttons[button]) {
+			return ROBOTGO_MOUSE_OWNERSHIP_CONFLICT;
+		}
+		if (!XTestFakeButtonEvent(display, button,
+		                              down ? True : False, CurrentTime)) {
+			return ROBOTGO_MOUSE_INJECTION_FAILED;
+		}
+		XSync(display, false);
+		rg_x11_owned_buttons[button] = down;
+		return ROBOTGO_MOUSE_OK;
+	}
+
+	static int robotgo_x11_release_owned_buttons(void) {
+		rg_x11_sync_mouse_generation();
+		bool has_owned_buttons = false;
+		for (MMMouseButton button = 1;
+		     button < ROBOTGO_X11_MOUSE_BUTTON_COUNT; button++) {
+			if (rg_x11_owned_buttons[button]) {
+				has_owned_buttons = true;
+				break;
+			}
+		}
+		if (!has_owned_buttons) {
+			rg_x11_mouse_generation = XGetMainDisplayGeneration();
+			return ROBOTGO_MOUSE_OK;
+		}
+		Display *display = XGetMainDisplay();
+		if (display == NULL) {
+			memset(rg_x11_owned_buttons, 0, sizeof(rg_x11_owned_buttons));
+			rg_x11_mouse_generation = XGetMainDisplayGeneration();
+			return ROBOTGO_MOUSE_NO_DISPLAY;
+		}
+		int first_error = ROBOTGO_MOUSE_OK;
+		for (MMMouseButton button = 1;
+		     button < ROBOTGO_X11_MOUSE_BUTTON_COUNT; button++) {
+			if (!rg_x11_owned_buttons[button]) {
+				continue;
+			}
+			int status = rg_x11_toggle_mouse(display, false, button);
+			if (first_error == ROBOTGO_MOUSE_OK &&
+			    status != ROBOTGO_MOUSE_OK) {
+				first_error = status;
+			}
+		}
+		return first_error;
+	}
+
+	static int rg_x11_click_unobservable_button(Display *display,
+	                                            MMMouseButton button) {
+		if (display == NULL) {
+			return ROBOTGO_MOUSE_NO_DISPLAY;
+		}
+		if (button != WheelLeft && button != WheelRight) {
+			return ROBOTGO_MOUSE_INVALID;
+		}
+		if (!XTestFakeButtonEvent(display, button, True, CurrentTime) ||
+		    !XTestFakeButtonEvent(display, button, False, CurrentTime)) {
+			XSync(display, false);
+			return ROBOTGO_MOUSE_INJECTION_FAILED;
+		}
+		XSync(display, false);
+		return ROBOTGO_MOUSE_OK;
+	}
 #endif
         #include <stdlib.h>
         #include "../base/os.h"
@@ -33,7 +163,44 @@
         static int rg_wl_inited = 0;
         static int rg_wl_last_x = 0;
         static int rg_wl_last_y = 0;
+	static bool rg_wl_owned_buttons[3];
         #include <wayland-client-protocol.h>
+
+	static bool robotgo_wayland_mouse_backend_selected(void) {
+#if defined(DISPLAY_SERVER_WAYLAND)
+		/* Go selected this build's only native input backend before entering
+		 * C. Keep one transaction independent of concurrent environment
+		 * changes. */
+		return true;
+#else
+		return detectDisplayServer() == Wayland;
+#endif
+	}
+
+	static int robotgo_wayland_mouse_button_code(
+		MMMouseButton button, uint32_t *code, unsigned int *index) {
+		if (code == NULL || index == NULL) {
+			return ROBOTGO_MOUSE_INVALID;
+		}
+		*code = 0;
+		*index = 0;
+		switch (button) {
+		case LEFT_BUTTON:
+			*code = BTN_LEFT;
+			*index = 0;
+			return ROBOTGO_MOUSE_OK;
+		case RIGHT_BUTTON:
+			*code = BTN_RIGHT;
+			*index = 1;
+			return ROBOTGO_MOUSE_OK;
+		case CENTER_BUTTON:
+			*code = BTN_MIDDLE;
+			*index = 2;
+			return ROBOTGO_MOUSE_OK;
+		default:
+			return ROBOTGO_MOUSE_UNSUPPORTED;
+		}
+	}
 
         static void rg_wl_seat_handle_capabilities(void *data, struct wl_seat *seat, uint32_t caps) {
                 (void)data;
@@ -85,6 +252,8 @@
 	                rg_wl_width = 0;
 	                rg_wl_height = 0;
 	                rg_wl_inited = 0;
+	                memset(rg_wl_owned_buttons, 0,
+	                       sizeof(rg_wl_owned_buttons));
 	        }
 
 	        static int rg_init_wayland(void) {
@@ -122,7 +291,7 @@
 
 	        static int robotgo_wayland_mouse_backend_enabled(void) { return 1; }
 	        static int robotgo_wayland_mouse_ready(void) {
-	                if (detectDisplayServer() != Wayland) {
+	                if (!robotgo_wayland_mouse_backend_selected()) {
 	                        return 0;
 	                }
 	                return rg_init_wayland();
@@ -130,16 +299,38 @@
 	        static void robotgo_wayland_mouse_close(void) { rg_cleanup_wayland(); }
 #endif /* ROBOTGO_USE_WAYLAND */
 	#ifndef ROBOTGO_USE_WAYLAND
+	        static bool robotgo_wayland_mouse_backend_selected(void) { return false; }
 	        static int robotgo_wayland_mouse_backend_enabled(void) { return 0; }
 	        static int robotgo_wayland_mouse_ready(void) { return 0; }
 	        static void robotgo_wayland_mouse_close(void) { }
+	        static int robotgo_wayland_mouse_button_code(
+	                MMMouseButton button, uint32_t *code, unsigned int *index) {
+	                (void)button;
+	                if (code != NULL) { *code = 0; }
+	                if (index != NULL) { *index = 0; }
+	                return ROBOTGO_MOUSE_UNSUPPORTED;
+	        }
+	#endif
+	#if defined(DISPLAY_SERVER_WAYLAND)
+	        static int robotgo_x11_release_owned_buttons(void) {
+	                return ROBOTGO_MOUSE_OK;
+	        }
 	#endif
 #endif
 
 #if !defined(IS_LINUX)
+static bool robotgo_wayland_mouse_backend_selected(void) { return false; }
 static int robotgo_wayland_mouse_backend_enabled(void) { return 0; }
 static int robotgo_wayland_mouse_ready(void) { return 0; }
 static void robotgo_wayland_mouse_close(void) { }
+static int robotgo_wayland_mouse_button_code(
+	MMMouseButton button, uint32_t *code, unsigned int *index) {
+	(void)button;
+	if (code != NULL) { *code = 0; }
+	if (index != NULL) { *index = 0; }
+	return ROBOTGO_MOUSE_UNSUPPORTED;
+}
+static int robotgo_x11_release_owned_buttons(void) { return ROBOTGO_MOUSE_OK; }
 #endif
 
 /* Some convenience macros for converting our enums to the system API types. */
@@ -223,10 +414,11 @@ void moveMouse(MMPointInt32 point){
 		CFRelease(source);
         #elif defined(IS_LINUX)
 #ifdef ROBOTGO_USE_WAYLAND
-                if (detectDisplayServer() == Wayland) {
+                if (robotgo_wayland_mouse_backend_selected()) {
                         if (!rg_init_wayland()) {
 #if !defined(DISPLAY_SERVER_WAYLAND)
                                 Display *display = XGetMainDisplay();
+                                if (display == NULL) { return; }
                                 XWarpPointer(display, None, DefaultRootWindow(display), 0, 0, 0, 0, point.x, point.y);
                                 XSync(display, false);
 #endif
@@ -244,12 +436,14 @@ void moveMouse(MMPointInt32 point){
 #if !defined(DISPLAY_SERVER_WAYLAND)
                 else {
                         Display *display = XGetMainDisplay();
+                        if (display == NULL) { return; }
                         XWarpPointer(display, None, DefaultRootWindow(display), 0, 0, 0, 0, point.x, point.y);
                         XSync(display, false);
                 }
 #endif
 #else
                 Display *display = XGetMainDisplay();
+                if (display == NULL) { return; }
                 XWarpPointer(display, None, DefaultRootWindow(display), 0, 0, 0, 0, point.x, point.y);
                 XSync(display, false);
 #endif
@@ -284,7 +478,7 @@ MMPointInt32 location() {
 		return MMPointInt32FromCGPoint(point);
 	#elif defined(IS_LINUX)
 		#ifdef ROBOTGO_USE_WAYLAND
-		if (detectDisplayServer() == Wayland) {
+		if (robotgo_wayland_mouse_backend_selected()) {
 			return MMPointInt32Make(rg_wl_last_x, rg_wl_last_y);
 		}
 		#endif
@@ -295,6 +489,7 @@ MMPointInt32 location() {
 		unsigned int more_garbage;
 
 		Display *display = XGetMainDisplay();
+		if (display == NULL) { return MMPointInt32Make(0, 0); }
 		XQueryPointer(display, XDefaultRootWindow(display), &garb1, &garb2, &x, &y, 
 						&garb_x, &garb_y, &more_garbage);
 
@@ -318,7 +513,7 @@ void moveMouseRelative(int dx, int dy) {
         moveMouse(pos);
 #elif defined(IS_LINUX)
 #ifdef ROBOTGO_USE_WAYLAND
-        if (detectDisplayServer() == Wayland) {
+        if (robotgo_wayland_mouse_backend_selected()) {
                 if (rg_init_wayland()) {
                         wl_fixed_t fdx = wl_fixed_from_double((double)dx);
                         wl_fixed_t fdy = wl_fixed_from_double((double)dy);
@@ -344,7 +539,7 @@ void moveMouseRelative(int dx, int dy) {
 }
 
 /* Press down a button, or release it. */
-void toggleMouse(bool down, MMMouseButton button) {
+int toggleMouse(bool down, MMMouseButton button) {
 	#if defined(IS_MACOSX)
 		const CGPoint currentPos = CGPointFromMMPointInt32(location());
 		const CGEventType mouseType = MMMouseToCGEventType(down, button);
@@ -354,37 +549,49 @@ void toggleMouse(bool down, MMMouseButton button) {
 		CGEventPost(kCGHIDEventTap, event);
 		CFRelease(event);
 		CFRelease(source);
+		return ROBOTGO_MOUSE_OK;
         #elif defined(IS_LINUX)
 #ifdef ROBOTGO_USE_WAYLAND
-                if (detectDisplayServer() == Wayland) {
+                if (robotgo_wayland_mouse_backend_selected()) {
                         if (!rg_init_wayland()) {
 #if !defined(DISPLAY_SERVER_WAYLAND)
                                 Display *display = XGetMainDisplay();
-                                XTestFakeButtonEvent(display, button, down ? True : False, CurrentTime);
-                                XSync(display, false);
+				return rg_x11_toggle_mouse(display, down, button);
+#else
+				return ROBOTGO_MOUSE_NO_DISPLAY;
 #endif
                         } else {
-                                uint32_t code = BTN_LEFT;
-                                if (button == RIGHT_BUTTON) {
-                                        code = BTN_RIGHT;
-                                } else if (button == CENTER_BUTTON) {
-                                        code = BTN_MIDDLE;
-                                }
+				uint32_t code = 0;
+				unsigned int index = 0;
+				int mapping_status = robotgo_wayland_mouse_button_code(
+					button, &code, &index);
+				if (mapping_status != ROBOTGO_MOUSE_OK) {
+					return mapping_status;
+				}
+				if (down == rg_wl_owned_buttons[index]) {
+					return ROBOTGO_MOUSE_OWNERSHIP_CONFLICT;
+				}
                                 zwlr_virtual_pointer_v1_button(rg_wl_vptr, 0, code, down ? 1 : 0);
-                                wl_display_flush(rg_wl_display);
+				zwlr_virtual_pointer_v1_frame(rg_wl_vptr);
+				if (wl_display_flush(rg_wl_display) < 0) {
+					rg_cleanup_wayland();
+					return ROBOTGO_MOUSE_INJECTION_FAILED;
+				}
+				rg_wl_owned_buttons[index] = down;
+				return ROBOTGO_MOUSE_OK;
                         }
                 }
 #if !defined(DISPLAY_SERVER_WAYLAND)
                 else {
                         Display *display = XGetMainDisplay();
-                        XTestFakeButtonEvent(display, button, down ? True : False, CurrentTime);
-                        XSync(display, false);
+			return rg_x11_toggle_mouse(display, down, button);
                 }
+#else
+		return ROBOTGO_MOUSE_UNSUPPORTED;
 #endif
 #else
                 Display *display = XGetMainDisplay();
-                XTestFakeButtonEvent(display, button, down ? True : False, CurrentTime);
-                XSync(display, false);
+		return rg_x11_toggle_mouse(display, down, button);
 #endif
         #elif defined(IS_WINDOWS)
                 // mouse_event(MMMouseToMEventF(down, button), 0, 0, 0, 0);
@@ -397,18 +604,28 @@ void toggleMouse(bool down, MMMouseButton button) {
 		mouseInput.mi.time = 0;
 		mouseInput.mi.dwExtraInfo = 0;
 		mouseInput.mi.mouseData = 0;
-		SendInput(1, &mouseInput, sizeof(mouseInput));
+		return SendInput(1, &mouseInput, sizeof(mouseInput)) == 1
+			? ROBOTGO_MOUSE_OK : ROBOTGO_MOUSE_INJECTION_FAILED;
 	#endif
+	return ROBOTGO_MOUSE_UNSUPPORTED;
 }
 
-void clickMouse(MMMouseButton button){
-	toggleMouse(true, button);
+int clickMouse(MMMouseButton button){
+#if defined(IS_LINUX) && !defined(DISPLAY_SERVER_WAYLAND)
+	if (button == WheelLeft || button == WheelRight) {
+		return rg_x11_click_unobservable_button(XGetMainDisplay(), button);
+	}
+#endif
+	int status = toggleMouse(true, button);
+	if (status != ROBOTGO_MOUSE_OK) {
+		return status;
+	}
 	microsleep(5.0);
-	toggleMouse(false, button);
+	return toggleMouse(false, button);
 }
 
 /* Special function for sending double clicks, needed for MacOS. */
-void doubleClick(MMMouseButton button){
+int doubleClick(MMMouseButton button){
 	#if defined(IS_MACOSX)
 		/* Double click for Mac. */
 		const CGPoint currentPos = CGPointFromMMPointInt32(location());
@@ -427,11 +644,15 @@ void doubleClick(MMMouseButton button){
 
 		CFRelease(event);
 		CFRelease(source);
+		return ROBOTGO_MOUSE_OK;
 	#else
 		/* Double click for everything else. */
-		clickMouse(button);
+		int status = clickMouse(button);
+		if (status != ROBOTGO_MOUSE_OK) {
+			return status;
+		}
 		microsleep(200);
-		clickMouse(button);
+		return clickMouse(button);
 	#endif
 }
 
@@ -452,7 +673,7 @@ void scrollMouseXY(int x, int y) {
 		CFRelease(source);
 	#elif defined(IS_LINUX)
 		#ifdef ROBOTGO_USE_WAYLAND
-		if (detectDisplayServer() == Wayland) {
+		if (robotgo_wayland_mouse_backend_selected()) {
 			if (rg_init_wayland()) {
 				/* Emulate wheel scrolling using virtual pointer axis events */
 				if (y != 0) {
@@ -483,6 +704,7 @@ void scrollMouseXY(int x, int y) {
 #if !defined(DISPLAY_SERVER_WAYLAND)
 			else {
 				Display *display = XGetMainDisplay();
+				if (display == NULL) { return; }
 				int ydir = 4; /* Button 4 is up, 5 is down. */
 				int xdir = 6;
 				if (y < 0) { ydir = 5; }
@@ -502,6 +724,7 @@ void scrollMouseXY(int x, int y) {
 #if !defined(DISPLAY_SERVER_WAYLAND)
 		else {
 			Display *display = XGetMainDisplay();
+			if (display == NULL) { return; }
 			int ydir = 4; /* Button 4 is up, 5 is down. */
 			int xdir = 6;
 			if (y < 0) { ydir = 5; }
@@ -519,6 +742,7 @@ void scrollMouseXY(int x, int y) {
 #endif
 		#else
 		Display *display = XGetMainDisplay();
+		if (display == NULL) { return; }
 		int ydir = 4; /* Button 4 is up, 5 is down. */
 		int xdir = 6;
 		if (y < 0) { ydir = 5; }

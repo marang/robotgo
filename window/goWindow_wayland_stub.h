@@ -3,6 +3,8 @@
 #include "../base/types.h"
 #include <stdbool.h>
 #include <stdint.h>
+#include <stdlib.h>
+#include <string.h>
 
 typedef struct _MData {
 	uintptr XWin;
@@ -84,9 +86,10 @@ static inline uintptr b_get_handle(void) {
 	return pub_mData.XWin;
 }
 
-static inline void active_PID(uintptr pid, int8_t isPid) {
+static inline bool active_PID(uintptr pid, int8_t isPid) {
 	(void)pid;
 	(void)isPid;
+	return false;
 }
 
 static inline bool close_main_window(void) { return false; }
@@ -97,14 +100,23 @@ static inline bool close_window_by_PId(uintptr pid, int8_t isPid) {
 	return false;
 }
 
+static inline char* robotgo_window_stub_string(const char* value) {
+	size_t length = strlen(value) + 1;
+	char* result = (char*)malloc(length);
+	if (result != NULL) {
+		memcpy(result, value, length);
+	}
+	return result;
+}
+
 static inline char* get_main_title(void) {
-	return "";
+	return robotgo_window_stub_string("");
 }
 
 static inline char* get_title_by_pid(uintptr pid, int8_t isPid) {
 	(void)pid;
 	(void)isPid;
-	return "";
+	return robotgo_window_stub_string("");
 }
 
 static inline int32_t get_PID(void) {

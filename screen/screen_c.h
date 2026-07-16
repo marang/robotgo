@@ -59,7 +59,7 @@ static inline double sys_scale(int32_t display_id) {
     if (detectDisplayServer() == Wayland) {
         return 1.0; // No global DPI query; assume 1.0 scaling
     }
-    Display *dpy = XOpenDisplay(NULL);
+    Display *dpy = XGetMainDisplay();
     if (!dpy) { return 1.0; }
 
     int scr = 0; /* Screen number */
@@ -82,8 +82,6 @@ static inline double sys_scale(int32_t display_id) {
             XrmDestroyDatabase(db);
         }
     }
-    XCloseDisplay (dpy);
-
     return xres / 96.0;
 #else
     return 1.0;
@@ -178,6 +176,7 @@ static inline MMRectInt32 getScreenRect(int32_t display_id) {
         return MMRectInt32Make(0, 0, 0, 0);
     }
     Display *display = XGetMainDisplay();
+    if (!display) { return MMRectInt32Make(0, 0, 0, 0); }
     const int screen = DefaultScreen(display);
 
     return MMRectInt32Make(

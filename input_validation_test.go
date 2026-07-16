@@ -98,6 +98,7 @@ func TestTextAndUnicodeValidationIsBuildIndependent(t *testing.T) {
 		args []int
 	}{
 		{text: string([]byte{0xff})},
+		{text: "a\x00b"},
 		{text: "text", args: []int{0, -1}},
 		{text: "text", args: []int{0, 0, -1}},
 		{text: "text", args: []int{0, 0, 0, 0}},
@@ -175,6 +176,9 @@ func TestPublicInputValidationRunsBeforeBackendSelection(t *testing.T) {
 	if err := TypeStrE(string([]byte{0xff})); err == nil {
 		t.Fatal("TypeStrE accepted invalid UTF-8")
 	}
+	if err := TypeStrE("a\x00b"); err == nil || errors.Is(err, ErrNotSupported) {
+		t.Fatalf("TypeStrE embedded-NUL error = %v, want backend-independent argument error", err)
+	}
 	if err := TypeStrE("text", 0, -1); err == nil {
 		t.Fatal("TypeStrE accepted a negative delay")
 	}
@@ -186,6 +190,36 @@ func TestPublicInputValidationRunsBeforeBackendSelection(t *testing.T) {
 	}
 	if err := ScrollE(0, 0, 1, 2); err == nil {
 		t.Fatal("ScrollE accepted surplus arguments")
+	}
+}
+
+func TestGetLocationColorPropagatesWaylandLocationError(t *testing.T) {
+	t.Setenv(envWaylandDisplay, "robotgo-location-color-test")
+	t.Setenv(envDisplay, "")
+	color, err := GetLocationColor()
+	if !errors.Is(err, ErrNotSupported) {
+		t.Fatalf("GetLocationColor error = %v, want ErrNotSupported", err)
+	}
+	if color != "" {
+		t.Fatalf("GetLocationColor color = %q after location failure, want empty", color)
+	}
+}
+
+func TestExactTextCodepointsNeverUsesEscapeText(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		text string
+		want []uint32
+	}{
+		{name: "supplementary rune", text: "😀", want: []uint32{0x1f600}},
+		{name: "newline", text: "\n", want: []uint32{'\n'}},
+		{name: "mixed", text: "A😀\n", want: []uint32{'A', 0x1f600, '\n'}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			if got := exactTextCodepoints(test.text); !reflect.DeepEqual(got, test.want) {
+				t.Fatalf("exactTextCodepoints(%q) = %#v, want %#v", test.text, got, test.want)
+			}
+		})
 	}
 }
 

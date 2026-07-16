@@ -86,6 +86,7 @@ func TestCloseRemoteDesktopInputCancelsActiveTransaction(t *testing.T) {
 	previousPermission := remoteDesktopInputState.permission
 	previousReason := remoteDesktopInputState.reason
 	remoteDesktopInputState.session = session
+	remoteDesktopInputState.generation++
 	remoteDesktopInputState.Unlock()
 	t.Cleanup(func() {
 		remoteDesktopInputState.Lock()
@@ -403,6 +404,7 @@ func installFakeHighLevelPortalSession(t *testing.T, devices inputportal.DeviceT
 	previousPermission := remoteDesktopInputState.permission
 	previousReason := remoteDesktopInputState.reason
 	remoteDesktopInputState.session = session
+	remoteDesktopInputState.generation++
 	remoteDesktopInputState.permission = RemoteDesktopPermissionGranted
 	remoteDesktopInputState.reason = "test session active"
 	remoteDesktopInputState.Unlock()
@@ -410,6 +412,7 @@ func installFakeHighLevelPortalSession(t *testing.T, devices inputportal.DeviceT
 		remoteDesktopInputState.Lock()
 		if remoteDesktopInputState.session == session {
 			remoteDesktopInputState.session = previous
+			remoteDesktopInputState.generation++
 		}
 		remoteDesktopInputState.permission = previousPermission
 		remoteDesktopInputState.reason = previousReason

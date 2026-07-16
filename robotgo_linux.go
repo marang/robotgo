@@ -24,6 +24,7 @@ import "C"
 
 import (
 	"errors"
+	"fmt"
 	"log"
 
 	"github.com/jezek/xgb"
@@ -33,8 +34,6 @@ import (
 	"github.com/jezek/xgbutil/ewmh"
 	"github.com/marang/robotgo/base"
 )
-
-var xu *xgbutil.XUtil
 
 // GetBounds returns the window bounds and dispatches to the appropriate
 // Wayland or X11 implementation based on DetectDisplayServer.
@@ -56,6 +55,9 @@ func GetBounds(pid int, args ...int) (int, int, int, int) {
 		}
 		return 0, 0, int(w), int(h)
 	}
+	if !nativeX11BackendCompiled() {
+		return 0, 0, 0, 0
+	}
 
 	var isPid int
 	if len(args) > 0 || currentTreatAsHandle() {
@@ -63,7 +65,7 @@ func GetBounds(pid int, args ...int) (int, int, int, int) {
 		return internalGetBounds(pid, isPid)
 	}
 
-	xid, err := GetXid(xu, pid)
+	xid, err := GetXid(nil, pid)
 	if err != nil {
 		log.Println("Get Xid from Pid errors is: ", err)
 		return 0, 0, 0, 0
@@ -92,6 +94,9 @@ func GetClient(pid int, args ...int) (int, int, int, int) {
 		}
 		return 0, 0, int(w), int(h)
 	}
+	if !nativeX11BackendCompiled() {
+		return 0, 0, 0, 0
+	}
 
 	var isPid int
 	if len(args) > 0 || currentTreatAsHandle() {
@@ -99,7 +104,7 @@ func GetClient(pid int, args ...int) (int, int, int, int) {
 		return internalGetClient(pid, isPid)
 	}
 
-	xid, err := GetXid(xu, pid)
+	xid, err := GetXid(nil, pid)
 	if err != nil {
 		log.Println("Get Xid from Pid errors is: ", err)
 		return 0, 0, 0, 0
@@ -110,13 +115,16 @@ func GetClient(pid int, args ...int) (int, int, int, int) {
 
 // internalGetTitle get the window title
 func internalGetTitle(pid int, args ...int) string {
+	if !nativeX11BackendCompiled() {
+		return ""
+	}
 	var isPid int
 	if len(args) > 0 || currentTreatAsHandle() {
 		isPid = 1
 		return cgetTitle(pid, isPid)
 	}
 
-	xid, err := GetXid(xu, pid)
+	xid, err := GetXid(nil, pid)
 	if err != nil {
 		log.Println("Get Xid from Pid errors is: ", err)
 		return ""
@@ -131,21 +139,28 @@ func ActivePidC(pid int, args ...int) error {
 	if base.DetectDisplayServer() == base.Wayland {
 		return waylandWindowNotSupported("activate window")
 	}
+	if err := nativeX11WindowReady(); err != nil {
+		return err
+	}
 
 	var isPid int
 	if len(args) > 0 || currentTreatAsHandle() {
 		isPid = 1
-		internalActive(pid, isPid)
+		if !internalActive(pid, isPid) {
+			return fmt.Errorf("%w: native X11 backend could not activate target window", errWindowOperationFailed)
+		}
 		return nil
 	}
 
-	xid, err := GetXid(xu, pid)
+	xid, err := GetXid(nil, pid)
 	if err != nil {
 		log.Println("Get Xid from Pid errors is: ", err)
 		return err
 	}
 
-	internalActive(int(xid), isPid)
+	if !internalActive(int(xid), isPid) {
+		return fmt.Errorf("%w: native X11 backend could not activate target window", errWindowOperationFailed)
+	}
 	return nil
 }
 
@@ -157,14 +172,15 @@ func ActivePid(pid int, args ...int) error {
 	if base.DetectDisplayServer() == base.Wayland {
 		return waylandWindowNotSupported("activate window")
 	}
-
-	if xu == nil {
-		var err error
-		xu, err = xgbutil.NewConn()
-		if err != nil {
-			return err
-		}
+	if err := nativeX11WindowReady(); err != nil {
+		return err
 	}
+
+	xu, err := xgbutil.NewConn()
+	if err != nil {
+		return err
+	}
+	defer xu.Conn().Close()
 
 	if len(args) > 0 {
 		err := ewmh.ActiveWindowReq(xu, xproto.Window(pid))
@@ -191,6 +207,7 @@ func ActivePid(pid int, args ...int) error {
 
 // GetXid get the xid return window and error
 func GetXid(xu *xgbutil.XUtil, pid int) (xproto.Window, error) {
+	owned := false
 	if xu == nil {
 		var err error
 		xu, err = xgbutil.NewConn()
@@ -198,6 +215,10 @@ func GetXid(xu *xgbutil.XUtil, pid int) (xproto.Window, error) {
 			// log.Println("xgbutil.NewConn errors is: ", err)
 			return 0, err
 		}
+		owned = true
+	}
+	if owned {
+		defer xu.Conn().Close()
 	}
 
 	xid, err := GetXidByPid(xu, pid)
@@ -219,9 +240,11 @@ func GetXidByPid(xu *xgbutil.XUtil, pid int) (xproto.Window, error) {
 	}
 
 	for _, window := range windows {
-		wmPid, err := ewmh.WmPidGet(xu, window)
+		wmPid, err := x11WindowPID(xu, window)
 		if err != nil {
-			return 0, err
+			// A client can legitimately omit _NET_WM_PID. Keep scanning the
+			// remaining client list instead of making its ordering observable.
+			continue
 		}
 
 		if uint(pid) == wmPid {
@@ -259,6 +282,7 @@ func GetMainId() int {
 	if err != nil {
 		return -1
 	}
+	defer conn.Close()
 
 	setup := xproto.Setup(conn)
 	defaultScreen := setup.DefaultScreen(conn)

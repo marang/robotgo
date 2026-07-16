@@ -5,6 +5,7 @@ package robotgo
 
 import (
 	"errors"
+	"fmt"
 	"log"
 
 	"github.com/jezek/xgb"
@@ -14,7 +15,23 @@ import (
 	"github.com/jezek/xgbutil/ewmh"
 )
 
-var xu *xgbutil.XUtil
+func newConfiguredX11XUtil() (*xgbutil.XUtil, error) {
+	return newX11XUtilForDisplay(configuredX11DisplayName())
+}
+
+func newConfiguredX11Conn() (*xgb.Conn, error) {
+	return xgb.NewConnDisplay(configuredX11DisplayName())
+}
+
+func newX11XUtilForDisplay(display string) (*xgbutil.XUtil, error) {
+	return xgbutil.NewConnDisplay(display)
+}
+
+func configuredX11DisplayName() string {
+	unlock := lockNativeX11Display()
+	defer unlock()
+	return getXDisplayNameLocked()
+}
 
 // GetBounds returns the window bounds using X11.
 func GetBounds(pid int, args ...int) (int, int, int, int) {
@@ -23,12 +40,20 @@ func GetBounds(pid int, args ...int) (int, int, int, int) {
 		isPid = 1
 		return internalGetBounds(pid, isPid)
 	}
-	xid, err := GetXid(xu, pid)
+	unlock := lockNativeX11Display()
+	defer unlock()
+	xu, err := newX11XUtilForDisplay(getXDisplayNameLocked())
+	if err != nil {
+		log.Println("Open configured X11 target errors is: ", err)
+		return 0, 0, 0, 0
+	}
+	defer xu.Conn().Close()
+	xid, err := GetXidFromPid(xu, pid)
 	if err != nil {
 		log.Println("Get Xid from Pid errors is: ", err)
 		return 0, 0, 0, 0
 	}
-	return internalGetBounds(int(xid), isPid)
+	return internalGetBoundsLocked(int(xid), isPid)
 }
 
 // GetClient returns the client bounds using X11.
@@ -38,12 +63,20 @@ func GetClient(pid int, args ...int) (int, int, int, int) {
 		isPid = 1
 		return internalGetClient(pid, isPid)
 	}
-	xid, err := GetXid(xu, pid)
+	unlock := lockNativeX11Display()
+	defer unlock()
+	xu, err := newX11XUtilForDisplay(getXDisplayNameLocked())
+	if err != nil {
+		log.Println("Open configured X11 target errors is: ", err)
+		return 0, 0, 0, 0
+	}
+	defer xu.Conn().Close()
+	xid, err := GetXidFromPid(xu, pid)
 	if err != nil {
 		log.Println("Get Xid from Pid errors is: ", err)
 		return 0, 0, 0, 0
 	}
-	return internalGetClient(int(xid), isPid)
+	return internalGetClientLocked(int(xid), isPid)
 }
 
 // internalGetTitle gets the window title using X11.
@@ -53,12 +86,20 @@ func internalGetTitle(pid int, args ...int) string {
 		isPid = 1
 		return cgetTitle(pid, isPid)
 	}
-	xid, err := GetXid(xu, pid)
+	unlock := lockNativeX11Display()
+	defer unlock()
+	xu, err := newX11XUtilForDisplay(getXDisplayNameLocked())
+	if err != nil {
+		log.Println("Open configured X11 target errors is: ", err)
+		return ""
+	}
+	defer xu.Conn().Close()
+	xid, err := GetXidFromPid(xu, pid)
 	if err != nil {
 		log.Println("Get Xid from Pid errors is: ", err)
 		return ""
 	}
-	return cgetTitle(int(xid), isPid)
+	return cgetTitleLocked(int(xid), isPid)
 }
 
 // ActivePidC activates the window by PID via X11.
@@ -66,27 +107,37 @@ func ActivePidC(pid int, args ...int) error {
 	var isPid int
 	if len(args) > 0 || currentTreatAsHandle() {
 		isPid = 1
-		internalActive(pid, isPid)
+		if !internalActive(pid, isPid) {
+			return fmt.Errorf("%w: native X11 backend could not activate target window", errWindowOperationFailed)
+		}
 		return nil
 	}
-	xid, err := GetXid(xu, pid)
+	unlock := lockNativeX11Display()
+	defer unlock()
+	xu, err := newX11XUtilForDisplay(getXDisplayNameLocked())
+	if err != nil {
+		log.Println("Open configured X11 target errors is: ", err)
+		return err
+	}
+	defer xu.Conn().Close()
+	xid, err := GetXidFromPid(xu, pid)
 	if err != nil {
 		log.Println("Get Xid from Pid errors is: ", err)
 		return err
 	}
-	internalActive(int(xid), isPid)
+	if !internalActiveLocked(int(xid), isPid) {
+		return fmt.Errorf("%w: native X11 backend could not activate target window", errWindowOperationFailed)
+	}
 	return nil
 }
 
 // ActivePid activates the window by PID via X11.
 func ActivePid(pid int, args ...int) error {
-	if xu == nil {
-		var err error
-		xu, err = xgbutil.NewConn()
-		if err != nil {
-			return err
-		}
+	xu, err := newConfiguredX11XUtil()
+	if err != nil {
+		return err
 	}
+	defer xu.Conn().Close()
 	if len(args) > 0 {
 		if err := ewmh.ActiveWindowReq(xu, xproto.Window(pid)); err != nil {
 			return err
@@ -105,12 +156,17 @@ func ActivePid(pid int, args ...int) error {
 
 // GetXid gets the XID for a given PID.
 func GetXid(xu *xgbutil.XUtil, pid int) (xproto.Window, error) {
+	owned := false
 	if xu == nil {
 		var err error
-		xu, err = xgbutil.NewConn()
+		xu, err = newConfiguredX11XUtil()
 		if err != nil {
 			return 0, err
 		}
+		owned = true
+	}
+	if owned {
+		defer xu.Conn().Close()
 	}
 	xid, err := GetXidFromPid(xu, pid)
 	return xid, err
@@ -123,9 +179,11 @@ func GetXidFromPid(xu *xgbutil.XUtil, pid int) (xproto.Window, error) {
 		return 0, err
 	}
 	for _, window := range windows {
-		wmPid, err := ewmh.WmPidGet(xu, window)
+		wmPid, err := x11WindowPID(xu, window)
 		if err != nil {
-			return 0, err
+			// A client can legitimately omit _NET_WM_PID. Keep scanning the
+			// remaining client list instead of making its ordering observable.
+			continue
 		}
 		if uint(pid) == wmPid {
 			return window, nil
@@ -136,7 +194,7 @@ func GetXidFromPid(xu *xgbutil.XUtil, pid int) (xproto.Window, error) {
 
 // DisplaysNum returns the count of displays using Xinerama.
 func DisplaysNum() int {
-	c, err := xgb.NewConn()
+	c, err := newConfiguredX11Conn()
 	if err != nil {
 		return 0
 	}
@@ -153,10 +211,11 @@ func DisplaysNum() int {
 
 // GetMainId returns the primary display id.
 func GetMainId() int {
-	conn, err := xgb.NewConn()
+	conn, err := newConfiguredX11Conn()
 	if err != nil {
 		return -1
 	}
+	defer conn.Close()
 	setup := xproto.Setup(conn)
 	defaultScreen := setup.DefaultScreen(conn)
 	id := -1

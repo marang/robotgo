@@ -97,7 +97,7 @@ type windowBackend interface {
 type nativeWindowBackend struct{}
 
 func (nativeWindowBackend) Name() string {
-	if runtime.GOOS == "linux" && DetectDisplayServer() == DisplayServerX11 {
+	if runtime.GOOS == "linux" && selectedDisplayServer() == DisplayServerX11 {
 		return "x11"
 	}
 	return "native"
@@ -106,26 +106,52 @@ func (nativeWindowBackend) Name() string {
 func (nativeWindowBackend) Capability() FeatureCapability {
 	reason := "operation supported by current non-wayland-global backend"
 	notes := "window operations use platform native backend"
+	available := true
+	backend := "native"
 	switch runtime.GOOS {
 	case "linux":
+		backend = "x11"
 		reason = "X11 window backend is available with explicit per-operation support"
 		notes = "activation, title, and close use X11; minimize/maximize return ErrNotSupported because the legacy native path has no implementation"
+		if err := nativeX11WindowReady(); err != nil {
+			available = false
+			reason = err.Error()
+			notes = "build the native X11 backend and verify the configured X11 display"
+		}
 	case "darwin":
 		notes = "native window operations use Accessibility APIs; maximize returns ErrNotSupported"
 	}
 	return FeatureCapability{
-		Available: true,
+		Available: available,
 		Fallback:  false,
-		Backend:   "native",
+		Backend:   backend,
 		Reason:    reason,
 		Notes:     notes,
 	}
+}
+
+func nativeX11WindowReady() error {
+	if runtime.GOOS != "linux" {
+		return nil
+	}
+	if selectedDisplayServer() != DisplayServerX11 {
+		return fmt.Errorf("%w: no X11 display server is selected", ErrNotSupported)
+	}
+	if !nativeX11BackendCompiled() {
+		return fmt.Errorf("%w: native X11 window backend is not compiled", ErrNotSupported)
+	}
+	unlock := lockNativeX11Display()
+	defer unlock()
+	return nativeX11DisplayReadyLocked()
 }
 
 func (nativeWindowBackend) SetActive(win Handle) error {
 	var zero Handle
 	if win == zero {
 		return fmt.Errorf("%w: active window handle is zero", errWindowOperationFailed)
+	}
+	if err := nativeX11WindowReady(); err != nil {
+		return err
 	}
 	if !nativeSetActive(win) {
 		return fmt.Errorf("%w: native backend could not activate target window", errWindowOperationFailed)
@@ -136,6 +162,9 @@ func (nativeWindowBackend) SetActive(win Handle) error {
 func (nativeWindowBackend) Minimize(pid int, state bool, isPid bool) error {
 	if pid <= 0 {
 		return fmt.Errorf("%w: invalid window target %d", errWindowOperationFailed, pid)
+	}
+	if err := nativeX11WindowReady(); err != nil {
+		return err
 	}
 	if !nativeMinWindow(pid, state, isPid) {
 		if runtime.GOOS == "linux" {
@@ -150,6 +179,9 @@ func (nativeWindowBackend) Maximize(pid int, state bool, isPid bool) error {
 	if pid <= 0 {
 		return fmt.Errorf("%w: invalid window target %d", errWindowOperationFailed, pid)
 	}
+	if err := nativeX11WindowReady(); err != nil {
+		return err
+	}
 	if !nativeMaxWindow(pid, state, isPid) {
 		if runtime.GOOS == "linux" || runtime.GOOS == "darwin" {
 			return fmt.Errorf("%w: native maximize is not implemented on %s", ErrNotSupported, runtime.GOOS)
@@ -160,6 +192,9 @@ func (nativeWindowBackend) Maximize(pid int, state bool, isPid bool) error {
 }
 
 func (nativeWindowBackend) Close(args ...int) error {
+	if err := nativeX11WindowReady(); err != nil {
+		return err
+	}
 	if len(args) <= 0 {
 		if !nativeCloseMainWindow() {
 			return fmt.Errorf("%w: native backend could not close active window", errWindowOperationFailed)
@@ -179,6 +214,9 @@ func (nativeWindowBackend) Close(args ...int) error {
 }
 
 func (nativeWindowBackend) Title(args ...int) (string, error) {
+	if err := nativeX11WindowReady(); err != nil {
+		return "", err
+	}
 	var title string
 	if len(args) <= 0 {
 		title = nativeGetMainTitle()
@@ -189,7 +227,7 @@ func (nativeWindowBackend) Title(args ...int) (string, error) {
 	} else {
 		title = nativeGetInternalTitle(args[0], 0)
 	}
-	if title == "is_valid failed." {
+	if title == "" || title == "is_valid failed." {
 		return "", errWindowTitleUnavailable
 	}
 	return title, nil

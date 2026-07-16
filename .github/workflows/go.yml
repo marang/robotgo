@@ -151,10 +151,113 @@ jobs:
           xvfb-run -a -s "-screen 0 1280x720x24 -nolisten tcp -noreset" \
             sh -eu -c '
               setxkbmap -layout us,de
-              env -u WAYLAND_DISPLAY -u XDG_SESSION_TYPE \
+              listed="$(env -u WAYLAND_DISPLAY -u XDG_SESSION_TYPE \
+                go test -tags x11integration -list "^TestPureGoX11" .)"
+              printf "%s\n" "$listed"
+              expected="$(printf "%s\n" \
+                TestPureGoX11RejectsImplicitDependencyPortalFallback \
+                TestPureGoX11MultiLayoutConfiguration \
+                TestPureGoX11Capabilities \
+                TestPureGoX11PointerInput \
+                TestPureGoX11KeyboardInput \
+                TestPureGoX11TextReachesDelayedXKBClient \
+                TestPureGoX11ExplicitShiftReachesXKBClient \
+                TestPureGoX11ScratchReservationSkipsPressedEmptyKeycode \
+                TestPureGoX11ScratchCleanupCanRetryAfterForeignRelease \
+                TestPureGoX11RejectsNonModifierBeforeScratchMutation \
+                TestPureGoX11ScratchCleanupCanRetryAfterModifierRestore \
+                TestPureGoX11TextCapacityFailsBeforeInput \
+                TestPureGoX11RejectsScratchReplacementBeforeTextTap \
+                TestPureGoX11ClosePreservesForeignScratchReplacement \
+                TestPureGoX11ClosePreservesForeignModifierScratchReplacement \
+                TestPureGoX11PreservesForeignInputState \
+                TestPureGoX11EventDrainDoesNotStall \
+                TestPureGoX11CloseMainDisplayReconnects \
+                TestPureGoX11SessionSwitchReleasesOwnedInput | LC_ALL=C sort)"
+              actual="$(printf "%s\n" "$listed" | awk "/^TestPureGoX11/ { print }" | LC_ALL=C sort)"
+              if [ "$actual" != "$expected" ]; then
+                echo "Pure-Go X11 test manifest mismatch" >&2
+                printf "expected:\n%s\nactual:\n%s\n" "$expected" "${actual:-<empty>}" >&2
+                exit 1
+              fi
+              output="$(env -u WAYLAND_DISPLAY -u XDG_SESSION_TYPE \
                 go test -tags x11integration \
-                -run "^TestPureGoX11" -count=1 -timeout=30s -v .
+                -run "^TestPureGoX11" -count=1 -timeout=30s -v .)"
+              printf "%s\n" "$output"
+              printf "%s\n" "$expected" | while IFS= read -r test_name; do
+                if ! printf "%s\n" "$output" | grep -Eq "^--- PASS: ${test_name} \\(.*\\)$"; then
+                  echo "Pure-Go X11 test did not pass: ${test_name}" >&2
+                  exit 1
+                fi
+              done
             '
+  x11-backend-evidence:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: 1.25.x
+      - name: Install X11 evidence dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential pkg-config libx11-dev libxtst-dev \
+            xvfb xauth x11-xkb-utils libxkbcommon-tools
+      - name: Run native and Pure-Go X11 contract and benchmark smoke
+        env:
+          ROBOTGO_X11_EVIDENCE_BALANCED: "0"
+          ROBOTGO_X11_EVIDENCE_BENCHTIME: "1x"
+          ROBOTGO_X11_EVIDENCE_COUNT: "1"
+          ROBOTGO_X11_EVIDENCE_TIMEOUT: "2m"
+        run: |
+          output="$RUNNER_TEMP/x11-backend-evidence"
+          scripts/benchmark-x11-backends.sh "$output"
+          grep -Fxq 'status=complete' "$output/run-status.txt"
+          grep -Fxq 'allow_dirty=0' "$output/run-status.txt"
+          grep -Fxq 'snapshot_verified=1' "$output/run-status.txt"
+          grep -Fxq 'decision_grade=0' "$output/run-status.txt"
+          grep -Fq '**Non-decision configuration:**' "$output/summary.md"
+      - name: Reject native input when XTEST is unavailable
+        env:
+          CGO_ENABLED: "1"
+          ROBOTGO_EXPECT_X11_IMPLEMENTATION: native-cgo
+          ROBOTGO_EXPECT_X11_NO_XTEST: "1"
+        run: |
+          xvfb-run -a \
+            -s '-screen 0 640x480x24 -nolisten tcp -noreset -extension XTEST' \
+            sh -eu -c '
+              unset WAYLAND_DISPLAY XDG_SESSION_TYPE
+              test_name=TestX11MissingXTestReadinessContract
+              listed="$(go test -tags x11integration -list "^${test_name}$" .)"
+              printf "%s\n" "$listed"
+              if ! printf "%s\n" "$listed" | grep -Fxq "$test_name"; then
+                echo "missing-XTEST test is absent from the native manifest" >&2
+                exit 1
+              fi
+              output="$(go test -tags x11integration \
+                -run "^TestX11MissingXTestReadinessContract$" \
+                -count=1 -timeout=30s -v .)"
+              printf "%s\n" "$output"
+              if ! printf "%s\n" "$output" | grep -Eq "^--- PASS: ${test_name} \\(.*\\)$"; then
+                echo "missing-XTEST test did not pass" >&2
+                exit 1
+              fi
+            '
+      - name: Publish report-only benchmark summary
+        if: always()
+        run: |
+          if [ -f "$RUNNER_TEMP/x11-backend-evidence/.robotgo-x11-evidence-output" ] && \
+             grep -Fxq 'robotgo-x11-evidence-v1' \
+               "$RUNNER_TEMP/x11-backend-evidence/.robotgo-x11-evidence-output" && \
+             [ -f "$RUNNER_TEMP/x11-backend-evidence/summary.md" ] && \
+             grep -Fxq 'status=complete' "$RUNNER_TEMP/x11-backend-evidence/run-status.txt"; then
+            cat "$RUNNER_TEMP/x11-backend-evidence/summary.md" >> "$GITHUB_STEP_SUMMARY"
+          fi
   ocr:
     runs-on: ubuntu-latest
     steps:
@@ -190,6 +293,63 @@ jobs:
             libx11-dev libxtst-dev libxkbcommon-dev \
             libwayland-dev wayland-protocols \
             libgbm-dev libdrm-dev libpipewire-0.3-dev
+      - name: Run hermetic Wayland virtual-keyboard contract
+        env:
+          XDG_RUNTIME_DIR: /tmp
+        run: |
+          set -euo pipefail
+          expected="$(printf '%s\n' \
+            TestWaylandVirtualKeyboardASCIIAndUnmappedUnicode \
+            TestWaylandExactTextPreflightRejectsUnmappedWithoutMutation \
+            TestWaylandKeyboardFlushFailureReconnects \
+            TestWaylandKeyboardSelectsDeterministicCapableSeatAndCleansAll \
+            TestWaylandKeyboardRejectsSeatsWithoutKeyboardCapability \
+            TestWaylandKeyboardProcessesRuntimeSeatChanges | LC_ALL=C sort)"
+          listed="$(go test -tags waylandint ./key -list '^TestWayland')"
+          printf '%s\n' "$listed"
+          actual="$(printf '%s\n' "$listed" | awk '/^TestWayland/ { print }' | LC_ALL=C sort)"
+          if [ "$actual" != "$expected" ]; then
+            echo "Wayland keyboard test manifest mismatch" >&2
+            printf 'expected:\n%s\nactual:\n%s\n' "$expected" "${actual:-<empty>}" >&2
+            exit 1
+          fi
+          output="$(go test -race -tags waylandint ./key \
+            -run '^TestWayland' -count=1 -timeout=60s -v)"
+          printf '%s\n' "$output"
+          while IFS= read -r test_name; do
+            if ! printf '%s\n' "$output" | grep -Eq "^--- PASS: ${test_name} \\(.*\\)$"; then
+              echo "Wayland keyboard test did not pass: ${test_name}" >&2
+              exit 1
+            fi
+          done <<EOF
+          $expected
+          EOF
+          root_expected="$(printf '%s\n' \
+            TestWaylandPublicTextPreflightFallsBackToRemoteDesktop \
+            TestWaylandPublicTypeStrEUsesExactRunes | LC_ALL=C sort)"
+          root_listed="$(go test -tags 'wayland waylandint' \
+            -list '^TestWaylandPublic' .)"
+          printf '%s\n' "$root_listed"
+          root_actual="$(printf '%s\n' "$root_listed" | \
+            awk '/^TestWaylandPublic/ { print }' | LC_ALL=C sort)"
+          if [ "$root_actual" != "$root_expected" ]; then
+            echo "public Wayland text test manifest mismatch" >&2
+            printf 'expected:\n%s\nactual:\n%s\n' \
+              "$root_expected" "${root_actual:-<empty>}" >&2
+            exit 1
+          fi
+          root_output="$(go test -race -tags 'wayland waylandint' . \
+            -run '^TestWaylandPublic' -count=1 -timeout=60s -v)"
+          printf '%s\n' "$root_output"
+          while IFS= read -r test_name; do
+            if ! printf '%s\n' "$root_output" | \
+              grep -Eq "^--- PASS: ${test_name} \\(.*\\)$"; then
+              echo "public Wayland text test did not pass: ${test_name}" >&2
+              exit 1
+            fi
+          done <<EOF
+          $root_expected
+          EOF
       - name: Run Wayland integration tests
         env:
           XDG_RUNTIME_DIR: /tmp

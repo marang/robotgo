@@ -69,7 +69,7 @@ uintptr b_get_handle() {
 	#endif
 }
 
-void active_PID(uintptr pid, int8_t isPid){
+bool active_PID(uintptr pid, int8_t isPid){
 	MData win = set_handle_pid(pid, isPid);
-	set_active(win);
+	return set_active(win);
 }

@@ -47,15 +47,6 @@ static inline int robotgo_wayland_screencopy_ready(void) { return 0; }
 #include <X11/Xutil.h>
 #endif
 
-// Swallow X errors (e.g., BadMatch from X_GetImage) and signal failure
-// instead of aborting the process during tests or constrained servers.
-#if !defined(DISPLAY_SERVER_WAYLAND)
-static volatile int robotgo_xerr_flag = 0;
-static int robotgo_xerr_handler(Display* d, XErrorEvent* e) {
-  (void)d; (void)e; robotgo_xerr_flag = 1; return 0;
-}
-#endif
-
 typedef enum {
   ScreengrabOK = 0,
   ScreengrabErrDisplay,
@@ -243,53 +234,40 @@ static inline MMBitmapRef copyMMBitmapFromDisplayInRect(MMRectInt32 rect, int32_
 #elif defined(IS_LINUX)
 #if !defined(DISPLAY_SERVER_WAYLAND)
   MMBitmapRef bitmap;
-  Display *display;
-  if (display_id == -1) {
-    display = XOpenDisplay(NULL);
-  } else {
-    display = XGetMainDisplay();
-  }
+  Display *display = XGetMainDisplay();
   if (display == NULL) {
     return NULL;
   }
+  (void)display_id;
 
   MMPointInt32 o = rect.origin;
   MMSizeInt32 s = rect.size;
-  unsigned long mask =
-      (1UL << DefaultDepth(display, DefaultScreen(display))) - 1;
-  // Install a temporary X error handler to swallow BadMatch errors on systems
-  // where XGetImage on the root window is not permitted.
-  static int robotgo_xerr_installed = 0;
-  robotgo_xerr_flag = 0;
-  if (!robotgo_xerr_installed) {
-    XSetErrorHandler(robotgo_xerr_handler);
-    robotgo_xerr_installed = 1;
+  int depth = DefaultDepth(display, DefaultScreen(display));
+  unsigned long mask = depth >= (int)(sizeof(unsigned long) * 8)
+                           ? ~0UL
+                           : (1UL << depth) - 1;
+  RobotGoXErrorTrap trap;
+  if (!robotgo_xerror_trap_begin(display, &trap)) {
+    return NULL;
   }
-  XSync(display, False);
-  XImage *image = XGetImage(display, XDefaultRootWindow(display), (int)o.x, (int)o.y,
-                            (unsigned int)s.w, (unsigned int)s.h, mask, ZPixmap);
-  XSync(display, False);
-  if (robotgo_xerr_flag) {
-    robotgo_xerr_flag = 0;
+  XImage *image = XGetImage(display, XDefaultRootWindow(display), (int)o.x,
+                            (int)o.y, (unsigned int)s.w, (unsigned int)s.h,
+                            mask, ZPixmap);
+  if (!robotgo_xerror_trap_end(&trap)) {
     if (image) { XDestroyImage(image); }
-    if (display_id == -1) { XCloseDisplay(display); }
     return NULL;
   }
   if (image == NULL) {
-    if (display_id == -1) {
-      XCloseDisplay(display);
-    }
     return NULL;
-  }
-  if (display_id == -1) {
-    XCloseDisplay(display);
   }
 
   bitmap = createMMBitmap_c(
       (uint8_t *)image->data, s.w, s.h, (size_t)image->bytes_per_line,
       (uint8_t)image->bits_per_pixel, (uint8_t)image->bits_per_pixel / 8);
-  image->data =
-      NULL; /* Steal ownership of bitmap data so we don't have to copy it. */
+  if (bitmap != NULL) {
+    /* Steal ownership only after the bitmap accepted the image buffer. */
+    image->data = NULL;
+  }
   XDestroyImage(image);
 
   return bitmap;
