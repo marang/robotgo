@@ -17,6 +17,11 @@ Current implementation baseline:
 - Platform-neutral feature introspection is available via
   `GetRuntimeCapabilities`; macOS non-CGO builds report CoreGraphics capture,
   display bounds, and Screen Recording permission state without prompting.
+- Linux/X11 non-CGO builds provide a Pure-Go XGB/XTEST keyboard and pointer
+  backend with live readiness probes, text/Unicode, smooth movement/drag,
+  scrolling, pointer location, explicit state errors, and deterministic
+  cleanup/reconnect. It is selected only for X11-primary sessions and never as
+  an implicit Xwayland fallback from Wayland.
 - Non-CGO `CaptureImg`/`CaptureScreen`, their Go-bitmap/string variants, and
   pixel-color queries use the hardened screenshot portal on Wayland and the
   Pure-Go screenshot backend on X11/Windows; unsupported targets fail explicitly.
@@ -92,7 +97,10 @@ Window backend support matrix (current):
     fractional scale, transforms, portal consent, and fallback.
     `[new vs robotgo-pro]`
   - 5. Selectively port useful Pure-Go backends with behavioral parity tests,
-    backend introspection, and benchmarks before changing defaults.
+    backend introspection, and benchmarks before changing defaults. Linux/X11
+    input is implemented and covered by a non-skipping multi-layout Xvfb/XTEST
+    CI test; protecting its remote check, native-vs-Pure-Go benchmark evidence,
+    and any default switch remain open.
   - 6. Publish versioned compatibility data and expand diagnostics with
     protocol versions, permissions, and actionable remediation.
   - 7. Promote race/vet and native leak/sanitizer checks to blocking release
@@ -108,7 +116,7 @@ Window backend support matrix (current):
   - `GetLinuxCapabilities` reports hook/event status explicitly.
 
 - Screen Capture:
-  - The blocking hermetic matrix now covers positive/negative output origins,
+  - A non-skipping hermetic CI matrix now covers positive/negative output origins,
     fractional scaling, clipped/overflowing regions, and all eight transforms
     across native screencopy and PipeWire mapping.
   - Validate the same scale/transform and region-crop behavior on real wlroots,
@@ -121,8 +129,9 @@ Window backend support matrix (current):
   - Validate the persistent ScreenCast/PipeWire stream path and repeated-frame
     behavior across GNOME/KDE/wlroots portal backends.
 - Keyboard Input:
-  - Add Unicode typing via xkbcommon compose/keysyms.
-  - Verify modifier synchronization and layout handling under various layouts.
+  - Add native Wayland Unicode typing via xkbcommon compose/keysyms.
+  - Verify native Wayland modifier synchronization and layout handling under
+    various layouts.
 - Window APIs:
   - Extend compositor-backed move/resize/activate/topmost/minimize/title
     behavior while preserving explicit `ErrNotSupported` elsewhere.
@@ -140,14 +149,25 @@ Window backend support matrix (current):
 - Build/Tooling:
   - Document pkg-config deps and `wayland-scanner` generation steps; ensure protocol headers are vendored.
   - Keep build tags consistent (`linux,wayland` for native capture and `linux,portal` for explicit portal package path).
-  - Non-CGO builds compile with explicit unsupported stubs; selectively port
-    and harden upstream Pure-Go backends before enabling them as defaults.
+  - Non-CGO builds keep explicit unsupported stubs for unavailable operations
+    while supported capture, portal, and Linux/X11 input paths report their real
+    capabilities. Harden additional Pure-Go backends selectively before
+    enabling any of them as defaults.
 - CI/Testing:
-  - Keep the current headless Weston, screencopy, portal, and non-CGO jobs
-    blocking.
+  - Keep the current headless Weston, screencopy, portal, and non-CGO CI
+    commands green; eliminating unexpected hermetic skips and adding branch
+    protection remain open.
+  - Keep the non-CGO Xvfb/XTEST input test on a configured `us,de` keymap in
+    Linux CI; missing `DISPLAY` or XTEST must fail the matrix leg rather than
+    skip, and the resulting remote check still needs branch protection.
+  - Extract the Pure-Go X11 core into a race-testable package and design a
+    scoped or crash-safe lifecycle for its server-global keyboard scratch map.
   - Provision the existing dedicated GNOME, KDE, and wlroots runtime workflow.
-  - Keep the new blocking race/vet jobs green; add leak/sanitizer and
+  - Keep the race/vet CI jobs green and protect them; add leak/sanitizer and
     bounds-across-outputs gates.
 - Examples/Docs:
   - Add backend selection flags in examples (dmabuf, wl_shm, portal).
+  - Keep `examples/purego_x11_input` side-effect-free by default; live
+    readiness checks and global input must remain behind its explicit `-act`
+    flag.
   - Publish a versioned support matrix and troubleshooting guide.

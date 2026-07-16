@@ -52,7 +52,11 @@ func bitmap() error {
 
 	num := robotgo.DisplaysNum()
 	for i := 0; i < num; i++ {
-		robotgo.DisplayID = i
+		config := robotgo.GetRuntimeConfig()
+		config.DisplayID = i
+		if err := robotgo.SetRuntimeConfig(config); err != nil {
+			return fmt.Errorf("set display %d: %w", i, err)
+		}
 		img1, _ := robotgo.CaptureImg()
 		path1 := "save_" + strconv.Itoa(i)
 		if err := robotgo.Save(img1, path1+".png"); err != nil {

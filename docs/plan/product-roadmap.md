@@ -22,20 +22,20 @@ The July 2026 hardening work establishes the foundation for this roadmap:
   session environment variables alone.
 - Mouse, keyboard, capture, and window operations expose explicit errors where
   legacy APIs previously could hide unsupported behavior.
-- Non-CGO builds compile and return `ErrNotSupported` for native GUI operations;
-  the explicitly authorized RemoteDesktop portal is the first tested Pure-Go
-  input backend.
+- Non-CGO builds provide supported capture backends, explicit RemoteDesktop
+  portal input on Wayland, and an XGB/XTEST input backend for X11-primary Linux
+  sessions; remaining unavailable GUI operations return `ErrNotSupported`.
 - CI covers lint, default tests on Linux/macOS/Windows, non-CGO, Wayland, portal,
   Weston integration, race, and vet variants.
 
-## Execution Status (2026-07-14)
+## Execution Status (2026-07-15)
 
 | Area | Status | Delivered | Exit criteria still open |
 |---|---|---|---|
-| Current baseline | Complete in branch | Native screencopy, screenshot portal fallback, bounded waits, cleanup, live capability probes, error APIs, non-CGO contract, dedicated race/vet jobs | Confirm new CI jobs on remote branch |
+| Current baseline | Complete in branch | Native screencopy, screenshot portal fallback, bounded waits, cleanup, live capability probes, error APIs, non-CGO contract, dedicated race/vet jobs | Confirm all required jobs after the branch is pushed and protect them |
 | 1. Wayland input | Implementation complete; runtime validation blocked | Native virtual keyboard/pointer, consent-aware RemoteDesktop fallback, shared ScreenCast stream mapping, absolute pointer/touch, restore tokens, diagnostics and E2E harness | Register GNOME/KDE/wlroots runners and collect green CGO/non-CGO evidence |
-| 2. Capture | Hermetic implementation complete | Reliable one-shot paths plus one consent-aware ScreenCast session, reusable PipeWire frames, logical region crop, raw pixel conversion, metadata/restore tokens, cleanup, integration harness, and blocking geometry/transform matrix | Real GNOME/KDE/wlroots evidence and sanitizer-backed native leak gate |
-| 3. Pure-Go | Cross-platform capture active | Build and feature-level introspection plus non-CGO macOS CoreGraphics, Windows, X11, and Wayland-portal capture, permission/error contracts, hermetic parity tests, runtime benchmark harness, and a three-OS CI matrix | Record native-vs-Pure-Go runtime benchmark evidence and evaluate further backends selectively |
+| 2. Capture | Hermetic implementation complete | Reliable one-shot paths plus one consent-aware ScreenCast session, reusable PipeWire frames, logical region crop, raw pixel conversion, metadata/restore tokens, cleanup, integration harness, and a non-skipping geometry/transform CI matrix | Real GNOME/KDE/wlroots evidence and sanitizer-backed native leak gate |
+| 3. Pure-Go | Partial: capture plus Linux/X11 input active | Build and feature-level introspection; non-CGO macOS CoreGraphics, Windows, X11, and Wayland-portal capture; Linux/X11 XGB/XTEST input; permission/error contracts; hermetic parity tests; runtime benchmark harness; three-OS CI; non-skipping multi-layout Xvfb input test in Linux CI | Protect the remote CI check, record native-vs-Pure-Go behavioral and runtime benchmark evidence, then evaluate further backends selectively; no default switch is justified yet |
 | 4. API/compositor gaps | Parity surface delivered; runtime support partial | Window-state error APIs, bitmap string helpers, `FindColorCS`, hook/event capability reporting, Sway/Hyprland/wlroots resolver | Compositor-backed state operations and cross-platform/runtime matrix coverage |
 | 5. Reliability product | Partial | Capability API/example and expanded CI variants | Versioned compatibility matrix, richer diagnostics, dedicated compositor jobs, sanitizer/leak gates |
 
@@ -99,10 +99,10 @@ exposes stream/restore metadata, and provides hermetic plus opt-in runtime
 tests. Native readiness is bounded, PipeWire initialization is balanced, and
 idle sessions do not convert unrequested frames. `CaptureScreen` can reuse the active session after native
 screencopy failure or select it explicitly. Output geometry, scale, and
-transform handling now share enclosing-edge crop semantics and have a blocking
-hermetic matrix for negative output origins, fractional scale, clipped regions,
-overflow boundaries, and all eight transforms. The complete real-compositor
-matrix is still required by this phase.
+transform handling now share enclosing-edge crop semantics and have a
+non-skipping hermetic CI matrix for negative output origins, fractional scale,
+clipped regions, overflow boundaries, and all eight transforms. The complete
+real-compositor matrix is still required by this phase.
 
 Exit criteria:
 
@@ -132,12 +132,32 @@ unsupported errors. `GetRuntimeBackendInfo` reports build facts without probes,
 while `GetRuntimeCapabilities` reports feature backends, permission state,
 fallbacks, and actionable reasons without opening consent dialogs. `Capture`,
 `CaptureImg`, `CaptureScreen`, `CaptureGo`, `CaptureBitmapStr`, and the pixel
-color APIs provide non-CGO capture through CoreGraphics on macOS, native
-Windows/X11 paths, and the hardened screenshot portal on Wayland. macOS display
-enumeration, Screen Recording preflight, RGBA conversion, and CoreGraphics
-ownership are covered hermetically on both supported architectures. Runtime
-benchmark harnesses are present; recorded native-vs-Pure-Go evidence is still
-required before any default backend switch.
+color APIs provide non-CGO capture through CoreGraphics on macOS, Windows and
+X11 screenshot paths, and the hardened screenshot portal on Wayland. macOS
+display enumeration, Screen Recording preflight, RGBA conversion, and
+CoreGraphics ownership are covered hermetically on both supported
+architectures.
+
+Linux/X11 additionally has a Pure-Go XGB/XTEST keyboard and pointer backend for
+the error-returning input APIs, text/Unicode, pointer location, smooth
+movement/drag, scroll, live readiness probes, and deterministic connection and
+owned-input cleanup. Backend selection requires an X11-primary session and
+never treats Xwayland as an implicit Wayland fallback. An Xvfb CI test
+uses `us,de` layouts to exercise exact Unicode mappings, real input delivery,
+an independently delayed XKB target, foreign input-state preservation,
+event-drain stress, cleanup, and reconnect.
+The runnable example inspects selected capabilities without opening X11 by
+default and requires an explicit `-act` flag before it runs live readiness
+checks or injects global input.
+
+Phase 3 remains partial. Runtime benchmark harnesses are present, but recorded
+native-vs-Pure-Go behavioral and performance evidence is still required before
+any default backend switch or broader backend port. The non-CGO backend itself
+cannot currently run under Go's CGO-dependent Linux race detector; its
+concurrency stress tests remain mandatory while extracting the X11 core into a
+race-testable internal package is tracked. A scoped keyboard-input lifecycle (or
+equivalent crash-safe cleanup strategy) is also still needed to eliminate the
+server-global scratch-mapping risk after abnormal process termination.
 
 Exit criteria:
 

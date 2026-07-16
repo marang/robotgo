@@ -83,6 +83,7 @@ Respect current tag split and do not collapse platform boundaries:
 - `linux && wayland && test`: tagged Wayland capture/DRM test paths
 - `linux && wayland && integration`: integration suites requiring compositor setup
 - `cgo && linux && waylandint`: keyboard integration harness
+- `linux && !cgo && x11integration`: Pure-Go X11/XTEST input integration suite
 
 Rules:
 
@@ -132,6 +133,7 @@ Common targeted suites:
 3. `go test -tags "wayland test" . -run TestDrmFindRenderNode -v`
 4. `go test -tags "wayland integration" ./mouse ./window -v`
 5. `go test -tags "waylandint" ./key -run TestWaylandUnicodeTypingIntegration -v`
+6. `CGO_ENABLED=0 ROBOTGO_REQUIRE_X11_INTEGRATION=1 xvfb-run -a -s "-screen 0 1280x720x24 -nolisten tcp -noreset" sh -eu -c 'setxkbmap -layout us,de; env -u WAYLAND_DISPLAY -u XDG_SESSION_TYPE go test -tags x11integration -run "^TestPureGoX11" -count=1 -timeout=30s -v .'`
 
 Wayland-related code changes should include at least one of:
 
