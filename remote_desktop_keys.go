@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
-	"unicode"
 	"unicode/utf8"
 )
 
@@ -47,6 +46,17 @@ var portalNamedKeysyms = map[string]int32{
 	"num7":              0xffb7,
 	"num8":              0xffb8,
 	"num9":              0xffb9,
+	"numpad_0":          0xffb0,
+	"numpad_1":          0xffb1,
+	"numpad_2":          0xffb2,
+	"numpad_3":          0xffb3,
+	"numpad_4":          0xffb4,
+	"numpad_5":          0xffb5,
+	"numpad_6":          0xffb6,
+	"numpad_7":          0xffb7,
+	"numpad_8":          0xffb8,
+	"numpad_9":          0xffb9,
+	"numpad_lock":       0xff7f,
 	"num_equal":         0xffbd,
 	"num_clear":         0xff0b,
 	"shift":             0xffe1,
@@ -110,7 +120,7 @@ func portalKeysymForKey(key string) (int32, error) {
 }
 
 func normalizePortalKey(key string, modifiers []string) (string, []string) {
-	if value, _ := utf8.DecodeRuneInString(key); value != utf8.RuneError && unicode.IsUpper(value) {
+	if uppercaseSingleRuneKey(key) {
 		key = strings.ToLower(key)
 		modifiers = append(modifiers, "shift")
 	}

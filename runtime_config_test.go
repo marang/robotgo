@@ -52,3 +52,27 @@ func TestRuntimeConfigRejectsInvalidValuesWithoutMutation(t *testing.T) {
 		}
 	}
 }
+
+func TestInputDelayUpdatePreservesUnrelatedRuntimeConfig(t *testing.T) {
+	previous := GetRuntimeConfig()
+	t.Cleanup(func() {
+		if err := SetRuntimeConfig(previous); err != nil {
+			t.Errorf("restore runtime config: %v", err)
+		}
+	})
+	want := RuntimeConfig{
+		MouseDelay: 1, KeyDelay: 2, DisplayID: 7,
+		TreatAsHandle: true, Scale: true,
+	}
+	if err := SetRuntimeConfig(want); err != nil {
+		t.Fatalf("SetRuntimeConfig: %v", err)
+	}
+	if err := setInputDelays(11, 12); err != nil {
+		t.Fatalf("setInputDelays: %v", err)
+	}
+	want.KeyDelay = 11
+	want.MouseDelay = 12
+	if got := GetRuntimeConfig(); got != want {
+		t.Fatalf("runtime config = %+v, want %+v", got, want)
+	}
+}

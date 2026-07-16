@@ -19,13 +19,10 @@ import "C"
 import (
 	"errors"
 	"fmt"
-	"math/rand"
-	"reflect"
 	"runtime"
 	"strconv"
 	"strings"
 	"sync"
-	"unicode"
 	"unsafe"
 
 	"github.com/marang/robotgo/clipboard"
@@ -435,7 +432,7 @@ func closeWaylandKeyboard() { C.robotgo_wayland_keyboard_close() }
 
 func checkKeyCodes(k string) (key C.MMKeyCode, err error) {
 	if k == "" {
-		return
+		return C.K_NOT_A_KEY, errInvalidKeyFlag
 	}
 
 	if len(k) == 1 {
@@ -456,86 +453,62 @@ func checkKeyCodes(k string) (key C.MMKeyCode, err error) {
 			err = errInvalidKeyFlag
 			return
 		}
+		return key, nil
 	}
-	return
+	return C.K_NOT_A_KEY, errInvalidKeyFlag
 }
 
-func checkKeyFlags(f string) (flags C.MMKeyFlags) {
+func checkKeyFlags(f string) (C.MMKeyFlags, error) {
 	m := map[string]C.MMKeyFlags{
-		"alt":    C.MOD_ALT,
-		"ralt":   C.MOD_ALT,
-		"lalt":   C.MOD_ALT,
-		"cmd":    C.MOD_META,
-		"rcmd":   C.MOD_META,
-		"lcmd":   C.MOD_META,
-		"ctrl":   C.MOD_CONTROL,
-		Control:  C.MOD_CONTROL,
-		"rctrl":  C.MOD_CONTROL,
-		"lctrl":  C.MOD_CONTROL,
-		"shift":  C.MOD_SHIFT,
-		"rshift": C.MOD_SHIFT,
-		"lshift": C.MOD_SHIFT,
-		"none":   C.MOD_NONE,
+		"alt":         C.MOD_ALT,
+		"ralt":        C.MOD_ALT,
+		"lalt":        C.MOD_ALT,
+		"cmd":         C.MOD_META,
+		"command":     C.MOD_META,
+		"rcmd":        C.MOD_META,
+		"lcmd":        C.MOD_META,
+		"ctrl":        C.MOD_CONTROL,
+		Control:       C.MOD_CONTROL,
+		"rctrl":       C.MOD_CONTROL,
+		"lctrl":       C.MOD_CONTROL,
+		"shift":       C.MOD_SHIFT,
+		"rshift":      C.MOD_SHIFT,
+		"lshift":      C.MOD_SHIFT,
+		"right_shift": C.MOD_SHIFT,
+		"none":        C.MOD_NONE,
 	}
 
-	if v, ok := m[f]; ok {
-		return v
+	if value, ok := m[strings.ToLower(f)]; ok {
+		return value, nil
 	}
-	return
+	return C.MOD_NONE, fmt.Errorf("robotgo: unsupported key modifier %q", f)
 }
 
-func getFlagsFromValue(value []string) (flags C.MMKeyFlags) {
+func getFlagsFromValue(value []string) (flags C.MMKeyFlags, err error) {
 	if len(value) <= 0 {
-		return
+		return flags, nil
 	}
 
-	for i := 0; i < len(value); i++ {
-		var f C.MMKeyFlags = C.MOD_NONE
-
-		f = checkKeyFlags(value[i])
+	for _, modifier := range value {
+		f, flagErr := checkKeyFlags(modifier)
+		if flagErr != nil {
+			return C.MOD_NONE, flagErr
+		}
 		flags = (C.MMKeyFlags)(flags | f)
 	}
 
-	return
-}
-
-func portalKeysyms(key string, modifiers []string) (int32, []int32, error) {
-	mainKey, err := checkKeyCodes(key)
-	if err != nil {
-		return 0, nil, err
-	}
-	if mainKey == C.K_NOT_A_KEY || mainKey == 0 {
-		return 0, nil, errInvalidKeyFlag
-	}
-	portalModifiers := make([]int32, 0, len(modifiers))
-	seen := make(map[int32]struct{}, len(modifiers))
-	for _, modifier := range modifiers {
-		if modifier == "none" {
-			continue
-		}
-		code, err := checkKeyCodes(modifier)
-		if err != nil {
-			return 0, nil, err
-		}
-		if code == C.K_NOT_A_KEY || code == 0 {
-			return 0, nil, errInvalidKeyFlag
-		}
-		keysym := int32(code)
-		if _, duplicate := seen[keysym]; duplicate {
-			continue
-		}
-		seen[keysym] = struct{}{}
-		portalModifiers = append(portalModifiers, keysym)
-	}
-	return int32(mainKey), portalModifiers, nil
+	return flags, nil
 }
 
 func tryPortalKey(key string, modifiers []string, pid int, down bool, tap bool) (bool, error) {
+	if runtime.GOOS != "linux" || DetectDisplayServer() != DisplayServerWayland {
+		return false, nil
+	}
 	return withRemoteDesktopInput(inputportal.DeviceKeyboard, func(session remoteDesktopInputSession) error {
 		if pid != 0 {
 			return fmt.Errorf("%w: RemoteDesktop portal input cannot target a process", ErrNotSupported)
 		}
-		mainKey, portalModifiers, err := portalKeysyms(key, modifiers)
+		mainKey, portalModifiers, err := portalKeysymsPure(key, modifiers)
 		if err != nil {
 			return err
 		}
@@ -544,6 +517,10 @@ func tryPortalKey(key string, modifiers []string, pid int, down bool, tap bool) 
 }
 
 func keyTaps(k string, keyArr []string, pid int) error {
+	flags, err := getFlagsFromValue(keyArr)
+	if err != nil {
+		return err
+	}
 	unlock := lockWaylandKeyboard()
 	defer unlock()
 	if nativeErr := ensureWaylandKeyboardReady(); nativeErr != nil {
@@ -555,31 +532,26 @@ func keyTaps(k string, keyArr []string, pid int) error {
 		}
 		return nativeErr
 	}
-	flags := getFlagsFromValue(keyArr)
 	key, err := checkKeyCodes(k)
 	if err != nil {
-		return err
+		if used, portalErr := tryPortalKey(k, keyArr, pid, true, true); used {
+			if portalErr == nil {
+				MilliSleep(currentKeyDelay())
+			}
+			return portalErr
+		}
+		return fmt.Errorf("%w: native keyboard backend cannot map key %q; use TypeStrE or UnicodeTypeE for text", ErrNotSupported, k)
 	}
-
 	tapKeyCode(key, flags, C.uintptr(pid))
 	MilliSleep(currentKeyDelay())
 	return nil
 }
 
-func getKeyDown(keyArr []string) (bool, []string) {
-	if len(keyArr) <= 0 {
-		keyArr = append(keyArr, "down")
-	}
-
-	down := keyArr[0] != "up"
-
-	if keyArr[0] == "up" || keyArr[0] == "down" {
-		keyArr = keyArr[1:]
-	}
-	return down, keyArr
-}
-
 func keyTogglesB(k string, down bool, keyArr []string, pid int) error {
+	flags, err := getFlagsFromValue(keyArr)
+	if err != nil {
+		return err
+	}
 	unlock := lockWaylandKeyboard()
 	defer unlock()
 	if nativeErr := ensureWaylandKeyboardReady(); nativeErr != nil {
@@ -591,20 +563,19 @@ func keyTogglesB(k string, down bool, keyArr []string, pid int) error {
 		}
 		return nativeErr
 	}
-	flags := getFlagsFromValue(keyArr)
 	key, err := checkKeyCodes(k)
 	if err != nil {
-		return err
+		if used, portalErr := tryPortalKey(k, keyArr, pid, down, false); used {
+			if portalErr == nil {
+				MilliSleep(currentKeyDelay())
+			}
+			return portalErr
+		}
+		return fmt.Errorf("%w: native keyboard backend cannot map key %q; use TypeStrE or UnicodeTypeE for text", ErrNotSupported, k)
 	}
-
 	C.toggleKeyCode(key, C.bool(down), flags, C.uintptr(pid))
 	MilliSleep(currentKeyDelay())
 	return nil
-}
-
-func keyToggles(k string, keyArr []string, pid int) error {
-	down, keyArr1 := getKeyDown(keyArr)
-	return keyTogglesB(k, down, keyArr1, pid)
 }
 
 /*
@@ -653,8 +624,8 @@ func toErr(str *C.char) error {
 	return errors.New(gstr)
 }
 
-func appendShift(key string, len1 int, args ...interface{}) (string, []interface{}) {
-	if len(key) > 0 && unicode.IsUpper([]rune(key)[0]) {
+func appendShift(key string, args ...interface{}) (string, []interface{}) {
+	if uppercaseSingleRuneKey(key) {
 		args = append(args, "shift")
 	}
 
@@ -662,9 +633,7 @@ func appendShift(key string, len1 int, args ...interface{}) (string, []interface
 	if spec := CurrentSpecialTable(); spec != nil {
 		if v, ok := spec[key]; ok {
 			key = v
-			if len(args) <= len1 {
-				args = append(args, "shift")
-			}
+			args = append(args, "shift")
 			return key, args
 		}
 	}
@@ -688,52 +657,19 @@ func appendShift(key string, len1 int, args ...interface{}) (string, []interface
 //
 //	robotgo.KeyTap("k", pid int)
 func KeyTap(key string, args ...interface{}) error {
-	var keyArr []string
-	key, args = appendShift(key, 0, args...)
-
-	pid := 0
-	if len(args) > 0 {
-		if reflect.TypeOf(args[0]) == reflect.TypeOf(keyArr) {
-			keyArr = append(keyArr, args[0].([]string)...)
-			values, err := toStringsE(args[1:])
-			if err != nil {
-				return err
-			}
-			keyArr = append(keyArr, values...)
-		} else {
-			if reflect.TypeOf(args[0]) == reflect.TypeOf(pid) {
-				pid = args[0].(int)
-				values, err := toStringsE(args[1:])
-				if err != nil {
-					return err
-				}
-				keyArr = values
-			} else {
-				values, err := toStringsE(args)
-				if err != nil {
-					return err
-				}
-				keyArr = values
-			}
-		}
+	key, args = appendShift(key, args...)
+	pid, _, keyArr, err := parseKeyArguments(args, false)
+	if err != nil {
+		return err
 	}
-
+	keyArr, err = normalizeKeyModifiers(keyArr)
+	if err != nil {
+		return err
+	}
+	if err := validateKeyArgument(key); err != nil {
+		return err
+	}
 	return keyTaps(key, keyArr, pid)
-}
-
-func getToggleArgs(args ...interface{}) (pid int, keyArr []string, err error) {
-	if len(args) > 0 && reflect.TypeOf(args[0]) == reflect.TypeOf(pid) {
-		pid = args[0].(int)
-		keyArr, err = toStringsE(args[1:])
-	} else if len(args) > 0 && reflect.TypeOf(args[0]) == reflect.TypeOf(keyArr) {
-		keyArr = append(keyArr, args[0].([]string)...)
-		var values []string
-		values, err = toStringsE(args[1:])
-		keyArr = append(keyArr, values...)
-	} else {
-		keyArr, err = toStringsE(args)
-	}
-	return
 }
 
 // KeyToggle toggles the keyboard, if there not have args default is "down"
@@ -750,23 +686,25 @@ func getToggleArgs(args ...interface{}) (pid int, keyArr []string, err error) {
 //	robotgo.KeyToggle("a", "up", "alt", "cmd")
 //	robotgo.KeyToggle("k", pid int)
 func KeyToggle(key string, args ...interface{}) error {
-	key, args = appendShift(key, 1, args...)
-	pid, keyArr, err := getToggleArgs(args...)
+	key, args = appendShift(key, args...)
+	pid, down, keyArr, err := parseKeyArguments(args, true)
 	if err != nil {
 		return err
 	}
-	return keyToggles(key, keyArr, pid)
+	keyArr, err = normalizeKeyModifiers(keyArr)
+	if err != nil {
+		return err
+	}
+	if err := validateKeyArgument(key); err != nil {
+		return err
+	}
+	return keyTogglesB(key, down, keyArr, pid)
 }
 
-// KeyPress press key string
+// KeyPress presses and releases a key as one backend transaction. It is
+// equivalent to KeyTap.
 func KeyPress(key string, args ...interface{}) error {
-	err := KeyDown(key, args...)
-	if err != nil {
-		return err
-	}
-
-	MilliSleep(1 + rand.Intn(3))
-	return KeyUp(key, args...)
+	return KeyTap(key, args...)
 }
 
 // KeyDown press down a key
@@ -812,6 +750,9 @@ func UnicodeType(str uint32, args ...int) {
 // UnicodeTypeE types one Unicode code point and reports backend availability
 // errors.
 func UnicodeTypeE(str uint32, args ...int) error {
+	if err := validateUnicodeScalar(str); err != nil {
+		return err
+	}
 	unlock := lockWaylandKeyboard()
 	defer unlock()
 	if nativeErr := ensureWaylandKeyboardReady(); nativeErr != nil {
@@ -888,6 +829,9 @@ func TypeStr(str string, args ...int) {
 
 // TypeStrE sends a UTF-8 string and reports backend or key injection errors.
 func TypeStrE(str string, args ...int) error {
+	if _, _, err := parseTextInput(str, args); err != nil {
+		return err
+	}
 	unlock := lockWaylandKeyboard()
 	defer unlock()
 	if nativeErr := ensureWaylandKeyboardReady(); nativeErr != nil {

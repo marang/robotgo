@@ -8,9 +8,323 @@ import (
 	"runtime"
 	"sync"
 	"testing"
+	"time"
 
 	inputportal "github.com/marang/robotgo/input/portal"
 )
+
+func TestPortalPointerButtonAliases(t *testing.T) {
+	center, err := portalPointerButton("center")
+	if err != nil {
+		t.Fatalf("portalPointerButton(center): %v", err)
+	}
+	middle, err := portalPointerButton("middle")
+	if err != nil || middle != center {
+		t.Fatalf("portalPointerButton(middle) = (%#x,%v), want (%#x,nil)", middle, err, center)
+	}
+}
+
+func TestRemoteDesktopInputSerializesHighLevelTransactions(t *testing.T) {
+	installFakeHighLevelPortalSession(t, inputportal.DeviceKeyboard)
+	firstStarted := make(chan struct{})
+	releaseFirst := make(chan struct{}, 1)
+	t.Cleanup(func() {
+		select {
+		case releaseFirst <- struct{}{}:
+		default:
+		}
+	})
+	secondAttempted := make(chan struct{})
+	secondStarted := make(chan struct{})
+	firstDone := make(chan struct{})
+	secondDone := make(chan struct{})
+
+	go func() {
+		defer close(firstDone)
+		_, _ = withRemoteDesktopInput(inputportal.DeviceKeyboard, func(remoteDesktopInputSession) error {
+			close(firstStarted)
+			<-releaseFirst
+			return nil
+		})
+	}()
+	<-firstStarted
+	go func() {
+		defer close(secondDone)
+		close(secondAttempted)
+		_, _ = withRemoteDesktopInput(inputportal.DeviceKeyboard, func(remoteDesktopInputSession) error {
+			close(secondStarted)
+			return nil
+		})
+	}()
+	<-secondAttempted
+
+	select {
+	case <-secondStarted:
+		t.Fatal("second RemoteDesktop transaction interleaved with the first")
+	case <-time.After(50 * time.Millisecond):
+	}
+	releaseFirst <- struct{}{}
+	select {
+	case <-firstDone:
+	case <-time.After(time.Second):
+		t.Fatal("first RemoteDesktop transaction did not finish")
+	}
+	select {
+	case <-secondStarted:
+	case <-time.After(time.Second):
+		t.Fatal("second RemoteDesktop transaction did not start after release")
+	}
+	<-secondDone
+}
+
+func TestCloseRemoteDesktopInputCancelsActiveTransaction(t *testing.T) {
+	base := &fakeHighLevelPortalSession{devices: inputportal.DeviceKeyboard}
+	started := make(chan struct{})
+	session := &blockingRemoteDesktopSession{fakeHighLevelPortalSession: base, started: started}
+	remoteDesktopInputState.Lock()
+	previous := remoteDesktopInputState.session
+	previousPermission := remoteDesktopInputState.permission
+	previousReason := remoteDesktopInputState.reason
+	remoteDesktopInputState.session = session
+	remoteDesktopInputState.Unlock()
+	t.Cleanup(func() {
+		remoteDesktopInputState.Lock()
+		remoteDesktopInputState.session = previous
+		remoteDesktopInputState.permission = previousPermission
+		remoteDesktopInputState.reason = previousReason
+		remoteDesktopInputState.Unlock()
+	})
+
+	operationDone := make(chan error, 1)
+	go func() {
+		_, err := withRemoteDesktopInput(inputportal.DeviceKeyboard, func(active remoteDesktopInputSession) error {
+			return remoteDesktopEvent(func(ctx context.Context) error {
+				return active.KeyboardKeysym(ctx, 'a', true)
+			})
+		})
+		operationDone <- err
+	}()
+	select {
+	case <-started:
+	case <-time.After(time.Second):
+		t.Fatal("RemoteDesktop transaction did not start")
+	}
+
+	closeDone := make(chan error, 1)
+	go func() { closeDone <- CloseRemoteDesktopInput() }()
+	select {
+	case err := <-operationDone:
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("active transaction error = %v, want context.Canceled", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("CloseRemoteDesktopInput did not cancel the active transaction")
+	}
+	select {
+	case err := <-closeDone:
+		if err != nil {
+			t.Fatalf("CloseRemoteDesktopInput error: %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("CloseRemoteDesktopInput did not finish after cancellation")
+	}
+	if _, closed := base.snapshot(); closed != 1 {
+		t.Fatalf("session close count = %d, want 1", closed)
+	}
+}
+
+func TestCloseRemoteDesktopInputCancelsCompositeEventSleeps(t *testing.T) {
+	tests := []struct {
+		name    string
+		devices inputportal.DeviceType
+		start   func() (bool, error)
+	}{
+		{
+			name:    "double click gap",
+			devices: inputportal.DevicePointer,
+			start:   func() (bool, error) { return tryRemoteDesktopClick("left", true) },
+		},
+		{
+			name:    "text rune delay",
+			devices: inputportal.DeviceKeyboard,
+			start:   func() (bool, error) { return tryRemoteDesktopText("ab", []int{0, 500}) },
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			session := installFakeHighLevelPortalSession(t, test.devices)
+			type result struct {
+				used bool
+				err  error
+			}
+			done := make(chan result, 1)
+			go func() {
+				used, err := test.start()
+				done <- result{used: used, err: err}
+			}()
+			deadline := time.Now().Add(time.Second)
+			for {
+				events, _ := session.snapshot()
+				if len(events) >= 2 {
+					break
+				}
+				if time.Now().After(deadline) {
+					t.Fatal("composite RemoteDesktop operation did not reach its cancellable sleep")
+				}
+				time.Sleep(time.Millisecond)
+			}
+			if err := CloseRemoteDesktopInput(); err != nil {
+				t.Fatalf("CloseRemoteDesktopInput: %v", err)
+			}
+			select {
+			case got := <-done:
+				if !got.used || !errors.Is(got.err, context.Canceled) {
+					t.Fatalf("composite operation = (used=%t, err=%v), want cancellation", got.used, got.err)
+				}
+			case <-time.After(time.Second):
+				t.Fatal("composite RemoteDesktop operation did not stop after Close")
+			}
+			events, _ := session.snapshot()
+			if len(events) != 2 {
+				t.Fatalf("events after cancellation = %v, want only the first press/release pair", events)
+			}
+		})
+	}
+}
+
+func TestExternalPortalCloseCancelsCompositeRemoteDesktopSleep(t *testing.T) {
+	session := installFakeHighLevelPortalSession(t, inputportal.DeviceKeyboard)
+	session.done = make(chan struct{})
+	type result struct {
+		used bool
+		err  error
+	}
+	done := make(chan result, 1)
+	go func() {
+		used, err := tryRemoteDesktopText("ab", []int{0, 60_000})
+		done <- result{used: used, err: err}
+	}()
+	deadline := time.Now().Add(time.Second)
+	for {
+		events, _ := session.snapshot()
+		if len(events) >= 2 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("RemoteDesktop text did not reach its cancellable sleep")
+		}
+		time.Sleep(time.Millisecond)
+	}
+	close(session.done)
+	select {
+	case got := <-done:
+		if !got.used || !errors.Is(got.err, inputportal.ErrClosed) {
+			t.Fatalf("externally closed operation = (used=%t err=%v), want ErrClosed", got.used, got.err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("external portal close did not cancel the composite operation")
+	}
+	events, _ := session.snapshot()
+	if len(events) != 2 {
+		t.Fatalf("events after external close = %v, want only first key press/release", events)
+	}
+}
+
+type blockingRemoteDesktopSession struct {
+	*fakeHighLevelPortalSession
+	once    sync.Once
+	started chan struct{}
+}
+
+type contextIgnoringRemoteDesktopSession struct {
+	*fakeHighLevelPortalSession
+	once    sync.Once
+	started chan struct{}
+	release chan struct{}
+}
+
+func (session *contextIgnoringRemoteDesktopSession) KeyboardKeysym(_ context.Context, keysym int32, pressed bool) error {
+	if err := session.record("keysym:%d:%t", keysym, pressed); err != nil {
+		return err
+	}
+	session.once.Do(func() {
+		close(session.started)
+		<-session.release
+	})
+	return nil
+}
+
+func TestCloseStopsCompositeOperationWhenSessionIgnoresContext(t *testing.T) {
+	base := installFakeHighLevelPortalSession(t, inputportal.DeviceKeyboard)
+	session := &contextIgnoringRemoteDesktopSession{
+		fakeHighLevelPortalSession: base,
+		started:                    make(chan struct{}),
+		release:                    make(chan struct{}),
+	}
+	remoteDesktopInputState.Lock()
+	remoteDesktopInputState.session = session
+	remoteDesktopInputState.Unlock()
+	t.Cleanup(func() {
+		remoteDesktopInputState.Lock()
+		if remoteDesktopInputState.session == session {
+			remoteDesktopInputState.session = base
+		}
+		remoteDesktopInputState.Unlock()
+	})
+
+	operationDone := make(chan error, 1)
+	go func() {
+		_, err := tryRemoteDesktopText("ab", []int{0, 0})
+		operationDone <- err
+	}()
+	select {
+	case <-session.started:
+	case <-time.After(time.Second):
+		t.Fatal("context-ignoring RemoteDesktop operation did not start")
+	}
+	closeDone := make(chan error, 1)
+	go func() { closeDone <- CloseRemoteDesktopInput() }()
+	deadline := time.Now().Add(time.Second)
+	for {
+		remoteDesktopInputPending.Lock()
+		ctx := remoteDesktopInputPending.operationContext
+		remoteDesktopInputPending.Unlock()
+		if ctx != nil && context.Cause(ctx) != nil {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("CloseRemoteDesktopInput did not cancel the operation context")
+		}
+		time.Sleep(time.Millisecond)
+	}
+	close(session.release)
+	select {
+	case err := <-operationDone:
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("context-ignoring operation error = %v, want context.Canceled", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("context-ignoring operation continued after cancellation")
+	}
+	select {
+	case err := <-closeDone:
+		if err != nil {
+			t.Fatalf("CloseRemoteDesktopInput: %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("CloseRemoteDesktopInput did not finish")
+	}
+	events, _ := base.snapshot()
+	if len(events) != 1 {
+		t.Fatalf("events after cancellation = %v, want only the in-flight event", events)
+	}
+}
+
+func (session *blockingRemoteDesktopSession) KeyboardKeysym(ctx context.Context, _ int32, _ bool) error {
+	session.once.Do(func() { close(session.started) })
+	<-ctx.Done()
+	return ctx.Err()
+}
 
 type fakeHighLevelPortalSession struct {
 	mu           sync.Mutex

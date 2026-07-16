@@ -82,8 +82,10 @@ var (
 	remoteDesktopInputOperation sync.Mutex
 	remoteDesktopInputPending   struct {
 		sync.Mutex
-		start   *remoteDesktopPendingStart
-		closing int
+		start            *remoteDesktopPendingStart
+		operationContext context.Context
+		operationCancel  context.CancelFunc
+		closing          int
 	}
 	remoteDesktopInputState struct {
 		sync.RWMutex
@@ -218,6 +220,9 @@ func CloseRemoteDesktopInput() error {
 	if remoteDesktopInputPending.start != nil {
 		remoteDesktopInputPending.start.cancel()
 	}
+	if remoteDesktopInputPending.operationCancel != nil {
+		remoteDesktopInputPending.operationCancel()
+	}
 	remoteDesktopInputPending.Unlock()
 
 	remoteDesktopInputOperation.Lock()
@@ -248,6 +253,11 @@ func CloseRemoteDesktopInput() error {
 }
 
 func withRemoteDesktopInput(device inputportal.DeviceType, fn func(remoteDesktopInputSession) error) (bool, error) {
+	// A high-level input operation is one transaction. Serialize it with session
+	// replacement/close so modifier sequences and double clicks cannot interleave
+	// or lose their backend halfway through cleanup.
+	remoteDesktopInputOperation.Lock()
+	defer remoteDesktopInputOperation.Unlock()
 	remoteDesktopInputState.RLock()
 	session := remoteDesktopInputState.session
 	remoteDesktopInputState.RUnlock()
@@ -262,13 +272,79 @@ func withRemoteDesktopInput(device inputportal.DeviceType, fn func(remoteDesktop
 	if session.Devices()&device == 0 {
 		return true, fmt.Errorf("%w: required=%d granted=%d", inputportal.ErrDeviceNotGranted, device, session.Devices())
 	}
+	operationContext, cancelCause := context.WithCancelCause(context.Background())
+	cancel := func() { cancelCause(context.Canceled) }
+	watchDone := make(chan struct{})
+	remoteDesktopInputPending.Lock()
+	if remoteDesktopInputPending.closing > 0 {
+		remoteDesktopInputPending.Unlock()
+		close(watchDone)
+		cancel()
+		return true, context.Canceled
+	}
+	remoteDesktopInputPending.operationContext = operationContext
+	remoteDesktopInputPending.operationCancel = cancel
+	remoteDesktopInputPending.Unlock()
+	go func() {
+		select {
+		case <-session.Closed():
+			cancelCause(inputportal.ErrClosed)
+		case <-watchDone:
+		}
+	}()
+	defer func() {
+		close(watchDone)
+		cancel()
+		remoteDesktopInputPending.Lock()
+		if remoteDesktopInputPending.operationCancel != nil {
+			remoteDesktopInputPending.operationContext = nil
+			remoteDesktopInputPending.operationCancel = nil
+		}
+		remoteDesktopInputPending.Unlock()
+	}()
 	return true, fn(session)
 }
 
 func remoteDesktopEvent(fn func(context.Context) error) error {
-	ctx, cancel := context.WithTimeout(context.Background(), remoteDesktopEventTimeout)
+	remoteDesktopInputPending.Lock()
+	parent := remoteDesktopInputPending.operationContext
+	remoteDesktopInputPending.Unlock()
+	if parent == nil {
+		parent = context.Background()
+	}
+	ctx, cancel := context.WithTimeout(parent, remoteDesktopEventTimeout)
 	defer cancel()
-	return fn(ctx)
+	if cause := context.Cause(ctx); cause != nil {
+		return cause
+	}
+	err := fn(ctx)
+	if cause := context.Cause(ctx); cause != nil {
+		return cause
+	}
+	return err
+}
+
+func remoteDesktopSleep(milliseconds int) error {
+	remoteDesktopInputPending.Lock()
+	ctx := remoteDesktopInputPending.operationContext
+	remoteDesktopInputPending.Unlock()
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if cause := context.Cause(ctx); cause != nil {
+		return cause
+	}
+	if milliseconds <= 0 {
+		return nil
+	}
+	timer := time.NewTimer(time.Duration(milliseconds) * time.Millisecond)
+	defer timer.Stop()
+	select {
+	case <-timer.C:
+		return nil
+	case <-ctx.Done():
+		return context.Cause(ctx)
+	}
 }
 
 func finishRemoteDesktopMouseEvent(err error, extraDelay int) error {
@@ -352,7 +428,7 @@ func portalPointerButton(name string) (int32, error) {
 		return 0x110, nil
 	case "right":
 		return 0x111, nil
-	case "center":
+	case "center", "middle":
 		return 0x112, nil
 	default:
 		return 0, fmt.Errorf("%w: portal pointer button %q", ErrNotSupported, name)
@@ -389,7 +465,9 @@ func tryRemoteDesktopClick(name string, double bool) (bool, error) {
 				return err
 			}
 			if double && i == 0 {
-				MilliSleep(200)
+				if err := remoteDesktopSleep(200); err != nil {
+					return err
+				}
 			}
 		}
 		return nil
@@ -470,7 +548,9 @@ func tryRemoteDesktopText(text string, args []int) (bool, error) {
 			}); err != nil {
 				return err
 			}
-			MilliSleep(delay)
+			if err := remoteDesktopSleep(delay); err != nil {
+				return err
+			}
 		}
 		return nil
 	})
