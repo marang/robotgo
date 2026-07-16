@@ -1,8 +1,28 @@
-//go:build !linux || wayland
+//go:build cgo && (!linux || wayland)
+// +build cgo
 // +build !linux wayland
 
 package robotgo
 
-func x11MainDisplayAvailable() bool {
-	return false
+import "fmt"
+
+func nativeX11BackendCompiled() bool { return false }
+
+func lockNativeX11Display() func() { return func() {} }
+
+func configuredX11DisplaySelected() bool { return false }
+
+func nativeX11DisplayReadyLocked() error {
+	return fmt.Errorf("%w: native X11 backend is not compiled", ErrNotSupported)
 }
+
+func nativeX11InputReadyLocked() error {
+	return fmt.Errorf("%w: native X11 input backend is not compiled", ErrNotSupported)
+}
+
+func nativeX11CapabilityErrors() (displayErr error, inputErr error) {
+	err := nativeX11DisplayReadyLocked()
+	return err, err
+}
+
+func x11MainDisplayAvailableLocked() bool { return false }

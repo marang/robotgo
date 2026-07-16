@@ -9,6 +9,14 @@ import (
 	"unicode/utf8"
 )
 
+func exactTextCodepoints(str string) []uint32 {
+	codepoints := make([]uint32, 0, utf8.RuneCountInString(str))
+	for _, value := range str {
+		codepoints = append(codepoints, uint32(value))
+	}
+	return codepoints
+}
+
 func uppercaseSingleRuneKey(key string) bool {
 	if !utf8.ValidString(key) {
 		return false
@@ -120,6 +128,9 @@ func parseTextInput(text string, args []int) (pid, delay int, err error) {
 	}
 	if !utf8.ValidString(text) {
 		return 0, 0, errors.New("robotgo: text is not valid UTF-8")
+	}
+	if strings.IndexByte(text, 0) >= 0 {
+		return 0, 0, errors.New("robotgo: text input cannot contain NUL")
 	}
 	if len(args) > 0 {
 		pid = args[0]

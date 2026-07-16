@@ -54,7 +54,7 @@ type RuntimeCapabilities struct {
 func GetRuntimeBackendInfo() RuntimeBackendInfo {
 	displayServer := DisplayServerUnknown
 	if runtime.GOOS == "linux" {
-		displayServer = DetectDisplayServer()
+		displayServer = selectedDisplayServer()
 	}
 	return RuntimeBackendInfo{
 		GOOS:                runtime.GOOS,
@@ -63,6 +63,22 @@ func GetRuntimeBackendInfo() RuntimeBackendInfo {
 		BuildImplementation: runtimeBuildImplementation,
 		DisplayServer:       displayServer,
 	}
+}
+
+// selectedDisplayServer reports the backend RobotGo will actually use. Public
+// DetectDisplayServer remains an environment-only observation; a native CGO
+// build can additionally select X11 through SetXDisplayName when neither
+// display-server environment variable is set. A Wayland environment always
+// remains authoritative.
+func selectedDisplayServer() DisplayServer {
+	detected := DetectDisplayServer()
+	if runtime.GOOS != "linux" || detected != DisplayServerUnknown {
+		return detected
+	}
+	if configuredX11DisplaySelected() {
+		return DisplayServerX11
+	}
+	return DisplayServerUnknown
 }
 
 // GetRuntimeCapabilities reports the feature backends available to the current

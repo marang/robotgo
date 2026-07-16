@@ -18,6 +18,7 @@ MData get_active(void);
 void initWindow(uintptr handle);
 char* get_title_by_hand(MData m_data);
 bool close_window_by_Id(MData m_data);
+char* named(void *result);
 
 // int findwindow()
 uintptr initHandle = 0;
@@ -27,15 +28,9 @@ void initWindow(uintptr handle){
 	pub_mData.CgID = 0;
 	pub_mData.AxID = 0;
 #elif defined(IS_LINUX)
-	Display *rDisplay = XOpenDisplay(NULL);
-	// If atoms loaded
-	if (WM_PID == None) {
-		// Load all necessary atom properties
-		if (rDisplay != NULL) {LoadAtoms();}
-	}
-
+	Display *rDisplay = XGetMainDisplay();
+	if (rDisplay != NULL) { (void)LoadAtoms(rDisplay); }
 	pub_mData.XWin = 0;
-	if (rDisplay != NULL) { XCloseDisplay(rDisplay); }
 #elif defined(IS_WINDOWS)
 	pub_mData.HWnd = 0;
 #endif
@@ -95,23 +90,20 @@ bool is_valid() {
 	pub_mData.XWin = actdata.XWin;
 	if (pub_mData.XWin == 0) { return false; }
 
-	Display *rDisplay = XOpenDisplay(NULL);
+	Display *rDisplay = XGetMainDisplay();
 	// Check for a valid X-Window display
 	if (rDisplay == NULL) { return false; }
-
-	// Ignore X errors
-	XDismissErrors();
+	if (!LoadAtoms(rDisplay)) { return false; }
 
 	// Get the window PID property
-	void* result = GetWindowProperty(pub_mData, WM_PID,NULL);
+	void* result = GetWindowProperty(
+		pub_mData, WM_PID, XA_CARDINAL, 32, 1, 0, NULL);
 	if (result == NULL) {
-		XCloseDisplay(rDisplay);
 		return false;
 	}
 
 	// Free result and return true
 	XFree(result);
-	XCloseDisplay(rDisplay);
 
 	return true;
 #elif defined(IS_WINDOWS)
@@ -233,9 +225,8 @@ bool IsTopMost(void){
 #if defined(IS_MACOSX)
 	return false; // WARNING: Unavailable
 #elif defined(IS_LINUX)
-	// Ignore X errors
-	// XDismissErrors ();
-	// return GetState (mData.XWin, STATE_TOPMOST);
+	// State queries are not implemented by the native X11 backend.
+	return false;
 #elif defined(IS_WINDOWS)
 	return (GetWindowLongPtr(pub_mData.HWnd, GWL_EXSTYLE) & WS_EX_TOPMOST) != 0;
 #endif
@@ -257,9 +248,8 @@ bool IsMinimized(void){
 
 	return false;
 #elif defined(IS_LINUX)
-	// Ignore X errors
-	// XDismissErrors();
-	// return GetState(mData.XWin, STATE_MINIMIZE);
+	// State queries are not implemented by the native X11 backend.
+	return false;
 #elif defined(IS_WINDOWS)
 	return (GetWindowLongPtr(pub_mData.HWnd, GWL_STYLE) & WS_MINIMIZE) != 0;
 #endif
@@ -272,9 +262,8 @@ bool IsMaximized(void){
 #if defined(IS_MACOSX)
 	return false; // WARNING: Unavailable
 #elif defined(IS_LINUX)
-	// Ignore X errors
-	// XDismissErrors();
-	// return GetState(mData.XWin, STATE_MAXIMIZE);
+	// State queries are not implemented by the native X11 backend.
+	return false;
 #elif defined(IS_WINDOWS)
 	return (GetWindowLongPtr(pub_mData.HWnd, GWL_STYLE) & WS_MAXIMIZE) != 0;
 #endif
@@ -308,21 +297,22 @@ bool set_active(const MData win) {
 	}
 #elif defined(IS_LINUX)
 	if (win.XWin == 0) { return false; }
-	// Ignore X errors
-	XDismissErrors();
-
-	Display *rDisplay = XOpenDisplay(NULL);
+	Display *rDisplay = XGetMainDisplay();
 	if (rDisplay == NULL) { return false; }
-	if (WM_PID == None) { LoadAtoms(); }
+	if (!LoadAtoms(rDisplay)) { return false; }
+	if (!RefreshOptionalAtom(
+			rDisplay, &WM_ACTIVE, ROBOTGO_ATOM_ACTIVE_NAME)) { return false; }
 	// Go to the specified window's desktop
 	SetDesktopForWindow(win);
+	RobotGoXErrorTrap trap;
+	if (!robotgo_xerror_trap_begin(rDisplay, &trap)) { return false; }
 	bool activated = false;
 	// Check the atom value
 	if (WM_ACTIVE != None) {
 		// Retrieve the screen number
 		XWindowAttributes attr = { 0 };
 		if (XGetWindowAttributes(rDisplay, win.XWin, &attr) == 0 || attr.screen == NULL) {
-			XCloseDisplay(rDisplay);
+			(void)robotgo_xerror_trap_end(&trap);
 			return false;
 		}
 		int s = XScreenNumberOfScreen(attr.screen);
@@ -348,9 +338,7 @@ bool set_active(const MData win) {
 		XSetInputFocus(rDisplay, win.XWin, RevertToParent, CurrentTime);
 		activated = true;
 	}
-	XFlush(rDisplay);
-	XCloseDisplay(rDisplay);
-	return activated;
+	return robotgo_xerror_trap_end(&trap) && activated;
 #elif defined(IS_WINDOWS)
 	if (win.HWnd == NULL || !IsWindow(win.HWnd)) { return false; }
 	if (IsIconic(win.HWnd)) {
@@ -403,18 +391,18 @@ MData get_active(void) {
 	return result;
 #elif defined(IS_LINUX)
 	MData result = { 0 };
-	Display *rDisplay = XOpenDisplay(NULL);
+	Display *rDisplay = XGetMainDisplay();
 	// Check X-Window display
-	if (WM_ACTIVE == None || rDisplay == NULL) {
+	if (rDisplay == NULL || !LoadAtoms(rDisplay)) {
 		return result;
 	}
-
-	// Ignore X errors
-	XDismissErrors();
+	if (!RefreshOptionalAtom(
+			rDisplay, &WM_ACTIVE, ROBOTGO_ATOM_ACTIVE_NAME)) { return result; }
 
 	// Get the current active window
 	result.XWin = XDefaultRootWindow(rDisplay);
-	void* active = GetWindowProperty(result, WM_ACTIVE, NULL);
+	void* active = GetWindowPropertyOnDisplay(
+		rDisplay, result, WM_ACTIVE, XA_WINDOW, 32, 1, 0, NULL);
 
 	// Check result value
 	if (active != NULL) {
@@ -425,7 +413,6 @@ MData get_active(void) {
 		if (window != 0) {
 			// Set and return the foreground window
 			result.XWin = (Window)window;
-			XCloseDisplay(rDisplay);
 			return result;
 		}
 	}
@@ -433,8 +420,10 @@ MData get_active(void) {
 	// Use input focus instead
 	Window window = None;
 	int revert = RevertToNone;
+	RobotGoXErrorTrap trap;
+	if (!robotgo_xerror_trap_begin(rDisplay, &trap)) { return result; }
 	XGetInputFocus(rDisplay, &window, &revert);
-	XCloseDisplay(rDisplay);
+	if (!robotgo_xerror_trap_end(&trap)) { return result; }
 
 	// Return foreground window
 	result.XWin = window;
@@ -465,9 +454,7 @@ void SetTopMost(bool state){
 #if defined(IS_MACOSX)
 	// WARNING: Unavailable
 #elif defined(IS_LINUX)
-	// Ignore X errors
-	// XDismissErrors();
-	// SetState(pub_mData.XWin, STATE_TOPMOST, state);
+	(void)state;
 #elif defined(IS_WINDOWS)
 	SetWindowPos(pub_mData.HWnd, state ? HWND_TOPMOST : HWND_NOTOPMOST,
 		0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
@@ -506,21 +493,19 @@ bool close_window_by_Id(MData m_data){
 	return false;
 #elif defined(IS_LINUX)
 	if (m_data.XWin == 0) { return false; }
-	Display *rDisplay = XOpenDisplay(NULL);
+	Display *rDisplay = XGetMainDisplay();
 	if (rDisplay == NULL) { return false; }
-	// Ignore X errors
-	XDismissErrors();
+	RobotGoXErrorTrap trap;
+	if (!robotgo_xerror_trap_begin(rDisplay, &trap)) { return false; }
 	XWindowAttributes attr = { 0 };
 	if (XGetWindowAttributes(rDisplay, m_data.XWin, &attr) == 0) {
-		XCloseDisplay(rDisplay);
+		(void)robotgo_xerror_trap_end(&trap);
 		return false;
 	}
 
 	// Close the window
 	bool closed = XDestroyWindow(rDisplay, m_data.XWin) != 0;
-	XFlush(rDisplay);
-	XCloseDisplay(rDisplay);
-	return closed;
+	return robotgo_xerror_trap_end(&trap) && closed;
 #elif defined(IS_WINDOWS)
 	if (m_data.HWnd == NULL || !IsWindow(m_data.HWnd)) { return false; }
 	return PostMessage(m_data.HWnd, WM_CLOSE, 0, 0) != 0;
@@ -529,7 +514,7 @@ bool close_window_by_Id(MData m_data){
 
 char* get_main_title(){
 	// Check if the window is valid
-	if (!is_valid()) { return "is_valid failed."; }
+	if (!is_valid()) { return named("is_valid failed."); }
 
 	return get_title_by_hand(pub_mData);
 }
@@ -540,7 +525,9 @@ char* get_title_by_pid(uintptr pid, int8_t isPid){
 }
 
 char* named(void *result) {
-	char *name = (char*)calloc(strlen(result)+1, sizeof(char*));
+	if (result == NULL) { return NULL; }
+	char *name = (char*)calloc(strlen(result)+1, sizeof(char));
+	if (name == NULL) { return NULL; }
 	char *rptr = (char*)result;
 	char *nptr = name;
 	while (*rptr) {
@@ -555,31 +542,30 @@ char* named(void *result) {
 
 char* get_title_by_hand(MData m_data){
 	// Check if the window is valid
-	if (!is_valid()) { return "is_valid failed."; }
+	if (!is_valid()) { return named("is_valid failed."); }
 #if defined(IS_MACOSX)
 	CFStringRef data = NULL;
 	// Determine the current title of the window
 	if (AXUIElementCopyAttributeValue(m_data.AxID, kAXTitleAttribute, (CFTypeRef*) &data) == 
 			kAXErrorSuccess && data != NULL) {
-		char conv[512];
+		char conv[512] = {0};
 		// Convert result to a C-String
-		CFStringGetCString(data, conv, 512, kCFStringEncodingUTF8);
+		Boolean converted =
+			CFStringGetCString(data, conv, 512, kCFStringEncodingUTF8);
 		CFRelease(data);
-
-		char* s = (char*)calloc(100, sizeof(char*));
-		if (s) { strcpy(s, conv); }
-		// return (char *)&conv;
-		return s;
+		if (!converted) { return named(""); }
+		return named(conv);
 	}
 
-	return "";
+	return named("");
 #elif defined(IS_LINUX)
 	void* result;
-	// Ignore X errors
-	XDismissErrors();
+	Display *display = XGetMainDisplay();
+	if (display == NULL || !LoadAtoms(display)) { return named(""); }
 
 	// Get window title (UTF-8)
-	result = GetWindowProperty(m_data, WM_NAME, NULL);
+	result = GetWindowProperty(
+		m_data, WM_NAME, WM_UTF8, 8, 1, 0, NULL);
 	// Check result value
 	if (result != NULL) {
 		// Convert result to a string
@@ -590,7 +576,8 @@ char* get_title_by_hand(MData m_data){
 	}
 
 	// Get window title (ASCII)
-	result = GetWindowProperty(m_data, XA_WM_NAME, NULL);
+	result = GetWindowProperty(
+		m_data, XA_WM_NAME, AnyPropertyType, 8, 1, 0, NULL);
 	// Check result value
 	if (result != NULL) {
 		// Convert result to a string
@@ -600,17 +587,13 @@ char* get_title_by_hand(MData m_data){
 		return name;
 	}
 
-	return "";
+	return named("");
 #elif defined(IS_WINDOWS)
 	if (GetWindowText(m_data.HWnd, m_data.Title, 512) > 0){
-		char* name = m_data.Title;
-
-		char* str = (char*)calloc(100, sizeof(char*));
-		if (str) { strcpy(str, name); }
-		return str;
+		return named(m_data.Title);
 	}
 
-	return "";
+	return named("");
 #endif
 }
 
@@ -625,11 +608,12 @@ int32_t get_PID(void) {
 	}
 	return 0;
 #elif defined(IS_LINUX)
-	// Ignore X errors
-	XDismissErrors();
+	Display *display = XGetMainDisplay();
+	if (display == NULL || !LoadAtoms(display)) { return 0; }
 
 	// Get the window PID
-	long* result = (long*)GetWindowProperty(pub_mData, WM_PID,NULL);
+	long* result = (long*)GetWindowProperty(
+		pub_mData, WM_PID, XA_CARDINAL, 32, 1, 0, NULL);
 	// Check result and convert it
 	if (result == NULL) { return 0; }
 	

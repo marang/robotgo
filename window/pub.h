@@ -112,23 +112,6 @@ typedef struct _Bounds Bounds;
 		return result;
 	}
 #elif defined(IS_LINUX)
-	// Error Handling
-	typedef int (*XErrorHandler) (Display*, XErrorEvent*);
-
-	static int XHandleError(Display* dp, XErrorEvent* e) { return 0; }
-		XErrorHandler mOld;
-		void XDismissErrors (void) {
-			Display *rDisplay = XOpenDisplay(NULL);
-			// Save old handler and dismiss errors
-			mOld = XSetErrorHandler(XHandleError);
-			// Flush output buffer
-			XSync(rDisplay, False);
-
-			// Reinstate old handler
-			XSetErrorHandler(mOld);
-			XCloseDisplay(rDisplay);
-		}
-
 	// Definitions
 	struct Hints{
 		unsigned long Flags;
@@ -153,67 +136,111 @@ typedef struct _Bounds Bounds;
 	static Atom WM_ACTIVE	= None;
 	static Atom WM_HINTS	= None;
 	static Atom WM_EXTENTS	= None;
+	static Display *WM_ATOM_DISPLAY = NULL;
+	static unsigned long WM_ATOM_GENERATION = 0;
+	static const char ROBOTGO_ATOM_ACTIVE_NAME[] = "_NET_ACTIVE_WINDOW";
+	static const char ROBOTGO_ATOM_CURRENT_DESKTOP_NAME[] = "_NET_CURRENT_DESKTOP";
 
 	////////////////////////////////////////////////////////////////////////////////
 
-	static void LoadAtoms (void){
-		Display *rDisplay = XOpenDisplay(NULL);
-		if (rDisplay == NULL) { return; }
-		WM_STATE   = XInternAtom(rDisplay, "_NET_WM_STATE",                True);
-		WM_ABOVE   = XInternAtom(rDisplay, "_NET_WM_STATE_ABOVE",          True);
-		WM_HIDDEN  = XInternAtom(rDisplay, "_NET_WM_STATE_HIDDEN",         True);
-		WM_HMAX    = XInternAtom(rDisplay, "_NET_WM_STATE_MAXIMIZED_HORZ", True);
-		WM_VMAX    = XInternAtom(rDisplay, "_NET_WM_STATE_MAXIMIZED_VERT", True);
+	static void ResetAtoms(void) {
+		WM_STATE = WM_ABOVE = WM_HIDDEN = WM_HMAX = WM_VMAX = None;
+		WM_DESKTOP = WM_CURDESK = None;
+		WM_NAME = WM_UTF8 = WM_PID = WM_ACTIVE = WM_HINTS = WM_EXTENTS = None;
+		WM_ATOM_DISPLAY = NULL;
+		WM_ATOM_GENERATION = 0;
+	}
 
-		WM_DESKTOP = XInternAtom(rDisplay, "_NET_WM_DESKTOP",              True);
-		WM_CURDESK = XInternAtom(rDisplay, "_NET_CURRENT_DESKTOP",         True);
+	static bool LoadAtoms(Display *display) {
+		if (display == NULL) { return false; }
+		unsigned long generation = XGetMainDisplayGeneration();
+		if (WM_ATOM_DISPLAY == display && WM_ATOM_GENERATION == generation) {
+			return true;
+		}
 
-		WM_NAME    = XInternAtom(rDisplay, "_NET_WM_NAME",                 True);
-		WM_UTF8    = XInternAtom(rDisplay, "UTF8_STRING",                  True);
-		WM_PID     = XInternAtom(rDisplay, "_NET_WM_PID",                  True);
-		WM_ACTIVE  = XInternAtom(rDisplay, "_NET_ACTIVE_WINDOW",           True);
-		WM_HINTS   = XInternAtom(rDisplay, "_MOTIF_WM_HINTS",              True);
-		WM_EXTENTS = XInternAtom(rDisplay, "_NET_FRAME_EXTENTS",           True);
-		XCloseDisplay(rDisplay);
+		ResetAtoms();
+		RobotGoXErrorTrap trap;
+		if (!robotgo_xerror_trap_begin(display, &trap)) { return false; }
+		WM_STATE   = XInternAtom(display, "_NET_WM_STATE",                True);
+		WM_ABOVE   = XInternAtom(display, "_NET_WM_STATE_ABOVE",          True);
+		WM_HIDDEN  = XInternAtom(display, "_NET_WM_STATE_HIDDEN",         True);
+		WM_HMAX    = XInternAtom(display, "_NET_WM_STATE_MAXIMIZED_HORZ", True);
+		WM_VMAX    = XInternAtom(display, "_NET_WM_STATE_MAXIMIZED_VERT", True);
+
+		WM_DESKTOP = XInternAtom(display, "_NET_WM_DESKTOP",              False);
+		WM_CURDESK = XInternAtom(display, ROBOTGO_ATOM_CURRENT_DESKTOP_NAME, True);
+
+		WM_NAME    = XInternAtom(display, "_NET_WM_NAME",                 False);
+		WM_UTF8    = XInternAtom(display, "UTF8_STRING",                  False);
+		WM_PID     = XInternAtom(display, "_NET_WM_PID",                  False);
+		WM_ACTIVE  = XInternAtom(display, ROBOTGO_ATOM_ACTIVE_NAME,        True);
+		WM_HINTS   = XInternAtom(display, "_MOTIF_WM_HINTS",              False);
+		WM_EXTENTS = XInternAtom(display, "_NET_FRAME_EXTENTS",           False);
+		if (!robotgo_xerror_trap_end(&trap)) {
+			ResetAtoms();
+			return false;
+		}
+		WM_ATOM_DISPLAY = display;
+		WM_ATOM_GENERATION = generation;
+		return true;
+	}
+
+	static bool RefreshOptionalAtom(Display *display, Atom *atom,
+									const char *name) {
+		if (display == NULL || atom == NULL || name == NULL) { return false; }
+		if (*atom != None) { return true; }
+
+		RobotGoXErrorTrap trap;
+		if (!robotgo_xerror_trap_begin(display, &trap)) { return false; }
+		Atom refreshed = XInternAtom(display, name, True);
+		if (!robotgo_xerror_trap_end(&trap)) { return false; }
+		*atom = refreshed;
+		return true;
 	}
 
 	// Functions
-	static void* GetWindowProperty(MData win, Atom atom, uint32_t* items) {
+	static void* GetWindowPropertyOnDisplay(Display *display, MData win,
+						 Atom atom, Atom expected_type,
+						 int expected_format,
+						 unsigned long minimum_items,
+						 unsigned long maximum_items,
+						 uint32_t* items) {
 		// Property variables
-		Atom type; int format;
-		unsigned long  nItems;
-		unsigned long  bAfter;
+		Atom type = None; int format = 0;
+		unsigned long nItems = 0;
+		unsigned long bAfter = 0;
 		unsigned char* result = NULL;
-
-		Display *rDisplay = XOpenDisplay(NULL);
-		if (rDisplay == NULL) {
-			if (items != NULL) { *items = 0; }
-			return NULL;
-		}
-		// Check the atom
-		if (atom != None) {
-			// Retrieve and validate the specified property
-			if (!XGetWindowProperty(rDisplay, win.XWin, atom, 0, 
-				BUFSIZ, False, AnyPropertyType, &type, &format, &nItems, &bAfter, &result) 
-				&& result && nItems) {
-
-				// Copy items result
-				if (items != NULL) {
-					*items = (uint32_t) nItems;
-				}
-				XCloseDisplay(rDisplay);
-				return result;
-			}
-		}
-
-		// Reset the items result if valid
 		if (items != NULL) { *items = 0; }
+		if (display == NULL || win.XWin == 0 || atom == None) { return NULL; }
+
+		RobotGoXErrorTrap trap;
+		if (!robotgo_xerror_trap_begin(display, &trap)) { return NULL; }
+		int status = XGetWindowProperty(display, win.XWin, atom, 0,
+			BUFSIZ, False, AnyPropertyType, &type, &format, &nItems, &bAfter,
+			&result);
+		bool ok = robotgo_xerror_trap_end(&trap) && status == Success &&
+			result != NULL && nItems >= minimum_items &&
+			(maximum_items == 0 || nItems <= maximum_items) &&
+			(expected_type == AnyPropertyType || type == expected_type) &&
+			(expected_format == 0 || format == expected_format);
+		if (ok) {
+			if (items != NULL) { *items = (uint32_t)nItems; }
+			return result;
+		}
 		if (result != NULL) {
 			XFree(result);
 		}
-
-		XCloseDisplay(rDisplay);
 		return NULL;
+	}
+
+	static void* GetWindowProperty(MData win, Atom atom, Atom expected_type,
+								 int expected_format,
+								 unsigned long minimum_items,
+								 unsigned long maximum_items,
+								 uint32_t* items) {
+		return GetWindowPropertyOnDisplay(
+			XGetMainDisplay(), win, atom, expected_type, expected_format,
+			minimum_items, maximum_items, items);
 	}
 
 	//////
@@ -223,19 +250,29 @@ typedef struct _Bounds Bounds;
 
 	//////
 	static void SetDesktopForWindow(MData win){
-		Display *rDisplay = XOpenDisplay(NULL);
+		Display *rDisplay = XGetMainDisplay();
 		if (rDisplay == NULL) { return; }
+		if (!LoadAtoms(rDisplay)) { return; }
+		if (!RefreshOptionalAtom(
+				rDisplay, &WM_CURDESK,
+				ROBOTGO_ATOM_CURRENT_DESKTOP_NAME)) { return; }
 		// Validate every atom that we want to use
 		if (WM_DESKTOP != None && WM_CURDESK != None) {
 			// Get desktop property
-			long* desktop = (long*)GetWindowProperty(win, WM_DESKTOP,NULL);
+			long* desktop = (long*)GetWindowPropertyOnDisplay(
+				rDisplay, win, WM_DESKTOP, XA_CARDINAL, 32, 1, 0, NULL);
 			// Check result value
 			if (desktop != NULL) {
+				RobotGoXErrorTrap trap;
+				if (!robotgo_xerror_trap_begin(rDisplay, &trap)) {
+					XFree(desktop);
+					return;
+				}
 				// Retrieve the screen number
 				XWindowAttributes attr = { 0 };
 				if (XGetWindowAttributes(rDisplay, win.XWin, &attr) == 0 || attr.screen == NULL) {
+					(void)robotgo_xerror_trap_end(&trap);
 					XFree(desktop);
-					XCloseDisplay(rDisplay);
 					return;
 				}
 				int s = XScreenNumberOfScreen(attr.screen);
@@ -253,20 +290,20 @@ typedef struct _Bounds Bounds;
 				// Send the message
 				XSendEvent(rDisplay, root, False, SubstructureNotifyMask | SubstructureRedirectMask, 
 					(XEvent*) &e);
-
+				(void)robotgo_xerror_trap_end(&trap);
 				XFree(desktop);
 			}
 		}
-		XCloseDisplay(rDisplay);
 	}
 
 	static Bounds GetFrame(MData win){
-		Bounds frame;
+		Bounds frame = {0};
 		// Retrieve frame bounds
 		if (WM_EXTENTS != None) {
 			long* result; uint32_t nItems = 0;
 			// Get the window extents property
-			result = (long*) GetWindowProperty(win, WM_EXTENTS, &nItems);
+			result = (long*) GetWindowProperty(
+				win, WM_EXTENTS, XA_CARDINAL, 32, 4, 4, &nItems);
 			if (result != NULL) {
 				if (nItems == 4) {
 					frame.X = (int32_t) result[0];

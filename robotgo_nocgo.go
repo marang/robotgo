@@ -139,8 +139,10 @@ func DetectDisplayServer() DisplayServer {
 	return DisplayServerUnknown
 }
 
+func configuredX11DisplaySelected() bool { return false }
+
 func GetLinuxCapabilities() LinuxCapabilities {
-	ds := DetectDisplayServer()
+	ds := selectedDisplayServer()
 	unsupported := FeatureCapability{
 		Available: false,
 		Reason:    ErrNotSupported.Error(),
@@ -604,6 +606,19 @@ func ClickE(args ...interface{}) error {
 	}
 	return finishRemoteDesktopMouseEvent(err, 0)
 }
+
+func tryRemoteDesktopToggle(name string, down bool) (bool, error) {
+	return withRemoteDesktopInput(inputportal.DevicePointer, func(session remoteDesktopInputSession) error {
+		button, err := portalPointerButton(name)
+		if err != nil {
+			return err
+		}
+		return remoteDesktopEvent(func(ctx context.Context) error {
+			return session.PointerButton(ctx, button, down)
+		})
+	})
+}
+
 func Toggle(args ...interface{}) error {
 	name, down, err := parseToggleArguments(args)
 	if err != nil {

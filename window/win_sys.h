@@ -22,7 +22,7 @@ Bounds get_client(uintptr pid, int8_t isPid);
 
 Bounds get_bounds(uintptr pid, int8_t isPid) {
   // Check if the window is valid
-  Bounds bounds;
+  Bounds bounds = {0};
   if (!is_valid()) {
     return bounds;
   }
@@ -93,8 +93,6 @@ exit:
     return wayland_get_bounds();
   }
 #endif
-  // Ignore X errors
-  XDismissErrors();
   MData win;
   win.XWin = (Window)pid;
 
@@ -124,7 +122,7 @@ exit:
 
 Bounds get_client(uintptr pid, int8_t isPid) {
   // Check if the window is valid
-  Bounds bounds;
+  Bounds bounds = {0};
   if (!is_valid()) {
     return bounds;
   }
@@ -137,36 +135,62 @@ Bounds get_client(uintptr pid, int8_t isPid) {
     return wayland_get_bounds();
   }
 #endif
-  Display *rDisplay = XOpenDisplay(NULL);
+  Display *rDisplay = XGetMainDisplay();
+  if (rDisplay == NULL) {
+    return bounds;
+  }
 
-  // Ignore X errors
-  XDismissErrors();
   MData win;
   win.XWin = (Window)pid;
 
   // Property variables
-  Window root, parent;
-  Window *children;
-  unsigned int count;
+  Window root = None;
+  Window parent = None;
+  Window child = None;
+  Window *children = NULL;
+  unsigned int count = 0;
   int32_t x = 0, y = 0;
 
+  RobotGoXErrorTrap trap;
+  if (!robotgo_xerror_trap_begin(rDisplay, &trap)) {
+    return bounds;
+  }
+
   // Check if the window is the root
-  XQueryTree(rDisplay, win.XWin, &root, &parent, &children, &count);
+  Status tree_status =
+      XQueryTree(rDisplay, win.XWin, &root, &parent, &children, &count);
   if (children) {
     XFree(children);
+    children = NULL;
+  }
+  if (tree_status == 0) {
+    (void)robotgo_xerror_trap_end(&trap);
+    return bounds;
   }
 
   // Retrieve window attributes
   XWindowAttributes attr = {0};
-  XGetWindowAttributes(rDisplay, win.XWin, &attr);
+  if (XGetWindowAttributes(rDisplay, win.XWin, &attr) == 0 ||
+      attr.root == None) {
+    (void)robotgo_xerror_trap_end(&trap);
+    return bounds;
+  }
 
   // Coordinates must be translated
   if (parent != attr.root) {
-    XTranslateCoordinates(rDisplay, win.XWin, attr.root, attr.x, attr.y, &x, &y,
-                          &parent);
+	/* Translate the client origin; attr.x/attr.y are already parent-relative. */
+    if (XTranslateCoordinates(rDisplay, win.XWin, attr.root, 0, 0,
+                              &x, &y, &child) == 0) {
+      (void)robotgo_xerror_trap_end(&trap);
+      return bounds;
+    }
   } else {
     x = attr.x;
     y = attr.y;
+  }
+
+  if (!robotgo_xerror_trap_end(&trap)) {
+    return bounds;
   }
 
   // Return resulting window bounds
@@ -174,7 +198,6 @@ Bounds get_client(uintptr pid, int8_t isPid) {
   bounds.Y = y;
   bounds.W = attr.width;
   bounds.H = attr.height;
-  XCloseDisplay(rDisplay);
 
   return bounds;
 #elif defined(IS_WINDOWS)

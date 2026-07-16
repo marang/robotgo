@@ -132,8 +132,9 @@ Common targeted suites:
 2. `go test -tags "wayland test" ./screen -run TestScreencopy -v`
 3. `go test -tags "wayland test" . -run TestDrmFindRenderNode -v`
 4. `go test -tags "wayland integration" ./mouse ./window -v`
-5. `go test -tags "waylandint" ./key -run TestWaylandUnicodeTypingIntegration -v`
-6. `CGO_ENABLED=0 ROBOTGO_REQUIRE_X11_INTEGRATION=1 xvfb-run -a -s "-screen 0 1280x720x24 -nolisten tcp -noreset" sh -eu -c 'setxkbmap -layout us,de; env -u WAYLAND_DISPLAY -u XDG_SESSION_TYPE go test -tags x11integration -run "^TestPureGoX11" -count=1 -timeout=30s -v .'`
+5. `go test -race -tags "waylandint" ./key -v`
+6. `go test -race -tags "wayland waylandint" . -run '^TestWaylandPublic' -v`
+7. `CGO_ENABLED=0 ROBOTGO_REQUIRE_X11_INTEGRATION=1 xvfb-run -a -s "-screen 0 1280x720x24 -nolisten tcp -noreset" sh -eu -c 'setxkbmap -layout us,de; env -u WAYLAND_DISPLAY -u XDG_SESSION_TYPE go test -tags x11integration -run "^TestPureGoX11" -count=1 -timeout=30s -v .'`
 
 Wayland-related code changes should include at least one of:
 

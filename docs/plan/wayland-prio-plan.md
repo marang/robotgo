@@ -233,11 +233,12 @@ Current progress:
 1. `go test ./...`
 2. `go test -tags "wayland test" . -run TestDrmFindRenderNode -v`
 3. `go test -tags "wayland test" ./screen -run TestScreencopy -v`
-4. `go test -tags "waylandint" ./key -run TestWaylandUnicodeTypingIntegration -v`
-5. `go test -tags "wayland integration" ./mouse ./window -v`
-6. Confirm Wayland-only session behavior: `WAYLAND_DISPLAY` set and `DISPLAY` unset.
-7. Confirm no implicit X11 calls in Wayland-primary paths via targeted regression tests.
-8. Confirm tagged suites do not fail due to duplicate C symbols or tag-incompatible linkage.
+4. `go test -race -tags "waylandint" ./key -v`
+5. `go test -race -tags "wayland waylandint" . -run '^TestWaylandPublic' -v`
+6. `go test -tags "wayland integration" ./mouse ./window -v`
+7. Confirm Wayland-only session behavior: `WAYLAND_DISPLAY` set and `DISPLAY` unset.
+8. Confirm no implicit X11 calls in Wayland-primary paths via targeted regression tests.
+9. Confirm tagged suites do not fail due to duplicate C symbols or tag-incompatible linkage.
 
 ---
 

@@ -90,10 +90,16 @@ var (
 	remoteDesktopInputState struct {
 		sync.RWMutex
 		session    remoteDesktopInputSession
+		generation uint64
 		permission RemoteDesktopPermissionStatus
 		reason     string
 	}
 )
+
+// ErrInputOwnership reports an invalid stateful input transition, such as a
+// duplicate down, an up without a matching RobotGo-owned down, or a portal
+// session replacement between the two transitions.
+var ErrInputOwnership = errors.New("robotgo: input state has no matching RobotGo-owned key or button down")
 
 // StartRemoteDesktopInput opens a consent-aware portal session and makes it
 // available to supported high-level input APIs when native Wayland input is
@@ -138,6 +144,7 @@ func StartRemoteDesktopInputWithOptions(ctx context.Context, options RemoteDeskt
 		remoteDesktopInputState.Lock()
 		if remoteDesktopInputState.session == nil || remoteDesktopSessionClosed(remoteDesktopInputState.session) {
 			remoteDesktopInputState.session = nil
+			remoteDesktopInputState.generation++
 			remoteDesktopInputState.permission = permissionStatusForError(err)
 			remoteDesktopInputState.reason = err.Error()
 		}
@@ -154,6 +161,7 @@ func StartRemoteDesktopInputWithOptions(ctx context.Context, options RemoteDeskt
 			remoteDesktopInputState.Lock()
 			if remoteDesktopInputState.session == previous {
 				remoteDesktopInputState.session = nil
+				remoteDesktopInputState.generation++
 				remoteDesktopInputState.permission = RemoteDesktopPermissionUnavailable
 				remoteDesktopInputState.reason = err.Error()
 			}
@@ -166,6 +174,7 @@ func StartRemoteDesktopInputWithOptions(ctx context.Context, options RemoteDeskt
 	}
 	remoteDesktopInputState.Lock()
 	remoteDesktopInputState.session = session
+	remoteDesktopInputState.generation++
 	remoteDesktopInputState.permission = RemoteDesktopPermissionGranted
 	remoteDesktopInputState.reason = "portal consent session is active"
 	remoteDesktopInputState.Unlock()
@@ -237,6 +246,7 @@ func CloseRemoteDesktopInput() error {
 	session := remoteDesktopInputState.session
 	alreadyClosed := remoteDesktopSessionClosed(session)
 	remoteDesktopInputState.session = nil
+	remoteDesktopInputState.generation++
 	if session != nil {
 		remoteDesktopInputState.permission = RemoteDesktopPermissionClosed
 		if alreadyClosed {
@@ -253,6 +263,18 @@ func CloseRemoteDesktopInput() error {
 }
 
 func withRemoteDesktopInput(device inputportal.DeviceType, fn func(remoteDesktopInputSession) error) (bool, error) {
+	used, _, err := withRemoteDesktopInputLease(
+		device, nil,
+		func(session remoteDesktopInputSession, _ uint64) error { return fn(session) },
+	)
+	return used, err
+}
+
+func withRemoteDesktopInputLease(
+	device inputportal.DeviceType,
+	expectedGeneration *uint64,
+	fn func(remoteDesktopInputSession, uint64) error,
+) (bool, uint64, error) {
 	// A high-level input operation is one transaction. Serialize it with session
 	// replacement/close so modifier sequences and double clicks cannot interleave
 	// or lose their backend halfway through cleanup.
@@ -260,17 +282,24 @@ func withRemoteDesktopInput(device inputportal.DeviceType, fn func(remoteDesktop
 	defer remoteDesktopInputOperation.Unlock()
 	remoteDesktopInputState.RLock()
 	session := remoteDesktopInputState.session
+	generation := remoteDesktopInputState.generation
 	remoteDesktopInputState.RUnlock()
 	if session == nil {
-		return false, nil
+		if expectedGeneration != nil {
+			return true, generation, ErrInputOwnership
+		}
+		return false, generation, nil
+	}
+	if expectedGeneration != nil && generation != *expectedGeneration {
+		return true, generation, ErrInputOwnership
 	}
 	select {
 	case <-session.Closed():
-		return true, inputportal.ErrClosed
+		return true, generation, inputportal.ErrClosed
 	default:
 	}
 	if session.Devices()&device == 0 {
-		return true, fmt.Errorf("%w: required=%d granted=%d", inputportal.ErrDeviceNotGranted, device, session.Devices())
+		return true, generation, fmt.Errorf("%w: required=%d granted=%d", inputportal.ErrDeviceNotGranted, device, session.Devices())
 	}
 	operationContext, cancelCause := context.WithCancelCause(context.Background())
 	cancel := func() { cancelCause(context.Canceled) }
@@ -280,7 +309,7 @@ func withRemoteDesktopInput(device inputportal.DeviceType, fn func(remoteDesktop
 		remoteDesktopInputPending.Unlock()
 		close(watchDone)
 		cancel()
-		return true, context.Canceled
+		return true, generation, context.Canceled
 	}
 	remoteDesktopInputPending.operationContext = operationContext
 	remoteDesktopInputPending.operationCancel = cancel
@@ -302,7 +331,7 @@ func withRemoteDesktopInput(device inputportal.DeviceType, fn func(remoteDesktop
 		}
 		remoteDesktopInputPending.Unlock()
 	}()
-	return true, fn(session)
+	return true, generation, fn(session, generation)
 }
 
 func remoteDesktopEvent(fn func(context.Context) error) error {
@@ -471,18 +500,6 @@ func tryRemoteDesktopClick(name string, double bool) (bool, error) {
 			}
 		}
 		return nil
-	})
-}
-
-func tryRemoteDesktopToggle(name string, down bool) (bool, error) {
-	return withRemoteDesktopInput(inputportal.DevicePointer, func(session remoteDesktopInputSession) error {
-		button, err := portalPointerButton(name)
-		if err != nil {
-			return err
-		}
-		return remoteDesktopEvent(func(ctx context.Context) error {
-			return session.PointerButton(ctx, button, down)
-		})
 	})
 }
 

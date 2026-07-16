@@ -13,6 +13,16 @@
 #include "../base/rgb.h"
 #include "screengrab_c.h"
 #include <stdio.h>
+#include <string.h>
+
+static inline char* robotgo_copy_string(const char* value) {
+	size_t length = strlen(value) + 1;
+	char* copy = (char*)malloc(length);
+	if (copy != NULL) {
+		memcpy(copy, value, length);
+	}
+	return copy;
+}
 
 static inline void padHex(MMRGBHex color, char* hex) {
 	// Length needs to be 7 because snprintf includes a terminating null.
@@ -44,13 +54,16 @@ static inline uint32_t color_rgb_to_hex(uint8_t r, uint8_t g, uint8_t b) {
 
 static inline MMRGBHex get_px_color(int32_t x, int32_t y, int32_t display_id) {
 	MMBitmapRef bitmap;
-	MMRGBHex color;
+	MMRGBHex color = 0;
 
 	if (!pointVisibleOnMainDisplay(MMPointInt32Make(x, y))) {
 		return color;
 	}
 
 	bitmap = copyMMBitmapFromDisplayInRect(MMRectInt32Make(x, y, 1, 1), display_id, 0);
+	if (bitmap == NULL) {
+		return color;
+	}
 	color = MMRGBHexAtPoint(bitmap, 0, 0);
 	destroyMMBitmap(bitmap);
 
@@ -59,7 +72,9 @@ static inline MMRGBHex get_px_color(int32_t x, int32_t y, int32_t display_id) {
 
 static inline char* set_XDisplay_name(char* name) {
 	#if defined(IS_LINUX) && !defined(DISPLAY_SERVER_WAYLAND)
-		setXDisplay(name);
+		if (setXDisplay(name) != 0) {
+			return "failed to allocate X11 display name";
+		}
 		return "";
 	#else
 		return "SetXDisplayName is only supported on Linux";
@@ -69,12 +84,17 @@ static inline char* set_XDisplay_name(char* name) {
 static inline char* get_XDisplay_name() {
 	#if defined(IS_LINUX) && !defined(DISPLAY_SERVER_WAYLAND)
 		const char* display = getXDisplay();
-		
-		char* sd = (char*)calloc(100, sizeof(char*));
-		if (sd) { strcpy(sd, display); }
-		return sd;
+		return robotgo_copy_string(display == NULL ? "" : display);
 	#else
-		return "GetXDisplayName is only supported on Linux";
+		return robotgo_copy_string("GetXDisplayName is only supported on Linux");
+	#endif
+}
+
+static inline const char* get_XDisplay_name_borrowed() {
+	#if defined(IS_LINUX) && !defined(DISPLAY_SERVER_WAYLAND)
+		return getXDisplay();
+	#else
+		return NULL;
 	#endif
 }
 

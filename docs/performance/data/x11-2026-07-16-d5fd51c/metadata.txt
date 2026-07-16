@@ -1,0 +1,154 @@
+timestamp_utc=2026-07-16T15:09:11Z
+git_commit=d5fd51c72702a719fd60fb06e0ef246018dc8b4e
+source_fingerprint=c704c843b5bf4b2422f162a330bbac641f524e94
+allow_dirty=0
+source_mode=detached-clean-worktree
+git_status_begin
+
+git_status_end
+go_version=go version go1.25.0 linux/amd64
+go_env_begin
+{
+	"AR": "ar",
+	"CC": "gcc",
+	"CGO_CFLAGS": "-O2 -g",
+	"CGO_CPPFLAGS": "",
+	"CGO_CXXFLAGS": "-O2 -g",
+	"CGO_LDFLAGS": "-O2 -g",
+	"CXX": "g++",
+	"GO386": "",
+	"GOAMD64": "v1",
+	"GOARCH": "amd64",
+	"GOARM": "",
+	"GOARM64": "",
+	"GOEXPERIMENT": "",
+	"GOFLAGS": "-mod=readonly",
+	"GOMIPS": "",
+	"GOMIPS64": "",
+	"GOOS": "linux",
+	"GOPPC64": "",
+	"GORISCV64": "",
+	"GOTOOLCHAIN": "go1.25.0",
+	"GOVERSION": "go1.25.0",
+	"GOWORK": "off",
+	"PKG_CONFIG": "pkg-config"
+}
+go_env_end
+runtime_env_begin
+GOGC=100
+GOMEMLIMIT=off
+GODEBUG=
+runtime_env_end
+pkg_config_env_begin
+PKG_CONFIG_PATH=
+PKG_CONFIG_LIBDIR=
+PKG_CONFIG_SYSROOT_DIR=
+LD_LIBRARY_PATH=
+pkg_config_env_end
+x11_pkg_config_begin
+x11_version=1.8.7
+xtst_version=1.2.3
+-lX11 -lXtst
+x11_pkg_config_end
+native_binary_build_info_begin
+/tmp/robotgo-x11-evidence.EtVCgH/robotgo-native.test: go1.25.0
+	path	github.com/marang/robotgo.test
+	mod	github.com/marang/robotgo	(devel)
+	build	-buildmode=exe
+	build	-compiler=gc
+	build	-tags=x11integration
+	build	CGO_ENABLED=1
+	build	CGO_CFLAGS=
+	build	CGO_CPPFLAGS=
+	build	CGO_CXXFLAGS=
+	build	CGO_LDFLAGS=
+	build	GOARCH=amd64
+	build	GOOS=linux
+	build	GOAMD64=v1
+native_binary_build_info_end
+purego_binary_build_info_begin
+/tmp/robotgo-x11-evidence.EtVCgH/robotgo-purego.test: go1.25.0
+	path	github.com/marang/robotgo.test
+	mod	github.com/marang/robotgo	(devel)
+	build	-buildmode=exe
+	build	-compiler=gc
+	build	-tags=x11integration
+	build	CGO_ENABLED=0
+	build	GOARCH=amd64
+	build	GOOS=linux
+	build	GOAMD64=v1
+purego_binary_build_info_end
+native_binary_dependencies_begin
+	linux-vdso.so.1 (0x00007f96ff041000)
+	libX11.so.6 => /lib/x86_64-linux-gnu/libX11.so.6 (0x00007f96feef8000)
+	libXtst.so.6 => /lib/x86_64-linux-gnu/libXtst.so.6 (0x00007f96feef0000)
+	libc.so.6 => /lib/x86_64-linux-gnu/libc.so.6 (0x00007f96fec00000)
+	libxcb.so.1 => /lib/x86_64-linux-gnu/libxcb.so.1 (0x00007f96feec7000)
+	libXext.so.6 => /lib/x86_64-linux-gnu/libXext.so.6 (0x00007f96feeb3000)
+	/lib64/ld-linux-x86-64.so.2 (0x00007f96ff043000)
+	libXau.so.6 => /lib/x86_64-linux-gnu/libXau.so.6 (0x00007f96feeab000)
+	libXdmcp.so.6 => /lib/x86_64-linux-gnu/libXdmcp.so.6 (0x00007f96feea3000)
+	libbsd.so.0 => /lib/x86_64-linux-gnu/libbsd.so.0 (0x00007f96fee8d000)
+	libmd.so.0 => /lib/x86_64-linux-gnu/libmd.so.0 (0x00007f96fee7e000)
+native_binary_dependencies_end
+cc_version=gcc (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0
+pkg_config_version=1.8.1
+benchmark_cycles=5
+benchmark_balanced=1
+benchmark_benchtime=500ms
+behavior_cpu=4
+benchmark_cpu=1
+uname=Linux 7.1.2-arch3-1 x86_64
+Architecture:                            x86_64
+CPU op-mode(s):                          32-bit, 64-bit
+Address sizes:                           39 bits physical, 48 bits virtual
+Byte Order:                              Little Endian
+CPU(s):                                  12
+On-line CPU(s) list:                     0-11
+Vendor ID:                               GenuineIntel
+Model name:                              Intel(R) Core(TM) i7-8750H CPU @ 2.20GHz
+CPU family:                              6
+Model:                                   158
+Thread(s) per core:                      2
+Core(s) per socket:                      6
+Socket(s):                               1
+Stepping:                                10
+CPU(s) scaling MHz:                      89%
+CPU max MHz:                             4100.0000
+CPU min MHz:                             800.0000
+BogoMIPS:                                4399.99
+Flags:                                   fpu vme de pse tsc msr pae mce cx8 apic sep mtrr pge mca cmov pat pse36 clflush dts acpi mmx fxsr sse sse2 ss ht tm pbe syscall nx pdpe1gb rdtscp lm constant_tsc art arch_perfmon pebs bts rep_good nopl xtopology nonstop_tsc cpuid aperfmperf pni pclmulqdq dtes64 monitor ds_cpl vmx est tm2 ssse3 sdbg fma cx16 xtpr pdcm pcid sse4_1 sse4_2 x2apic movbe popcnt tsc_deadline_timer aes xsave avx f16c rdrand lahf_lm abm 3dnowprefetch cpuid_fault epb pti ssbd ibrs ibpb stibp tpr_shadow flexpriority ept vpid ept_ad fsgsbase tsc_adjust sgx bmi1 avx2 smep bmi2 erms invpcid mpx rdseed adx smap clflushopt intel_pt xsaveopt xsavec xgetbv1 xsaves dtherm ida arat pln pts hwp hwp_notify hwp_act_window hwp_epp vnmi sgx_lc md_clear flush_l1d arch_capabilities
+Virtualization:                          VT-x
+L1d cache:                               192 KiB (6 instances)
+L1i cache:                               192 KiB (6 instances)
+L2 cache:                                1.5 MiB (6 instances)
+L3 cache:                                9 MiB (1 instance)
+NUMA node(s):                            1
+NUMA node0 CPU(s):                       0-11
+Vulnerability Gather data sampling:      Mitigation; Microcode
+Vulnerability Ghostwrite:                Not affected
+Vulnerability Indirect target selection: Not affected
+Vulnerability Itlb multihit:             KVM: Mitigation: Split huge pages
+Vulnerability L1tf:                      Mitigation; PTE Inversion; VMX conditional cache flushes, SMT vulnerable
+Vulnerability Mds:                       Mitigation; Clear CPU buffers; SMT vulnerable
+Vulnerability Meltdown:                  Mitigation; PTI
+Vulnerability Mmio stale data:           Mitigation; Clear CPU buffers; SMT vulnerable
+Vulnerability Old microcode:             Vulnerable
+Vulnerability Reg file data sampling:    Not affected
+Vulnerability Retbleed:                  Mitigation; IBRS
+Vulnerability Spec rstack overflow:      Not affected
+Vulnerability Spec store bypass:         Mitigation; Speculative Store Bypass disabled via prctl
+Vulnerability Spectre v1:                Mitigation; usercopy/swapgs barriers and __user pointer sanitization
+Vulnerability Spectre v2:                Mitigation; IBRS; IBPB conditional; STIBP conditional; RSB filling; PBRSB-eIBRS Not affected; BHI Not affected
+Vulnerability Srbds:                     Mitigation; Microcode
+Vulnerability Tsa:                       Not affected
+Vulnerability Tsx async abort:           Not affected
+Vulnerability Vmscape:                   Mitigation; IBPB before exit to userspace
+xvfb_path=/usr/bin/Xvfb
+xvfb_package=xvfb 2:21.1.12-1ubuntu1.6
+xtest_requirement=2.2 (enforced by behavioral harness)
+x11_keymap_begin
+rules:      evdev
+model:      pc105
+layout:     us,de
+x11_keymap_end

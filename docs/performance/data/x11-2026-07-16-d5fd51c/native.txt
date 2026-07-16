@@ -1,0 +1,170 @@
+# implementation=native-cgo sample=1 order=native-first.1
+goos: linux
+goarch: amd64
+pkg: github.com/marang/robotgo
+cpu: Intel(R) Core(TM) i7-8750H CPU @ 2.20GHz
+BenchmarkCaptureImgRuntime 	     602	   1010866 ns/op	1215.59 MB/s	 1228864 B/op	       2 allocs/op
+BenchmarkX11InputRuntime/Location         	   39547	     15631 ns/op	       0 B/op	       0 allocs/op
+BenchmarkX11InputRuntime/MoveAbsolute     	   16249	     35740 ns/op	      87 B/op	       3 allocs/op
+BenchmarkX11InputRuntime/MoveRelative     	   10000	     50334 ns/op	      88 B/op	       4 allocs/op
+BenchmarkX11InputRuntime/ButtonTogglePair 	    7227	     91102 ns/op	     205 B/op	       8 allocs/op
+BenchmarkX11InputRuntime/ClickLeft        	     100	   5495213 ns/op	     184 B/op	       7 allocs/op
+BenchmarkX11InputRuntime/ScrollVertical1  	   12975	     45738 ns/op	     180 B/op	       6 allocs/op
+BenchmarkX11InputRuntime/ScrollHorizontal1         	   13306	     46566 ns/op	     183 B/op	       6 allocs/op
+BenchmarkX11InputRuntime/KeyTogglePairEnter        	    4658	    139395 ns/op	     237 B/op	      10 allocs/op
+BenchmarkX11InputRuntime/KeyPressEnter             	     169	   3491014 ns/op	     184 B/op	       7 allocs/op
+BenchmarkX11InputRuntime/TypeASCII8                	      13	  45152966 ns/op	   0.00 MB/s	    2040 B/op	      81 allocs/op
+PASS
+# implementation=native-cgo sample=1 order=purego-first.2
+goos: linux
+goarch: amd64
+pkg: github.com/marang/robotgo
+cpu: Intel(R) Core(TM) i7-8750H CPU @ 2.20GHz
+BenchmarkCaptureImgRuntime 	     582	    995031 ns/op	1234.94 MB/s	 1228864 B/op	       2 allocs/op
+BenchmarkX11InputRuntime/Location         	   39526	     15207 ns/op	       0 B/op	       0 allocs/op
+BenchmarkX11InputRuntime/MoveAbsolute     	   16071	     37090 ns/op	      86 B/op	       3 allocs/op
+BenchmarkX11InputRuntime/MoveRelative     	   10000	     51118 ns/op	      87 B/op	       3 allocs/op
+BenchmarkX11InputRuntime/ButtonTogglePair 	    6603	     94970 ns/op	     206 B/op	       8 allocs/op
+BenchmarkX11InputRuntime/ClickLeft        	     100	   5484748 ns/op	     185 B/op	       7 allocs/op
+BenchmarkX11InputRuntime/ScrollVertical1  	   10000	     51996 ns/op	     180 B/op	       6 allocs/op
+BenchmarkX11InputRuntime/ScrollHorizontal1         	   11719	     51129 ns/op	     180 B/op	       6 allocs/op
+BenchmarkX11InputRuntime/KeyTogglePairEnter        	    4124	    149637 ns/op	     237 B/op	      10 allocs/op
+BenchmarkX11InputRuntime/KeyPressEnter             	     170	   3510233 ns/op	     184 B/op	       7 allocs/op
+BenchmarkX11InputRuntime/TypeASCII8                	      13	  44410469 ns/op	   0.00 MB/s	    2040 B/op	      81 allocs/op
+PASS
+# implementation=native-cgo sample=2 order=native-first.1
+goos: linux
+goarch: amd64
+pkg: github.com/marang/robotgo
+cpu: Intel(R) Core(TM) i7-8750H CPU @ 2.20GHz
+BenchmarkCaptureImgRuntime 	     604	   1006690 ns/op	1220.63 MB/s	 1228873 B/op	       2 allocs/op
+BenchmarkX11InputRuntime/Location         	   36729	     14733 ns/op	       0 B/op	       0 allocs/op
+BenchmarkX11InputRuntime/MoveAbsolute     	   16606	     37667 ns/op	      87 B/op	       3 allocs/op
+BenchmarkX11InputRuntime/MoveRelative     	   10000	     53200 ns/op	      86 B/op	       3 allocs/op
+BenchmarkX11InputRuntime/ButtonTogglePair 	    7060	     98620 ns/op	     204 B/op	       8 allocs/op
+BenchmarkX11InputRuntime/ClickLeft        	     100	   5444833 ns/op	     184 B/op	       7 allocs/op
+BenchmarkX11InputRuntime/ScrollVertical1  	   12043	     44412 ns/op	     177 B/op	       6 allocs/op
+BenchmarkX11InputRuntime/ScrollHorizontal1         	   13299	     45766 ns/op	     181 B/op	       6 allocs/op
+BenchmarkX11InputRuntime/KeyTogglePairEnter        	    4309	    139228 ns/op	     237 B/op	      10 allocs/op
+BenchmarkX11InputRuntime/KeyPressEnter             	     171	   3494577 ns/op	     184 B/op	       7 allocs/op
+BenchmarkX11InputRuntime/TypeASCII8                	      13	  45215673 ns/op	   0.00 MB/s	    2040 B/op	      81 allocs/op
+PASS
+# implementation=native-cgo sample=2 order=purego-first.2
+goos: linux
+goarch: amd64
+pkg: github.com/marang/robotgo
+cpu: Intel(R) Core(TM) i7-8750H CPU @ 2.20GHz
+BenchmarkCaptureImgRuntime 	     598	    975345 ns/op	1259.86 MB/s	 1228864 B/op	       2 allocs/op
+BenchmarkX11InputRuntime/Location         	   39348	     14670 ns/op	       0 B/op	       0 allocs/op
+BenchmarkX11InputRuntime/MoveAbsolute     	   16268	     36667 ns/op	      86 B/op	       3 allocs/op
+BenchmarkX11InputRuntime/MoveRelative     	   10000	     52035 ns/op	      87 B/op	       3 allocs/op
+BenchmarkX11InputRuntime/ButtonTogglePair 	    6524	     90565 ns/op	     204 B/op	       8 allocs/op
+BenchmarkX11InputRuntime/ClickLeft        	     100	   5490487 ns/op	     184 B/op	       7 allocs/op
+BenchmarkX11InputRuntime/ScrollVertical1  	   13578	     44623 ns/op	     183 B/op	       6 allocs/op
+BenchmarkX11InputRuntime/ScrollHorizontal1         	   13214	     44903 ns/op	     183 B/op	       6 allocs/op
+BenchmarkX11InputRuntime/KeyTogglePairEnter        	    4504	    140012 ns/op	     236 B/op	      10 allocs/op
+BenchmarkX11InputRuntime/KeyPressEnter             	     168	   3514360 ns/op	     216 B/op	       7 allocs/op
+BenchmarkX11InputRuntime/TypeASCII8                	      13	  45070017 ns/op	   0.00 MB/s	    2040 B/op	      81 allocs/op
+PASS
+# implementation=native-cgo sample=3 order=native-first.1
+goos: linux
+goarch: amd64
+pkg: github.com/marang/robotgo
+cpu: Intel(R) Core(TM) i7-8750H CPU @ 2.20GHz
+BenchmarkCaptureImgRuntime 	     579	   1034330 ns/op	1188.02 MB/s	 1228864 B/op	       2 allocs/op
+BenchmarkX11InputRuntime/Location         	   40225	     14923 ns/op	       0 B/op	       0 allocs/op
+BenchmarkX11InputRuntime/MoveAbsolute     	   16339	     36911 ns/op	      87 B/op	       3 allocs/op
+BenchmarkX11InputRuntime/MoveRelative     	   11892	     50574 ns/op	      86 B/op	       3 allocs/op
+BenchmarkX11InputRuntime/ButtonTogglePair 	    6672	     89777 ns/op	     205 B/op	       8 allocs/op
+BenchmarkX11InputRuntime/ClickLeft        	     100	   5518887 ns/op	     185 B/op	       7 allocs/op
+BenchmarkX11InputRuntime/ScrollVertical1  	   12099	     44990 ns/op	     182 B/op	       6 allocs/op
+BenchmarkX11InputRuntime/ScrollHorizontal1         	   13153	     45618 ns/op	     183 B/op	       6 allocs/op
+BenchmarkX11InputRuntime/KeyTogglePairEnter        	    3656	    138290 ns/op	     238 B/op	      10 allocs/op
+BenchmarkX11InputRuntime/KeyPressEnter             	     170	   3521300 ns/op	     216 B/op	       7 allocs/op
+BenchmarkX11InputRuntime/TypeASCII8                	      13	  45532586 ns/op	   0.00 MB/s	    2040 B/op	      81 allocs/op
+PASS
+# implementation=native-cgo sample=3 order=purego-first.2
+goos: linux
+goarch: amd64
+pkg: github.com/marang/robotgo
+cpu: Intel(R) Core(TM) i7-8750H CPU @ 2.20GHz
+BenchmarkCaptureImgRuntime 	     524	   1007734 ns/op	1219.37 MB/s	 1228864 B/op	       2 allocs/op
+BenchmarkX11InputRuntime/Location         	   38472	     14671 ns/op	       0 B/op	       0 allocs/op
+BenchmarkX11InputRuntime/MoveAbsolute     	   15344	     37816 ns/op	      84 B/op	       3 allocs/op
+BenchmarkX11InputRuntime/MoveRelative     	   10000	     51963 ns/op	      87 B/op	       3 allocs/op
+BenchmarkX11InputRuntime/ButtonTogglePair 	    6769	     94520 ns/op	     207 B/op	       8 allocs/op
+BenchmarkX11InputRuntime/ClickLeft        	     100	   5413337 ns/op	     184 B/op	       7 allocs/op
+BenchmarkX11InputRuntime/ScrollVertical1  	   13244	     44953 ns/op	     180 B/op	       6 allocs/op
+BenchmarkX11InputRuntime/ScrollHorizontal1         	   12828	     44891 ns/op	     181 B/op	       6 allocs/op
+BenchmarkX11InputRuntime/KeyTogglePairEnter        	    4707	    139641 ns/op	     237 B/op	      10 allocs/op
+BenchmarkX11InputRuntime/KeyPressEnter             	     169	   3487039 ns/op	     183 B/op	       6 allocs/op
+BenchmarkX11InputRuntime/TypeASCII8                	      13	  45218587 ns/op	   0.00 MB/s	    2040 B/op	      81 allocs/op
+PASS
+# implementation=native-cgo sample=4 order=native-first.1
+goos: linux
+goarch: amd64
+pkg: github.com/marang/robotgo
+cpu: Intel(R) Core(TM) i7-8750H CPU @ 2.20GHz
+BenchmarkCaptureImgRuntime 	     596	   1038541 ns/op	1183.20 MB/s	 1228864 B/op	       2 allocs/op
+BenchmarkX11InputRuntime/Location         	   36933	     15371 ns/op	       0 B/op	       0 allocs/op
+BenchmarkX11InputRuntime/MoveAbsolute     	   16239	     39002 ns/op	      87 B/op	       3 allocs/op
+BenchmarkX11InputRuntime/MoveRelative     	   10676	     51348 ns/op	      87 B/op	       3 allocs/op
+BenchmarkX11InputRuntime/ButtonTogglePair 	    6909	     92550 ns/op	     205 B/op	       8 allocs/op
+BenchmarkX11InputRuntime/ClickLeft        	     100	   5463772 ns/op	     185 B/op	       7 allocs/op
+BenchmarkX11InputRuntime/ScrollVertical1  	   12696	     46135 ns/op	     179 B/op	       6 allocs/op
+BenchmarkX11InputRuntime/ScrollHorizontal1         	   12214	     45992 ns/op	     181 B/op	       6 allocs/op
+BenchmarkX11InputRuntime/KeyTogglePairEnter        	    4354	    144151 ns/op	     237 B/op	      10 allocs/op
+BenchmarkX11InputRuntime/KeyPressEnter             	     171	   3486700 ns/op	     215 B/op	       7 allocs/op
+BenchmarkX11InputRuntime/TypeASCII8                	      12	  45087538 ns/op	   0.00 MB/s	    2040 B/op	      81 allocs/op
+PASS
+# implementation=native-cgo sample=4 order=purego-first.2
+goos: linux
+goarch: amd64
+pkg: github.com/marang/robotgo
+cpu: Intel(R) Core(TM) i7-8750H CPU @ 2.20GHz
+BenchmarkCaptureImgRuntime 	     622	    995848 ns/op	1233.92 MB/s	 1228864 B/op	       2 allocs/op
+BenchmarkX11InputRuntime/Location         	   40342	     14811 ns/op	       0 B/op	       0 allocs/op
+BenchmarkX11InputRuntime/MoveAbsolute     	   16675	     35839 ns/op	      87 B/op	       3 allocs/op
+BenchmarkX11InputRuntime/MoveRelative     	   10000	     50267 ns/op	      87 B/op	       3 allocs/op
+BenchmarkX11InputRuntime/ButtonTogglePair 	    5791	     92141 ns/op	     205 B/op	       8 allocs/op
+BenchmarkX11InputRuntime/ClickLeft        	     100	   5507438 ns/op	     239 B/op	       7 allocs/op
+BenchmarkX11InputRuntime/ScrollVertical1  	   13374	     43908 ns/op	     183 B/op	       6 allocs/op
+BenchmarkX11InputRuntime/ScrollHorizontal1         	   13368	     43757 ns/op	     182 B/op	       6 allocs/op
+BenchmarkX11InputRuntime/KeyTogglePairEnter        	    4658	    142268 ns/op	     239 B/op	      10 allocs/op
+BenchmarkX11InputRuntime/KeyPressEnter             	     172	   3539329 ns/op	     184 B/op	       7 allocs/op
+BenchmarkX11InputRuntime/TypeASCII8                	      12	  44994074 ns/op	   0.00 MB/s	    2040 B/op	      81 allocs/op
+PASS
+# implementation=native-cgo sample=5 order=native-first.1
+goos: linux
+goarch: amd64
+pkg: github.com/marang/robotgo
+cpu: Intel(R) Core(TM) i7-8750H CPU @ 2.20GHz
+BenchmarkCaptureImgRuntime 	     595	    996485 ns/op	1233.13 MB/s	 1228864 B/op	       2 allocs/op
+BenchmarkX11InputRuntime/Location         	   40258	     15012 ns/op	       0 B/op	       0 allocs/op
+BenchmarkX11InputRuntime/MoveAbsolute     	   15626	     37551 ns/op	      87 B/op	       3 allocs/op
+BenchmarkX11InputRuntime/MoveRelative     	   10000	     52615 ns/op	      87 B/op	       3 allocs/op
+BenchmarkX11InputRuntime/ButtonTogglePair 	    7120	     98469 ns/op	     207 B/op	       8 allocs/op
+BenchmarkX11InputRuntime/ClickLeft        	     100	   5489100 ns/op	     184 B/op	       7 allocs/op
+BenchmarkX11InputRuntime/ScrollVertical1  	   12493	     44975 ns/op	     182 B/op	       6 allocs/op
+BenchmarkX11InputRuntime/ScrollHorizontal1         	   13525	     44568 ns/op	     178 B/op	       6 allocs/op
+BenchmarkX11InputRuntime/KeyTogglePairEnter        	    4693	    137351 ns/op	     237 B/op	      10 allocs/op
+BenchmarkX11InputRuntime/KeyPressEnter             	     170	   3508660 ns/op	     184 B/op	       7 allocs/op
+BenchmarkX11InputRuntime/TypeASCII8                	      12	  45417677 ns/op	   0.00 MB/s	    2040 B/op	      81 allocs/op
+PASS
+# implementation=native-cgo sample=5 order=purego-first.2
+goos: linux
+goarch: amd64
+pkg: github.com/marang/robotgo
+cpu: Intel(R) Core(TM) i7-8750H CPU @ 2.20GHz
+BenchmarkCaptureImgRuntime 	     616	    975012 ns/op	1260.29 MB/s	 1228864 B/op	       2 allocs/op
+BenchmarkX11InputRuntime/Location         	   41034	     14776 ns/op	       0 B/op	       0 allocs/op
+BenchmarkX11InputRuntime/MoveAbsolute     	   16687	     37356 ns/op	      87 B/op	       3 allocs/op
+BenchmarkX11InputRuntime/MoveRelative     	   10000	     53824 ns/op	      86 B/op	       3 allocs/op
+BenchmarkX11InputRuntime/ButtonTogglePair 	    7008	     92488 ns/op	     198 B/op	       8 allocs/op
+BenchmarkX11InputRuntime/ClickLeft        	     100	   5500610 ns/op	     185 B/op	       7 allocs/op
+BenchmarkX11InputRuntime/ScrollVertical1  	   12970	     45173 ns/op	     182 B/op	       6 allocs/op
+BenchmarkX11InputRuntime/ScrollHorizontal1         	   13318	     45374 ns/op	     181 B/op	       6 allocs/op
+BenchmarkX11InputRuntime/KeyTogglePairEnter        	    4646	    137035 ns/op	     234 B/op	      10 allocs/op
+BenchmarkX11InputRuntime/KeyPressEnter             	     170	   3530108 ns/op	     216 B/op	       7 allocs/op
+BenchmarkX11InputRuntime/TypeASCII8                	      13	  45300283 ns/op	   0.00 MB/s	    2040 B/op	      81 allocs/op
+PASS

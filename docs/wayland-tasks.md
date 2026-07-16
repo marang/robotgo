@@ -98,9 +98,14 @@ Window backend support matrix (current):
     `[new vs robotgo-pro]`
   - 5. Selectively port useful Pure-Go backends with behavioral parity tests,
     backend introspection, and benchmarks before changing defaults. Linux/X11
-    input is implemented and covered by a non-skipping multi-layout Xvfb/XTEST
-    CI test; protecting its remote check, native-vs-Pure-Go benchmark evidence,
-    and any default switch remain open.
+    input is implemented; deep Pure-Go coverage and a shared native/Pure-Go
+    behavioral contract run in non-skipping Xvfb/XTEST CI. A balanced benchmark
+    smoke is report-only. Native X11 now has atomic input preflight, one shared
+    configured-display lifecycle/target, live XTEST readiness, and an XTEST-disabled negative
+    contract. A versioned decision-grade sample retains native CGO as the X11
+    default while keeping Pure-Go supported for CGO-disabled builds. Protecting
+    the checks, making the Pure-Go core race-testable and its scratch-map
+    lifecycle crash-safe, and evaluating further backends remain open.
   - 6. Publish versioned compatibility data and expand diagnostics with
     protocol versions, permissions, and actionable remediation.
   - 7. Promote race/vet and native leak/sanitizer checks to blocking release
@@ -159,7 +164,10 @@ Window backend support matrix (current):
     protection remain open.
   - Keep the non-CGO Xvfb/XTEST input test on a configured `us,de` keymap in
     Linux CI; missing `DISPLAY` or XTEST must fail the matrix leg rather than
-    skip, and the resulting remote check still needs branch protection.
+    skip. Keep the shared native/Pure-Go contract and report-only benchmark
+    smoke green, including the native XTEST-disabled negative contract and
+    display-lifecycle stress; the resulting remote checks still need branch
+    protection.
   - Extract the Pure-Go X11 core into a race-testable package and design a
     scoped or crash-safe lifecycle for its server-global keyboard scratch map.
   - Provision the existing dedicated GNOME, KDE, and wlroots runtime workflow.
