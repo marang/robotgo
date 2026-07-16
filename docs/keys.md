@@ -22,6 +22,11 @@
 
 # Keys
 
+`KeyTap` and `KeyToggle` model physical or named keys. Single-rune Unicode
+keysyms are supported by the RemoteDesktop portal and Pure-Go X11 backend, but
+native keymaps may return `robotgo.ErrNotSupported` when no matching key exists.
+Use `TypeStrE` or `UnicodeTypeE` for portable text entry.
+
 ```Go
 	"A-Z a-z 0-9"
 

@@ -23,7 +23,20 @@ func CmdCtrl() string {
 	return "ctrl"
 }
 
-func CloseMainDisplay()            {}
+// CloseMainDisplay closes persistent Pure-Go display/input connections and
+// ignores cleanup errors for compatibility. Prefer CloseMainDisplayE when
+// server-global X11 scratch mappings or owned input state may need restoration.
+func CloseMainDisplay() { _ = CloseMainDisplayE() }
+
+// CloseMainDisplayE closes persistent Pure-Go display/input connections and
+// reports owned-input release or X11 scratch-mapping restoration failures. A
+// later operation reconnects lazily. On Pure-Go X11, key taps and text may use
+// server-global scratch mappings, so call it only after targets have processed
+// all prior keyboard input. Abnormal process termination can leave mappings
+// behind. If cleanup reports a pressed-key or modifier-map conflict, remove
+// that conflict and retry CloseMainDisplayE.
+func CloseMainDisplayE() error { return closePureGoPlatformInput() }
+
 func InvalidateScreenBoundsCache() {}
 func Drag(int, int, ...string)     {}
 func FreeBitmapArr(bits ...CBitmap) {

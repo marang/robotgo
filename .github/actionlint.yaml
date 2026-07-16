@@ -6,3 +6,4 @@ self-hosted-runner:
     - wlroots
 config-variables:
   - ROBOTGO_REMOTE_DESKTOP_E2E
+  - ROBOTGO_SCREENCAST_E2E

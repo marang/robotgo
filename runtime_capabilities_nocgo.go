@@ -43,5 +43,12 @@ func runtimeCapabilities() RuntimeCapabilities {
 		return result
 	}
 	result.Capture, result.Bounds = pureGoPlatformCaptureCapabilities()
+	keyboard, mouse := pureGoInputCapabilities()
+	if keyboard.Backend != "" {
+		result.Keyboard = keyboard
+	}
+	if mouse.Backend != "" {
+		result.Mouse = mouse
+	}
 	return result
 }

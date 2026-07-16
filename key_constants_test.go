@@ -26,7 +26,7 @@ func TestUpstreamKeyConstants(t *testing.T) {
 	if _, ok := keyNames[PauseBreak]; !ok {
 		t.Fatalf("keyNames missing %q", PauseBreak)
 	}
-	if got := checkKeyFlags(Control); got == 0 {
-		t.Fatalf("checkKeyFlags(%q) returned no modifier", Control)
+	if got, err := checkKeyFlags(Control); err != nil || got == 0 {
+		t.Fatalf("checkKeyFlags(%q) = (%d,%v), want a modifier", Control, got, err)
 	}
 }

@@ -9,6 +9,8 @@ import (
 )
 
 func TestNonCGOHighLevelPortalInput(t *testing.T) {
+	t.Setenv(envWaylandDisplay, "robotgo-test-wayland")
+	t.Setenv(envDisplay, "")
 	oldMouseSleep, oldKeySleep := MouseSleep, KeySleep
 	MouseSleep, KeySleep = 23, 0
 	t.Cleanup(func() { MouseSleep, KeySleep = oldMouseSleep, oldKeySleep })

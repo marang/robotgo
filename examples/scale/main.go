@@ -23,7 +23,12 @@ func main() {
 		fmt.Println(err)
 	}
 
-	robotgo.Scale = true
+	config := robotgo.GetRuntimeConfig()
+	config.Scale = true
+	if err := robotgo.SetRuntimeConfig(config); err != nil {
+		fmt.Println("SetRuntimeConfig error:", err)
+		return
+	}
 	robotgo.Move(10, 10)
 	robotgo.MoveSmooth(100, 100)
 

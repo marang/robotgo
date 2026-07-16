@@ -40,6 +40,11 @@ const (
 	DisplayServerUnknown DisplayServer = "unknown"
 )
 
+const (
+	envWaylandDisplay = "WAYLAND_DISPLAY"
+	envDisplay        = "DISPLAY"
+)
+
 type FeatureCapability struct {
 	Available bool
 	Fallback  bool
@@ -125,10 +130,10 @@ type CBitmap = *Bitmap
 func GetVersion() string { return Version }
 
 func DetectDisplayServer() DisplayServer {
-	if os.Getenv("WAYLAND_DISPLAY") != "" {
+	if os.Getenv(envWaylandDisplay) != "" {
 		return DisplayServerWayland
 	}
-	if os.Getenv("DISPLAY") != "" {
+	if os.Getenv(envDisplay) != "" {
 		return DisplayServerX11
 	}
 	return DisplayServerUnknown
@@ -210,21 +215,23 @@ func GetLinuxCapabilities() LinuxCapabilities {
 			}
 		}
 	}
-	if runtime.GOOS == "linux" && ds == DisplayServerX11 && !captureOverridden {
+	if runtime.GOOS == "linux" && ds == DisplayServerX11 {
 		compiled := pureGoScreenshotSupported(runtime.GOOS, runtime.GOARCH)
 		conflict := pureGoX11EnvironmentConflict()
-		capabilities.Capture = FeatureCapability{
-			Available: compiled && !conflict,
-			Backend:   featureBackendPureGoX11,
-			Reason:    "Pure-Go X11 screenshot backend is selected; runtime access is not probed",
-			Notes:     "runtime X server access is validated when capture starts",
-		}
-		if !compiled {
-			capabilities.Capture.Reason = fmt.Sprintf("Pure-Go X11 capture is not compiled for %s/%s", runtime.GOOS, runtime.GOARCH)
-			capabilities.Capture.Notes = ErrNotSupported.Error()
-		} else if conflict {
-			capabilities.Capture.Reason = envXDGSessionType + " selects Wayland while DISPLAY selects X11"
-			capabilities.Capture.Notes = "capture refuses the screenshot dependency's implicit portal fallback"
+		if !captureOverridden {
+			capabilities.Capture = FeatureCapability{
+				Available: compiled && !conflict,
+				Backend:   featureBackendPureGoX11,
+				Reason:    "Pure-Go X11 screenshot backend is selected; runtime access is not probed",
+				Notes:     "runtime X server access is validated when capture starts",
+			}
+			if !compiled {
+				capabilities.Capture.Reason = fmt.Sprintf("Pure-Go X11 capture is not compiled for %s/%s", runtime.GOOS, runtime.GOARCH)
+				capabilities.Capture.Notes = ErrNotSupported.Error()
+			} else if conflict {
+				capabilities.Capture.Reason = envXDGSessionType + " selects Wayland while DISPLAY selects X11"
+				capabilities.Capture.Notes = "capture refuses the screenshot dependency's implicit portal fallback"
+			}
 		}
 		capabilities.Bounds = FeatureCapability{
 			Available: compiled && !conflict,
@@ -238,6 +245,13 @@ func GetLinuxCapabilities() LinuxCapabilities {
 		} else if conflict {
 			capabilities.Bounds.Reason = envXDGSessionType + " selects Wayland while DISPLAY selects X11"
 			capabilities.Bounds.Notes = "bounds refuse the screenshot dependency's implicit portal fallback"
+		}
+		keyboard, mouse := pureGoInputCapabilities()
+		if keyboard.Backend != "" {
+			capabilities.Keyboard = keyboard
+		}
+		if mouse.Backend != "" {
+			capabilities.Mouse = mouse
 		}
 	}
 	return capabilities
@@ -326,13 +340,38 @@ const (
 	Cmd            = "cmd"
 )
 
-// KeyTap taps a key through an explicitly authorized RemoteDesktop session.
+// KeyTap taps a key through the selected Pure-Go platform backend or an
+// explicitly authorized RemoteDesktop session.
 func KeyTap(key string, args ...interface{}) error {
-	pid, _, modifiers, err := parsePortalKeyArgs(args, false)
+	pid, _, modifiers, err := parseKeyArguments(args, false)
 	if err != nil {
 		return err
 	}
-	used, err := withRemoteDesktopInput(inputportal.DeviceKeyboard, func(session remoteDesktopInputSession) error {
+	modifiers, err = normalizeKeyModifiers(modifiers)
+	if err != nil {
+		return err
+	}
+	if err := validateKeyArgument(key); err != nil {
+		return err
+	}
+	_, platformModifiers := normalizePortalKey(key, append([]string(nil), modifiers...))
+	platformModifiers, err = normalizeKeyModifiers(platformModifiers)
+	if err != nil {
+		return err
+	}
+	used, err := withPureGoInputBackend(func(backend pureGoInputBackend) error {
+		return backend.Key(pureGoKeyEvent{
+			Key: key, Modifiers: platformModifiers, PID: pid,
+			Down: true, Tap: true,
+		})
+	})
+	if used {
+		if err == nil {
+			MilliSleep(currentKeyDelay())
+		}
+		return err
+	}
+	used, err = withRemoteDesktopInput(inputportal.DeviceKeyboard, func(session remoteDesktopInputSession) error {
 		if pid != 0 {
 			return fmt.Errorf("%w: RemoteDesktop portal input cannot target a process", ErrNotSupported)
 		}
@@ -351,39 +390,38 @@ func KeyTap(key string, args ...interface{}) error {
 	return err
 }
 
-func parsePortalKeyArgs(args []interface{}, toggle bool) (pid int, down bool, modifiers []string, err error) {
-	down = true
-	if len(args) == 0 {
-		return pid, down, nil, nil
-	}
-	if values, ok := args[0].([]string); ok {
-		modifiers = append(modifiers, values...)
-		args = args[1:]
-	} else if value, ok := args[0].(int); ok {
-		pid = value
-		args = args[1:]
-	}
-	for _, arg := range args {
-		value, ok := arg.(string)
-		if !ok {
-			return 0, false, nil, fmt.Errorf("robotgo: key modifier must be a string, got %T", arg)
-		}
-		modifiers = append(modifiers, value)
-	}
-	if toggle && len(modifiers) > 0 && (modifiers[0] == "up" || modifiers[0] == "down") {
-		down = modifiers[0] == "down"
-		modifiers = modifiers[1:]
-	}
-	return pid, down, modifiers, nil
-}
-
-// KeyToggle changes a key state through an authorized RemoteDesktop session.
+// KeyToggle changes a key state through the selected Pure-Go platform backend
+// or an authorized RemoteDesktop session.
 func KeyToggle(key string, args ...interface{}) error {
-	pid, down, modifiers, err := parsePortalKeyArgs(args, true)
+	pid, down, modifiers, err := parseKeyArguments(args, true)
 	if err != nil {
 		return err
 	}
-	used, err := withRemoteDesktopInput(inputportal.DeviceKeyboard, func(session remoteDesktopInputSession) error {
+	modifiers, err = normalizeKeyModifiers(modifiers)
+	if err != nil {
+		return err
+	}
+	if err := validateKeyArgument(key); err != nil {
+		return err
+	}
+	_, platformModifiers := normalizePortalKey(key, append([]string(nil), modifiers...))
+	platformModifiers, err = normalizeKeyModifiers(platformModifiers)
+	if err != nil {
+		return err
+	}
+	used, err := withPureGoInputBackend(func(backend pureGoInputBackend) error {
+		return backend.Key(pureGoKeyEvent{
+			Key: key, Modifiers: platformModifiers, PID: pid,
+			Down: down,
+		})
+	})
+	if used {
+		if err == nil {
+			MilliSleep(currentKeyDelay())
+		}
+		return err
+	}
+	used, err = withRemoteDesktopInput(inputportal.DeviceKeyboard, func(session remoteDesktopInputSession) error {
 		if pid != 0 {
 			return fmt.Errorf("%w: RemoteDesktop portal input cannot target a process", ErrNotSupported)
 		}
@@ -402,26 +440,45 @@ func KeyToggle(key string, args ...interface{}) error {
 	return err
 }
 
-// KeyDown presses a key through an authorized RemoteDesktop session.
+// KeyDown presses a key through the selected Pure-Go platform backend or an
+// authorized RemoteDesktop session.
 func KeyDown(key string, args ...interface{}) error { return KeyToggle(key, args...) }
 
-// KeyUp releases a key through an authorized RemoteDesktop session.
+// KeyUp releases a key through the selected Pure-Go platform backend or an
+// authorized RemoteDesktop session.
 func KeyUp(key string, args ...interface{}) error {
 	return KeyToggle(key, append([]interface{}{"up"}, args...)...)
 }
 
-// KeyPress presses and releases a key through an authorized RemoteDesktop session.
+// KeyPress presses and releases a key as one backend transaction. It is
+// equivalent to KeyTap.
 func KeyPress(key string, args ...interface{}) error {
-	if err := KeyDown(key, args...); err != nil {
+	return KeyTap(key, args...)
+}
+func KeyboardReady() error {
+	if used, err := withPureGoInputBackend(func(backend pureGoInputBackend) error {
+		return backend.KeyboardReady()
+	}); used {
 		return err
 	}
-	MilliSleep(2)
-	return KeyUp(key, args...)
+	return RemoteDesktopInputReady(RemoteDesktopKeyboard)
 }
-func KeyboardReady() error                  { return RemoteDesktopInputReady(RemoteDesktopKeyboard) }
 func UnicodeType(value uint32, args ...int) { _ = UnicodeTypeE(value, args...) }
 func UnicodeTypeE(value uint32, args ...int) error {
-	used, err := tryRemoteDesktopUnicode(rune(value), args)
+	if err := validateUnicodeScalar(value); err != nil {
+		return err
+	}
+	pid := 0
+	if len(args) > 0 {
+		pid = args[0]
+	}
+	used, err := withPureGoInputBackend(func(backend pureGoInputBackend) error {
+		return backend.Text(pureGoTextEvent{Text: string(rune(value)), PID: pid})
+	})
+	if used {
+		return err
+	}
+	used, err = tryRemoteDesktopUnicode(rune(value), args)
 	if !used {
 		return ErrNotSupported
 	}
@@ -429,7 +486,16 @@ func UnicodeTypeE(value uint32, args ...int) error {
 }
 func TypeStr(text string, args ...int) { _ = TypeStrE(text, args...) }
 func TypeStrE(text string, args ...int) error {
-	used, err := tryRemoteDesktopText(text, args)
+	pid, delay, validationErr := parseTextInput(text, args)
+	if validationErr != nil {
+		return validationErr
+	}
+	used, err := withPureGoInputBackend(func(backend pureGoInputBackend) error {
+		return backend.Text(pureGoTextEvent{Text: text, PID: pid, Delay: delay})
+	})
+	if !used {
+		used, err = tryRemoteDesktopText(text, args)
+	}
 	if !used {
 		return ErrNotSupported
 	}
@@ -453,7 +519,13 @@ func CharCodeAt(s string, n int) rune {
 
 func Move(x, y int, displayID ...int) { _ = MoveE(x, y, displayID...) }
 func MoveE(x, y int, displayID ...int) error {
-	used, err := tryRemoteDesktopMoveAbsolute(x, y, displayID)
+	used, err := withPureGoInputBackend(func(backend pureGoInputBackend) error {
+		return backend.MoveAbsolute(x, y, append([]int(nil), displayID...))
+	})
+	if used {
+		return finishNonCGOMouseEvent(err, 0)
+	}
+	used, err = tryRemoteDesktopMoveAbsolute(x, y, displayID)
 	if !used {
 		return ErrNotSupported
 	}
@@ -461,22 +533,72 @@ func MoveE(x, y int, displayID ...int) error {
 }
 func MoveRelative(x, y int) { _ = MoveRelativeE(x, y) }
 func MoveRelativeE(x, y int) error {
-	used, err := tryRemoteDesktopMoveRelative(x, y)
+	used, err := withPureGoInputBackend(func(backend pureGoInputBackend) error {
+		return backend.MoveRelative(x, y)
+	})
+	if used {
+		return finishNonCGOMouseEvent(err, 0)
+	}
+	used, err = tryRemoteDesktopMoveRelative(x, y)
 	if !used {
 		return ErrNotSupported
 	}
 	return finishRemoteDesktopMouseEvent(err, 0)
 }
-func MoveSmooth(int, int, ...interface{}) bool    { return false }
-func MoveSmoothRelative(int, int, ...interface{}) {}
-func DragSmooth(int, int, ...interface{})         {}
-func Click(args ...interface{})                   { _ = ClickE(args...) }
+
+func MoveSmooth(x, y int, args ...interface{}) bool {
+	lowDelay, highDelay, extraDelay, ok := parseSmoothMoveArguments(args)
+	if !ok {
+		return false
+	}
+	used, err := withPureGoInputBackend(func(backend pureGoInputBackend) error {
+		return backend.MoveSmooth(x, y, false, lowDelay, highDelay)
+	})
+	if !used || err != nil {
+		return false
+	}
+	MilliSleep(currentMouseDelay() + extraDelay)
+	return true
+}
+
+func MoveSmoothRelative(x, y int, args ...interface{}) {
+	lowDelay, highDelay, extraDelay, ok := parseSmoothMoveArguments(args)
+	if !ok {
+		return
+	}
+	used, err := withPureGoInputBackend(func(backend pureGoInputBackend) error {
+		return backend.MoveSmooth(x, y, true, lowDelay, highDelay)
+	})
+	if used && err == nil {
+		MilliSleep(currentMouseDelay() + extraDelay)
+	}
+}
+
+func DragSmooth(x, y int, args ...interface{}) {
+	lowDelay, highDelay, extraDelay, ok := parseSmoothMoveArguments(args)
+	if !ok {
+		return
+	}
+	used, err := withPureGoInputBackend(func(backend pureGoInputBackend) error {
+		return backend.DragSmooth(x, y, lowDelay, highDelay)
+	})
+	if used && err == nil {
+		MilliSleep(currentMouseDelay() + extraDelay)
+	}
+}
+func Click(args ...interface{}) { _ = ClickE(args...) }
 func ClickE(args ...interface{}) error {
 	name, double, err := parseClickArguments(args)
 	if err != nil {
 		return err
 	}
-	used, err := tryRemoteDesktopClick(name, double)
+	used, err := withPureGoInputBackend(func(backend pureGoInputBackend) error {
+		return backend.Click(name, double)
+	})
+	if used {
+		return finishNonCGOMouseEvent(err, 0)
+	}
+	used, err = tryRemoteDesktopClick(name, double)
 	if !used {
 		return ErrNotSupported
 	}
@@ -487,7 +609,13 @@ func Toggle(args ...interface{}) error {
 	if err != nil {
 		return err
 	}
-	used, err := tryRemoteDesktopToggle(name, down)
+	used, err := withPureGoInputBackend(func(backend pureGoInputBackend) error {
+		return backend.Toggle(name, down)
+	})
+	if used {
+		return err
+	}
+	used, err = tryRemoteDesktopToggle(name, down)
 	if !used {
 		return ErrNotSupported
 	}
@@ -495,21 +623,67 @@ func Toggle(args ...interface{}) error {
 }
 func Scroll(x, y int, args ...int) { _ = ScrollE(x, y, args...) }
 func ScrollE(x, y int, args ...int) error {
-	msDelay := 10
-	if len(args) > 0 {
-		msDelay = args[0]
+	msDelay, validationErr := parseScrollDelay(args)
+	if validationErr != nil {
+		return validationErr
 	}
-	used, err := tryRemoteDesktopScroll(x, y)
+	used, err := withPureGoInputBackend(func(backend pureGoInputBackend) error {
+		return backend.Scroll(x, y)
+	})
+	if used {
+		return finishNonCGOMouseEvent(err, msDelay)
+	}
+	used, err = tryRemoteDesktopScroll(x, y)
 	if !used {
 		return ErrNotSupported
 	}
 	return finishRemoteDesktopMouseEvent(err, msDelay)
 }
-func ScrollDir(int, ...interface{}) {}
-func Location() (int, int)          { return 0, 0 }
-func LocationE() (int, int, error)  { return 0, 0, ErrNotSupported }
-func MouseReady() error             { return RemoteDesktopInputReady(RemoteDesktopPointer) }
-func CloseWaylandInput()            { _ = CloseRemoteDesktopInput() }
+func ScrollDir(amount int, direction ...interface{}) {
+	name, err := parseScrollDirection(direction)
+	if err != nil {
+		return
+	}
+	switch name {
+	case "down":
+		Scroll(0, -amount)
+	case "up":
+		Scroll(0, amount)
+	case "left":
+		Scroll(amount, 0)
+	case "right":
+		Scroll(-amount, 0)
+	}
+}
+func Location() (int, int) { x, y, _ := LocationE(); return x, y }
+func LocationE() (int, int, error) {
+	var x, y int
+	used, err := withPureGoInputBackend(func(backend pureGoInputBackend) error {
+		var locationErr error
+		x, y, locationErr = backend.Location()
+		return locationErr
+	})
+	if !used {
+		return 0, 0, ErrNotSupported
+	}
+	return x, y, err
+}
+func MouseReady() error {
+	if used, err := withPureGoInputBackend(func(backend pureGoInputBackend) error {
+		return backend.MouseReady()
+	}); used {
+		return err
+	}
+	return RemoteDesktopInputReady(RemoteDesktopPointer)
+}
+func CloseWaylandInput() { _ = CloseRemoteDesktopInput() }
+
+func finishNonCGOMouseEvent(err error, extraDelay int) error {
+	if err == nil {
+		MilliSleep(currentMouseDelay() + extraDelay)
+	}
+	return err
+}
 func GetScreenSize() (int, int) {
 	displayID := currentDisplayID()
 	if displayID < 0 {

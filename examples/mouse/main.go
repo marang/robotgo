@@ -19,7 +19,11 @@ import (
 )
 
 func move() {
-	robotgo.MouseSleep = 100
+	config := robotgo.GetRuntimeConfig()
+	config.MouseDelay = 100
+	if err := robotgo.SetRuntimeConfig(config); err != nil {
+		fmt.Println("SetRuntimeConfig error:", err)
+	}
 	robotgo.Move(100, 200)
 	robotgo.MoveRelative(10, -200)
 

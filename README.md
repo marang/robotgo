@@ -38,9 +38,10 @@ Current technical differences include:
   with partial operations reported honestly instead of universal support being
   implied.
 - A defined non-CGO contract: Pure-Go capture is available through CoreGraphics
-  on macOS, native APIs on Windows, and X11; Wayland capture uses the
-  consent-aware Screenshot portal, and unavailable GUI operations return
-  `ErrNotSupported` rather than plausible zero values.
+  on macOS, native APIs on Windows, and X11. Linux/X11 additionally has an XTEST
+  keyboard/pointer backend; Wayland capture uses the consent-aware Screenshot
+  portal, and unavailable GUI operations return `ErrNotSupported` rather than
+  plausible zero values.
 - Hermetic portal/compositor tests, tagged Wayland integration suites, and CI
   coverage for Linux, macOS, Windows, Wayland, portal, lint, and non-CGO modes.
 - Open, auditable native and Go backend code, including explicit resource
@@ -75,8 +76,9 @@ workflow. `GetLinuxCapabilities` provides additional compositor detail.
 | macOS | `CGO_ENABLED=0` | Pure-Go CoreGraphics capture and display bounds with explicit Screen Recording permission diagnostics; other unavailable GUI operations return `ErrNotSupported` |
 | Windows | CGO-enabled default build | Native mouse, keyboard, capture, window, and process paths |
 | Linux/X11 | CGO-enabled default build | X11/XTest input, capture, window, and process paths |
+| Linux/X11 | `CGO_ENABLED=0` | Pure-Go X11 capture/bounds plus XTEST mouse, keyboard, text/Unicode, pointer-location, smooth-move/drag, scroll, and live readiness probes |
 | Linux/Wayland | `-tags wayland` for native protocols; add `pipewire` for persistent ScreenCast frames | Native wlroots capture/input where compositor protocols exist, one-shot Screenshot fallback, reusable ScreenCast/PipeWire capture, explicit RemoteDesktop portal sessions, capability-aware window support |
-| Other supported platforms without CGO | `CGO_ENABLED=0` | Pure-Go capture works on Windows and Linux/X11; Linux/Wayland uses the Screenshot portal; explicit RemoteDesktop sessions provide limited Pure-Go Wayland input; remaining unavailable operations return `ErrNotSupported` |
+| Other supported platforms without CGO | `CGO_ENABLED=0` | Pure-Go capture works on macOS and Windows; Linux/Wayland uses the Screenshot portal; explicit RemoteDesktop sessions provide limited Pure-Go Wayland input; remaining unavailable operations return `ErrNotSupported` |
 
 Wayland compositors intentionally restrict global automation. GNOME and KDE can
 use consent-aware Screenshot and RemoteDesktop portal paths. The explicit
@@ -93,8 +95,8 @@ Persistent capture runtime evidence is tracked separately in the
 
 - Go 1.25 or newer, matching [`go.mod`](go.mod).
 - A CGO-compatible C toolchain for the full native desktop-automation feature
-  set. The explicitly started Linux RemoteDesktop portal subset also works in a
-  non-CGO build.
+  set. Pure-Go Linux/X11 capture/input and the explicitly started Linux
+  RemoteDesktop portal subset work in a non-CGO build.
 - Platform development libraries for the selected backend.
 
 ### macOS
@@ -218,6 +220,10 @@ Legacy APIs remain available for source compatibility. Their signatures may be
 unable to report all backend failures, so new reliability-sensitive code should
 use variants such as `MoveE`, `MoveRelativeE`, `ClickE`, `ScrollE`, `LocationE`,
 `TypeStrE`, `UnicodeTypeE`, and the error-returning window APIs.
+`KeyTap` and `KeyToggle` model keys rather than portable text entry. A selected
+backend may support a single non-ASCII rune directly (the RemoteDesktop portal
+and Pure-Go X11 do), while another native keymap can return `ErrNotSupported`.
+Use `TypeStrE` or `UnicodeTypeE` when the intent is text input.
 
 Low-level helpers whose signatures directly expose `C.*` types remain CGO-only.
 Portable callers should use `Bitmap`, `CHex`, `Handle`, the error-returning APIs,
@@ -253,6 +259,43 @@ go build ./...
 An X11 session requires `DISPLAY` and an accessible X server. RobotGo does not
 silently route a Wayland-primary operation through X11 merely because Xwayland
 is present.
+
+Linux/X11 also supports capture, bounds, and input without a C compiler or X11
+development headers:
+
+```bash
+CGO_ENABLED=0 go build ./...
+```
+
+The input backend requires a reachable X server with XTEST 2.2 or newer. It
+supports the high-level mouse/keyboard error APIs, text and Unicode, smooth
+movement/drag, scroll, pointer location, and live
+`KeyboardReady`/`MouseReady` probes. Pure-Go X11 scroll calls are bounded to
+1,000 steps per axis. XTEST input is global; process-target (`pid`) arguments
+are rejected explicitly.
+Single-character keys are tap-only; persistent key state requires a named key.
+Persistent pointer-button toggles are limited to core X11 buttons 1–5; use
+`ScrollE` for wheel input.
+`GetRuntimeCapabilities` reports the selected `pure-go-x11` backend.
+Key taps without an unambiguous active mapping and text use a bounded pool of
+originally unmapped X11 keycodes so delayed XKB clients still decode input
+correctly. If one connection exhausts that server-dependent pool of distinct
+symbols, the operation fails before injecting more input. Call
+`CloseMainDisplayE` only after targets have processed all prior keyboard input
+to restore the mappings, verify cleanup, and reset the pool. Place that call in
+a scope whose lifetime includes any delayed target processing. These mappings
+are server-global: omitting cleanup or terminating abnormally can leave the
+formerly unused keycodes mapped until the X11 keymap is reset. A later RobotGo
+operation reconnects lazily. In a Wayland-primary session the backend remains
+disabled, even when `DISPLAY` points to Xwayland.
+If cleanup reports that a scratch keycode is pressed or became a modifier,
+release or restore that external state and retry `CloseMainDisplayE`.
+
+RobotGo briefly grabs the X server around mapping/state checks and composite
+synthetic events so another X client cannot race those transactions. Core X11
+cannot attribute simultaneous physical input, or another press while RobotGo
+intentionally holds a key/button; state ownership in those cases remains
+best-effort. Avoid mixing automation with concurrent human or synthetic input.
 
 Error-returning window APIs no longer report success for native operations that
 have no implementation. In particular, the current X11 minimize/maximize path
@@ -403,8 +446,15 @@ caps := robotgo.GetRuntimeCapabilities()
 fmt.Println("capture:", caps.Capture.Available, caps.Capture.Backend, caps.Capture.Reason)
 fmt.Println("bounds:", caps.Bounds.Available, caps.Bounds.Backend, caps.Bounds.Reason)
 fmt.Println("keyboard:", caps.Keyboard.Available, caps.Keyboard.Backend, caps.Keyboard.Reason)
+fmt.Println("mouse:", caps.Mouse.Available, caps.Mouse.Backend, caps.Mouse.Reason)
 fmt.Println("process:", caps.Process.Available, caps.Process.Backend)
 ```
+
+On Linux/X11 with `CGO_ENABLED=0`, capability inspection reports the selected
+`pure-go-x11` keyboard and mouse backends without opening an X connection. Call
+`KeyboardReady` or `MouseReady` for a live XTEST 2.2+ check before acting. A
+Wayland-primary session never selects that backend merely because an Xwayland
+`DISPLAY` is present.
 
 In a `CGO_ENABLED=0` build, `Capture`, `CaptureImg`, `CaptureScreen`,
 `CaptureGo`, `CaptureBitmapStr`, `GetPixelColor`, and `GetPxColor` use the
@@ -453,6 +503,7 @@ The checked-in examples use this fork's module path and track the current API:
 - [Full-screen capture with backend reporting](examples/screen_full/main.go)
 - [Linux capabilities](examples/linux_capabilities/main.go)
 - [Cross-platform runtime capabilities](examples/runtime_capabilities/main.go)
+- [Pure-Go X11 input probe and opt-in demo](examples/purego_x11_input/main.go)
 - [Consent-aware RemoteDesktop portal input](examples/remote_desktop_input/main.go)
 - [Persistent ScreenCast/PipeWire capture](examples/screencast_capture/main.go)
 - [Window and process helpers](examples/window/main.go)
@@ -460,6 +511,18 @@ The checked-in examples use this fork's module path and track the current API:
 
 Examples perform real desktop actions. Read them before running them, especially
 the window/process example, which can close windows or terminate processes.
+The Pure-Go X11 example is safe to run as capability inspection by default; it
+performs global input only when both `-act` and an explicit action are supplied:
+
+```bash
+CGO_ENABLED=0 go run ./examples/purego_x11_input
+CGO_ENABLED=0 go run ./examples/purego_x11_input -act -move 100,100
+CGO_ENABLED=0 go run ./examples/purego_x11_input -act -key enter
+CGO_ENABLED=0 go run ./examples/purego_x11_input -act -text "Hello"
+```
+
+Keyboard actions keep scratch mappings alive for two seconds before verified
+cleanup. Increase `-settle` when the focused XKB client may process input later.
 
 ## Testing
 
@@ -470,6 +533,13 @@ go test ./...
 CGO_ENABLED=0 go test ./...
 go test -race ./input/portal
 ```
+
+Linux Pure-Go X11 input has a non-skipping Xvfb/XTEST CI test. It uses `us,de`
+layouts and fails its Linux non-CGO CI leg instead of skipping when the X11
+runtime is missing; see
+[the testing guide](TEST.md#x11integration-pure-go-x11-input) for the exact
+command and prerequisites. Protecting the resulting remote check remains a
+roadmap exit criterion.
 
 Wayland and portal code has additional tagged suites:
 
@@ -495,9 +565,11 @@ Real Wayland input results are tracked in the
 - [Product roadmap](docs/plan/product-roadmap.md)
 - [Wayland implementation history](docs/wayland-history.md)
 
-The active product priority is validating the explicit RemoteDesktop high-level
-fallback on real GNOME/KDE runtimes while retaining native virtual-input paths
-on wlroots compositors.
+The active product slice is Phase 3: hardening and measuring selective Pure-Go
+backends. Linux/X11 input is implemented and covered in CI; native-vs-Pure-Go
+behavioral and benchmark evidence is still required before any default backend
+switch. Real GNOME/KDE/wlroots validation remains an independent Wayland release
+gate.
 
 ## Upstream and attribution
 

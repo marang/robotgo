@@ -20,7 +20,7 @@ import (
 func typeStr() {
 	// typing "Hello World"
 	robotgo.TypeStr("Hello World!", 0, 1)
-	robotgo.KeySleep = 100
+	setKeyDelay(100)
 	robotgo.TypeStr("だんしゃり")
 
 	robotgo.TypeStr("Hi galaxy, hi stars, hi MT.Rainier, hi sea. こんにちは世界.")
@@ -45,7 +45,7 @@ func keyTap() {
 	if err := robotgo.KeyTap(robotgo.Enter); err != nil {
 		fmt.Println(err)
 	}
-	robotgo.KeySleep = 200
+	setKeyDelay(200)
 	if err := robotgo.KeyTap("a"); err != nil {
 		fmt.Println(err)
 	}
@@ -99,6 +99,14 @@ func keyTap() {
 	}
 	if err := robotgo.KeyTap("a", "control"); err != nil {
 		fmt.Println(err)
+	}
+}
+
+func setKeyDelay(delay int) {
+	config := robotgo.GetRuntimeConfig()
+	config.KeyDelay = delay
+	if err := robotgo.SetRuntimeConfig(config); err != nil {
+		fmt.Println("SetRuntimeConfig error:", err)
 	}
 }
 

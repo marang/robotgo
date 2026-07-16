@@ -1526,9 +1526,15 @@ func GetXDisplayName() string {
 	return gname
 }
 
-// CloseMainDisplay close the main X11 display
-func CloseMainDisplay() {
+// CloseMainDisplay closes the main display and ignores cleanup errors for
+// compatibility. Prefer CloseMainDisplayE in new code.
+func CloseMainDisplay() { _ = CloseMainDisplayE() }
+
+// CloseMainDisplayE closes the native main display. Native CGO cleanup does not
+// currently expose an error result.
+func CloseMainDisplayE() error {
 	C.close_main_display()
+	return nil
 }
 
 // Deprecated: use the ScaledF(),
@@ -1554,6 +1560,7 @@ func CheckMouse(btn string) C.MMMouseButton {
 	m1 := map[string]C.MMMouseButton{
 		"left":       C.LEFT_BUTTON,
 		"center":     C.CENTER_BUTTON,
+		"middle":     C.CENTER_BUTTON,
 		"right":      C.RIGHT_BUTTON,
 		"wheelDown":  C.WheelDown,
 		"wheelUp":    C.WheelUp,
@@ -1693,6 +1700,9 @@ func Drag(x, y int, args ...string) {
 //
 //	robotgo.DragSmooth(10, 10)
 func DragSmooth(x, y int, args ...interface{}) {
+	if _, _, _, ok := parseSmoothMoveArguments(args); !ok {
+		return
+	}
 	if err := Toggle("left"); err != nil {
 		return
 	}
@@ -1713,6 +1723,10 @@ func DragSmooth(x, y int, args ...interface{}) {
 //	robotgo.MoveSmooth(10, 10)
 //	robotgo.MoveSmooth(10, 10, 1.0, 2.0)
 func MoveSmooth(x, y int, args ...interface{}) bool {
+	lowDelay, highDelay, mouseDelay, ok := parseSmoothMoveArguments(args)
+	if !ok {
+		return false
+	}
 	unlock := lockWaylandMouse()
 	defer unlock()
 	if err := ensureWaylandMouseReady(); err != nil {
@@ -1727,23 +1741,8 @@ func MoveSmooth(x, y int, args ...interface{}) bool {
 	cx := C.int32_t(x)
 	cy := C.int32_t(y)
 
-	var (
-		mouseDelay = 1
-		low        C.double
-		high       C.double
-	)
-
-	if len(args) > 2 {
-		mouseDelay = args[2].(int)
-	}
-
-	if len(args) > 1 {
-		low = C.double(args[0].(float64))
-		high = C.double(args[1].(float64))
-	} else {
-		low = 1.0
-		high = 3.0
-	}
+	low := C.double(lowDelay)
+	high := C.double(highDelay)
 
 	cbool := C.smoothlyMoveMouse(C.MMPointInt32Make(cx, cy), low, high)
 	MilliSleep(currentMouseDelay() + mouseDelay)
@@ -1789,6 +1788,9 @@ func MoveRelativeE(x, y int) error {
 
 // MoveSmoothRelative move mouse smooth with relative
 func MoveSmoothRelative(x, y int, args ...interface{}) {
+	if _, _, _, ok := parseSmoothMoveArguments(args); !ok {
+		return
+	}
 	mx, my := MoveArgs(x, y)
 	MoveSmooth(mx, my, args...)
 }
@@ -1833,12 +1835,12 @@ func Click(args ...interface{}) {
 
 // ClickE clicks a mouse button and reports backend availability errors.
 func ClickE(args ...interface{}) error {
-	unlock := lockWaylandMouse()
-	defer unlock()
 	name, double, err := parseClickArguments(args)
 	if err != nil {
 		return err
 	}
+	unlock := lockWaylandMouse()
+	defer unlock()
 	button := CheckMouse(name)
 	if nativeErr := ensureWaylandMouseReady(); nativeErr != nil {
 		used, err := tryRemoteDesktopClick(name, double)
@@ -1891,12 +1893,12 @@ func MovesClick(x, y int, args ...interface{}) {
 //	robotgo.Toggle("left") // default is down
 //	robotgo.Toggle("left", "up")
 func Toggle(key ...interface{}) error {
-	unlock := lockWaylandMouse()
-	defer unlock()
 	name, down, err := parseToggleArguments(key)
 	if err != nil {
 		return err
 	}
+	unlock := lockWaylandMouse()
+	defer unlock()
 	button := CheckMouse(name)
 	if nativeErr := ensureWaylandMouseReady(); nativeErr != nil {
 		used, err := tryRemoteDesktopToggle(name, down)
@@ -1939,12 +1941,12 @@ func Scroll(x, y int, args ...int) {
 
 // ScrollE scrolls the mouse and reports backend availability errors.
 func ScrollE(x, y int, args ...int) error {
+	msDelay, validationErr := parseScrollDelay(args)
+	if validationErr != nil {
+		return validationErr
+	}
 	unlock := lockWaylandMouse()
 	defer unlock()
-	var msDelay = 10
-	if len(args) > 0 {
-		msDelay = args[0]
-	}
 	if nativeErr := ensureWaylandMouseReady(); nativeErr != nil {
 		used, err := tryRemoteDesktopScroll(x, y)
 		if used {
@@ -1969,9 +1971,9 @@ func ScrollE(x, y int, args ...int) error {
 //	robotgo.ScrollDir(10, "down")
 //	robotgo.ScrollDir(10, "up")
 func ScrollDir(x int, direction ...interface{}) {
-	d := "down"
-	if len(direction) > 0 {
-		d = direction[0].(string)
+	d, err := parseScrollDirection(direction)
+	if err != nil {
+		return
 	}
 
 	if d == "down" {

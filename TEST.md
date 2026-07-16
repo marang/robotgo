@@ -22,12 +22,25 @@ CGO_ENABLED=0 go test -tags "ocr" ./...
 go test -tags "ocr" ./...
 ```
 
+Both build variants are blocking linter targets as well:
+
+```bash
+CGO_ENABLED=1 golangci-lint run --timeout=5m ./...
+CGO_ENABLED=0 golangci-lint run --timeout=5m ./...
+```
+
 The non-CGO suite runs on Linux, macOS, and Windows in CI. It also verifies
 runtime build/feature introspection, pixel-color parity, and hermetic Pure-Go
 capture dispatch for CoreGraphics, X11, Windows, and the Wayland screenshot
 portal. macOS tests use fake CoreGraphics bindings for deterministic permission,
 pixel, bounds, and resource-lifecycle coverage; they do not require a Screen
 Recording grant.
+
+Linux CI additionally runs the non-CGO X11 input backend against a real Xvfb
+server with XTEST 2.2 or newer and `us,de` keyboard layouts. That integration test is
+non-optional within the Linux non-CGO matrix leg: missing runtime prerequisites
+fail that leg rather than turning the test into a successful skip. Repository
+branch protection does not yet require the resulting remote check.
 
 Opt-in macOS runtime capture benchmark:
 
@@ -220,6 +233,53 @@ Prerequisites:
 Status:
 - Experimental tag. Keep this isolated from default CI until the broader Wayland-tagged compile path is fully stabilized in all environments.
 
+### `x11integration` (Pure-Go X11 input)
+
+Purpose:
+
+- Black-box validation of the Linux X11 input backend with `CGO_ENABLED=0`
+- Independent pointer-position checks and real motion, drag, button, and scroll
+  delivery through XGB/XTEST
+- Named-key toggles plus exact text/Unicode mapping under a multi-layout
+  `us,de` keymap, including a separately focused, deliberately delayed
+  `xkbcli` target and deterministic mapping restoration
+- Preservation of keys and pointer buttons held by another X11 client
+- Event-drain stress coverage plus deterministic owned-input release,
+  error-reporting `CloseMainDisplayE`, mapping restoration, and lazy reconnect
+- Side-effect-free capability selection plus explicit readiness probes against
+  the live X server
+- Adversarial replacement of a reserved mapping before injection; the default
+  non-CGO unit suite separately covers modifier-map exclusion and bounded-scroll
+  validation
+
+Command:
+
+```bash
+CGO_ENABLED=0 ROBOTGO_REQUIRE_X11_INTEGRATION=1 \
+  xvfb-run -a -s "-screen 0 1280x720x24 -nolisten tcp -noreset" \
+  sh -eu -c '
+    setxkbmap -layout us,de
+    env -u WAYLAND_DISPLAY -u XDG_SESSION_TYPE \
+      go test -tags "x11integration" \
+      -run "^TestPureGoX11" -count=1 -timeout=30s -v .
+  '
+```
+
+Prerequisites:
+
+- Linux
+- `CGO_ENABLED=0`
+- An X11 server with XTEST 2.2 or newer
+- `xvfb`, `xauth`, `setxkbmap` (Debian/Ubuntu package `x11-xkb-utils`),
+  `xkbcli` (`libxkbcommon-tools`), and `stdbuf` (`coreutils`)
+
+Without `ROBOTGO_REQUIRE_X11_INTEGRATION=1`, the suite skips cleanly when
+`DISPLAY` or XTEST is unavailable. The Linux non-CGO CI job sets that variable,
+configures both layouts, and treats an unavailable or misconfigured X11 runtime
+as a failure. The tagged suite verifies the active `us,de` layout itself; the
+default non-CGO unit suite separately proves that a Wayland-primary session
+never selects this backend through implicit Xwayland.
+
 ## Useful Environment Variables
 
 - `WAYLAND_DISPLAY`
@@ -242,6 +302,9 @@ Status:
   - Opt-in for sway active-window title E2E integration (`GetTitleE`).
 - `ROBOTGO_HYPRLAND_TITLE_E2E=1`
   - Opt-in for hyprland active-window title E2E integration (`GetTitleE`).
+- `ROBOTGO_REQUIRE_X11_INTEGRATION=1`
+  - Makes missing `DISPLAY` or XTEST support fail the Pure-Go X11 integration
+    suite; CI always enables it.
 
 ## Recommended Local Sequence
 
@@ -254,7 +317,8 @@ go test -tags "pipewire" ./screen/portal -v
 go test -tags "wayland integration" . ./mouse ./window -v
 ```
 
-Run tag-gated suites as needed for the area you changed.
+Run tag-gated suites as needed for the area you changed. Pure-Go X11 input
+changes must also run the required `x11integration` command above.
 
 ## Sequential Crash-Tracking Run (No Parallelism)
 

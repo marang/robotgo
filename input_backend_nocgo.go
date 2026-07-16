@@ -1,0 +1,86 @@
+//go:build !cgo
+
+package robotgo
+
+import "fmt"
+
+// pureGoKeyEvent is the normalized keyboard contract used by non-CGO
+// platform backends. A tap owns the complete press/release transaction; a
+// toggle changes only the requested state.
+type pureGoKeyEvent struct {
+	Key       string
+	Modifiers []string
+	PID       int
+	Down      bool
+	Tap       bool
+}
+
+// pureGoTextEvent describes one UTF-8 text transaction. Delay is applied
+// between runes and PID zero targets the active application.
+type pureGoTextEvent struct {
+	Text  string
+	PID   int
+	Delay int
+}
+
+// pureGoInputBackend keeps platform-specific input below one explicit,
+// error-returning boundary. Implementations must serialize composite events so
+// modifiers, double clicks, and temporary keymap changes cannot interleave.
+type pureGoInputBackend interface {
+	Name() string
+	KeyboardReady() error
+	MouseReady() error
+	Key(pureGoKeyEvent) error
+	Text(pureGoTextEvent) error
+	MoveAbsolute(x, y int, displayID []int) error
+	MoveRelative(x, y int) error
+	MoveSmooth(x, y int, relative bool, lowDelay, highDelay float64) error
+	DragSmooth(x, y int, lowDelay, highDelay float64) error
+	Location() (int, int, error)
+	Click(button string, double bool) error
+	Toggle(button string, down bool) error
+	Scroll(x, y int) error
+	Close() error
+}
+
+var resolvePureGoInputBackend = platformPureGoInputBackend
+
+func withPureGoInputBackend(operation func(pureGoInputBackend) error) (bool, error) {
+	backend := resolvePureGoInputBackend()
+	if backend == nil {
+		if err := closePureGoPlatformInput(); err != nil {
+			return true, fmt.Errorf("robotgo: clean up deselected Pure-Go input backend: %w", err)
+		}
+		return false, nil
+	}
+	return true, operation(backend)
+}
+
+func pureGoInputCapabilities() (keyboard, mouse FeatureCapability) {
+	backend := resolvePureGoInputBackend()
+	if backend == nil {
+		return FeatureCapability{}, FeatureCapability{}
+	}
+	backendName := backend.Name()
+	keyboard = FeatureCapability{
+		Available: true,
+		Backend:   backendName,
+		Reason:    "Pure-Go keyboard backend is selected; runtime access is not probed",
+		Notes:     "call KeyboardReady for a live backend check; capability inspection does not open a display connection",
+	}
+	mouse = FeatureCapability{
+		Available: true,
+		Backend:   backendName,
+		Reason:    "Pure-Go pointer backend is selected; runtime access is not probed",
+		Notes:     "call MouseReady for a live backend check; capability inspection does not open a display connection",
+	}
+	if backendName == featureBackendPureGoX11 {
+		keyboard.Notes += "; key taps and text may use server-global scratch keycodes: call CloseMainDisplayE after targets process all prior keyboard input; abnormal termination can leave mappings behind"
+		if pureGoX11EnvironmentConflict() {
+			reason := envXDGSessionType + " selects Wayland while DISPLAY selects X11"
+			keyboard.Available, keyboard.Reason = false, reason
+			mouse.Available, mouse.Reason = false, reason
+		}
+	}
+	return keyboard, mouse
+}
