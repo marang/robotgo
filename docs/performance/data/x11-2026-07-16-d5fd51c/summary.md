@@ -7,7 +7,8 @@
 - Observations per benchmark and implementation: `10`
 - Go benchtime: `500ms`
 - GOMAXPROCS / `-test.cpu`: `1`
-- Balanced two-order cycles: `1`
+- Benchmark cycles: `5`
+- Balanced two-order mode: `enabled`
 
 | Benchmark | Metric | native CGO median [Q1–Q3] | Pure-Go median [Q1–Q3] | Pure-Go / native CGO | N (native CGO / Pure-Go) |
 |---|---:|---:|---:|---:|---:|

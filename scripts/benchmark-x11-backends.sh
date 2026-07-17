@@ -437,7 +437,11 @@ run_inside_xvfb() {
 
 	local summary_tmp="${ROBOTGO_X11_EVIDENCE_OUTPUT}/summary.md.tmp"
 	local decision_grade
+	local balanced_mode="disabled"
 	decision_grade="$(decision_grade_for_run)"
+	if [[ "${ROBOTGO_X11_EVIDENCE_BALANCED}" == "1" ]]; then
+		balanced_mode="enabled"
+	fi
 	{
 		printf '# X11 native CGO vs Pure-Go benchmark report\n\n'
 		printf '> Report-only evidence: correctness is blocking; timing ratios never fail CI. '
@@ -454,7 +458,8 @@ run_inside_xvfb() {
 		printf -- '- Observations per benchmark and implementation: `%s`\n' "${observations_per_implementation}"
 		printf -- '- Go benchtime: `%s`\n' "${ROBOTGO_X11_EVIDENCE_BENCHTIME}"
 		printf -- '- GOMAXPROCS / `-test.cpu`: `%s`\n' "${ROBOTGO_X11_EVIDENCE_CPU}"
-		printf -- '- Balanced two-order cycles: `%s`\n\n' "${ROBOTGO_X11_EVIDENCE_BALANCED}"
+		printf -- '- Benchmark cycles: `%s`\n' "${ROBOTGO_X11_EVIDENCE_COUNT}"
+		printf -- '- Balanced two-order mode: `%s`\n\n' "${balanced_mode}"
 		cat "${ROBOTGO_X11_EVIDENCE_OUTPUT}/summary-table.md"
 	} >"${summary_tmp}"
 	mv -- "${summary_tmp}" "${ROBOTGO_X11_EVIDENCE_OUTPUT}/summary.md"

@@ -28,14 +28,14 @@ The July 2026 hardening work establishes the foundation for this roadmap:
 - CI covers lint, default tests on Linux/macOS/Windows, non-CGO, Wayland, portal,
   Weston integration, race, and vet variants.
 
-## Execution Status (2026-07-16)
+## Execution Status (2026-07-17)
 
 | Area | Status | Delivered | Exit criteria still open |
 |---|---|---|---|
-| Current baseline | Complete in branch | Native screencopy, screenshot portal fallback, bounded waits, cleanup, live capability probes, error APIs, non-CGO contract, dedicated race/vet jobs | Confirm all required jobs after the branch is pushed and protect them |
+| Current baseline | Complete in main | Native screencopy, screenshot portal fallback, bounded waits, cleanup, live capability probes, error APIs, non-CGO contract, dedicated race/vet jobs | Keep required jobs green and confirm repository branch protection |
 | 1. Wayland input | Implementation complete; runtime validation blocked | Native virtual keyboard/pointer, consent-aware RemoteDesktop fallback, shared ScreenCast stream mapping, absolute pointer/touch, restore tokens, diagnostics and E2E harness | Register GNOME/KDE/wlroots runners and collect green CGO/non-CGO evidence |
 | 2. Capture | Hermetic implementation complete | Reliable one-shot paths plus one consent-aware ScreenCast session, reusable PipeWire frames, logical region crop, raw pixel conversion, metadata/restore tokens, cleanup, integration harness, and a non-skipping geometry/transform CI matrix | Real GNOME/KDE/wlroots evidence and sanitizer-backed native leak gate |
-| 3. Pure-Go | X11 hardening complete; broader phase partial | Build and feature-level introspection; non-CGO macOS CoreGraphics, Windows, X11, and Wayland-portal capture; Linux/X11 XGB/XTEST input; permission/error contracts; shared behavioral parity; reproducible balanced benchmark tooling; versioned decision-grade evidence; explicit decision to retain native CGO as the X11 default; race-testable internal X11 core; re-exec guardian with application-`SIGKILL` recovery; three-OS CI; non-skipping multi-layout Xvfb input tests | Protect the remote CI checks, collect current guardian performance evidence, then assess further backends selectively |
+| 3. Pure-Go | X11 hardening and measurement complete; broader phase partial | Build and feature-level introspection; non-CGO macOS CoreGraphics, Windows, X11, and Wayland-portal capture; Linux/X11 XGB/XTEST input; permission/error contracts; shared behavioral parity; reproducible balanced benchmark tooling; current guardian-path decision evidence; explicit decision to retain native CGO as the X11 default; race-testable internal X11 core; re-exec guardian with application-`SIGKILL` recovery; three-OS CI; non-skipping multi-layout Xvfb input tests | Protect the remote CI checks, evaluate safe guardian round-trip/allocation reductions, then assess further backends selectively |
 | 4. API/compositor gaps | Parity surface delivered; runtime support partial | Window-state error APIs, bitmap string helpers, `FindColorCS`, hook/event capability reporting, Sway/Hyprland/wlroots resolver | Compositor-backed state operations and cross-platform/runtime matrix coverage |
 | 5. Reliability product | Partial | Capability API/example and expanded CI variants | Versioned compatibility matrix, richer diagnostics, dedicated compositor jobs, sanitizer/leak gates |
 
@@ -183,9 +183,11 @@ the same exact image. The blocking Xvfb contract sends a real `SIGKILL` to the
 application workload and compares core, modifier, XKB, key, pointer, and button
 state. The guarantee requires the guardian and responsive X server to survive;
 guardian/host loss or a transport blocked beyond the cleanup deadline still
-needs later reconciliation. Protecting the remote checks, refreshing
-performance evidence for the guardian path, and selectively evaluating
-additional backends keep the broader Phase 3 partial.
+needs later reconciliation. Current decision-grade evidence measures the
+guardian path and confirms that its crash isolation adds material IPC latency
+and allocations, so native CGO remains the default. Protecting the remote
+checks, evaluating optimizations without weakening the safety contract, and
+selectively evaluating additional backends keep the broader Phase 3 partial.
 
 Exit criteria:
 

@@ -622,10 +622,10 @@ X11 runtime support fails instead of skipping; see
 the exact commands and prerequisites. The crash proof additionally inspects
 `/proc/<pid>/task/<tid>/children` under a Linux child subreaper to verify that
 the reported guardian is the exact child that exits and is reaped. The
-[versioned decision-grade comparison](docs/performance/data/x11-2026-07-16-d5fd51c/summary.md)
-retains native CGO as the X11 default and Pure-Go as the supported CGO-disabled
-backend. That sample predates the guardian IPC layer; it remains the
-default-selection record, not a current guardian performance measurement.
+[current decision-grade comparison](docs/performance/data/x11-2026-07-17-6c06469/summary.md)
+measures the guardian path and retains native CGO as the X11 default while
+Pure-Go remains the supported CGO-disabled backend. The earlier direct-path
+sample remains linked from the performance report as historical evidence.
 Protecting the resulting remote checks remains a roadmap exit criterion.
 
 Wayland and portal code has additional tagged suites:
@@ -655,12 +655,12 @@ Real Wayland input results are tracked in the
 
 The active product slice remains selective Phase 3 Pure-Go hardening. The
 Linux/X11 evaluation is complete: shared behavior is blocking CI,
-decision-grade evidence is versioned, and native CGO remains the default while
-Pure-Go supports CGO-disabled builds. The Pure-Go X11 core is race-testable and
-its separate guardian performs bounded, claim-checked cleanup after an
-application-process crash. Protecting remote checks and evaluating further
-backends remain. Real GNOME/KDE/wlroots validation is an independent Wayland
-release gate.
+current guardian-path decision evidence is versioned, and native CGO remains
+the default while Pure-Go supports CGO-disabled builds. The Pure-Go X11 core is
+race-testable and its separate guardian performs bounded, claim-checked cleanup
+after an application-process crash. Safe guardian-cost optimization,
+protecting remote checks, and evaluating further backends remain. Real
+GNOME/KDE/wlroots validation is an independent Wayland release gate.
 
 ## Upstream and attribution
 
