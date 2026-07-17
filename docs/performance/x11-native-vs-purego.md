@@ -94,37 +94,47 @@ negative contract with the command in [TEST.md](../../TEST.md#x11integration-nat
 
 ## Current decision
 
-The decision-grade sample for commit `d5fd51c72702a719fd60fb06e0ef246018dc8b4e`
-is stored with its raw output, behavior logs, metadata, and completion record in
-[data/x11-2026-07-16-d5fd51c](data/x11-2026-07-16-d5fd51c/summary.md). Both
+The current decision-grade sample measures commit
+`6c064690be8ba6e8e57934298f394f224aba30a9`, including the re-executed Pure-Go
+guardian. Its raw output, behavior logs, metadata, and completion record are in
+[data/x11-2026-07-17-6c06469](data/x11-2026-07-17-6c06469/summary.md). Both
 implementations passed the complete shared contract and their exact
-backend-specific safety manifests.
+backend-specific safety manifests; the Pure-Go manifest includes a real
+application-process `SIGKILL` and verified guardian cleanup.
 
-The table below is historical evidence for that exact commit. The current
-Pure-Go backend subsequently moved its X11 connection into a re-executed
-guardian and moved its state machine into a race-testable internal package.
-Those changes close the targeted application-process-crash gap but add IPC, so
-the stored measurements must not be presented as guardian-path performance.
+The measurement used a user-local extraction of the official Arch Linux
+`xorg-server-xvfb` package `21.1.24-1` because the host did not have Xvfb
+installed and system package installation was unavailable. The package archive
+SHA-256 was
+`7f2116f869aedf51eb899dcfee4cf1f3bf6f9f42c71e089dcdbc0907d529e985`.
+Consequently, the exact temporary binary path is retained in metadata and the
+system-package field is `unknown`; this does not affect the clean detached
+source snapshot or the balanced same-server comparison.
 
 | Criterion | Evidence | Decision impact |
 |---|---|---|
-| Capture | Pure-Go/native median latency ratio `3.493x`; 115 versus 2 Go allocations per operation | Native has a material throughput and allocation advantage |
-| Stateful buttons and keys | Pure-Go/native median latency ratios `1.395x` for button toggles, `1.347x` for key toggles, and `1.627x` for key presses | Native remains preferable for common input sequences |
-| Scroll at sampled commit | Pure-Go/native median latency ratios `2.017x` horizontal and `2.083x` vertical; the current shared comparison retains vertical only because Pure-Go now rejects unobservable horizontal button state explicitly | Native remains preferable; do not present the historical horizontal number as current supported behavior |
-| Pointer queries and moves | Location is effectively equal at `1.016x`; Pure-Go absolute and relative move ratios are `0.565x` and `0.398x` | Pure-Go has a real pointer-movement advantage, but not enough to outweigh the broader default-path costs |
-| Delayed click and ASCII text | Ratios are `1.016x` and `1.012x`; configured user-visible delays dominate | No meaningful default-selection signal |
+| Capture | Pure-Go/native median latency ratio `3.462x`; 116 versus 2 Go allocations per operation | Native retains a material throughput and allocation advantage; guardian IPC is not involved in capture |
+| Stateful buttons and keys | Pure-Go/native median latency ratios `5.364x` for button toggles, `10.976x` for key toggles, and `2.072x` for delayed key presses | The per-request guardian safety boundary is measurable and native remains preferable for common input sequences |
+| Scroll | Pure-Go/native median latency ratio `9.453x` for vertical scroll; Pure-Go horizontal scroll remains explicitly unsupported because X11 does not expose reliable wheel-button state | Native remains preferable for scrolling |
+| Pointer queries and moves | Pure-Go/native median latency ratios are `5.734x` for location, `2.401x` for absolute movement, and `1.632x` for relative movement | The guardian reverses the earlier direct-connection movement advantage; native is now faster for all measured pointer operations |
+| Delayed click and ASCII text | Ratios are `1.101x` and `1.336x`; configured user-visible delays dominate much of the end-to-end result | Keep the operations supported, but do not use their ratios alone for backend selection |
 | Build and Unicode behavior | Pure-Go removes the C/Xlib build dependency and retains managed Unicode scratch mappings; native avoids server-global temporary mappings | Keep Pure-Go useful and supported for CGO-disabled builds |
-| Lifecycle risk at sampled commit | Pure-Go scratch mappings were conflict-aware, but abnormal process termination still lacked a scoped or crash-safe cleanup mechanism | Do not use this historical sample to claim guardian crash behavior or performance |
+| Lifecycle behavior | The Pure-Go safety manifest passes real application-process `SIGKILL` recovery with claim-checked, deadline-bounded guardian cleanup | The measured IPC cost buys a concrete crash-isolation guarantee absent from the historical direct-connection sample |
 
 **Decision:** retain native CGO as the Linux/X11 default when CGO is enabled.
 Keep the Pure-Go X11 backend as the supported CGO-disabled implementation. This
-is not a rejection of Pure-Go: it already wins pointer-movement latency and
-build portability, while native currently wins capture, most input operations,
-and allocation cost. Native also avoids server-global Unicode mappings
-entirely; the Pure-Go guardian now restores those mappings after a targeted
-application-process kill while it and a responsive X server survive. Its
-cleanup is deadline-bounded and restores only an exact unchanged, unpressed,
-non-modifier final image; foreign final images are preserved, while an
-exact-image ABA replacement is not observable in X11. Revisit the default only
-after a new decision-grade sample measures the guardian path and passes the
-same behavioral, race, and crash-recovery contracts.
+is not a rejection of Pure-Go: it preserves useful X11 automation without CGO
+and now provides measured crash isolation, while native wins every current
+latency comparison and most Go allocation comparisons. Native also avoids
+server-global Unicode mappings entirely. The Pure-Go guardian restores those
+mappings after a targeted application-process kill while it and a responsive
+X server survive. Its cleanup is deadline-bounded and restores only an exact
+unchanged, unpressed, non-modifier final image; foreign final images are
+preserved, while an exact-image ABA replacement is not observable in X11.
+
+The earlier pre-guardian sample remains available in
+[data/x11-2026-07-16-d5fd51c](data/x11-2026-07-16-d5fd51c/summary.md) as
+historical evidence. It must not be presented as current performance. Future
+work may reduce guardian round trips or allocations only if the same behavior,
+race, and crash-recovery contracts remain blocking; the evidence does not
+justify weakening the safety boundary or changing the default.
