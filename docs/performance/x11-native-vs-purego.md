@@ -95,9 +95,9 @@ negative contract with the command in [TEST.md](../../TEST.md#x11integration-nat
 ## Current decision
 
 The current decision-grade sample measures commit
-`817656f2d52140581f7f6c5535d86f050ee6663b`, including the re-executed Pure-Go
+`fd97f7e61379feaa554fd62a1f00a88553dad9bb`, including the re-executed Pure-Go
 guardian. Its raw output, behavior logs, metadata, and completion record are in
-[data/x11-2026-07-17-817656f](data/x11-2026-07-17-817656f/summary.md). Both
+[data/x11-2026-07-17-fd97f7e](data/x11-2026-07-17-fd97f7e/summary.md). Both
 implementations passed the complete shared contract and their exact
 backend-specific safety manifests; the Pure-Go manifest includes a real
 application-process `SIGKILL` and verified guardian cleanup.
@@ -113,11 +113,11 @@ source snapshot or the balanced same-server comparison.
 
 | Criterion | Evidence | Decision impact |
 |---|---|---|
-| Capture | Pure-Go/native median latency ratio `3.420x`; 116 versus 2 Go allocations per operation | Native retains a material throughput and allocation advantage; guardian IPC is not involved in capture |
-| Stateful buttons and keys | Pure-Go/native median latency ratios `5.078x` for button toggles, `10.183x` for key toggles, and `2.059x` for delayed key presses | The per-request guardian safety boundary remains measurable and native remains preferable for common input sequences |
-| Scroll | Pure-Go/native median latency ratio `8.821x` for vertical scroll; Pure-Go horizontal scroll remains explicitly unsupported because X11 does not expose reliable wheel-button state | Native remains preferable for scrolling |
-| Pointer queries and moves | Pure-Go/native median latency ratios are `5.608x` for location, `2.400x` for absolute movement, and `1.602x` for relative movement | IPC round trips dominate the remaining gap; native remains faster for all measured pointer operations |
-| Delayed click and ASCII text | Ratios are `1.106x` and `1.331x`; configured user-visible delays dominate much of the end-to-end result | Keep the operations supported, but do not use their ratios alone for backend selection |
+| Capture | Pure-Go/native median latency ratio `3.422x`; 116 versus 2 Go allocations per operation | Native retains a material throughput and allocation advantage; guardian IPC is not involved in capture |
+| Stateful buttons and keys | Pure-Go/native median latency ratios `5.462x` for button toggles, `10.573x` for key toggles, and `2.061x` for delayed key presses | Persistent toggles remain individual requests; native remains preferable for common stateful input sequences |
+| Scroll | Pure-Go/native median latency ratio `8.008x` for vertical scroll; Pure-Go horizontal scroll remains explicitly unsupported because X11 does not expose reliable wheel-button state | Sequencing reduces one guardian round trip per balanced pulse, but native remains preferable for scrolling |
+| Pointer queries and moves | Pure-Go/native median latency ratios are `5.796x` for location, `2.447x` for absolute movement, and `1.625x` for relative movement | These operations are intentionally not sequenced; native remains faster for all measured pointer operations |
+| Delayed click and ASCII text | Ratios are `1.098x` and `1.317x`; configured user-visible delays dominate much of the end-to-end result | Keep the operations supported, but do not use their ratios alone for backend selection |
 | Build and Unicode behavior | Pure-Go removes the C/Xlib build dependency and retains managed Unicode scratch mappings; native avoids server-global temporary mappings | Keep Pure-Go useful and supported for CGO-disabled builds |
 | Lifecycle behavior | The Pure-Go safety manifest passes real application-process `SIGKILL` recovery with claim-checked, deadline-bounded guardian cleanup | The measured IPC cost buys a concrete crash-isolation guarantee absent from the historical direct-connection sample |
 
@@ -142,9 +142,25 @@ same range, confirming that round trips—not these removed allocations—domina
 the remaining gap. The optimization preserves request correlation, fail-closed
 response-ID handling, timeout teardown, and the full crash-recovery manifest.
 
+Compared with the preceding lower-allocation sample at
+[data/x11-2026-07-17-817656f](data/x11-2026-07-17-817656f/summary.md), balanced
+transient press/release pairs use one guardian request while the helper still
+records ownership before each checked XTEST operation and clears it only after
+a verified release. Click and scroll allocations fall from `73` to `63`
+(`13.7%`), delayed key-press allocations from `156` to `146` (`6.4%`), and
+eight-character ASCII text allocations from `1527` to `1447` (`5.2%`).
+Allocated bytes fall from `3184` to `2864` for click/scroll, from `59411` to
+`59043` for delayed key press, and from `540368` to `537456` for the text
+sample. The scroll latency ratio improves from `8.821x` to `8.008x`; click
+improves from `1.106x` to `1.098x`, while delayed key press remains effectively
+unchanged (`2.059x` to `2.061x`). Persistent toggles, pointer movement, foreign
+state checks, server grabs, mapping transactions, and public timing semantics
+remain unbatched.
+
 The pre-guardian sample remains available in
 [data/x11-2026-07-16-d5fd51c](data/x11-2026-07-16-d5fd51c/summary.md) as
 historical evidence. Neither older sample may be presented as current
-performance. Future work may reduce guardian round trips only if the same
-behavior, race, and crash-recovery contracts remain blocking; the evidence does
-not justify weakening the safety boundary or changing the default.
+performance. Further round-trip reduction would require moving safety
+preconditions or server-grab ownership across the process boundary and is not
+justified by this evidence. The current result does not justify weakening the
+safety boundary or changing the default.

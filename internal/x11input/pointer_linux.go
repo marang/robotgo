@@ -81,6 +81,30 @@ func (backend *Backend) sendButtonLocked(button byte, down bool) error {
 	return nil
 }
 
+func (backend *Backend) sendButtonPulseLocked(button byte, holdDelay time.Duration) (bool, error) {
+	sequencer, ok := backend.conn.(fakeInputSequencer)
+	if !ok {
+		return false, nil
+	}
+	err := sequencer.FakeInputSequence([]fakeInputStep{
+		{
+			eventType:  byte(xproto.ButtonPress),
+			detail:     button,
+			root:       backend.root,
+			delayAfter: holdDelay,
+		},
+		{
+			eventType: byte(xproto.ButtonRelease),
+			detail:    button,
+			root:      backend.root,
+		},
+	})
+	if err != nil {
+		return true, errors.Join(errX11Connection, err)
+	}
+	return true, nil
+}
+
 func x11ButtonMask(button byte) uint16 {
 	switch button {
 	case x11ButtonLeft:
@@ -446,6 +470,15 @@ func (backend *Backend) pulseButtonTransactionLocked(button byte) error {
 		if err != nil {
 			return err
 		}
+		if _, held := backend.buttons[button]; held {
+			return fmt.Errorf("robotgo: X11 button %d is already held by this RobotGo backend", button)
+		}
+		if mask := x11ButtonMask(button); mask != 0 && pointer.Mask&mask != 0 {
+			return fmt.Errorf("robotgo: X11 button %d is already held; refusing to alter foreign input state", button)
+		}
+		if sequenced, sequenceErr := backend.sendButtonPulseLocked(button, 0); sequenced {
+			return sequenceErr
+		}
 		if err := backend.acquireButtonLocked(button, pointer.Mask); err != nil {
 			return err
 		}
@@ -502,6 +535,15 @@ func (backend *Backend) clickButtonTransactionLocked(button byte) error {
 		pointer, err := backend.pointerStateLocked()
 		if err != nil {
 			return err
+		}
+		if _, held := backend.buttons[button]; held {
+			return fmt.Errorf("robotgo: X11 button %d is already held by this RobotGo backend", button)
+		}
+		if mask := x11ButtonMask(button); mask != 0 && pointer.Mask&mask != 0 {
+			return fmt.Errorf("robotgo: X11 button %d is already held; refusing to alter foreign input state", button)
+		}
+		if sequenced, sequenceErr := backend.sendButtonPulseLocked(button, backend.config.KeyHoldDelay); sequenced {
+			return sequenceErr
 		}
 		downErr := backend.acquireButtonLocked(button, pointer.Mask)
 		if downErr == nil {
