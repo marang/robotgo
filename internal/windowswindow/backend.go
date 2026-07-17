@@ -4,6 +4,8 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+
+	"github.com/marang/robotgo/internal/windowbackend"
 )
 
 var (
@@ -16,24 +18,19 @@ var (
 )
 
 // Handle is a platform-neutral representation of a Windows HWND.
-type Handle uintptr
+type Handle = windowbackend.Handle
 
 // Rect contains screen-relative window geometry.
-type Rect struct {
-	X      int
-	Y      int
-	Width  int
-	Height int
-}
+type Rect = windowbackend.Rect
 
 // State identifies a queryable and mutable Windows presentation state.
-type State uint8
+type State = windowbackend.State
 
 const (
 	// StateMinimized identifies the minimized/iconic state.
-	StateMinimized State = iota
+	StateMinimized = windowbackend.StateMinimized
 	// StateMaximized identifies the maximized/zoomed state.
-	StateMaximized
+	StateMaximized = windowbackend.StateMaximized
 )
 
 // System abstracts the Win32 calls used by Backend.
@@ -60,6 +57,8 @@ type Backend struct {
 	mu       sync.RWMutex
 	selected Handle
 }
+
+var _ windowbackend.Backend = (*Backend)(nil)
 
 // New constructs a Backend around a Win32 system implementation.
 func New(system System) *Backend {

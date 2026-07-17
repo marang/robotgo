@@ -135,8 +135,11 @@ backends.
     `[new vs robotgo-pro]`
   - 5. Selectively port useful Pure-Go backends with behavioral parity tests,
     backend introspection, and benchmarks before changing defaults. Linux/X11
-    input is implemented; deep Pure-Go coverage and a shared native/Pure-Go
-    behavioral contract run in non-skipping Xvfb/XTEST CI. A balanced benchmark
+    input and window introspection/control are implemented; deep Pure-Go
+    coverage and shared native/Pure-Go input behavior run in non-skipping
+    Xvfb/XTEST CI. The window contract uses a self-owned fake EWMH manager and
+    verifies explicit unsupported behavior for unadvertised operations and
+    after manager loss. A balanced benchmark
     smoke is report-only. Native X11 now has atomic input preflight, one shared
     configured-display lifecycle/target, live XTEST readiness, and an XTEST-disabled negative
     contract. Current optimized guardian-path evidence retains native CGO as the
@@ -184,7 +187,9 @@ backends.
   - Validate the persistent ScreenCast/PipeWire stream path and repeated-frame
     behavior across GNOME/KDE/wlroots portal backends.
 - Keyboard Input:
-  - Add native Wayland Unicode typing via xkbcommon compose/keysyms.
+  - Keep the delivered native Wayland exact-Unicode keysym path covered,
+    including whole-text preflight and explicit unsupported/fallback behavior
+    when a code point is absent from the active keymap.
   - Verify native Wayland modifier synchronization and layout handling under
     various layouts.
 - Window APIs:
@@ -214,9 +219,10 @@ backends.
   - Keep the current headless Weston, screencopy, portal, and non-CGO CI
     commands green; eliminate unexpected hermetic skips. Stable jobs are
     required by `main` branch protection.
-  - Keep the non-CGO Xvfb/XTEST input test on a configured `us,de` keymap in
-    Linux CI; missing `DISPLAY` or XTEST must fail the matrix leg rather than
-    skip. Keep the shared native/Pure-Go contract and report-only benchmark
+  - Keep the non-CGO Xvfb/XTEST input and window contract on a configured
+    `us,de` keymap in Linux CI; missing `DISPLAY` or XTEST must fail the matrix
+    leg rather than skip. The window test owns its fake EWMH manager and target
+    window. Keep the shared native/Pure-Go input contract and report-only benchmark
     smoke green, including the native XTEST-disabled negative contract and
     display-lifecycle stress; the resulting stable remote checks are required
     by `main` branch protection.

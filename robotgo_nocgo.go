@@ -15,7 +15,7 @@ import (
 
 	"github.com/marang/robotgo/clipboard"
 	inputportal "github.com/marang/robotgo/input/portal"
-	"github.com/marang/robotgo/internal/windowswindow"
+	"github.com/marang/robotgo/internal/windowbackend"
 )
 
 const Version = "v1.00.0.1189, MT. Baker!"
@@ -267,6 +267,7 @@ func GetLinuxCapabilities() LinuxCapabilities {
 		if mouse.Backend != "" {
 			capabilities.Mouse = mouse
 		}
+		capabilities.Window = pureGoWindowCapability()
 	}
 	return capabilities
 }
@@ -373,7 +374,7 @@ func SetActiveE(handle Handle) error {
 	if err != nil {
 		return err
 	}
-	return backend.Activate(windowswindow.Handle(handle))
+	return backend.Activate(windowbackend.Handle(handle))
 }
 func ActivePid(target int, args ...int) error {
 	backend, err := pureGoWindowBackend()
@@ -392,11 +393,15 @@ func ActiveName(name string) error {
 		return err
 	}
 	for _, pid := range pids {
-		if err := ActivePid(pid); err == nil {
+		err := ActivePid(pid)
+		if err == nil {
 			return nil
 		}
+		if errors.Is(err, ErrNotSupported) {
+			return fmt.Errorf("activate process name %q: %w", name, err)
+		}
 	}
-	return fmt.Errorf("%w: no window found for process name %q", windowswindow.ErrWindowNotFound, name)
+	return fmt.Errorf("%w: no window found for process name %q", windowbackend.ErrWindowNotFound, name)
 }
 
 const (

@@ -39,7 +39,7 @@ Install a C compiler, X11/XTest development files, `git`, `xvfb`, `xauth`,
 The crash-recovery contract also requires executable Linux procfs
 (`/proc/self/exe` and readable `/proc/<pid>/task/<tid>/children`), Linux
 abstract Unix sockets with `SO_PEERCRED`, and child-subreaper support. See the
-[X11 integration prerequisites](../../TEST.md#x11integration-native-and-pure-go-x11-input)
+[X11 integration prerequisites](../../TEST.md#x11integration-native-and-pure-go-x11-input-and-window)
 for the complete runtime contract.
 
 ```bash
@@ -74,7 +74,7 @@ outputs, the expected sample count, and all three metrics (`ns/op`, `B/op`,
 self-contained summary is explicitly report-only and never fails on
 elapsed-time ratios. The balanced comparison uses a normal XTEST-enabled
 server; reproduce the separate disabled-XTEST
-negative contract with the command in [TEST.md](../../TEST.md#x11integration-native-and-pure-go-x11-input).
+negative contract with the command in [TEST.md](../../TEST.md#x11integration-native-and-pure-go-x11-input-and-window).
 
 ## Interpretation rules
 

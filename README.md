@@ -80,7 +80,7 @@ workflow. `GetRuntimeDiagnostics` provides the stable machine-readable report;
 | Windows | CGO-enabled default build | Native mouse, keyboard, capture, window, and process paths |
 | Windows | `CGO_ENABLED=0` | Pure-Go capture/display bounds, real Win32 DPI scale and pixel-at-pointer queries, foreground-layout-aware `SendInput` keyboard/text plus clipboard paste, complete pointer input, and Win32 window title/PID/handle/geometry/state/control operations with explicit errors |
 | Linux/X11 | CGO-enabled default build | X11/XTest input, capture, window, and process paths |
-| Linux/X11 | `CGO_ENABLED=0` | Pure-Go X11 capture/bounds plus XTEST mouse, keyboard, text/Unicode, pointer-location, smooth-move/drag, vertical scroll, and live readiness probes; horizontal scroll is explicitly unsupported |
+| Linux/X11 | `CGO_ENABLED=0` | Pure-Go X11 capture/bounds, XTEST input, and window title/PID/handle/geometry/state/control through X11/EWMH; horizontal scroll and window mutations without a consistent EWMH window manager are explicitly unsupported |
 | Linux/Wayland | `-tags wayland` for native protocols; add `pipewire` for persistent ScreenCast frames | Native wlroots capture/input where compositor protocols exist, one-shot Screenshot fallback, reusable ScreenCast/PipeWire capture, explicit RemoteDesktop portal sessions, capability-aware window support |
 | Other supported platforms without CGO | `CGO_ENABLED=0` | Linux/Wayland uses the Screenshot portal; explicit RemoteDesktop sessions provide limited Pure-Go Wayland input; remaining unavailable operations return `ErrNotSupported` |
 
@@ -381,6 +381,19 @@ disabled, even when `DISPLAY` points to Xwayland.
 If cleanup reports that a scratch keycode is pressed or became a modifier,
 release or restore that external state and retry `CloseMainDisplayE`.
 
+The same non-CGO X11 build provides active-window and PID/handle resolution,
+title lookup, client and frame geometry, activation, minimize/maximize state,
+topmost state, and graceful close. Read-only operations require an accessible
+X server. Mutations additionally require a consistent EWMH window-manager
+identity that advertises the requested operation and fail with
+`ErrNotSupported` when either condition is absent;
+RobotGo does not send an optimistic request to an absent or non-advertising
+manager. EWMH operations remain asynchronous window-manager requests.
+Restoring a minimized window requests activation, matching EWMH semantics.
+Window properties are treated as untrusted server data: malformed values are
+rejected, and invalid frame extents fall back to client geometry. Each
+operation closes its short-lived X11 connection deterministically.
+
 RobotGo briefly grabs the X server around mapping/state checks and composite
 synthetic events so another X client cannot race those transactions. Core X11
 cannot attribute simultaneous physical input, or another press while RobotGo
@@ -403,9 +416,11 @@ operations share a locked configured-display lifecycle; separate XGB resolver
 connections use the same configured target and close deterministically.
 
 Error-returning window APIs no longer report success for native operations that
-have no implementation. In particular, the current X11 minimize/maximize path
-returns `ErrNotSupported` instead of silently doing nothing. Native `GetTitleE`
-also returns an explicit error when a title is empty or cannot be retrieved.
+have no implementation. In particular, the native CGO X11
+minimize/maximize path returns `ErrNotSupported` instead of silently doing
+nothing; the Pure-Go EWMH path described above implements those operations.
+Native `GetTitleE` also returns an explicit error when a title is empty or
+cannot be retrieved.
 
 ### Wayland
 
@@ -676,6 +691,7 @@ The checked-in examples use this fork's module path and track the current API:
 - [Cross-platform runtime capabilities](examples/runtime_capabilities/main.go)
 - [Versioned runtime diagnostics](examples/runtime_diagnostics/main.go)
 - [Pure-Go X11 input probe and opt-in demo](examples/purego_x11_input/main.go)
+- [Pure-Go X11 window inspection and opt-in EWMH control](examples/purego_x11_window/main.go)
 - [Pure-Go Windows input readiness and opt-in demo](examples/purego_windows_input/main.go)
 - [Pure-Go Windows window inspection and opt-in control](examples/purego_windows_window/main.go)
 - [Consent-aware RemoteDesktop portal input](examples/remote_desktop_input/main.go)
@@ -699,6 +715,15 @@ CGO_ENABLED=0 go run ./examples/purego_x11_input -act -text "Hello"
 
 Keyboard actions keep scratch mappings alive for two seconds before verified
 cleanup. Increase `-settle` when the focused XKB client may process input later.
+
+The Pure-Go X11 window example only inspects by default. State-changing
+operations require `-act` and an explicit action:
+
+```bash
+CGO_ENABLED=0 go run ./examples/purego_x11_window
+CGO_ENABLED=0 go run ./examples/purego_x11_window -pid 1234
+CGO_ENABLED=0 go run ./examples/purego_x11_window -pid 1234 -act -maximize
+```
 
 On Windows, the Pure-Go example performs readiness checks only unless `-move`,
 `-text`, `-paste`, or `-color` is supplied. `-paste` replaces the text
@@ -743,7 +768,7 @@ uses `us,de` layouts; a separate job applies the same public behavioral
 contract and benchmark smoke to native CGO and Pure-Go binaries. It also proves
 that native readiness rejects a reachable X server with XTEST disabled. Missing
 X11 runtime support fails instead of skipping; see
-[the testing guide](TEST.md#x11integration-native-and-pure-go-x11-input) for
+[the testing guide](TEST.md#x11integration-native-and-pure-go-x11-input-and-window) for
 the exact commands and prerequisites. The crash proof additionally inspects
 `/proc/<pid>/task/<tid>/children` under a Linux child subreaper to verify that
 the reported guardian is the exact child that exits and is reaped. The
@@ -789,15 +814,18 @@ Phase 4 already exposes the parity surface; Hyprland provides trustworthy
 active-window maximize query, set, and restore with provider-aware dispatch for
 legacy `hyprlang` and 0.55+ Lua configurations, while Sway and generic wlroots
 retain explicit unsupported query results where their available IPC lacks an
-equivalent state. The preceding Linux/X11 evaluation is complete: shared behavior is blocking CI,
-current guardian-path decision evidence is versioned, and native CGO remains
-the default while Pure-Go supports CGO-disabled builds. The Pure-Go X11 core is
-race-testable and its separate guardian performs bounded, claim-checked cleanup
-after an application-process crash. Its request transport now reuses bounded
-state and avoids double payload encoding, with versioned evidence showing lower
-allocation cost. Balanced transient press/release pairs now share one guardian
-request while preserving per-step crash-cleanup ownership and the existing
-preflight/server-grab policy. Required remote checks now protect `main`.
+equivalent state. The preceding Linux/X11 evaluation is complete: shared
+behavior is blocking CI, current guardian-path decision evidence is versioned,
+and native CGO remains the default while Pure-Go supports CGO-disabled builds.
+Pure-Go X11 now covers capture, input, and window introspection/control; its
+EWMH mutations fail explicitly without a trustworthy window manager. The input
+core is race-testable and its separate guardian performs bounded, claim-checked
+cleanup after an application-process crash. Its request transport now reuses
+bounded state and avoids double payload encoding, with versioned evidence
+showing lower allocation cost. Balanced transient press/release pairs now share
+one guardian request while preserving per-step crash-cleanup ownership and the
+existing preflight/server-grab policy. Required remote checks now protect
+`main`.
 Pure-Go Windows input is a delivered platform slice, with hermetic transaction
 tests and a blocking real input-desktop pointer probe on the Windows CI runner.
 Pure-Go Windows window introspection/control is the next delivered slice, with

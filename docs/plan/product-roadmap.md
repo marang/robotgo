@@ -23,8 +23,9 @@ The July 2026 hardening work establishes the foundation for this roadmap:
 - Mouse, keyboard, capture, and window operations expose explicit errors where
   legacy APIs previously could hide unsupported behavior.
 - Non-CGO builds provide supported capture backends, explicit RemoteDesktop
-  portal input on Wayland, and an XGB/XTEST input backend for X11-primary Linux
-  sessions; remaining unavailable GUI operations return `ErrNotSupported`.
+  portal input on Wayland, and XGB/XTEST input plus X11/EWMH window operations
+  for X11-primary Linux sessions; remaining unavailable GUI operations return
+  `ErrNotSupported`.
 - CI covers lint, default tests on Linux/macOS/Windows, non-CGO, Wayland, portal,
   Weston integration, race, vet, and native sanitizer/leak variants.
 
@@ -35,7 +36,7 @@ The July 2026 hardening work establishes the foundation for this roadmap:
 | Current baseline | Complete in main | Native screencopy, screenshot portal fallback, bounded waits, cleanup, live capability probes, error APIs, non-CGO contract, dedicated race/vet/sanitizer jobs, protected stable CI checks | Keep required jobs green |
 | 1. Wayland input | Implementation complete; runtime validation blocked | Native virtual keyboard/pointer, consent-aware RemoteDesktop fallback, shared ScreenCast stream mapping, absolute pointer/touch, restore tokens, diagnostics and E2E harness | Register GNOME/KDE/wlroots runners and collect green CGO/non-CGO evidence |
 | 2. Capture | Hermetic implementation complete | Reliable one-shot paths plus one consent-aware ScreenCast session, reusable PipeWire frames, logical region crop, raw pixel conversion, metadata/restore tokens, cleanup, integration harness, non-skipping geometry/transform CI, and sanitizer-backed native ownership gates | Real GNOME/KDE/wlroots evidence |
-| 3. Pure-Go | X11 complete; Windows input/window CI-evidenced; macOS capture/display and keyboard/pointer implemented; broader phase partial | Build and feature-level introspection; non-CGO macOS CoreGraphics capture/display plus Quartz keyboard/pointer input and Accessibility diagnostics; Windows capture, `SendInput` keyboard/pointer, and Win32 window control with blocking runtime probes; X11 capture and XGB/XTEST input; Wayland portal capture/input; permission/error contracts; shared behavioral parity; reproducible balanced benchmark tooling; optimized guardian-path decision evidence; explicit decision to retain native CGO as the X11 default; race-testable internal X11 core; re-exec guardian with application-`SIGKILL` recovery; protected three-OS CI | Collect opt-in real macOS keyboard-injection evidence and assess further backends selectively |
+| 3. Pure-Go | X11 complete; Windows input/window CI-evidenced; macOS capture/display and keyboard/pointer implemented; broader phase partial | Build and feature-level introspection; non-CGO macOS CoreGraphics capture/display plus Quartz keyboard/pointer input and Accessibility diagnostics; Windows capture, `SendInput` keyboard/pointer, and Win32 window control with blocking runtime probes; X11 capture, XGB/XTEST input, and X11/EWMH window introspection/control; Wayland portal capture/input; permission/error contracts; shared behavioral parity; reproducible balanced benchmark tooling; optimized guardian-path decision evidence; explicit decision to retain native CGO as the X11 default; race-testable internal X11 core; re-exec guardian with application-`SIGKILL` recovery; protected three-OS CI | Collect opt-in real macOS keyboard-injection evidence and assess further backends selectively |
 | 4. API/compositor gaps | Parity surface delivered; runtime support partial | Window-state error APIs, bitmap string helpers, `FindColorCS`, hook/event capability reporting, Sway/Hyprland/wlroots resolver, provider-aware Hyprland 0.55+ Lua window dispatch | Compositor-backed state operations and cross-platform/runtime matrix coverage |
 | 5. Reliability product | Partial | Capability APIs, versioned sanitized runtime diagnostics/example, compatibility matrix v1, expanded CI variants, blocking ASan/LeakSanitizer ownership gates, six-cell checksummed release-evidence pipeline | Dedicated compositor jobs and the first published release evidence asset |
 
@@ -186,6 +187,18 @@ The runnable example inspects selected capabilities without opening X11 by
 default and requires an explicit `-act` flag before it runs live readiness
 checks or injects global input.
 
+The same X11-primary non-CGO build now provides active-window and PID/handle
+resolution, title lookup, client/frame geometry, activation,
+minimize/maximize, topmost state, and close. It strictly validates untrusted
+X11 properties, closes per-operation connections deterministically, and
+requires a consistent EWMH window-manager identity that advertises each
+requested mutation. Missing, inconsistent, or unadvertised support returns the
+public `ErrNotSupported` contract instead of optimistic success. A non-skipping
+Xvfb integration test owns a fake EWMH manager and target window, exercises the
+full public contract, and proves fail-closed behavior after manager loss. The
+runnable example is inspection-only unless `-act` and an explicit mutation are
+supplied.
+
 The Linux/X11 evaluation slice of Phase 3 is complete. Native CGO and Pure-Go
 X11 binaries pass one black-box public-API contract for capture, pointer,
 buttons, scroll, modifier order, and ASCII text without keyboard-map changes. A
@@ -231,9 +244,9 @@ Balanced transient press/release pairs now share one guardian request while
 retaining per-step ownership, verified release, preflight, server-grab, timeout,
 and crash-recovery contracts. This reduces another `5–14%` of allocations for
 the affected click, scroll, key-press, and text benchmarks. Stable remote checks
-now protect `main`; Windows input and self-owned window runtime evidence are
-blocking. Selectively evaluating additional platform backends keeps the broader
-Phase 3 partial.
+now protect `main`; Linux X11 input/window and Windows
+input/self-owned-window runtime evidence are blocking. Selectively evaluating
+additional platform backends keeps the broader Phase 3 partial.
 
 Exit criteria:
 

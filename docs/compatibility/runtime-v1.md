@@ -43,6 +43,7 @@ than inferring it from an operating-system label.
 | Wayland client, XKB, GBM/DRM development libraries | Native Wayland build | Build tag is unavailable; Pure-Go portal paths remain possible |
 | `xdg-desktop-portal` plus desktop backend | Screenshot, RemoteDesktop, ScreenCast | Capability is unavailable with remediation; RobotGo does not pretend success |
 | PipeWire development/runtime libraries and `pipewire` tag | Persistent ScreenCast frames | One-shot Screenshot/native screencopy remain eligible; persistent capture reports unsupported |
+| X11 server and EWMH window manager | Pure-Go X11 window introspection/control | Read-only operations report X11 access/property errors; mutations return explicit unsupported errors without a consistent manager that advertises the operation |
 | X11/XTEST | Native or Pure-Go X11 input | Readiness and diagnostics report missing/old XTEST explicitly |
 | Tesseract/Leptonica and `ocr` tag | OCR helpers | Core automation remains available without OCR |
 | Sway/Hyprland/wlroots command tools | Compositor-specific foreign-window operations; Hyprland mutations detect `hyprlang` versus 0.55+ Lua dispatch | Wayland-core capability reports unsupported operations explicitly |

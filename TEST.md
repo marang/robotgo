@@ -387,7 +387,7 @@ Status:
 - Blocking in the `wayland-integration` CI job. The suite is hermetic and does
   not require a running graphical compositor.
 
-### `x11integration` (native and Pure-Go X11 input)
+### `x11integration` (native and Pure-Go X11 input and window)
 
 Purpose:
 
@@ -421,6 +421,10 @@ Purpose:
   final image that is unpressed and absent from the modifier map
 - Side-effect-free capability selection plus explicit readiness probes against
   the live X server
+- Pure-Go active-window, PID/handle, title, client/frame geometry, activation,
+  minimize/maximize, topmost, and close behavior against a self-owned fake EWMH
+  window manager, including explicit unsupported behavior for unadvertised
+  operations and after manager loss
 - Adversarial replacement of a reserved mapping before injection; the default
   non-CGO unit suite separately covers modifier-map exclusion and bounded-scroll
   validation

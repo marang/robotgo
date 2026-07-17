@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/marang/robotgo/internal/windowswindow"
+	"github.com/marang/robotgo/internal/windowbackend"
 )
 
 // The functions in this file preserve the portable public surface for builds
@@ -23,7 +23,7 @@ func CloseWindowE(args ...int) error {
 	if err != nil {
 		return err
 	}
-	var handle windowswindow.Handle
+	var handle windowbackend.Handle
 	if len(args) == 0 {
 		handle, err = backend.Active()
 	} else {
@@ -149,14 +149,14 @@ func IsMinimized() bool {
 	return state
 }
 func IsMinimizedE() (bool, error) {
-	return pureGoActiveWindowState(windowswindow.StateMinimized)
+	return pureGoActiveWindowState(windowbackend.StateMinimized)
 }
 func IsMaximized() bool {
 	state, _ := IsMaximizedE()
 	return state
 }
 func IsMaximizedE() (bool, error) {
-	return pureGoActiveWindowState(windowswindow.StateMaximized)
+	return pureGoActiveWindowState(windowbackend.StateMaximized)
 }
 func SetTopMost(state bool) { _ = SetTopMostE(state) }
 func SetTopMostE(state bool) error {
@@ -306,17 +306,17 @@ func MinWindowE(target int, args ...interface{}) error {
 	if err != nil {
 		return err
 	}
-	return pureGoSetWindowState(target, state, len(args) > 1 || currentTreatAsHandle(), windowswindow.StateMinimized)
+	return pureGoSetWindowState(target, state, len(args) > 1 || currentTreatAsHandle(), windowbackend.StateMinimized)
 }
 func MaxWindowE(target int, args ...interface{}) error {
 	state, err := parseWindowStateArguments(args)
 	if err != nil {
 		return err
 	}
-	return pureGoSetWindowState(target, state, len(args) > 1 || currentTreatAsHandle(), windowswindow.StateMaximized)
+	return pureGoSetWindowState(target, state, len(args) > 1 || currentTreatAsHandle(), windowbackend.StateMaximized)
 }
 
-func pureGoActiveWindowState(state windowswindow.State) (bool, error) {
+func pureGoActiveWindowState(state windowbackend.State) (bool, error) {
 	backend, err := pureGoWindowBackend()
 	if err != nil {
 		return false, err
@@ -328,7 +328,7 @@ func pureGoActiveWindowState(state windowswindow.State) (bool, error) {
 	return backend.State(handle, state)
 }
 
-func pureGoSetWindowState(target int, enabled, isHandle bool, state windowswindow.State) error {
+func pureGoSetWindowState(target int, enabled, isHandle bool, state windowbackend.State) error {
 	backend, err := pureGoWindowBackend()
 	if err != nil {
 		return err
