@@ -16,12 +16,14 @@ import (
 
 const envRequireWindowsWindowIntegration = "ROBOTGO_REQUIRE_WINDOWS_WINDOW_INTEGRATION"
 
+const windowsIntegrationFocusEditMessage = win.WM_USER + 1
+
 func TestPureGoWindowsWindowRuntime(t *testing.T) {
 	if os.Getenv(envRequireWindowsWindowIntegration) != "1" {
-		t.Skip("set " + envRequireWindowsWindowIntegration + "=1 to exercise a real Windows desktop window")
+		t.Skip("set " + envRequireWindowsWindowIntegration + "=1 to exercise a real Windows desktop window and the text clipboard")
 	}
 
-	handle, stopped := startWindowsIntegrationWindow(t)
+	handle, editHandle, stopped := startWindowsIntegrationWindow(t)
 	pid := os.Getpid()
 
 	capability := GetRuntimeCapabilities().Window
@@ -82,6 +84,27 @@ func TestPureGoWindowsWindowRuntime(t *testing.T) {
 	if got := GetPid(); got != pid {
 		t.Fatalf("GetPid() = %d, want %d", got, pid)
 	}
+
+	previousClipboard, clipboardErr := ReadAll()
+	if clipboardErr != nil {
+		previousClipboard = ""
+	}
+	t.Cleanup(func() {
+		if err := WriteAll(previousClipboard); err != nil {
+			t.Errorf("restore text clipboard: %v", err)
+		}
+	})
+	if focused := win.SendMessage(handle, windowsIntegrationFocusEditMessage, 0, 0); focused != uintptr(editHandle) {
+		t.Fatalf("focus integration edit returned %#x, want %#x", focused, editHandle)
+	}
+	const pasteText = "RobotGo Pure-Go paste ✓"
+	if err := PasteStr(pasteText); err != nil {
+		t.Fatalf("PasteStr: %v", err)
+	}
+	waitForWindowsCondition(t, "clipboard text to reach owned edit control", func() bool {
+		return windowsWindowText(editHandle) == pasteText
+	})
+
 	if minimized, err := IsMinimizedE(); err != nil || minimized {
 		t.Fatalf("IsMinimizedE() = %v, %v after restore", minimized, err)
 	}
@@ -109,9 +132,13 @@ func TestPureGoWindowsWindowRuntime(t *testing.T) {
 	}
 }
 
-func startWindowsIntegrationWindow(t *testing.T) (win.HWND, <-chan struct{}) {
+func startWindowsIntegrationWindow(t *testing.T) (win.HWND, win.HWND, <-chan struct{}) {
 	t.Helper()
-	created := make(chan win.HWND, 1)
+	type createdWindows struct {
+		window win.HWND
+		edit   win.HWND
+	}
+	created := make(chan createdWindows, 1)
 	failed := make(chan error, 1)
 	stopped := make(chan struct{})
 
@@ -131,8 +158,12 @@ func startWindowsIntegrationWindow(t *testing.T) (win.HWND, <-chan struct{}) {
 			failed <- err
 			return
 		}
+		var editHandle win.HWND
 		windowProc := syscall.NewCallback(func(handle uintptr, message uint32, wParam, lParam uintptr) uintptr {
 			switch message {
+			case windowsIntegrationFocusEditMessage:
+				win.SetFocus(editHandle)
+				return uintptr(win.GetFocus())
 			case win.WM_DESTROY:
 				win.PostQuitMessage(0)
 				return 0
@@ -160,8 +191,22 @@ func startWindowsIntegrationWindow(t *testing.T) (win.HWND, <-chan struct{}) {
 			failed <- errorsFromWindowsCall("CreateWindowEx")
 			return
 		}
+		editClass, err := syscall.UTF16PtrFromString("EDIT")
+		if err != nil {
+			failed <- err
+			return
+		}
+		editHandle = win.CreateWindowEx(
+			win.WS_EX_CLIENTEDGE, editClass, nil,
+			win.WS_CHILD|win.WS_VISIBLE|win.WS_TABSTOP|win.ES_AUTOHSCROLL,
+			20, 20, 360, 32, handle, 0, instance, nil,
+		)
+		if editHandle == 0 {
+			failed <- errorsFromWindowsCall("CreateWindowEx EDIT")
+			return
+		}
 		win.ShowWindow(handle, win.SW_SHOW)
-		created <- handle
+		created <- createdWindows{window: handle, edit: editHandle}
 
 		var message win.MSG
 		for {
@@ -180,19 +225,19 @@ func startWindowsIntegrationWindow(t *testing.T) (win.HWND, <-chan struct{}) {
 	}()
 
 	select {
-	case handle := <-created:
+	case windows := <-created:
 		t.Cleanup(func() {
-			if win.GetWindowThreadProcessId(handle, nil) != 0 {
-				win.PostMessage(handle, win.WM_CLOSE, 0, 0)
+			if win.GetWindowThreadProcessId(windows.window, nil) != 0 {
+				win.PostMessage(windows.window, win.WM_CLOSE, 0, 0)
 			}
 		})
-		return handle, stopped
+		return windows.window, windows.edit, stopped
 	case err := <-failed:
 		t.Fatalf("create integration window: %v", err)
 	case <-time.After(5 * time.Second):
 		t.Fatal("timed out creating integration window")
 	}
-	return 0, stopped
+	return 0, 0, stopped
 }
 
 func waitForWindowsCondition(t *testing.T, description string, condition func() bool) {
@@ -213,4 +258,17 @@ func errorsFromWindowsCall(operation string) error {
 		return fmt.Errorf("%s failed", operation)
 	}
 	return fmt.Errorf("%s failed: %w", operation, err)
+}
+
+func windowsWindowText(handle win.HWND) string {
+	length := win.GetWindowTextLength(handle)
+	buffer := make([]uint16, length+1)
+	if len(buffer) == 0 {
+		return ""
+	}
+	read := win.GetWindowText(handle, &buffer[0], int32(len(buffer)))
+	if read <= 0 {
+		return ""
+	}
+	return syscall.UTF16ToString(buffer[:read])
 }

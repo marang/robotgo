@@ -96,8 +96,10 @@ func readAllContext(ctx context.Context, selection Selection) (string, error) {
 	text := syscall.UTF16ToString((*[1 << 20]uint16)(unsafe.Pointer(l))[:])
 
 	r, _, err := globalUnlock.Call(h)
-	if r == 0 {
-		return "", err
+	if r == 0 && err != nil {
+		if errno, ok := err.(syscall.Errno); !ok || errno != 0 {
+			return "", err
+		}
 	}
 
 	return text, nil

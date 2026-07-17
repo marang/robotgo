@@ -75,7 +75,7 @@ workflow. `GetLinuxCapabilities` provides additional compositor detail.
 | macOS | CGO-enabled default build | Native mouse, keyboard, capture, window, and process paths; macOS permissions still apply |
 | macOS | `CGO_ENABLED=0` | Pure-Go CoreGraphics capture and display bounds with explicit Screen Recording permission diagnostics; other unavailable GUI operations return `ErrNotSupported` |
 | Windows | CGO-enabled default build | Native mouse, keyboard, capture, window, and process paths |
-| Windows | `CGO_ENABLED=0` | Pure-Go capture/display bounds, foreground-layout-aware `SendInput` keyboard/text, complete pointer input, and Win32 window title/PID/handle/geometry/state/control operations with explicit errors |
+| Windows | `CGO_ENABLED=0` | Pure-Go capture/display bounds and pixel-at-pointer queries, foreground-layout-aware `SendInput` keyboard/text plus clipboard paste, complete pointer input, and Win32 window title/PID/handle/geometry/state/control operations with explicit errors |
 | Linux/X11 | CGO-enabled default build | X11/XTest input, capture, window, and process paths |
 | Linux/X11 | `CGO_ENABLED=0` | Pure-Go X11 capture/bounds plus XTEST mouse, keyboard, text/Unicode, pointer-location, smooth-move/drag, vertical scroll, and live readiness probes; horizontal scroll is explicitly unsupported |
 | Linux/Wayland | `-tags wayland` for native protocols; add `pipewire` for persistent ScreenCast frames | Native wlroots capture/input where compositor protocols exist, one-shot Screenshot fallback, reusable ScreenCast/PipeWire capture, explicit RemoteDesktop portal sessions, capability-aware window support |
@@ -613,13 +613,15 @@ CGO_ENABLED=0 go run ./examples/purego_x11_input -act -text "Hello"
 Keyboard actions keep scratch mappings alive for two seconds before verified
 cleanup. Increase `-settle` when the focused XKB client may process input later.
 
-On Windows, the Pure-Go example performs readiness checks only unless `-move`
-or `-text` is supplied:
+On Windows, the Pure-Go example performs readiness checks only unless `-move`,
+`-text`, `-paste`, or `-color` is supplied. `-paste` replaces the text
+clipboard before sending Control+V:
 
 ```powershell
 $env:CGO_ENABLED = "0"
 go run ./examples/purego_windows_input
 go run ./examples/purego_windows_input -move 400,300 -text "Hello"
+go run ./examples/purego_windows_input -color -paste "Hello from the clipboard"
 ```
 
 `SendInput` is subject to Windows User Interface Privilege Isolation: a

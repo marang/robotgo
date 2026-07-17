@@ -4,6 +4,7 @@ package robotgo_test
 
 import (
 	"os"
+	"strconv"
 	"testing"
 
 	"github.com/marang/robotgo"
@@ -31,6 +32,7 @@ func TestPureGoWindowsInputRuntime(t *testing.T) {
 		}
 	})
 
+	moved := false
 	for _, delta := range []int{1, -1} {
 		if err := robotgo.MoveE(startX+delta, startY); err != nil {
 			t.Fatalf("MoveE(%d,%d): %v", startX+delta, startY, err)
@@ -40,8 +42,22 @@ func TestPureGoWindowsInputRuntime(t *testing.T) {
 			t.Fatalf("LocationE after move: %v", err)
 		}
 		if x == startX+delta && y == startY {
-			return
+			moved = true
+			break
 		}
 	}
-	t.Fatal("Windows input desktop accepted no observable one-pixel pointer move")
+	if !moved {
+		t.Fatal("Windows input desktop accepted no observable one-pixel pointer move")
+	}
+
+	locationColor, err := robotgo.GetLocationColor()
+	if err != nil {
+		t.Fatalf("GetLocationColor: %v", err)
+	}
+	if len(locationColor) != 6 {
+		t.Fatalf("GetLocationColor = %q, want six-digit RGB", locationColor)
+	}
+	if _, err := strconv.ParseUint(locationColor, 16, 24); err != nil {
+		t.Fatalf("GetLocationColor = %q, want hexadecimal RGB: %v", locationColor, err)
+	}
 }
