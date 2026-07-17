@@ -5,12 +5,16 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"unsafe"
 )
 
 const (
-	bitmapStringFormat  = "robotgo.bitmap.v1"
-	maxBitmapBufferSize = 512 * 1024 * 1024
+	bitmapStringFormat      = "robotgo.bitmap.v1"
+	maxBitmapBufferSize     = 512 * 1024 * 1024
+	defaultColorTolerance   = 0.01
+	minimumRGBBytesPerPixel = 3
+	maximumRGBBytesPerPixel = 4
 )
 
 type bitmapStringPayload struct {
@@ -158,6 +162,9 @@ func CaptureBitmapStr(args ...int) (string, error) {
 
 // FindBitmapStr searches for needleStr inside haystackStr.
 func FindBitmapStr(needleStr string, haystackStr ...string) (int, int, error) {
+	if len(haystackStr) > 1 {
+		return -1, -1, fmt.Errorf("find bitmap string accepts at most one haystack, got %d", len(haystackStr))
+	}
 	needle, err := BitmapFromStr(needleStr)
 	if err != nil {
 		return -1, -1, err
@@ -174,29 +181,29 @@ func FindBitmapStr(needleStr string, haystackStr ...string) (int, int, error) {
 	return findBitmap(haystack, needle)
 }
 
-// FindColorCS searches a captured region for a color with optional tolerance.
+// FindColorCS searches a captured region for a color and returns absolute
+// screen coordinates. Tolerance is optional, defaults to 0.01, and must be a
+// finite value in the inclusive range 0 through 1.
 func FindColorCS(x, y, width, height int, color CHex, tolerance ...float64) (int, int, error) {
 	if width <= 0 || height <= 0 {
 		return -1, -1, fmt.Errorf("invalid search region %dx%d", width, height)
 	}
-	tol := 0.0
-	if len(tolerance) > 0 {
-		tol = tolerance[0]
-	}
-	if tol < 0 {
-		return -1, -1, fmt.Errorf("invalid color tolerance %f", tol)
+	tol, err := parseColorTolerance(tolerance)
+	if err != nil {
+		return -1, -1, err
 	}
 	bmp, err := CaptureGo(x, y, width, height)
+	if err != nil {
+		return -1, -1, err
+	}
+	buf, err := bitmapRGBBuffer(bmp)
 	if err != nil {
 		return -1, -1, err
 	}
 	r, g, b := splitHex(uint32(color))
 	for yy := 0; yy < bmp.Height; yy++ {
 		for xx := 0; xx < bmp.Width; xx++ {
-			pr, pg, pb, ok := bitmapRGBAt(bmp, xx, yy)
-			if !ok {
-				return -1, -1, errors.New("invalid bitmap pixel layout")
-			}
+			pr, pg, pb := bitmapRGBAtBuffer(bmp, buf, xx, yy)
 			if rgbSimilar(pr, pg, pb, r, g, b, tol) {
 				return x + xx, y + yy, nil
 			}
@@ -208,6 +215,20 @@ func FindColorCS(x, y, width, height int, color CHex, tolerance ...float64) (int
 // FindcolorCS preserves the historical RobotGo-Pro spelling.
 func FindcolorCS(x, y, width, height int, color CHex, tolerance ...float64) (int, int, error) {
 	return FindColorCS(x, y, width, height, color, tolerance...)
+}
+
+func parseColorTolerance(tolerance []float64) (float64, error) {
+	if len(tolerance) > 1 {
+		return 0, fmt.Errorf("color search accepts at most one tolerance, got %d", len(tolerance))
+	}
+	value := defaultColorTolerance
+	if len(tolerance) == 1 {
+		value = tolerance[0]
+	}
+	if math.IsNaN(value) || math.IsInf(value, 0) || value < 0 || value > 1 {
+		return 0, fmt.Errorf("invalid color tolerance %v: expected a finite value from 0 through 1", value)
+	}
+	return value, nil
 }
 
 func splitHex(hex uint32) (uint8, uint8, uint8) {
@@ -226,22 +247,37 @@ func bitmapRGBAt(bit Bitmap, x, y int) (uint8, uint8, uint8, bool) {
 	if x < 0 || y < 0 || x >= bit.Width || y >= bit.Height {
 		return 0, 0, 0, false
 	}
-	buf, err := bitmapReadableBuffer(bit)
+	buf, err := bitmapRGBBuffer(bit)
 	if err != nil {
 		return 0, 0, 0, false
 	}
-	offset := y*bit.Bytewidth + x*int(bit.BytesPerPixel)
-	if offset < 0 || offset > len(buf)-3 {
-		return 0, 0, 0, false
+	r, g, b := bitmapRGBAtBuffer(bit, buf, x, y)
+	return r, g, b, true
+}
+
+func bitmapRGBBuffer(bit Bitmap) ([]byte, error) {
+	if bit.BytesPerPixel < minimumRGBBytesPerPixel ||
+		bit.BytesPerPixel > maximumRGBBytesPerPixel {
+		return nil, fmt.Errorf(
+			"unsupported bitmap bytesPerPixel=%d; RGB operations require 3 or 4",
+			bit.BytesPerPixel,
+		)
 	}
-	return buf[offset+2], buf[offset+1], buf[offset], true
+	return bitmapReadableBuffer(bit)
+}
+
+func bitmapRGBAtBuffer(bit Bitmap, buf []byte, x, y int) (uint8, uint8, uint8) {
+	offset := y*bit.Bytewidth + x*int(bit.BytesPerPixel)
+	return buf[offset+2], buf[offset+1], buf[offset]
 }
 
 func findBitmap(haystack, needle Bitmap) (int, int, error) {
-	if _, err := bitmapReadableBuffer(haystack); err != nil {
+	haystackBuf, err := bitmapRGBBuffer(haystack)
+	if err != nil {
 		return -1, -1, err
 	}
-	if _, err := bitmapReadableBuffer(needle); err != nil {
+	needleBuf, err := bitmapRGBBuffer(needle)
+	if err != nil {
 		return -1, -1, err
 	}
 	if needle.Width > haystack.Width || needle.Height > haystack.Height {
@@ -249,7 +285,7 @@ func findBitmap(haystack, needle Bitmap) (int, int, error) {
 	}
 	for y := 0; y <= haystack.Height-needle.Height; y++ {
 		for x := 0; x <= haystack.Width-needle.Width; x++ {
-			if bitmapMatchesAt(haystack, needle, x, y) {
+			if bitmapMatchesAt(haystack, haystackBuf, needle, needleBuf, x, y) {
 				return x, y, nil
 			}
 		}
@@ -257,15 +293,18 @@ func findBitmap(haystack, needle Bitmap) (int, int, error) {
 	return -1, -1, nil
 }
 
-func bitmapMatchesAt(haystack, needle Bitmap, startX, startY int) bool {
+func bitmapMatchesAt(
+	haystack Bitmap,
+	haystackBuf []byte,
+	needle Bitmap,
+	needleBuf []byte,
+	startX, startY int,
+) bool {
 	for y := 0; y < needle.Height; y++ {
 		for x := 0; x < needle.Width; x++ {
-			hr, hg, hb, ok := bitmapRGBAt(haystack, startX+x, startY+y)
-			if !ok {
-				return false
-			}
-			nr, ng, nb, ok := bitmapRGBAt(needle, x, y)
-			if !ok || hr != nr || hg != ng || hb != nb {
+			hr, hg, hb := bitmapRGBAtBuffer(haystack, haystackBuf, startX+x, startY+y)
+			nr, ng, nb := bitmapRGBAtBuffer(needle, needleBuf, x, y)
+			if hr != nr || hg != ng || hb != nb {
 				return false
 			}
 		}

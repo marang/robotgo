@@ -124,6 +124,36 @@ func TestScreencopyWlShm(t *testing.T) {
 
 }
 
+func TestScreencopyBitmapStringHelper(t *testing.T) {
+	dir := t.TempDir()
+	sock := "robotgo-wl-bitmap-string"
+	t.Setenv("XDG_RUNTIME_DIR", dir)
+	t.Setenv("WAYLAND_DISPLAY", sock)
+	t.Setenv("ROBOTGO_DISABLE_PORTAL", "1")
+	robotgo.SetWaylandBackend(robotgo.WaylandBackendWlShm)
+	t.Cleanup(func() { robotgo.SetWaylandBackend(robotgo.WaylandBackendAuto) })
+
+	done := make(chan struct{})
+	startMockServer(sock, 0, 0, 0, done)
+	t.Cleanup(func() { cleanupMockServer(t, done) })
+	waitForMockServer(t, dir, sock)
+
+	serialized, err := robotgo.CaptureBitmapStr()
+	if err != nil {
+		t.Fatalf("CaptureBitmapStr failed: %v", err)
+	}
+	decoded, err := robotgo.BitmapFromStr(serialized)
+	if err != nil {
+		t.Fatalf("BitmapFromStr failed: %v", err)
+	}
+	if decoded.Width <= 0 || decoded.Height <= 0 {
+		t.Fatalf("decoded bitmap has invalid dimensions %dx%d", decoded.Width, decoded.Height)
+	}
+	if got := robotgo.LastBackend(); got != robotgo.BackendScreencopy {
+		t.Fatalf("backend = %q, want %q", got, robotgo.BackendScreencopy)
+	}
+}
+
 func TestScreencopyPortalFallback(t *testing.T) {
 	dir := t.TempDir()
 	sock := "robotgo-wl"

@@ -516,6 +516,7 @@ CGO_ENABLED=0 go test ./...
 go test -tags "wayland" ./...
 go test -tags "portal" ./screen/portal -v
 go test -tags "pipewire" ./screen/portal -v
+go test -tags "wayland test" ./screen -run 'TestScreencopy(BitmapStringHelper|WlShm|PortalFallback)' -v
 go test -tags "wayland integration" . ./mouse ./window -v
 ```
 

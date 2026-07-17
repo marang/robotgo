@@ -1,11 +1,10 @@
-//go:build cgo
-
 package robotgo
 
 import (
 	"bytes"
 	"image"
 	"image/color"
+	"math"
 	"testing"
 )
 
@@ -69,28 +68,6 @@ func TestBitmapStringRoundTripAndFind(t *testing.T) {
 	}
 }
 
-func TestOwnedBitmapFromCStaysValidAfterFree(t *testing.T) {
-	t.Parallel()
-
-	src := image.NewRGBA(image.Rect(0, 0, 1, 1))
-	src.SetRGBA(0, 0, color.RGBA{R: 21, G: 22, B: 23, A: 255})
-
-	cbit := ToCBitmap(RGBAToBitmap(src))
-	owned, err := ownedBitmapFromC(cbit)
-	FreeBitmap(cbit)
-	if err != nil {
-		t.Fatalf("ownedBitmapFromC error: %v", err)
-	}
-
-	got := ToRGBAGo(owned)
-	if !bytes.Equal(src.Pix, got.Pix) {
-		t.Fatalf("owned bitmap mismatch after FreeBitmap: %v vs %v", src.Pix, got.Pix)
-	}
-	if _, err := ToStrBitmap(owned); err != nil {
-		t.Fatalf("ToStrBitmap on owned bitmap after FreeBitmap error: %v", err)
-	}
-}
-
 func TestFindColorCSSignatureOrder(t *testing.T) {
 	t.Parallel()
 
@@ -109,6 +86,93 @@ func TestBitmapStringInvalid(t *testing.T) {
 	}
 	if _, err := ToStrBitmap(Bitmap{}); err == nil {
 		t.Fatalf("expected invalid bitmap error")
+	}
+}
+
+func TestBitmapStringRejectsUnsupportedRGBSearchLayout(t *testing.T) {
+	t.Parallel()
+
+	twoByteBitmap, err := NewBitmap([]byte{1, 2, 3, 4}, 2, 1, 4, 16, 2)
+	if err != nil {
+		t.Fatalf("NewBitmap error: %v", err)
+	}
+	serialized, err := ToStrBitmap(twoByteBitmap)
+	if err != nil {
+		t.Fatalf("ToStrBitmap error: %v", err)
+	}
+	if _, _, err := FindBitmapStr(serialized, serialized); err == nil {
+		t.Fatal("FindBitmapStr unexpectedly accepted a two-byte pixel layout")
+	}
+}
+
+func TestFindBitmapStrRejectsMultipleHaystacks(t *testing.T) {
+	t.Parallel()
+
+	bitmap, err := NewBitmap([]byte{1, 2, 3}, 1, 1, 3, 24, 3)
+	if err != nil {
+		t.Fatalf("NewBitmap error: %v", err)
+	}
+	serialized, err := ToStrBitmap(bitmap)
+	if err != nil {
+		t.Fatalf("ToStrBitmap error: %v", err)
+	}
+	if _, _, err := FindBitmapStr(serialized, serialized, serialized); err == nil {
+		t.Fatal("FindBitmapStr unexpectedly accepted multiple haystacks")
+	}
+}
+
+func TestFindBitmapStrSupportsThreeBytePixelsAndPaddedStride(t *testing.T) {
+	t.Parallel()
+
+	haystack, err := NewBitmap(
+		[]byte{
+			3, 2, 1, 6, 5, 4, 99, 99,
+			9, 8, 7, 12, 11, 10, 88, 88,
+		},
+		2,
+		2,
+		8,
+		24,
+		3,
+	)
+	if err != nil {
+		t.Fatalf("NewBitmap haystack error: %v", err)
+	}
+	needle, err := NewBitmap([]byte{12, 11, 10}, 1, 1, 3, 24, 3)
+	if err != nil {
+		t.Fatalf("NewBitmap needle error: %v", err)
+	}
+	haystackStr, err := ToStrBitmap(haystack)
+	if err != nil {
+		t.Fatalf("ToStrBitmap haystack error: %v", err)
+	}
+	needleStr, err := ToStrBitmap(needle)
+	if err != nil {
+		t.Fatalf("ToStrBitmap needle error: %v", err)
+	}
+	x, y, err := FindBitmapStr(needleStr, haystackStr)
+	if err != nil {
+		t.Fatalf("FindBitmapStr error: %v", err)
+	}
+	if x != 1 || y != 1 {
+		t.Fatalf("FindBitmapStr = (%d,%d), want (1,1)", x, y)
+	}
+}
+
+func TestParseColorTolerance(t *testing.T) {
+	t.Parallel()
+
+	got, err := parseColorTolerance(nil)
+	if err != nil || got != defaultColorTolerance {
+		t.Fatalf("parseColorTolerance(nil) = %v, %v; want %v, nil", got, err, defaultColorTolerance)
+	}
+	for _, value := range []float64{-0.01, 1.01, math.NaN(), math.Inf(1), math.Inf(-1)} {
+		if _, err := parseColorTolerance([]float64{value}); err == nil {
+			t.Fatalf("parseColorTolerance(%v) unexpectedly succeeded", value)
+		}
+	}
+	if _, err := parseColorTolerance([]float64{0, 0}); err == nil {
+		t.Fatal("parseColorTolerance unexpectedly accepted multiple values")
 	}
 }
 

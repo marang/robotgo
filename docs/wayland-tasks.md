@@ -75,6 +75,10 @@ Current implementation baseline:
 - Bitmap string helpers are available via `CaptureBitmapStr`,
   `FindBitmapStr`, `BitmapFromStr`, and `ToStrBitmap`.
 - Region/tolerance color search is available via `FindColorCS`/`FindcolorCS`.
+- Bitmap-string and color-search contracts run in CGO and non-CGO builds.
+  Hermetic backend tests cover native screencopy, Screenshot portal, and
+  Pure-Go dispatch. `FindColorCS` returns absolute coordinates, defaults to
+  `0.01` tolerance, validates the `0..1` range, and preserves backend errors.
 - Explicit RemoteDesktop portal sessions are available through `input/portal`:
   live capability probing, consent/session lifecycle, pointer/keyboard notify
   methods, cancellation, denial, timeout, and teardown are covered hermetically.
@@ -181,9 +185,10 @@ backends.
   - Extend compositor-backed implementations for existing topmost/min/max
     status APIs where Wayland protocols or helpers make the state observable.
   - Extend bitmap string helper coverage beyond current in-memory string
-    helpers where needed; file open/save helpers remain separate.
-  - Keep `FindColorCS` compatibility behavior covered across platform capture
-    backends.
+    and hermetic capture-backend contracts where real protected desktop
+    evidence is needed; file open/save helpers remain separate.
+  - Keep the delivered `FindColorCS` compatibility contract covered on real
+    protected platform capture runners.
   - Keep any new APIs consistent with Wayland semantics:
     - Return explicit `NotSupported` where protocol/compositor limitations apply.
 - Build/Tooling:
