@@ -74,9 +74,14 @@ type guardianConnection struct {
 	requestTimeout time.Duration
 	cleanupTimeout time.Duration
 
+	// The guardian dispatches requests sequentially. Matching that ordering here
+	// permits one reusable response channel and timer without changing outcomes.
+	requestMu         sync.Mutex
+	response          chan guardianResponse
+	requestTimer      *time.Timer
 	mu                sync.Mutex
 	nextID            uint64
-	pending           map[uint64]chan guardianResponse
+	activeRequestID   uint64
 	readErr           error
 	controlErr        error
 	terminalEvent     guardianEvent
@@ -268,12 +273,14 @@ func newGuardianConnection(control io.ReadWriteCloser, process *exec.Cmd, option
 		process:        process,
 		requestTimeout: options.RequestTimeout,
 		cleanupTimeout: options.CleanupTimeout,
-		pending:        make(map[uint64]chan guardianResponse),
+		response:       make(chan guardianResponse, 1),
+		requestTimer:   time.NewTimer(time.Hour),
 		events:         make(chan guardianEvent, 256),
 		done:           make(chan struct{}),
 		terminalSignal: make(chan struct{}),
 		processDone:    make(chan error, 1),
 	}
+	stopAndDrainGuardianTimer(connection.requestTimer)
 	go connection.readFrames()
 	if process != nil {
 		go func() {
@@ -287,8 +294,9 @@ func newGuardianConnection(control io.ReadWriteCloser, process *exec.Cmd, option
 }
 
 func (connection *guardianConnection) readFrames() {
+	reader := guardianFramedReader{reader: connection.control}
 	for {
-		envelope, err := readGuardianEnvelope(connection.control)
+		envelope, err := reader.read()
 		if err != nil {
 			connection.finish(err)
 			return
@@ -296,12 +304,19 @@ func (connection *guardianConnection) readFrames() {
 		switch envelope.Kind {
 		case guardianFrameResponse:
 			connection.mu.Lock()
-			response := connection.pending[envelope.ID]
-			delete(connection.pending, envelope.ID)
-			connection.mu.Unlock()
-			if response != nil {
-				response <- guardianResponse{envelope: envelope}
+			activeRequestID := connection.activeRequestID
+			if envelope.ID == activeRequestID {
+				connection.activeRequestID = 0
 			}
+			connection.mu.Unlock()
+			if activeRequestID == 0 || envelope.ID != activeRequestID {
+				connection.finish(fmt.Errorf(
+					"unexpected X11 guardian response ID %d (active request %d)",
+					envelope.ID, activeRequestID,
+				))
+				return
+			}
+			connection.response <- guardianResponse{envelope: envelope}
 		case guardianFrameEvent:
 			var event guardianEvent
 			if err := decodeGuardianPayload(envelope.Payload, &event); err != nil {
@@ -339,11 +354,11 @@ func (connection *guardianConnection) finish(err error) {
 		connection.recordTerminalEvent(terminal)
 		connection.mu.Lock()
 		connection.readErr = err
-		pending := connection.pending
-		connection.pending = make(map[uint64]chan guardianResponse)
+		activeRequestID := connection.activeRequestID
+		connection.activeRequestID = 0
 		connection.mu.Unlock()
-		for _, response := range pending {
-			response <- guardianResponse{err: err}
+		if activeRequestID != 0 {
+			connection.response <- guardianResponse{err: err}
 		}
 		// Shutdown wakes both the local reader and the guardian peer before Close.
 		var controlErr error
@@ -420,10 +435,9 @@ func (connection *guardianConnection) request(operation string, request, respons
 }
 
 func (connection *guardianConnection) requestWithTimeout(operation string, request, response any, timeout time.Duration) error {
-	payload, err := guardianPayload(request)
-	if err != nil {
-		return err
-	}
+	connection.requestMu.Lock()
+	defer connection.requestMu.Unlock()
+
 	connection.mu.Lock()
 	if connection.readErr != nil {
 		err := connection.readErr
@@ -432,8 +446,7 @@ func (connection *guardianConnection) requestWithTimeout(operation string, reque
 	}
 	connection.nextID++
 	id := connection.nextID
-	result := make(chan guardianResponse, 1)
-	connection.pending[id] = result
+	connection.activeRequestID = id
 	connection.mu.Unlock()
 
 	envelope := guardianEnvelope{
@@ -441,20 +454,20 @@ func (connection *guardianConnection) requestWithTimeout(operation string, reque
 		Kind:      guardianFrameRequest,
 		ID:        id,
 		Operation: operation,
-		Payload:   payload,
 	}
-	if err := connection.writer.write(envelope); err != nil {
-		connection.removePending(id)
+	if err := connection.writer.writePayload(envelope, request); err != nil {
+		connection.clearActiveRequest(id)
 		connection.finish(err)
 		return err
 	}
 	if timeout <= 0 {
 		timeout = guardianDefaultRequestTimeout
 	}
-	timer := time.NewTimer(timeout)
-	defer timer.Stop()
+	stopAndDrainGuardianTimer(connection.requestTimer)
+	connection.requestTimer.Reset(timeout)
 	select {
-	case received := <-result:
+	case received := <-connection.response:
+		stopAndDrainGuardianTimer(connection.requestTimer)
 		if received.err != nil {
 			return received.err
 		}
@@ -462,8 +475,8 @@ func (connection *guardianConnection) requestWithTimeout(operation string, reque
 			return errors.New(received.envelope.Error)
 		}
 		return decodeGuardianPayload(received.envelope.Payload, response)
-	case <-timer.C:
-		connection.removePending(id)
+	case <-connection.requestTimer.C:
+		connection.clearActiveRequest(id)
 		timeoutErr := fmt.Errorf("X11 guardian %s timed out after %s", operation, timeout)
 		// A timed-out state-changing request has an unknowable outcome. Tear down
 		// the control channel so the helper performs its crash-safe cleanup rather
@@ -473,10 +486,22 @@ func (connection *guardianConnection) requestWithTimeout(operation string, reque
 	}
 }
 
-func (connection *guardianConnection) removePending(id uint64) {
+func (connection *guardianConnection) clearActiveRequest(id uint64) {
 	connection.mu.Lock()
-	delete(connection.pending, id)
+	if connection.activeRequestID == id {
+		connection.activeRequestID = 0
+	}
 	connection.mu.Unlock()
+}
+
+func stopAndDrainGuardianTimer(timer *time.Timer) {
+	if timer == nil || timer.Stop() {
+		return
+	}
+	select {
+	case <-timer.C:
+	default:
+	}
 }
 
 func (connection *guardianConnection) WaitForEvent() (bool, error) {

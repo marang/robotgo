@@ -1,0 +1,6 @@
+status=complete
+git_commit=817656f2d52140581f7f6c5535d86f050ee6663b
+source_fingerprint=c982022e8255b2a1773e452b5c45a7c0a0aa98da
+allow_dirty=0
+snapshot_verified=1
+decision_grade=1

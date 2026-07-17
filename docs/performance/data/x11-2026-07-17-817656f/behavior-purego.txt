@@ -1,0 +1,77 @@
+=== RUN   TestPureGoX11RejectsImplicitDependencyPortalFallback
+--- PASS: TestPureGoX11RejectsImplicitDependencyPortalFallback (0.00s)
+=== RUN   TestPureGoX11CrashRestoresScratchAndOwnedInput
+--- PASS: TestPureGoX11CrashRestoresScratchAndOwnedInput (2.05s)
+=== RUN   TestPureGoX11MultiLayoutConfiguration
+--- PASS: TestPureGoX11MultiLayoutConfiguration (0.00s)
+=== RUN   TestPureGoX11Capabilities
+--- PASS: TestPureGoX11Capabilities (0.01s)
+=== RUN   TestPureGoX11PointerInput
+--- PASS: TestPureGoX11PointerInput (0.25s)
+=== RUN   TestPureGoX11KeyboardInput
+--- PASS: TestPureGoX11KeyboardInput (0.70s)
+=== RUN   TestPureGoX11TextReachesDelayedXKBClient
+--- PASS: TestPureGoX11TextReachesDelayedXKBClient (0.05s)
+=== RUN   TestPureGoX11ExplicitShiftReachesXKBClient
+--- PASS: TestPureGoX11ExplicitShiftReachesXKBClient (0.07s)
+=== RUN   TestPureGoX11ScratchReservationSkipsPressedEmptyKeycode
+--- PASS: TestPureGoX11ScratchReservationSkipsPressedEmptyKeycode (0.02s)
+=== RUN   TestPureGoX11ScratchCleanupCanRetryAfterForeignRelease
+--- PASS: TestPureGoX11ScratchCleanupCanRetryAfterForeignRelease (0.02s)
+=== RUN   TestPureGoX11RejectsNonModifierBeforeScratchMutation
+--- PASS: TestPureGoX11RejectsNonModifierBeforeScratchMutation (0.11s)
+=== RUN   TestPureGoX11ScratchCleanupCanRetryAfterModifierRestore
+--- PASS: TestPureGoX11ScratchCleanupCanRetryAfterModifierRestore (0.01s)
+=== RUN   TestPureGoX11TextCapacityFailsBeforeInput
+--- PASS: TestPureGoX11TextCapacityFailsBeforeInput (0.11s)
+=== RUN   TestPureGoX11RejectsScratchReplacementBeforeTextTap
+--- PASS: TestPureGoX11RejectsScratchReplacementBeforeTextTap (0.11s)
+=== RUN   TestPureGoX11ClosePreservesForeignScratchReplacement
+--- PASS: TestPureGoX11ClosePreservesForeignScratchReplacement (0.17s)
+=== RUN   TestPureGoX11ClosePreservesForeignModifierScratchReplacement
+--- PASS: TestPureGoX11ClosePreservesForeignModifierScratchReplacement (0.02s)
+=== RUN   TestPureGoX11PreservesForeignInputState
+--- PASS: TestPureGoX11PreservesForeignInputState (0.26s)
+=== RUN   TestPureGoX11EventDrainDoesNotStall
+--- PASS: TestPureGoX11EventDrainDoesNotStall (0.04s)
+=== RUN   TestPureGoX11CloseMainDisplayReconnects
+--- PASS: TestPureGoX11CloseMainDisplayReconnects (0.28s)
+=== RUN   TestPureGoX11SessionSwitchReleasesOwnedInput
+--- PASS: TestPureGoX11SessionSwitchReleasesOwnedInput (0.02s)
+=== RUN   TestX11BackendBehavioralParity
+=== RUN   TestX11BackendBehavioralParity/capture
+=== RUN   TestX11BackendBehavioralParity/pointer
+=== RUN   TestX11BackendBehavioralParity/buttons_and_scroll
+=== RUN   TestX11BackendBehavioralParity/horizontal_wheel_backend_contract
+=== RUN   TestX11BackendBehavioralParity/named_key
+=== RUN   TestX11BackendBehavioralParity/modifier_order
+=== RUN   TestX11BackendBehavioralParity/text_and_keyboard_state
+--- PASS: TestX11BackendBehavioralParity (0.34s)
+    --- PASS: TestX11BackendBehavioralParity/capture (0.00s)
+    --- PASS: TestX11BackendBehavioralParity/pointer (0.00s)
+    --- PASS: TestX11BackendBehavioralParity/buttons_and_scroll (0.01s)
+    --- PASS: TestX11BackendBehavioralParity/horizontal_wheel_backend_contract (0.10s)
+    --- PASS: TestX11BackendBehavioralParity/named_key (0.01s)
+    --- PASS: TestX11BackendBehavioralParity/modifier_order (0.01s)
+    --- PASS: TestX11BackendBehavioralParity/text_and_keyboard_state (0.09s)
+=== RUN   TestX11XTestVersionAtLeast
+=== PAUSE TestX11XTestVersionAtLeast
+=== CONT  TestX11XTestVersionAtLeast
+=== RUN   TestX11XTestVersionAtLeast/missing_reply
+=== PAUSE TestX11XTestVersionAtLeast/missing_reply
+=== RUN   TestX11XTestVersionAtLeast/older_minor
+=== PAUSE TestX11XTestVersionAtLeast/older_minor
+=== RUN   TestX11XTestVersionAtLeast/minimum
+=== PAUSE TestX11XTestVersionAtLeast/minimum
+=== RUN   TestX11XTestVersionAtLeast/newer_major
+=== PAUSE TestX11XTestVersionAtLeast/newer_major
+=== CONT  TestX11XTestVersionAtLeast/missing_reply
+=== CONT  TestX11XTestVersionAtLeast/minimum
+=== CONT  TestX11XTestVersionAtLeast/older_minor
+=== CONT  TestX11XTestVersionAtLeast/newer_major
+--- PASS: TestX11XTestVersionAtLeast (0.00s)
+    --- PASS: TestX11XTestVersionAtLeast/missing_reply (0.00s)
+    --- PASS: TestX11XTestVersionAtLeast/older_minor (0.00s)
+    --- PASS: TestX11XTestVersionAtLeast/minimum (0.00s)
+    --- PASS: TestX11XTestVersionAtLeast/newer_major (0.00s)
+PASS

@@ -381,6 +381,120 @@ func TestGuardianConnectionProxiesAndMultiplexesEvents(t *testing.T) {
 	}
 }
 
+func TestGuardianConcurrentRequestsRemainCorrelated(t *testing.T) {
+	transport := newGuardianTestConnection()
+	connection, done := newInProcessGuardian(t, transport)
+
+	const workers = 64
+	start := make(chan struct{})
+	failures := make(chan error, workers)
+	var group sync.WaitGroup
+	group.Add(workers)
+	for worker := range workers {
+		go func() {
+			defer group.Done()
+			<-start
+			if worker%2 == 0 {
+				setup, err := connection.Setup()
+				if err != nil {
+					failures <- fmt.Errorf("worker %d Setup: %w", worker, err)
+				} else if setup != transport.setup {
+					failures <- fmt.Errorf("worker %d Setup = %+v, want %+v", worker, setup, transport.setup)
+				}
+				return
+			}
+			state, err := connection.QueryPointer(transport.setup.Root)
+			if err != nil {
+				failures <- fmt.Errorf("worker %d QueryPointer: %w", worker, err)
+			} else if state != transport.pointer {
+				failures <- fmt.Errorf("worker %d QueryPointer = %+v, want %+v", worker, state, transport.pointer)
+			}
+		}()
+	}
+	close(start)
+	group.Wait()
+	close(failures)
+	for err := range failures {
+		t.Error(err)
+	}
+	if err := connection.Close(); err != nil {
+		t.Fatalf("Close after concurrent requests: %v", err)
+	}
+	if err := <-done; err != nil {
+		t.Fatalf("guardian server after concurrent requests: %v", err)
+	}
+}
+
+func TestGuardianFramedWriterPayloadRoundTrips(t *testing.T) {
+	for _, test := range []struct {
+		name    string
+		payload any
+		check   func(*testing.T, guardianEnvelope)
+	}{
+		{
+			name: "omitted payload",
+			check: func(t *testing.T, envelope guardianEnvelope) {
+				t.Helper()
+				if len(envelope.Payload) != 0 {
+					t.Fatalf("nil payload encoded as %q, want omitted", envelope.Payload)
+				}
+			},
+		},
+		{
+			name: "typed payload",
+			payload: guardianFakeInputRequest{
+				EventType: byte(xproto.MotionNotify),
+				Detail:    x11RelativeMotion,
+				Root:      42,
+				X:         -17,
+				Y:         23,
+			},
+			check: func(t *testing.T, envelope guardianEnvelope) {
+				t.Helper()
+				var got guardianFakeInputRequest
+				if err := decodeGuardianPayload(envelope.Payload, &got); err != nil {
+					t.Fatalf("decode typed payload: %v", err)
+				}
+				want := guardianFakeInputRequest{
+					EventType: byte(xproto.MotionNotify),
+					Detail:    x11RelativeMotion,
+					Root:      42,
+					X:         -17,
+					Y:         23,
+				}
+				if got != want {
+					t.Fatalf("typed payload = %+v, want %+v", got, want)
+				}
+			},
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			var framed strings.Builder
+			writer := guardianFramedWriter{writer: &framed}
+			wantEnvelope := guardianEnvelope{
+				Version:   guardianProtocolVersion,
+				Kind:      guardianFrameRequest,
+				ID:        27,
+				Operation: guardianOperationFakeInput,
+			}
+			if err := writer.writePayload(wantEnvelope, test.payload); err != nil {
+				t.Fatalf("write payload frame: %v", err)
+			}
+			gotEnvelope, err := readGuardianEnvelope(strings.NewReader(framed.String()))
+			if err != nil {
+				t.Fatalf("read payload frame: %v", err)
+			}
+			if gotEnvelope.Version != wantEnvelope.Version ||
+				gotEnvelope.Kind != wantEnvelope.Kind ||
+				gotEnvelope.ID != wantEnvelope.ID ||
+				gotEnvelope.Operation != wantEnvelope.Operation {
+				t.Fatalf("frame envelope = %+v, want metadata %+v", gotEnvelope, wantEnvelope)
+			}
+			test.check(t, gotEnvelope)
+		})
+	}
+}
+
 func TestGuardianEOFReleasesOwnedInputAndRestoresMapping(t *testing.T) {
 	transport := newGuardianTestConnection()
 	connection, done := newInProcessGuardian(t, transport)
@@ -1015,6 +1129,41 @@ func TestGuardianRequestTimeoutTerminatesAmbiguousConnection(t *testing.T) {
 	}
 	if err := peer.Close(); err != nil {
 		t.Fatalf("close timeout peer: %v", err)
+	}
+}
+
+func TestGuardianUnexpectedResponseIDTerminatesConnection(t *testing.T) {
+	fds, err := unix.Socketpair(unix.AF_UNIX, unix.SOCK_STREAM|unix.SOCK_CLOEXEC, 0)
+	if err != nil {
+		t.Fatalf("create socketpair: %v", err)
+	}
+	parent := os.NewFile(uintptr(fds[0]), "guardian-response-id-parent")
+	peer := os.NewFile(uintptr(fds[1]), "guardian-response-id-peer")
+	connection := newGuardianConnection(parent, nil, GuardianOptions{RequestTimeout: time.Second})
+	peerDone := make(chan error, 1)
+	go func() {
+		request, readErr := readGuardianEnvelope(peer)
+		if readErr != nil {
+			peerDone <- readErr
+			return
+		}
+		writer := guardianFramedWriter{writer: peer}
+		writeErr := writer.writePayload(guardianEnvelope{
+			Version:   guardianProtocolVersion,
+			Kind:      guardianFrameResponse,
+			ID:        request.ID + 1,
+			Operation: request.Operation,
+		}, guardianSetupResponse{Setup: Setup{Root: 99}})
+		peerDone <- writeErr
+	}()
+	if _, err := connection.Setup(); err == nil || !strings.Contains(err.Error(), "unexpected X11 guardian response ID") {
+		t.Fatalf("Setup with unexpected response ID = %v, want protocol error", err)
+	}
+	if err := <-peerDone; err != nil {
+		t.Fatalf("write unexpected response: %v", err)
+	}
+	if err := peer.Close(); err != nil {
+		t.Fatalf("close unexpected-response peer: %v", err)
 	}
 }
 
