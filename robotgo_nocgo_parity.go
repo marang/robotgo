@@ -7,14 +7,31 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/marang/robotgo/internal/windowswindow"
 )
 
 // The functions in this file preserve the portable public surface for builds
 // without CGO. Native operations return ErrNotSupported instead of disappearing
 // from the package API.
 
-func ActivePidC(int, ...int) error { return ErrNotSupported }
-func CloseWindowE(...int) error    { return ErrNotSupported }
+func ActivePidC(target int, args ...int) error { return ActivePid(target, args...) }
+func CloseWindowE(args ...int) error {
+	backend, err := pureGoWindowBackend()
+	if err != nil {
+		return err
+	}
+	var handle windowswindow.Handle
+	if len(args) == 0 {
+		handle, err = backend.Active()
+	} else {
+		handle, err = backend.Resolve(args[0], len(args) > 1 || currentTreatAsHandle())
+	}
+	if err != nil {
+		return err
+	}
+	return backend.Close(handle)
+}
 
 func CmdCtrl() string {
 	if runtime.GOOS == "darwin" {
@@ -46,29 +63,106 @@ func FreeBitmapArr(bits ...CBitmap) {
 		FreeBitmap(bit)
 	}
 }
-func GetBHandle() int                                 { return GetHandle() }
-func GetHWNDByPid(int) int                            { return 0 }
-func GetLocationColor(...int) (string, error)         { return "", ErrNotSupported }
-func GetMousePos() (int, int)                         { return Location() }
-func GetTitleE(...int) (string, error)                { return "", ErrNotSupported }
-func GetXDisplayName() string                         { return "" }
-func SetXDisplayName(string) error                    { return ErrNotSupported }
-func Is64Bit() bool                                   { return strconv.IntSize == 64 }
-func IsMain(displayID int) bool                       { return displayID == GetMainId() }
-func IsValid() bool                                   { return false }
-func IsTopMost() bool                                 { return false }
-func IsTopMostE() (bool, error)                       { return false, ErrNotSupported }
-func IsMinimized() bool                               { return false }
-func IsMinimizedE() (bool, error)                     { return false, ErrNotSupported }
-func IsMaximized() bool                               { return false }
-func IsMaximizedE() (bool, error)                     { return false, ErrNotSupported }
-func SetTopMost(bool)                                 {}
-func SetTopMostE(bool) error                          { return ErrNotSupported }
-func SetHandle(int)                                   {}
-func SetHandlePid(int, ...int)                        {}
-func GetHandById(int, ...int) Handle                  { return 0 }
-func GetHandByPid(int, ...int) Handle                 { return 0 }
-func GetHandPid(int, ...int) Handle                   { return 0 }
+func GetBHandle() int {
+	backend, err := pureGoWindowBackend()
+	if err != nil {
+		return 0
+	}
+	if selected := backend.Selected(); selected != 0 {
+		return int(selected)
+	}
+	return GetHandle()
+}
+func GetHWNDByPid(pid int) int {
+	handle, err := pureGoWindowResolve(pid, false)
+	if err != nil {
+		return 0
+	}
+	return int(handle)
+}
+func GetLocationColor(...int) (string, error) { return "", ErrNotSupported }
+func GetMousePos() (int, int)                 { return Location() }
+func GetTitleE(args ...int) (string, error)   { return pureGoWindowTitle(args...) }
+func GetXDisplayName() string                 { return "" }
+func SetXDisplayName(string) error            { return ErrNotSupported }
+func Is64Bit() bool                           { return strconv.IntSize == 64 }
+func IsMain(displayID int) bool               { return displayID == GetMainId() }
+func IsValid() bool {
+	_, err := pureGoWindowActive()
+	return err == nil
+}
+func IsTopMost() bool {
+	state, _ := IsTopMostE()
+	return state
+}
+func IsTopMostE() (bool, error) {
+	backend, err := pureGoWindowBackend()
+	if err != nil {
+		return false, err
+	}
+	handle, err := backend.Active()
+	if err != nil {
+		return false, err
+	}
+	return backend.TopMost(handle)
+}
+func IsMinimized() bool {
+	state, _ := IsMinimizedE()
+	return state
+}
+func IsMinimizedE() (bool, error) {
+	return pureGoActiveWindowState(windowswindow.StateMinimized)
+}
+func IsMaximized() bool {
+	state, _ := IsMaximizedE()
+	return state
+}
+func IsMaximizedE() (bool, error) {
+	return pureGoActiveWindowState(windowswindow.StateMaximized)
+}
+func SetTopMost(state bool) { _ = SetTopMostE(state) }
+func SetTopMostE(state bool) error {
+	backend, err := pureGoWindowBackend()
+	if err != nil {
+		return err
+	}
+	handle, err := backend.Active()
+	if err != nil {
+		return err
+	}
+	return backend.SetTopMost(handle, state)
+}
+func SetHandle(handle int) {
+	backend, err := pureGoWindowBackend()
+	if err == nil {
+		_ = backend.Select(handle, true)
+	}
+}
+func SetHandlePid(target int, args ...int) {
+	backend, err := pureGoWindowBackend()
+	if err == nil {
+		_ = backend.Select(target, len(args) > 0 || currentTreatAsHandle())
+	}
+}
+func GetHandById(id int, args ...int) Handle {
+	isHandle := true
+	if len(args) > 0 {
+		isHandle = args[0] != 0
+	}
+	handle, err := pureGoWindowResolve(id, isHandle)
+	if err != nil {
+		return 0
+	}
+	return Handle(handle)
+}
+func GetHandByPid(target int, args ...int) Handle {
+	handle, err := pureGoWindowResolve(target, len(args) > 0 || currentTreatAsHandle())
+	if err != nil {
+		return 0
+	}
+	return Handle(handle)
+}
+func GetHandPid(target int, args ...int) Handle       { return GetHandByPid(target, args...) }
 func MicroSleep(tm float64)                           { time.Sleep(time.Duration(tm * float64(time.Millisecond))) }
 func PadHexs(hex CHex) string                         { return PadHex(uint32(hex)) }
 func UintToHex(value uint32) CHex                     { return CHex(value) }
@@ -162,15 +256,41 @@ func Try(fn func(), handler func(interface{})) {
 }
 func TypeStringDelayed(text string, delay int) { TypeStrDelay(text, delay) }
 
-func MinWindowE(_ int, args ...interface{}) error {
-	if _, err := parseWindowStateArguments(args); err != nil {
+func MinWindowE(target int, args ...interface{}) error {
+	state, err := parseWindowStateArguments(args)
+	if err != nil {
 		return err
 	}
-	return ErrNotSupported
+	return pureGoSetWindowState(target, state, len(args) > 1 || currentTreatAsHandle(), windowswindow.StateMinimized)
 }
-func MaxWindowE(_ int, args ...interface{}) error {
-	if _, err := parseWindowStateArguments(args); err != nil {
+func MaxWindowE(target int, args ...interface{}) error {
+	state, err := parseWindowStateArguments(args)
+	if err != nil {
 		return err
 	}
-	return ErrNotSupported
+	return pureGoSetWindowState(target, state, len(args) > 1 || currentTreatAsHandle(), windowswindow.StateMaximized)
+}
+
+func pureGoActiveWindowState(state windowswindow.State) (bool, error) {
+	backend, err := pureGoWindowBackend()
+	if err != nil {
+		return false, err
+	}
+	handle, err := backend.Active()
+	if err != nil {
+		return false, err
+	}
+	return backend.State(handle, state)
+}
+
+func pureGoSetWindowState(target int, enabled, isHandle bool, state windowswindow.State) error {
+	backend, err := pureGoWindowBackend()
+	if err != nil {
+		return err
+	}
+	handle, err := backend.Resolve(target, isHandle)
+	if err != nil {
+		return err
+	}
+	return backend.SetState(handle, state, enabled)
 }

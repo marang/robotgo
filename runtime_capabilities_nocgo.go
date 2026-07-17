@@ -50,5 +50,6 @@ func runtimeCapabilities() RuntimeCapabilities {
 	if mouse.Backend != "" {
 		result.Mouse = mouse
 	}
+	result.Window = pureGoWindowCapability()
 	return result
 }

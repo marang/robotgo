@@ -35,7 +35,7 @@ The July 2026 hardening work establishes the foundation for this roadmap:
 | Current baseline | Complete in main | Native screencopy, screenshot portal fallback, bounded waits, cleanup, live capability probes, error APIs, non-CGO contract, dedicated race/vet jobs, protected stable CI checks | Keep required jobs green |
 | 1. Wayland input | Implementation complete; runtime validation blocked | Native virtual keyboard/pointer, consent-aware RemoteDesktop fallback, shared ScreenCast stream mapping, absolute pointer/touch, restore tokens, diagnostics and E2E harness | Register GNOME/KDE/wlroots runners and collect green CGO/non-CGO evidence |
 | 2. Capture | Hermetic implementation complete | Reliable one-shot paths plus one consent-aware ScreenCast session, reusable PipeWire frames, logical region crop, raw pixel conversion, metadata/restore tokens, cleanup, integration harness, and a non-skipping geometry/transform CI matrix | Real GNOME/KDE/wlroots evidence and sanitizer-backed native leak gate |
-| 3. Pure-Go | X11 complete; Windows input CI-evidenced; broader phase partial | Build and feature-level introspection; non-CGO macOS CoreGraphics, Windows, X11, and Wayland-portal capture; Windows `SendInput` keyboard/pointer backend with a blocking input-desktop probe; Linux/X11 XGB/XTEST input; permission/error contracts; shared behavioral parity; reproducible balanced benchmark tooling; optimized guardian-path decision evidence; explicit decision to retain native CGO as the X11 default; race-testable internal X11 core; re-exec guardian with application-`SIGKILL` recovery; lower-allocation request transport and safe balanced-input sequencing; protected three-OS CI; non-skipping multi-layout Xvfb input tests | Assess further backends selectively |
+| 3. Pure-Go | X11 complete; Windows input/window CI-evidenced; broader phase partial | Build and feature-level introspection; non-CGO macOS CoreGraphics, Windows, X11, and Wayland-portal capture; Windows `SendInput` keyboard/pointer backend with a blocking input-desktop probe; Win32 window introspection/control with a self-owned runtime window; Linux/X11 XGB/XTEST input; permission/error contracts; shared behavioral parity; reproducible balanced benchmark tooling; optimized guardian-path decision evidence; explicit decision to retain native CGO as the X11 default; race-testable internal X11 core; re-exec guardian with application-`SIGKILL` recovery; lower-allocation request transport and safe balanced-input sequencing; protected three-OS CI; non-skipping multi-layout Xvfb input tests | Assess further backends selectively |
 | 4. API/compositor gaps | Parity surface delivered; runtime support partial | Window-state error APIs, bitmap string helpers, `FindColorCS`, hook/event capability reporting, Sway/Hyprland/wlroots resolver | Compositor-backed state operations and cross-platform/runtime matrix coverage |
 | 5. Reliability product | Partial | Capability API/example and expanded CI variants | Versioned compatibility matrix, richer diagnostics, dedicated compositor jobs, sanitizer/leak gates |
 
@@ -147,6 +147,11 @@ through the foreground target's Windows keyboard layout instead of assuming US k
 positions. Hermetic tests validate 32/64-bit `INPUT` layout and transaction
 semantics. The Windows non-CGO CI leg runs the explicitly gated real
 input-desktop pointer test and restores the original global cursor position.
+The same build provides Win32 window capability reporting, active handle/PID,
+PID-to-window resolution, titles, outer/client geometry, activation,
+minimize/maximize, topmost state, and graceful close. Its blocking runtime test
+creates and owns the target window, exercises each operation, and never mutates
+an unrelated application.
 
 Linux/X11 additionally has a Pure-Go XGB/XTEST keyboard and pointer backend for
 the error-returning input APIs, text/Unicode, pointer location, smooth
@@ -205,8 +210,9 @@ Balanced transient press/release pairs now share one guardian request while
 retaining per-step ownership, verified release, preflight, server-grab, timeout,
 and crash-recovery contracts. This reduces another `5–14%` of allocations for
 the affected click, scroll, key-press, and text benchmarks. Stable remote checks
-now protect `main`; selectively evaluating additional platform backends keeps
-the broader Phase 3 partial.
+now protect `main`; Windows input and self-owned window runtime evidence are
+blocking. Selectively evaluating additional platform backends keeps the broader
+Phase 3 partial.
 
 Exit criteria:
 

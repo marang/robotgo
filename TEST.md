@@ -65,6 +65,21 @@ Keyboard injection stays hermetic because a generic hosted runner offers no
 trustworthy foreground target; the runnable example provides explicit manual
 validation.
 
+Pure-Go Windows window control uses a self-owned Win32 top-level window, so the
+hosted runner can validate the full contract without touching another
+application. The test covers capability reporting, PID/handle resolution,
+title, outer/client bounds, minimize/maximize, foreground activation, topmost
+state, and `WM_CLOSE`:
+
+```powershell
+$env:CGO_ENABLED = "0"
+$env:ROBOTGO_REQUIRE_WINDOWS_WINDOW_INTEGRATION = "1"
+go test -tags windowsintegration -run "^TestPureGoWindowsWindowRuntime$" -count=1 -v .
+```
+
+The environment variable is an explicit local safety gate. CI runs this command
+as a blocking Windows non-CGO check.
+
 Opt-in macOS runtime capture benchmark:
 
 ```bash
