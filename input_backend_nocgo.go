@@ -8,11 +8,16 @@ import "fmt"
 // platform backends. A tap owns the complete press/release transaction; a
 // toggle changes only the requested state.
 type pureGoKeyEvent struct {
-	Key       string
-	Modifiers []string
-	PID       int
-	Down      bool
-	Tap       bool
+	Key string
+	// Modifiers contains the portable, backend-normalized modifiers used by
+	// X11 and portal-compatible backends. UserModifiers preserves only the
+	// modifiers supplied by the caller so layout-aware platforms can derive
+	// character modifiers from their active keyboard layout.
+	Modifiers     []string
+	UserModifiers []string
+	PID           int
+	Down          bool
+	Tap           bool
 }
 
 // pureGoTextEvent describes one UTF-8 text transaction. Delay is applied
@@ -82,6 +87,10 @@ func pureGoInputCapabilities() (keyboard, mouse FeatureCapability) {
 			keyboard.Available, keyboard.Reason = false, reason
 			mouse.Available, mouse.Reason = false, reason
 		}
+	}
+	if backendName == featureBackendPureGoWindows {
+		keyboard.Notes += "; SendInput follows the active keyboard layout and Windows UIPI; CloseMainDisplayE releases RobotGo-owned persistent holds"
+		mouse.Notes += "; pointer coordinates use the Windows virtual screen; CloseMainDisplayE releases RobotGo-owned persistent holds"
 	}
 	return keyboard, mouse
 }

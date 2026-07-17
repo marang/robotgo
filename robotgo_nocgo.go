@@ -363,8 +363,9 @@ func KeyTap(key string, args ...interface{}) error {
 	}
 	used, err := withPureGoInputBackend(func(backend pureGoInputBackend) error {
 		return backend.Key(pureGoKeyEvent{
-			Key: key, Modifiers: platformModifiers, PID: pid,
-			Down: true, Tap: true,
+			Key: key, Modifiers: platformModifiers,
+			UserModifiers: append([]string(nil), modifiers...),
+			PID:           pid, Down: true, Tap: true,
 		})
 	})
 	if used {
@@ -413,8 +414,9 @@ func KeyToggle(key string, args ...interface{}) error {
 	}
 	used, err := withPureGoInputBackend(func(backend pureGoInputBackend) error {
 		return backend.Key(pureGoKeyEvent{
-			Key: key, Modifiers: platformModifiers, PID: pid,
-			Down: down,
+			Key: key, Modifiers: platformModifiers,
+			UserModifiers: append([]string(nil), modifiers...),
+			PID:           pid, Down: down,
 		})
 	})
 	if used {
