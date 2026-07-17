@@ -20,7 +20,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
       - uses: actions/setup-go@v6
@@ -100,7 +100,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
           ref: ${{ github.event_name == 'release' && github.event.release.tag_name || github.ref }}
@@ -148,7 +148,7 @@ jobs:
             -expected-ref "$GITHUB_REF" \
             -expected-test-command "$test_command"
       - name: Upload matrix evidence
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: release-evidence-${{ matrix.label }}
           path: ${{ runner.temp }}/release-evidence-${{ matrix.label }}
@@ -263,7 +263,7 @@ jobs:
           rm "$output/check-runs-source.json" \
             "$output/status-source.json" "$output/rows.jsonl"
       - name: Upload protected-check evidence
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: release-required-checks
           path: ${{ runner.temp }}/release-required-checks
@@ -279,18 +279,18 @@ jobs:
       archive: ${{ steps.bundle.outputs.archive }}
       checksum: ${{ steps.bundle.outputs.checksum }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
           ref: ${{ github.event_name == 'release' && github.event.release.tag_name || github.ref }}
       - uses: actions/setup-go@v6
         with:
           go-version: 1.25.x
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           pattern: release-evidence-*
           path: evidence
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: release-required-checks
           path: required-checks
@@ -399,7 +399,7 @@ jobs:
           printf 'archive=%s\nchecksum=%s\n' \
             "$archive" "$archive.sha256" >> "$GITHUB_OUTPUT"
       - name: Upload complete release evidence bundle
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: release-evidence-bundle
           path: bundle
@@ -414,7 +414,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: release-evidence-bundle
           path: bundle
