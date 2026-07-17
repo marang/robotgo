@@ -25,9 +25,11 @@ func TestCaptureScreen(t *testing.T) {
 		t.Setenv("WAYLAND_DISPLAY", "")
 		// Force the portal fallback to avoid X_GetImage crashes on constrained servers.
 		t.Setenv("ROBOTGO_FORCE_PORTAL", "1")
-		if _, err := robotgo.CaptureScreen(); err != nil {
+		bitmap, err := robotgo.CaptureScreen()
+		if err != nil {
 			t.Skipf("X11 capture skipped: %v", err)
 		}
+		t.Cleanup(func() { robotgo.FreeBitmap(bitmap) })
 		if lb := robotgo.LastBackend(); lb != robotgo.BackendPortal {
 			t.Fatalf("expected portal backend, got %v", lb)
 		}
@@ -42,9 +44,14 @@ func TestCaptureScreen(t *testing.T) {
 			t.Skip("WAYLAND_DISPLAY not set")
 		}
 		t.Setenv("DISPLAY", "")
-		if _, err := robotgo.CaptureScreen(); err != nil && strings.Contains(err.Error(), "no display server found") {
-			t.Fatalf("unexpected no display server error: %v", err)
+		bitmap, err := robotgo.CaptureScreen()
+		if err != nil {
+			if strings.Contains(err.Error(), "no display server found") {
+				t.Fatalf("unexpected no display server error: %v", err)
+			}
+			return
 		}
+		t.Cleanup(func() { robotgo.FreeBitmap(bitmap) })
 	})
 
 	t.Run("PortalForce", func(t *testing.T) {

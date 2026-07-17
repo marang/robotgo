@@ -56,6 +56,58 @@ jobs:
         run: go test -race ./...
       - name: Stress race-testable Pure-Go X11 core
         run: go test -race -count=20 -timeout=2m ./internal/x11input
+  sanitizer:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      CGO_ENABLED: "1"
+      ASAN_OPTIONS: detect_leaks=1:halt_on_error=1:strict_string_checks=1
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@v6
+        with:
+          go-version: 1.25.x
+      - name: Install native sanitizer dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential pkg-config libx11-dev libxtst-dev \
+            libwayland-dev libxkbcommon-dev wayland-protocols \
+            libgbm-dev libdrm-dev
+      - name: Run default native suite with AddressSanitizer and LeakSanitizer
+        run: go test -asan -count=1 ./...
+      - name: Run hermetic Wayland ownership paths with sanitizers
+        run: |
+          set -euo pipefail
+          expected="$(printf '%s\n' \
+            TestScreencopyDmabufFailureDoesNotCloseStdin \
+            TestScreencopyTimeoutIsBounded \
+            TestScreencopyWlShm | LC_ALL=C sort)"
+          listed="$(go test -asan -tags 'wayland test' ./screen \
+            -list '^TestScreencopy(WlShm|TimeoutIsBounded|DmabufFailureDoesNotCloseStdin)$')"
+          printf '%s\n' "$listed"
+          actual="$(printf '%s\n' "$listed" | \
+            awk '/^TestScreencopy/ { print }' | LC_ALL=C sort)"
+          if [ "$actual" != "$expected" ]; then
+            echo "sanitizer test manifest mismatch" >&2
+            printf 'expected:\n%s\nactual:\n%s\n' \
+              "$expected" "${actual:-<empty>}" >&2
+            exit 1
+          fi
+          output="$(go test -asan -tags 'wayland test' ./screen \
+            -run '^TestScreencopy(WlShm|TimeoutIsBounded|DmabufFailureDoesNotCloseStdin)$' \
+            -count=1 -timeout=60s -v)"
+          printf '%s\n' "$output"
+          while IFS= read -r test_name; do
+            if ! grep -Eq "^--- PASS: ${test_name} \\(.*\\)$" <<<"$output"; then
+              echo "sanitizer test did not pass: ${test_name}" >&2
+              exit 1
+            fi
+          done <<EOF
+          $expected
+          EOF
   lint:
     runs-on: ubuntu-latest
     steps:
