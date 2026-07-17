@@ -146,7 +146,7 @@ jobs:
           -run "^TestPureGoWindowsInputRuntime$"
           -count=1 -timeout=30s -v .
 
-      - name: Test Pure-Go Windows window desktop
+      - name: Test Pure-Go Windows window and paste desktop
         if: runner.os == 'Windows'
         env:
           CGO_ENABLED: "0"

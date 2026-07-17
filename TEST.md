@@ -50,9 +50,10 @@ self-hosted runners are registered.
 
 Pure-Go Windows input has hermetic tests for Win32 `INPUT` layout,
 foreground-layout key mapping, Unicode surrogate pairs, partial-injection
-rollback, ownership, buttons, scrolling, and movement. They run in the Windows
-non-CGO CI leg. The same leg runs a real input-desktop pointer probe and restores
-the original global cursor position:
+rollback, ownership, buttons, scrolling, movement, clipboard-paste sequencing,
+and pixel-at-pointer dispatch. They run in the Windows non-CGO CI leg. The same
+leg runs a real input-desktop pointer and pixel-color probe and restores the
+original global cursor position:
 
 ```powershell
 $env:CGO_ENABLED = "0"
@@ -61,15 +62,13 @@ go test -tags windowsintegration -run "^TestPureGoWindowsInputRuntime$" -count=1
 ```
 
 The environment variable remains an explicit safety gate for local execution.
-Keyboard injection stays hermetic because a generic hosted runner offers no
-trustworthy foreground target; the runnable example provides explicit manual
-validation.
 
 Pure-Go Windows window control uses a self-owned Win32 top-level window, so the
-hosted runner can validate the full contract without touching another
-application. The test covers capability reporting, PID/handle resolution,
-title, outer/client bounds, minimize/maximize, foreground activation, topmost
-state, and `WM_CLOSE`:
+hosted runner can validate the full window contract and clipboard-assisted
+keyboard injection without typing into another application. The test covers
+capability reporting, PID/handle resolution, title, outer/client bounds,
+minimize/maximize, foreground activation, Unicode `PasteStr` into an owned edit
+control, topmost state, and `WM_CLOSE`:
 
 ```powershell
 $env:CGO_ENABLED = "0"
@@ -77,8 +76,9 @@ $env:ROBOTGO_REQUIRE_WINDOWS_WINDOW_INTEGRATION = "1"
 go test -tags windowsintegration -run "^TestPureGoWindowsWindowRuntime$" -count=1 -v .
 ```
 
-The environment variable is an explicit local safety gate. CI runs this command
-as a blocking Windows non-CGO check.
+The environment variable is an explicit local safety gate because the test
+temporarily changes the text clipboard; it restores the previous readable text
+value during cleanup. CI runs this command as a blocking Windows non-CGO check.
 
 Opt-in macOS runtime capture benchmark:
 

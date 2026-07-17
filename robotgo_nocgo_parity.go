@@ -80,13 +80,28 @@ func GetHWNDByPid(pid int) int {
 	}
 	return int(handle)
 }
-func GetLocationColor(...int) (string, error) { return "", ErrNotSupported }
-func GetMousePos() (int, int)                 { return Location() }
-func GetTitleE(args ...int) (string, error)   { return pureGoWindowTitle(args...) }
-func GetXDisplayName() string                 { return "" }
-func SetXDisplayName(string) error            { return ErrNotSupported }
-func Is64Bit() bool                           { return strconv.IntSize == 64 }
-func IsMain(displayID int) bool               { return displayID == GetMainId() }
+func GetLocationColor(displayID ...int) (string, error) {
+	return getLocationColorWith(displayID, LocationE, GetPixelColor)
+}
+
+func getLocationColorWith(
+	displayID []int,
+	location func() (int, int, error),
+	pixelColor func(int, int, ...int) (string, error),
+) (string, error) {
+	x, y, err := location()
+	if err != nil {
+		return "", err
+	}
+	return pixelColor(x, y, displayID...)
+}
+
+func GetMousePos() (int, int)               { return Location() }
+func GetTitleE(args ...int) (string, error) { return pureGoWindowTitle(args...) }
+func GetXDisplayName() string               { return "" }
+func SetXDisplayName(string) error          { return ErrNotSupported }
+func Is64Bit() bool                         { return strconv.IntSize == 64 }
+func IsMain(displayID int) bool             { return displayID == GetMainId() }
 func IsValid() bool {
 	_, err := pureGoWindowActive()
 	return err == nil

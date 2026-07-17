@@ -25,7 +25,8 @@ Current implementation baseline:
 - Windows non-CGO builds provide foreground-layout-aware keyboard/text and pointer input
   through user32, including exact Unicode, smooth movement/drag, horizontal and
   vertical scroll, ownership checks, partial-injection rollback, live
-  readiness, and deterministic in-process cleanup.
+  readiness, deterministic in-process cleanup, clipboard-assisted paste, and
+  pixel-at-pointer queries.
 - Non-CGO `CaptureImg`/`CaptureScreen`, their Go-bitmap/string variants, and
   pixel-color queries use the hardened screenshot portal on Wayland and the
   Pure-Go screenshot backend on X11/Windows; unsupported targets fail explicitly.
@@ -195,7 +196,8 @@ Window backend support matrix (current):
     readiness checks and global input must remain behind its explicit `-act`
     flag.
   - Keep `examples/purego_windows_input` readiness-only by default; global
-    pointer or keyboard input requires explicit `-move` or `-text` flags.
+    pointer, keyboard, clipboard, or capture actions require explicit `-move`,
+    `-text`, `-paste`, or `-color` flags.
   - Keep the explicitly gated real Windows input-desktop pointer probe blocking
     in the non-CGO Windows CI leg; it must restore the original cursor position.
   - Publish a versioned support matrix and troubleshooting guide.

@@ -6,9 +6,10 @@
 //
 //	CGO_ENABLED=0 go run ./examples/purego_windows_input
 //
-// Opt in to visible input with -move and/or -text:
+// Opt in to visible input with -move, -text, or -paste. Use -color to inspect
+// the pixel under the pointer:
 //
-//	CGO_ENABLED=0 go run ./examples/purego_windows_input -move 400,300 -text "Hello"
+//	CGO_ENABLED=0 go run ./examples/purego_windows_input -move 400,300 -color -paste "Hello"
 package main
 
 import (
@@ -24,6 +25,8 @@ import (
 func main() {
 	move := flag.String("move", "", "optional absolute pointer target as x,y")
 	text := flag.String("text", "", "optional text to type into the active application")
+	paste := flag.String("paste", "", "optional text to copy and paste into the active application")
+	color := flag.Bool("color", false, "print the RGB color under the current pointer")
 	flag.Parse()
 
 	info := robotgo.GetRuntimeBackendInfo()
@@ -58,6 +61,20 @@ func main() {
 			fmt.Fprintln(os.Stderr, "text:", err)
 			os.Exit(1)
 		}
+	}
+	if *paste != "" {
+		if err := robotgo.PasteStr(*paste); err != nil {
+			fmt.Fprintln(os.Stderr, "paste:", err)
+			os.Exit(1)
+		}
+	}
+	if *color {
+		value, err := robotgo.GetLocationColor()
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "pointer color:", err)
+			os.Exit(1)
+		}
+		fmt.Println("pointer RGB:", value)
 	}
 }
 

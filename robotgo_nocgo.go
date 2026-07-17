@@ -544,7 +544,33 @@ func TypeStrDelay(text string, delay int) {
 	TypeStr(text)
 	MilliSleep(delay)
 }
-func PasteStr(string) error      { return ErrNotSupported }
+
+// PasteStr writes text to the clipboard and pastes it through the active
+// Pure-Go keyboard backend. Readiness is checked before changing the clipboard
+// so unsupported builds do not cause a misleading partial side effect.
+func PasteStr(text string) error {
+	return pasteStringWith(text, runtime.GOOS, KeyboardReady, clipboard.WriteAll, KeyTap)
+}
+
+func pasteStringWith(
+	text, goos string,
+	ready func() error,
+	write func(string) error,
+	tap func(string, ...interface{}) error,
+) error {
+	if err := ready(); err != nil {
+		return err
+	}
+	if err := write(text); err != nil {
+		return err
+	}
+	modifier := "control"
+	if goos == "darwin" {
+		modifier = "command"
+	}
+	return tap("v", modifier)
+}
+
 func ReadAll() (string, error)   { return clipboard.ReadAll() }
 func WriteAll(text string) error { return clipboard.WriteAll(text) }
 func CharCodeAt(s string, n int) rune {

@@ -139,19 +139,21 @@ CoreGraphics ownership are covered hermetically on both supported
 architectures.
 
 Windows non-CGO builds now provide a foreground-layout-aware `SendInput` keyboard and text
-backend plus exact pointer movement/location, smooth movement and drag,
+backend, clipboard-assisted Unicode paste, pixel-at-pointer queries, plus exact pointer movement/location, smooth movement and drag,
 buttons, horizontal and vertical scrolling, live readiness checks, partial
 injection rollback, ownership conflicts, and deterministic in-process cleanup.
 Exact Unicode text is encoded as UTF-16, while `KeyTap` resolves characters
 through the foreground target's Windows keyboard layout instead of assuming US key
 positions. Hermetic tests validate 32/64-bit `INPUT` layout and transaction
 semantics. The Windows non-CGO CI leg runs the explicitly gated real
-input-desktop pointer test and restores the original global cursor position.
+input-desktop pointer/pixel test and restores the original global cursor position.
 The same build provides Win32 window capability reporting, active handle/PID,
 PID-to-window resolution, titles, outer/client geometry, activation,
 minimize/maximize, topmost state, and graceful close. Its blocking runtime test
 creates and owns the target window, exercises each operation, and never mutates
-an unrelated application.
+an unrelated application. The owned runtime window also contains an edit
+control that provides blocking evidence for clipboard-assisted Unicode paste
+and restores the previous readable text clipboard value.
 
 Linux/X11 additionally has a Pure-Go XGB/XTEST keyboard and pointer backend for
 the error-returning input APIs, text/Unicode, pointer location, smooth
