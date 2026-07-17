@@ -45,7 +45,7 @@ than inferring it from an operating-system label.
 | PipeWire development/runtime libraries and `pipewire` tag | Persistent ScreenCast frames | One-shot Screenshot/native screencopy remain eligible; persistent capture reports unsupported |
 | X11/XTEST | Native or Pure-Go X11 input | Readiness and diagnostics report missing/old XTEST explicitly |
 | Tesseract/Leptonica and `ocr` tag | OCR helpers | Core automation remains available without OCR |
-| Sway/Hyprland/wlroots command tools | Compositor-specific foreign-window operations | Wayland-core capability reports unsupported operations explicitly |
+| Sway/Hyprland/wlroots command tools | Compositor-specific foreign-window operations; Hyprland mutations detect `hyprlang` versus 0.55+ Lua dispatch | Wayland-core capability reports unsupported operations explicitly |
 
 ## Diagnostic contract
 

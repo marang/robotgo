@@ -37,7 +37,8 @@ Current technical differences include:
 - Sway, Hyprland, generic wlroots, and Wayland-core window backend resolution,
   with partial operations reported honestly instead of universal support being
   implied. Hyprland additionally supports reliable active-window maximize
-  query, set, and restore through `hyprctl`.
+  query, set, restore, and close through provider-aware `hyprctl` dispatch for
+  both legacy `hyprlang` and Hyprland 0.55+ Lua configurations.
 - A defined non-CGO contract: Pure-Go capture is available through CoreGraphics
   on macOS, native APIs on Windows, and X11. Windows and Linux/X11 additionally
   have keyboard/pointer backends; Wayland capture uses the consent-aware
@@ -549,7 +550,11 @@ Global pointer position and global foreign-window control are not universally
 available in Wayland core. `LocationE` and unsupported window operations return
 `ErrNotSupported`. Sway, Hyprland, and some wlroots environments have partial
 window support through compositor-specific tools; inspect capabilities instead
-of assuming parity with X11.
+of assuming parity with X11. Hyprland window mutations query
+`hyprctl status -j` and select the active `hyprlang` or Lua dispatcher syntax;
+older Hyprland versions without the status request keep the legacy path.
+Transport failures and successful but malformed/unknown provider responses
+fail before mutation.
 
 Pure-Go Windows builds provide window introspection and control through Win32:
 active handle/PID, title, outer/client bounds, activation, minimize/maximize,
@@ -781,7 +786,8 @@ support claims machine-readable and tied to exact source, test logs, and build
 identity. Published releases receive a checksummed evidence bundle. The
 remaining infrastructure blocker is protected real GNOME/KDE/wlroots evidence.
 Phase 4 already exposes the parity surface; Hyprland provides trustworthy
-active-window maximize query, set, and restore while Sway and generic wlroots
+active-window maximize query, set, and restore with provider-aware dispatch for
+legacy `hyprlang` and 0.55+ Lua configurations, while Sway and generic wlroots
 retain explicit unsupported query results where their available IPC lacks an
 equivalent state. The preceding Linux/X11 evaluation is complete: shared behavior is blocking CI,
 current guardian-path decision evidence is versioned, and native CGO remains

@@ -22,7 +22,7 @@ const (
 	notesWlrootsBackend            = "wlroots generic backend selected; operation support to be implemented via wlroots-compatible paths"
 	reasonCompositorSpecific       = "compositor-specific backend selected with partial operation support"
 	notesSwayPartialSupport        = "supports active-window title retrieval and close; active minimize/maximize available when wlrctl is present"
-	notesHyprPartialSupport        = "supports active-window title, close, and reliable maximize query/set/restore; active minimize requires wlrctl"
+	notesHyprPartialSupport        = "supports active-window title, close, and reliable maximize query/set/restore across Hyprland hyprlang/Lua config providers; active minimize requires wlrctl"
 	cmdSwayMsg                     = "swaymsg"
 	cmdHyprCtl                     = "hyprctl"
 	cmdWlrCtl                      = "wlrctl"
@@ -30,6 +30,7 @@ const (
 	argRawJSON                     = "-r"
 	argType                        = "-t"
 	argGetTree                     = "get_tree"
+	argStatus                      = "status"
 	argActiveWindow                = "activewindow"
 	argWindow                      = "window"
 	argMinimize                    = "minimize"
@@ -41,6 +42,12 @@ const (
 	argFullscreenState             = "fullscreenstate"
 	argHyprlandNone                = "0"
 	argHyprlandMaximized           = "1"
+	hyprlandConfigProviderLua      = "lua"
+	hyprlandConfigProviderLegacy   = "hyprlang"
+	hyprlandStatusUnsupported      = "unknown request"
+	hyprlandLuaCloseActive         = `hl.dsp.window.close({})`
+	hyprlandLuaMaximizeActive      = `hl.dsp.window.fullscreen_state({ internal = 1, client = 1, action = "set" })`
+	hyprlandLuaRestoreActive       = `hl.dsp.window.fullscreen_state({ internal = 0, client = 0, action = "set" })`
 	windowCommandTimeout           = 2 * time.Second
 	hyprlandFullscreenNone         = 0
 	hyprlandFullscreenMaximized    = 1
@@ -49,10 +56,11 @@ const (
 )
 
 var (
-	errWindowTitleUnavailable = errors.New("window title unavailable from compositor backend")
-	errWindowStateUnavailable = errors.New("window state unavailable from compositor backend")
-	errWindowOperationFailed  = errors.New("window operation failed for compositor backend")
-	runWindowCommand          = func(ctx context.Context, name string, args ...string) ([]byte, error) {
+	errWindowTitleUnavailable    = errors.New("window title unavailable from compositor backend")
+	errWindowStateUnavailable    = errors.New("window state unavailable from compositor backend")
+	errWindowOperationFailed     = errors.New("window operation failed for compositor backend")
+	errHyprlandStatusUnavailable = errors.New("hyprland status request unavailable")
+	runWindowCommand             = func(ctx context.Context, name string, args ...string) ([]byte, error) {
 		return exec.CommandContext(ctx, name, args...).Output()
 	}
 )
@@ -421,15 +429,23 @@ func (hyprlandWindowBackend) Maximize(pid int, state bool, isPid bool) error {
 	if state {
 		mode = argHyprlandMaximized
 	}
+	luaExpression := hyprlandLuaRestoreActive
+	if state {
+		luaExpression = hyprlandLuaMaximizeActive
+	}
+	args, err := resolveHyprlandDispatchArgs(
+		[]string{argFullscreenState, mode, mode},
+		luaExpression,
+	)
+	if err != nil {
+		return fmt.Errorf("%w: %w", errWindowOperationFailed, err)
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), windowCommandTimeout)
 	defer cancel()
 	if _, err := runWindowCommand(
 		ctx,
 		cmdHyprCtl,
-		argDispatch,
-		argFullscreenState,
-		mode,
-		mode,
+		args...,
 	); err != nil {
 		return fmt.Errorf("%w: %w", errWindowOperationFailed, err)
 	}
@@ -459,10 +475,17 @@ func (hyprlandWindowBackend) Close(args ...int) error {
 	if len(args) > 0 {
 		return waylandWindowNotSupported("close window by pid/handle")
 	}
+	dispatchArgs, err := resolveHyprlandDispatchArgs(
+		[]string{argKillActive},
+		hyprlandLuaCloseActive,
+	)
+	if err != nil {
+		return fmt.Errorf("%w: %w", errWindowOperationFailed, err)
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), windowCommandTimeout)
 	defer cancel()
-	if _, err := runWindowCommand(ctx, cmdHyprCtl, argDispatch, argKillActive); err != nil {
-		return fmt.Errorf("%w: %v", errWindowOperationFailed, err)
+	if _, err := runWindowCommand(ctx, cmdHyprCtl, dispatchArgs...); err != nil {
+		return fmt.Errorf("%w: %w", errWindowOperationFailed, err)
 	}
 	return nil
 }
@@ -593,6 +616,59 @@ type hyprlandActiveWindow struct {
 	Title            string `json:"title"`
 	Fullscreen       *int   `json:"fullscreen"`
 	FullscreenClient *int   `json:"fullscreenClient"`
+}
+
+type hyprlandStatus struct {
+	ConfigProvider string `json:"configProvider"`
+}
+
+func resolveHyprlandDispatchArgs(legacy []string, luaExpression string) ([]string, error) {
+	provider, err := getHyprlandConfigProvider()
+	if errors.Is(err, errHyprlandStatusUnavailable) {
+		// Hyprland before 0.55 has no status request and only accepts the
+		// historical dispatcher syntax. Only its exact "unknown request"
+		// response reaches this fallback; transport failures remain fail-closed.
+		return append([]string{argDispatch}, legacy...), nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	switch provider {
+	case hyprlandConfigProviderLegacy:
+		return append([]string{argDispatch}, legacy...), nil
+	case hyprlandConfigProviderLua:
+		return []string{argDispatch, luaExpression}, nil
+	default:
+		return nil, fmt.Errorf(
+			"unknown hyprland config provider %q",
+			provider,
+		)
+	}
+}
+
+func getHyprlandConfigProvider() (string, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), windowCommandTimeout)
+	defer cancel()
+	out, err := runWindowCommand(ctx, cmdHyprCtl, argStatus, argJSON)
+	if err != nil {
+		return "", fmt.Errorf("query hyprland status: %w", err)
+	}
+	if strings.TrimSpace(string(out)) == hyprlandStatusUnsupported {
+		return "", fmt.Errorf(
+			"%w: %s",
+			errHyprlandStatusUnavailable,
+			hyprlandStatusUnsupported,
+		)
+	}
+	var status hyprlandStatus
+	if err := json.Unmarshal(out, &status); err != nil {
+		return "", fmt.Errorf("invalid hyprland status json: %w", err)
+	}
+	provider := strings.ToLower(strings.TrimSpace(status.ConfigProvider))
+	if provider == "" {
+		return "", errors.New("hyprland status omitted config provider")
+	}
+	return provider, nil
 }
 
 func validHyprlandFullscreenMode(mode int) bool {

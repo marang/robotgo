@@ -5,6 +5,7 @@ package robotgo
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -452,19 +453,108 @@ func TestHyprlandWindowBackendCloseActive(t *testing.T) {
 	old := runWindowCommand
 	t.Cleanup(func() { runWindowCommand = old })
 
+	var calls [][]string
 	runWindowCommand = func(ctx context.Context, name string, args ...string) ([]byte, error) {
 		_ = ctx
 		if name != cmdHyprCtl {
 			t.Fatalf("expected %q, got %q", cmdHyprCtl, name)
 		}
-		if len(args) != 2 || args[0] != argDispatch || args[1] != argKillActive {
-			t.Fatalf("unexpected args: %#v", args)
+		calls = append(calls, append([]string(nil), args...))
+		if len(args) == 2 && args[0] == argStatus && args[1] == argJSON {
+			return []byte(`{"configProvider":"hyprlang"}`), nil
 		}
 		return []byte("ok"), nil
 	}
 
 	if err := newHyprlandWindowBackend().Close(); err != nil {
 		t.Fatalf("unexpected error: %v", err)
+	}
+	want := [][]string{
+		{argStatus, argJSON},
+		{argDispatch, argKillActive},
+	}
+	assertWindowCommandCalls(t, calls, want)
+}
+
+func TestHyprlandWindowBackendCloseActiveLua(t *testing.T) {
+	old := runWindowCommand
+	t.Cleanup(func() { runWindowCommand = old })
+
+	var calls [][]string
+	runWindowCommand = func(ctx context.Context, name string, args ...string) ([]byte, error) {
+		_ = ctx
+		if name != cmdHyprCtl {
+			t.Fatalf("expected %q, got %q", cmdHyprCtl, name)
+		}
+		calls = append(calls, append([]string(nil), args...))
+		if len(args) == 2 && args[0] == argStatus && args[1] == argJSON {
+			return []byte(`{"configProvider":"lua"}`), nil
+		}
+		return []byte("ok"), nil
+	}
+
+	if err := newHyprlandWindowBackend().Close(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	want := [][]string{
+		{argStatus, argJSON},
+		{argDispatch, hyprlandLuaCloseActive},
+	}
+	assertWindowCommandCalls(t, calls, want)
+}
+
+func TestHyprlandWindowBackendCloseFailsClosedOnStatusError(t *testing.T) {
+	old := runWindowCommand
+	t.Cleanup(func() { runWindowCommand = old })
+
+	transportErr := errors.New("status transport failed")
+	tests := []struct {
+		name       string
+		output     string
+		commandErr error
+		wantCause  error
+	}{
+		{
+			name:       "transport failure",
+			commandErr: transportErr,
+			wantCause:  transportErr,
+		},
+		{
+			name:   "malformed response",
+			output: `{"configProvider":`,
+		},
+		{
+			name:   "unknown provider",
+			output: `{"configProvider":"future"}`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			calls := 0
+			runWindowCommand = func(ctx context.Context, name string, args ...string) ([]byte, error) {
+				_ = ctx
+				calls++
+				if name != cmdHyprCtl {
+					t.Fatalf("command = %q, want %q", name, cmdHyprCtl)
+				}
+				if len(args) != 2 || args[0] != argStatus || args[1] != argJSON {
+					t.Fatalf("status args = %#v", args)
+				}
+				return []byte(tt.output), tt.commandErr
+			}
+
+			err := newHyprlandWindowBackend().Close()
+			if !errors.Is(err, errWindowOperationFailed) {
+				t.Fatalf("Close() error = %v, want errWindowOperationFailed", err)
+			}
+			if tt.wantCause != nil && !errors.Is(err, tt.wantCause) {
+				t.Fatalf("Close() error = %v, want cause %v", err, tt.wantCause)
+			}
+			if calls != 1 {
+				t.Fatalf("Close() issued %d commands after status failure, want 1", calls)
+			}
+		})
 	}
 }
 
@@ -525,6 +615,9 @@ func TestHyprlandWindowBackendMaximizeSetAndRestore(t *testing.T) {
 				t.Fatalf("unexpected test state internal=%d client=%d", internal, client)
 			}
 		}
+		if len(args) == 2 && args[0] == argStatus && args[1] == argJSON {
+			return []byte(`{"configProvider":"hyprlang"}`), nil
+		}
 		calls = append(calls, append([]string(nil), args...))
 		if len(args) == 4 && args[0] == argDispatch && args[1] == argFullscreenState {
 			switch args[2] {
@@ -549,19 +642,60 @@ func TestHyprlandWindowBackendMaximizeSetAndRestore(t *testing.T) {
 		{argDispatch, argFullscreenState, argHyprlandMaximized, argHyprlandMaximized},
 		{argDispatch, argFullscreenState, argHyprlandNone, argHyprlandNone},
 	}
-	if len(calls) != len(want) {
-		t.Fatalf("calls = %#v, want %#v", calls, want)
-	}
-	for i := range want {
-		if len(calls[i]) != len(want[i]) {
-			t.Fatalf("call %d = %#v, want %#v", i, calls[i], want[i])
+	assertWindowCommandCalls(t, calls, want)
+}
+
+func TestHyprlandWindowBackendMaximizeSetAndRestoreLua(t *testing.T) {
+	tmp := t.TempDir()
+	writeStubCommand(t, tmp, cmdHyprCtl)
+	t.Setenv(envPath, tmp)
+
+	old := runWindowCommand
+	t.Cleanup(func() { runWindowCommand = old })
+
+	var calls [][]string
+	internal := hyprlandFullscreenNone
+	client := hyprlandFullscreenNone
+	runWindowCommand = func(ctx context.Context, name string, args ...string) ([]byte, error) {
+		_ = ctx
+		if name != cmdHyprCtl {
+			t.Fatalf("expected %q, got %q", cmdHyprCtl, name)
 		}
-		for j := range want[i] {
-			if calls[i][j] != want[i][j] {
-				t.Fatalf("call %d = %#v, want %#v", i, calls[i], want[i])
-			}
+		if len(args) == 2 && args[0] == argActiveWindow && args[1] == argJSON {
+			return []byte(fmt.Sprintf(
+				`{"fullscreen":%d,"fullscreenClient":%d}`,
+				internal,
+				client,
+			)), nil
 		}
+		if len(args) == 2 && args[0] == argStatus && args[1] == argJSON {
+			return []byte(`{"configProvider":"lua"}`), nil
+		}
+		calls = append(calls, append([]string(nil), args...))
+		switch {
+		case len(args) == 2 && args[0] == argDispatch && args[1] == hyprlandLuaMaximizeActive:
+			internal, client = hyprlandFullscreenMaximized, hyprlandFullscreenMaximized
+		case len(args) == 2 && args[0] == argDispatch && args[1] == hyprlandLuaRestoreActive:
+			internal, client = hyprlandFullscreenNone, hyprlandFullscreenNone
+		default:
+			t.Fatalf("unexpected hyprctl args: %#v", args)
+		}
+		return []byte("ok"), nil
 	}
+
+	b := newHyprlandWindowBackend()
+	if err := b.Maximize(0, true, false); err != nil {
+		t.Fatalf("maximize failed: %v", err)
+	}
+	if err := b.Maximize(0, false, false); err != nil {
+		t.Fatalf("restore failed: %v", err)
+	}
+
+	want := [][]string{
+		{argDispatch, hyprlandLuaMaximizeActive},
+		{argDispatch, hyprlandLuaRestoreActive},
+	}
+	assertWindowCommandCalls(t, calls, want)
 }
 
 func TestHyprlandWindowBackendMaximizeAvoidsLegacyToggle(t *testing.T) {
@@ -643,6 +777,9 @@ func TestHyprlandWindowBackendMaximizePreservesCommandError(t *testing.T) {
 		if len(args) == 2 && args[0] == argActiveWindow && args[1] == argJSON {
 			return []byte(`{"fullscreen":0,"fullscreenClient":0}`), nil
 		}
+		if len(args) == 2 && args[0] == argStatus && args[1] == argJSON {
+			return []byte(`{"configProvider":"hyprlang"}`), nil
+		}
 		return nil, wantErr
 	}
 
@@ -652,6 +789,103 @@ func TestHyprlandWindowBackendMaximizePreservesCommandError(t *testing.T) {
 	}
 	if !errors.Is(err, wantErr) {
 		t.Fatalf("Maximize() error = %v, want wrapped command error", err)
+	}
+}
+
+func TestHyprlandDispatchArgsCompatibility(t *testing.T) {
+	old := runWindowCommand
+	t.Cleanup(func() { runWindowCommand = old })
+
+	statusErr := errors.New("status unsupported")
+	tests := []struct {
+		name       string
+		output     string
+		commandErr error
+		want       []string
+		wantErr    bool
+	}{
+		{
+			name:   "lua",
+			output: `{"configProvider":"lua"}`,
+			want:   []string{argDispatch, hyprlandLuaCloseActive},
+		},
+		{
+			name:   "hyprlang",
+			output: `{"configProvider":"hyprlang"}`,
+			want:   []string{argDispatch, argKillActive},
+		},
+		{
+			name:   "pre-status hyprland",
+			output: hyprlandStatusUnsupported,
+			want:   []string{argDispatch, argKillActive},
+		},
+		{
+			name:       "status command failure",
+			commandErr: statusErr,
+			wantErr:    true,
+		},
+		{
+			name:    "malformed successful status",
+			output:  `{"configProvider":`,
+			wantErr: true,
+		},
+		{
+			name:    "missing provider",
+			output:  `{}`,
+			wantErr: true,
+		},
+		{
+			name:    "unknown provider",
+			output:  `{"configProvider":"future"}`,
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			runWindowCommand = func(ctx context.Context, name string, args ...string) ([]byte, error) {
+				_ = ctx
+				if name != cmdHyprCtl {
+					t.Fatalf("command = %q, want %q", name, cmdHyprCtl)
+				}
+				if len(args) != 2 || args[0] != argStatus || args[1] != argJSON {
+					t.Fatalf("status args = %#v", args)
+				}
+				return []byte(tt.output), tt.commandErr
+			}
+
+			got, err := resolveHyprlandDispatchArgs(
+				[]string{argKillActive},
+				hyprlandLuaCloseActive,
+			)
+			if tt.wantErr {
+				if err == nil {
+					t.Fatalf("resolveHyprlandDispatchArgs() = %#v, nil; want error", got)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("resolveHyprlandDispatchArgs() error = %v", err)
+			}
+			assertWindowCommandCalls(t, [][]string{got}, [][]string{tt.want})
+		})
+	}
+}
+
+func assertWindowCommandCalls(t *testing.T, got, want [][]string) {
+	t.Helper()
+	if len(got) != len(want) {
+		t.Fatalf("calls = %#v, want %#v", got, want)
+	}
+	for i := range want {
+		if len(got[i]) != len(want[i]) {
+			t.Fatalf("call %d = %#v, want %#v", i, got[i], want[i])
+		}
+		for j := range want[i] {
+			if got[i][j] != want[i][j] {
+				t.Fatalf("call %d = %#v, want %#v", i, got[i], want[i])
+			}
+		}
 	}
 }
 
