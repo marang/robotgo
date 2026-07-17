@@ -75,7 +75,7 @@ workflow. `GetLinuxCapabilities` provides additional compositor detail.
 | macOS | CGO-enabled default build | Native mouse, keyboard, capture, window, and process paths; macOS permissions still apply |
 | macOS | `CGO_ENABLED=0` | Pure-Go CoreGraphics capture and display bounds with explicit Screen Recording permission diagnostics; other unavailable GUI operations return `ErrNotSupported` |
 | Windows | CGO-enabled default build | Native mouse, keyboard, capture, window, and process paths |
-| Windows | `CGO_ENABLED=0` | Pure-Go capture/bounds plus layout-aware `SendInput` keyboard/text, exact pointer movement/location, smooth movement/drag, buttons, horizontal/vertical scroll, live readiness, ownership checks, and deterministic in-process cleanup |
+| Windows | `CGO_ENABLED=0` | Pure-Go capture/bounds plus foreground-layout-aware `SendInput` keyboard/text, exact pointer movement/location, smooth movement/drag, buttons, horizontal/vertical scroll, live readiness, ownership checks, and deterministic in-process cleanup |
 | Linux/X11 | CGO-enabled default build | X11/XTest input, capture, window, and process paths |
 | Linux/X11 | `CGO_ENABLED=0` | Pure-Go X11 capture/bounds plus XTEST mouse, keyboard, text/Unicode, pointer-location, smooth-move/drag, vertical scroll, and live readiness probes; horizontal scroll is explicitly unsupported |
 | Linux/Wayland | `-tags wayland` for native protocols; add `pipewire` for persistent ScreenCast frames | Native wlroots capture/input where compositor protocols exist, one-shot Screenshot fallback, reusable ScreenCast/PipeWire capture, explicit RemoteDesktop portal sessions, capability-aware window support |

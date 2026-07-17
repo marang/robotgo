@@ -14,6 +14,8 @@ type windowsInputBackend struct {
 	core *windowsinput.Backend
 }
 
+const maxWindowsTextDelayMilliseconds = int64(^uint64(0)>>1) / int64(time.Millisecond)
+
 var pureGoWindowsInput = &windowsInputBackend{core: windowsinput.New()}
 
 func platformPureGoInputBackend() pureGoInputBackend { return pureGoWindowsInput }
@@ -51,6 +53,12 @@ func (backend *windowsInputBackend) Key(event pureGoKeyEvent) error {
 }
 
 func (backend *windowsInputBackend) Text(event pureGoTextEvent) error {
+	if int64(event.Delay) > maxWindowsTextDelayMilliseconds {
+		return fmt.Errorf(
+			"robotgo: Windows text delay %dms exceeds time.Duration",
+			event.Delay,
+		)
+	}
 	return translatePureGoWindowsInputError(backend.core.Text(windowsinput.TextEvent{
 		Text: event.Text, PID: event.PID,
 		Delay: time.Duration(event.Delay) * time.Millisecond,

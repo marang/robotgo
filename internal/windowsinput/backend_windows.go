@@ -27,6 +27,40 @@ var (
 	ErrUnsupported = errors.New("Pure-Go Windows input operation is unsupported")
 	// ErrOwnership reports an attempt to release or overwrite foreign input.
 	ErrOwnership = errors.New("Pure-Go Windows input state is not owned by RobotGo")
+
+	namedVirtualKeys = map[string]uint16{
+		"backspace": vkBack, "delete": vkDelete,
+		"enter": vkReturn, "tab": vkTab,
+		"esc": vkEscape, "escape": vkEscape,
+		"up": vkUp, "down": vkDown, "right": vkRight, "left": vkLeft,
+		"home": vkHome, "end": vkEnd, "pageup": vkPrior, "pagedown": vkNext,
+		"cmd": vkLWin, "command": vkLWin, "lcmd": vkLWin, "rcmd": vkRWin,
+		"alt": vkMenu, "lalt": vkLMenu, "ralt": vkRMenu,
+		"ctrl": vkControl, "control": vkControl, "lctrl": vkLControl, "rctrl": vkRControl,
+		"shift": vkShift, "lshift": vkLShift, "rshift": vkRShift, "right_shift": vkRShift,
+		"capslock": vkCapital, "space": vkSpace,
+		"print": vkSnapshot, "printscreen": vkSnapshot,
+		"insert": vkInsert, "menu": vkApps,
+		"num0": vkNumpad0, "numpad_0": vkNumpad0,
+		"num1": vkNumpad1, "numpad_1": vkNumpad1,
+		"num2": vkNumpad2, "numpad_2": vkNumpad2,
+		"num3": vkNumpad3, "numpad_3": vkNumpad3,
+		"num4": vkNumpad4, "numpad_4": vkNumpad4,
+		"num5": vkNumpad5, "numpad_5": vkNumpad5,
+		"num6": vkNumpad6, "numpad_6": vkNumpad6,
+		"num7": vkNumpad7, "numpad_7": vkNumpad7,
+		"num8": vkNumpad8, "numpad_8": vkNumpad8,
+		"num9": vkNumpad9, "numpad_9": vkNumpad9,
+		"num_lock": vkNumLock, "numpad_lock": vkNumLock,
+		"num.": vkDecimal, "num+": vkAdd, "num-": vkSubtract,
+		"num*": vkMultiply, "num/": vkDivide, "num_enter": vkReturn,
+		"num_equal":   vkOEMPlus,
+		"scroll_lock": vkScroll, "pause_break": vkPause,
+		"audio_mute": vkVolumeMute, "audio_vol_down": vkVolumeDown,
+		"audio_vol_up": vkVolumeUp, "audio_play": vkMediaPlayPause,
+		"audio_pause": vkMediaPlayPause, "audio_stop": vkMediaStop,
+		"audio_prev": vkMediaPrevTrack, "audio_next": vkMediaNextTrack,
+	}
 )
 
 // KeyEvent is one normalized keyboard operation.
@@ -89,6 +123,10 @@ func (backend *Backend) KeyboardReady() error {
 func (backend *Backend) MouseReady() error {
 	backend.mu.Lock()
 	defer backend.mu.Unlock()
+	return backend.mouseReadyLocked()
+}
+
+func (backend *Backend) mouseReadyLocked() error {
 	if err := backend.system.MouseReady(); err != nil {
 		return err
 	}
@@ -97,40 +135,7 @@ func (backend *Backend) MouseReady() error {
 }
 
 func namedVirtualKey(key string) (uint16, bool) {
-	named := map[string]uint16{
-		"backspace": vkBack, "delete": vkDelete,
-		"enter": vkReturn, "tab": vkTab,
-		"esc": vkEscape, "escape": vkEscape,
-		"up": vkUp, "down": vkDown, "right": vkRight, "left": vkLeft,
-		"home": vkHome, "end": vkEnd, "pageup": vkPrior, "pagedown": vkNext,
-		"cmd": vkLWin, "command": vkLWin, "lcmd": vkLWin, "rcmd": vkRWin,
-		"alt": vkMenu, "lalt": vkLMenu, "ralt": vkRMenu,
-		"ctrl": vkControl, "control": vkControl, "lctrl": vkLControl, "rctrl": vkRControl,
-		"shift": vkShift, "lshift": vkLShift, "rshift": vkRShift, "right_shift": vkRShift,
-		"capslock": vkCapital, "space": vkSpace,
-		"print": vkSnapshot, "printscreen": vkSnapshot,
-		"insert": vkInsert, "menu": vkApps,
-		"num0": vkNumpad0, "numpad_0": vkNumpad0,
-		"num1": vkNumpad1, "numpad_1": vkNumpad1,
-		"num2": vkNumpad2, "numpad_2": vkNumpad2,
-		"num3": vkNumpad3, "numpad_3": vkNumpad3,
-		"num4": vkNumpad4, "numpad_4": vkNumpad4,
-		"num5": vkNumpad5, "numpad_5": vkNumpad5,
-		"num6": vkNumpad6, "numpad_6": vkNumpad6,
-		"num7": vkNumpad7, "numpad_7": vkNumpad7,
-		"num8": vkNumpad8, "numpad_8": vkNumpad8,
-		"num9": vkNumpad9, "numpad_9": vkNumpad9,
-		"num_lock": vkNumLock, "numpad_lock": vkNumLock,
-		"num.": vkDecimal, "num+": vkAdd, "num-": vkSubtract,
-		"num*": vkMultiply, "num/": vkDivide, "num_enter": vkReturn,
-		"num_equal":   vkOEMPlus,
-		"scroll_lock": vkScroll, "pause_break": vkPause,
-		"audio_mute": vkVolumeMute, "audio_vol_down": vkVolumeDown,
-		"audio_vol_up": vkVolumeUp, "audio_play": vkMediaPlayPause,
-		"audio_pause": vkMediaPlayPause, "audio_stop": vkMediaStop,
-		"audio_prev": vkMediaPrevTrack, "audio_next": vkMediaNextTrack,
-	}
-	value, ok := named[strings.ToLower(key)]
+	value, ok := namedVirtualKeys[strings.ToLower(key)]
 	return value, ok
 }
 
@@ -187,15 +192,18 @@ func (backend *Backend) resolveKeyLocked(key string) (uint16, []uint16, error) {
 	if value > math.MaxUint16 {
 		return 0, nil, fmt.Errorf("%w: %U has no single Windows virtual key; use text input", ErrUnsupported, value)
 	}
-	virtualKey, shiftState, ok := backend.system.VirtualKeyForRune(uint16(value))
+	virtualKey, shiftState, ok, err := backend.system.VirtualKeyForRune(uint16(value))
+	if err != nil {
+		return 0, nil, err
+	}
 	if !ok {
-		return 0, nil, fmt.Errorf("%w: active Windows keyboard layout cannot map %U; use text input", ErrUnsupported, value)
+		return 0, nil, fmt.Errorf("%w: foreground Windows keyboard layout cannot map %U; use text input", ErrUnsupported, value)
 	}
 	if virtualKey == 0 {
-		return 0, nil, fmt.Errorf("%w: active Windows keyboard layout returned no virtual key for %U", ErrUnsupported, value)
+		return 0, nil, fmt.Errorf("%w: foreground Windows keyboard layout returned no virtual key for %U", ErrUnsupported, value)
 	}
 	if shiftState&^uint8(shiftStateShift|shiftStateControl|shiftStateAlt) != 0 {
-		return 0, nil, fmt.Errorf("%w: active Windows keyboard layout requires unsupported shift state %#x for %U", ErrUnsupported, shiftState, value)
+		return 0, nil, fmt.Errorf("%w: foreground Windows keyboard layout requires unsupported shift state %#x for %U", ErrUnsupported, shiftState, value)
 	}
 	modifiers := make([]uint16, 0, 3)
 	if shiftState&shiftStateShift != 0 {
@@ -248,7 +256,7 @@ func (backend *Backend) temporaryModifierInputsLocked(modifiers []uint16, main u
 	return down, up
 }
 
-// Key injects one layout-aware key transaction.
+// Key injects one foreground-layout-aware key transaction.
 func (backend *Backend) Key(event KeyEvent) error {
 	if event.PID != 0 {
 		return fmt.Errorf("%w: Windows SendInput cannot target a process", ErrUnsupported)
@@ -288,8 +296,19 @@ func (backend *Backend) Key(event KeyEvent) error {
 		inputs = append(inputs, modifierUp...)
 		return backend.sendTrackedLocked(inputs)
 	}
-	if _, owned := backend.ownedKeys[main]; !owned {
+	ownedExtended, owned := backend.ownedKeyExtended[main]
+	if !owned {
 		return fmt.Errorf("%w: key %q was not pressed by this backend", ErrOwnership, event.Key)
+	}
+	if ownedExtended != mainExtended {
+		ownedKind := "standard"
+		if ownedExtended {
+			ownedKind = "extended"
+		}
+		return fmt.Errorf(
+			"%w: key %q does not match the owned %s key",
+			ErrOwnership, event.Key, ownedKind,
+		)
 	}
 	inputs := append(modifierDown, mainInput(false))
 	inputs = append(inputs, modifierUp...)
@@ -312,11 +331,18 @@ func (backend *Backend) Text(event TextEvent) error {
 	if err := backend.system.KeyboardReady(); err != nil {
 		return err
 	}
-	runes := []rune(event.Text)
-	for index, value := range runes {
-		units := utf16.Encode([]rune{value})
-		inputs := make([]trackedInput, 0, len(units)*2)
-		for _, unit := range units {
+	for index, value := range event.Text {
+		var units [2]uint16
+		unitCount := 1
+		if value <= math.MaxUint16 {
+			units[0] = uint16(value)
+		} else {
+			high, low := utf16.EncodeRune(value)
+			units[0], units[1] = uint16(high), uint16(low)
+			unitCount = 2
+		}
+		inputs := make([]trackedInput, 0, unitCount*2)
+		for _, unit := range units[:unitCount] {
 			inputs = append(inputs,
 				trackedUnicodeInput(unit, true),
 				trackedUnicodeInput(unit, false),
@@ -325,7 +351,7 @@ func (backend *Backend) Text(event TextEvent) error {
 		if err := backend.sendTrackedLocked(inputs); err != nil {
 			return fmt.Errorf("type %U: %w", value, err)
 		}
-		if event.Delay > 0 && index+1 < len(runes) {
+		if event.Delay > 0 && index+utf8.RuneLen(value) < len(event.Text) {
 			backend.sleep(event.Delay)
 		}
 	}
@@ -349,6 +375,9 @@ func (backend *Backend) MoveAbsolute(x, y int, _ []int) error {
 	}
 	backend.mu.Lock()
 	defer backend.mu.Unlock()
+	if err := backend.mouseReadyLocked(); err != nil {
+		return err
+	}
 	return backend.system.SetCursorPosition(int32(x), int32(y))
 }
 
@@ -356,6 +385,9 @@ func (backend *Backend) MoveAbsolute(x, y int, _ []int) error {
 func (backend *Backend) MoveRelative(x, y int) error {
 	backend.mu.Lock()
 	defer backend.mu.Unlock()
+	if err := backend.system.MouseReady(); err != nil {
+		return err
+	}
 	currentX, currentY, err := backend.system.CursorPosition()
 	if err != nil {
 		return err
@@ -374,13 +406,27 @@ func validSmoothDelayRange(lowDelay, highDelay float64) bool {
 		lowDelay >= 0 && highDelay >= lowDelay && highDelay <= maximumSmoothDelay
 }
 
-func (backend *Backend) moveSmoothLocked(x, y int, relative bool, lowDelay, highDelay float64) error {
+type smoothMovePlan struct {
+	startX, startY   int64
+	targetX, targetY int64
+	steps            int
+	delay            time.Duration
+}
+
+func (backend *Backend) planSmoothMoveLocked(
+	x, y int,
+	relative bool,
+	lowDelay, highDelay float64,
+) (smoothMovePlan, error) {
 	if !validSmoothDelayRange(lowDelay, highDelay) {
-		return fmt.Errorf("Pure-Go Windows invalid smooth-move delay range %g..%g ms", lowDelay, highDelay)
+		return smoothMovePlan{}, fmt.Errorf(
+			"Pure-Go Windows invalid smooth-move delay range %g..%g ms",
+			lowDelay, highDelay,
+		)
 	}
 	startX, startY, err := backend.system.CursorPosition()
 	if err != nil {
-		return err
+		return smoothMovePlan{}, err
 	}
 	targetX, targetY := int64(x), int64(y)
 	if relative {
@@ -389,7 +435,7 @@ func (backend *Backend) moveSmoothLocked(x, y int, relative bool, lowDelay, high
 	}
 	if targetX < math.MinInt32 || targetX > math.MaxInt32 ||
 		targetY < math.MinInt32 || targetY > math.MaxInt32 {
-		return errors.New("Pure-Go Windows smooth pointer target exceeds Win32 coordinates")
+		return smoothMovePlan{}, errors.New("Pure-Go Windows smooth pointer target exceeds Win32 coordinates")
 	}
 	distance := math.Hypot(float64(targetX-int64(startX)), float64(targetY-int64(startY)))
 	steps := int(math.Ceil(distance / 8))
@@ -399,36 +445,55 @@ func (backend *Backend) moveSmoothLocked(x, y int, relative bool, lowDelay, high
 	if steps > 240 {
 		steps = 240
 	}
-	delay := time.Duration((lowDelay + highDelay) / 2 * float64(time.Millisecond))
-	lastX, lastY := int64(startX), int64(startY)
-	for step := 1; step <= steps; step++ {
-		progress := float64(step) / float64(steps)
+	return smoothMovePlan{
+		startX: int64(startX), startY: int64(startY),
+		targetX: targetX, targetY: targetY,
+		steps: steps,
+		delay: time.Duration((lowDelay + highDelay) / 2 * float64(time.Millisecond)),
+	}, nil
+}
+
+func (backend *Backend) executeSmoothMoveLocked(plan smoothMovePlan) error {
+	lastX, lastY := plan.startX, plan.startY
+	for step := 1; step <= plan.steps; step++ {
+		progress := float64(step) / float64(plan.steps)
 		if progress < 0.5 {
 			progress = 4 * progress * progress * progress
 		} else {
 			inverse := -2*progress + 2
 			progress = 1 - inverse*inverse*inverse/2
 		}
-		currentX := int64(math.Round(float64(startX) + float64(targetX-int64(startX))*progress))
-		currentY := int64(math.Round(float64(startY) + float64(targetY-int64(startY))*progress))
-		if currentX == lastX && currentY == lastY && step != steps {
+		currentX := int64(math.Round(float64(plan.startX) + float64(plan.targetX-plan.startX)*progress))
+		currentY := int64(math.Round(float64(plan.startY) + float64(plan.targetY-plan.startY)*progress))
+		if currentX == lastX && currentY == lastY && step != plan.steps {
 			continue
 		}
 		if err := backend.system.SetCursorPosition(int32(currentX), int32(currentY)); err != nil {
 			return err
 		}
 		lastX, lastY = currentX, currentY
-		if delay > 0 && step != steps {
-			backend.sleep(delay)
+		if plan.delay > 0 && step != plan.steps {
+			backend.sleep(plan.delay)
 		}
 	}
 	return nil
+}
+
+func (backend *Backend) moveSmoothLocked(x, y int, relative bool, lowDelay, highDelay float64) error {
+	plan, err := backend.planSmoothMoveLocked(x, y, relative, lowDelay, highDelay)
+	if err != nil {
+		return err
+	}
+	return backend.executeSmoothMoveLocked(plan)
 }
 
 // MoveSmooth performs a bounded eased movement.
 func (backend *Backend) MoveSmooth(x, y int, relative bool, lowDelay, highDelay float64) error {
 	backend.mu.Lock()
 	defer backend.mu.Unlock()
+	if err := backend.system.MouseReady(); err != nil {
+		return err
+	}
 	return backend.moveSmoothLocked(x, y, relative, lowDelay, highDelay)
 }
 
@@ -473,10 +538,7 @@ func (backend *Backend) Click(name string, double bool) error {
 	}
 	backend.mu.Lock()
 	defer backend.mu.Unlock()
-	if err := backend.system.MouseReady(); err != nil {
-		return err
-	}
-	if err := backend.buttonAvailableLocked(flag, virtualKey); err != nil {
+	if err := backend.mouseReadyLocked(); err != nil {
 		return err
 	}
 	count := 1
@@ -484,6 +546,9 @@ func (backend *Backend) Click(name string, double bool) error {
 		count = 2
 	}
 	for click := 0; click < count; click++ {
+		if err := backend.buttonAvailableLocked(flag, virtualKey); err != nil {
+			return err
+		}
 		if err := backend.sendTrackedLocked([]trackedInput{
 			trackedButtonInput(flag, true),
 			trackedButtonInput(flag, false),
@@ -505,7 +570,7 @@ func (backend *Backend) Toggle(name string, down bool) error {
 	}
 	backend.mu.Lock()
 	defer backend.mu.Unlock()
-	if err := backend.system.MouseReady(); err != nil {
+	if err := backend.mouseReadyLocked(); err != nil {
 		return err
 	}
 	if down {
@@ -520,9 +585,22 @@ func (backend *Backend) Toggle(name string, down bool) error {
 
 // DragSmooth owns the left button for the complete drag transaction.
 func (backend *Backend) DragSmooth(x, y int, lowDelay, highDelay float64) error {
+	if !validSmoothDelayRange(lowDelay, highDelay) {
+		return fmt.Errorf("Pure-Go Windows invalid smooth-move delay range %g..%g ms", lowDelay, highDelay)
+	}
+	if err := validateCoordinate(x); err != nil {
+		return err
+	}
+	if err := validateCoordinate(y); err != nil {
+		return err
+	}
 	backend.mu.Lock()
 	defer backend.mu.Unlock()
 	if err := backend.system.MouseReady(); err != nil {
+		return err
+	}
+	plan, err := backend.planSmoothMoveLocked(x, y, false, lowDelay, highDelay)
+	if err != nil {
 		return err
 	}
 	if err := backend.buttonAvailableLocked(mouseEventLeftDown, vkLButton); err != nil {
@@ -533,7 +611,7 @@ func (backend *Backend) DragSmooth(x, y int, lowDelay, highDelay float64) error 
 		return downErr
 	}
 	backend.sleep(dragStartDelay)
-	moveErr := backend.moveSmoothLocked(x, y, false, lowDelay, highDelay)
+	moveErr := backend.executeSmoothMoveLocked(plan)
 	upErr := backend.sendTrackedLocked([]trackedInput{trackedButtonInput(mouseEventLeftDown, false)})
 	return errors.Join(moveErr, upErr)
 }
@@ -542,6 +620,9 @@ func (backend *Backend) DragSmooth(x, y int, lowDelay, highDelay float64) error 
 func (backend *Backend) Location() (int, int, error) {
 	backend.mu.Lock()
 	defer backend.mu.Unlock()
+	if err := backend.system.MouseReady(); err != nil {
+		return 0, 0, err
+	}
 	x, y, err := backend.system.CursorPosition()
 	return int(x), int(y), err
 }
@@ -565,7 +646,7 @@ func (backend *Backend) Scroll(x, y int) error {
 	}
 	backend.mu.Lock()
 	defer backend.mu.Unlock()
-	if err := backend.system.MouseReady(); err != nil {
+	if err := backend.mouseReadyLocked(); err != nil {
 		return err
 	}
 	return backend.sendTrackedLocked(inputs)

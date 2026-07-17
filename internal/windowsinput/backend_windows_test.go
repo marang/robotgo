@@ -4,6 +4,8 @@ package windowsinput
 
 import (
 	"errors"
+	"fmt"
+	"math"
 	"reflect"
 	"strconv"
 	"testing"
@@ -21,6 +23,7 @@ type fakeSystem struct {
 	mouseErr    error
 	cursorErr   error
 	setErr      error
+	layoutErr   error
 
 	x int32
 	y int32
@@ -63,12 +66,10 @@ func (system *fakeSystem) KeyDown(key uint16) bool {
 	return system.down[key]
 }
 
-func (system *fakeSystem) VirtualKeyForRune(value uint16) (uint16, uint8, bool) {
+func (system *fakeSystem) VirtualKeyForRune(value uint16) (uint16, uint8, bool, error) {
 	key, ok := system.layout[value]
-	return key, system.shiftState[value], ok
+	return key, system.shiftState[value], ok, system.layoutErr
 }
-
-func (*fakeSystem) ScanCodeForVirtualKey(uint16) uint16 { return 0 }
 
 func newFakeBackend(system *fakeSystem, sleeps *[]time.Duration) *Backend {
 	if system.down == nil {
@@ -117,7 +118,18 @@ func TestInputRecordMatchesWin32Layout(t *testing.T) {
 	}
 }
 
-func TestKeyUsesActiveLayoutAndCallerModifiers(t *testing.T) {
+func TestRequiredUser32ProceduresResolve(t *testing.T) {
+	t.Parallel()
+	system := newWin32System()
+	if err := system.KeyboardReady(); err != nil {
+		t.Fatalf("keyboard procedures: %v", err)
+	}
+	if err := system.MouseReady(); err != nil {
+		t.Fatalf("pointer procedures: %v", err)
+	}
+}
+
+func TestKeyUsesForegroundLayoutAndCallerModifiers(t *testing.T) {
 	system := &fakeSystem{
 		layout:     map[uint16]uint16{'@': 0x51},
 		shiftState: map[uint16]uint8{'@': shiftStateControl | shiftStateAlt},
@@ -146,6 +158,18 @@ func TestKeyUsesActiveLayoutAndCallerModifiers(t *testing.T) {
 	}
 	if len(backend.ownedKeys) != 0 {
 		t.Fatalf("tap left owned keys: %#v", backend.ownedKeys)
+	}
+}
+
+func TestKeyPreservesForegroundLayoutFailure(t *testing.T) {
+	layoutErr := fmt.Errorf("%w: no foreground window", ErrUnsupported)
+	system := &fakeSystem{layoutErr: layoutErr}
+	backend := newFakeBackend(system, nil)
+	if err := backend.Key(KeyEvent{Key: "a", Tap: true}); !errors.Is(err, layoutErr) {
+		t.Fatalf("Key error = %v, want foreground-layout error", err)
+	}
+	if len(system.sends) != 0 {
+		t.Fatalf("layout failure injected %d input transactions", len(system.sends))
 	}
 }
 
@@ -188,6 +212,28 @@ func TestKeyHoldRequiresOwnershipAndCloseReleases(t *testing.T) {
 		{vkReturn, 0, keyEventKeyUp},
 	}) {
 		t.Fatalf("Close transaction = %#v", got)
+	}
+}
+
+func TestKeyReleasePreservesExtendedIdentity(t *testing.T) {
+	system := &fakeSystem{}
+	backend := newFakeBackend(system, nil)
+	if err := backend.Key(KeyEvent{Key: "num_enter", Down: true}); err != nil {
+		t.Fatalf("numpad enter down: %v", err)
+	}
+	if err := backend.Key(KeyEvent{Key: "enter", Down: false}); !errors.Is(err, ErrOwnership) {
+		t.Fatalf("standard enter release error = %v, want ErrOwnership", err)
+	}
+	if len(system.sends) != 1 {
+		t.Fatalf("mismatched release performed %d SendInput calls, want 1", len(system.sends))
+	}
+	if err := backend.Key(KeyEvent{Key: "num_enter", Down: false}); err != nil {
+		t.Fatalf("numpad enter up: %v", err)
+	}
+	release := decodeKeyboard(system.sends[1][0])
+	if release.VirtualKey != vkReturn ||
+		release.Flags != keyEventExtended|keyEventKeyUp {
+		t.Fatalf("numpad enter release = %+v", release)
 	}
 }
 
@@ -267,6 +313,25 @@ func TestPartialUnicodeTransactionReleasesPressedUnit(t *testing.T) {
 	}
 }
 
+func TestPartialButtonTransactionReleasesPressedButton(t *testing.T) {
+	injectionErr := errors.New("button partial")
+	system := &fakeSystem{sendPlan: []sendResult{
+		{inserted: 1, err: injectionErr},
+		{inserted: 1},
+	}}
+	backend := newFakeBackend(system, nil)
+	if err := backend.Click("left", false); !errors.Is(err, injectionErr) {
+		t.Fatalf("Click error = %v, want injection error", err)
+	}
+	if len(backend.ownedButtons) != 0 {
+		t.Fatalf("rollback left owned buttons: %#v", backend.ownedButtons)
+	}
+	if len(system.sends) != 2 ||
+		system.sends[1][0].Payload.Flags != mouseEventLeftUp {
+		t.Fatalf("button rollback transactions = %#v", system.sends)
+	}
+}
+
 func TestClickDoubleAndScrollDirections(t *testing.T) {
 	system := &fakeSystem{}
 	var sleeps []time.Duration
@@ -296,6 +361,23 @@ func TestClickDoubleAndScrollDirections(t *testing.T) {
 	}
 	if got := int32(scroll[1].Payload.MouseData); scroll[1].Payload.Flags != mouseEventWheel || got != -3*wheelDelta {
 		t.Fatalf("vertical scroll = flags %#x data %d", scroll[1].Payload.Flags, got)
+	}
+}
+
+func TestDoubleClickRechecksForeignButtonState(t *testing.T) {
+	system := &fakeSystem{}
+	backend := newBackend(system, func(time.Duration) {
+		system.down[vkLButton] = true
+	})
+	system.down = make(map[uint16]bool)
+	if err := backend.Click("left", true); !errors.Is(err, ErrOwnership) {
+		t.Fatalf("Click error = %v, want ownership conflict", err)
+	}
+	if len(system.sends) != 1 {
+		t.Fatalf("double click injected %d pulses, want only the first", len(system.sends))
+	}
+	if len(backend.ownedButtons) != 0 {
+		t.Fatalf("double click left owned buttons: %#v", backend.ownedButtons)
 	}
 }
 
@@ -333,5 +415,67 @@ func TestReadyErrorsArePreserved(t *testing.T) {
 	}
 	if err := backend.MouseReady(); !errors.Is(err, mouseErr) {
 		t.Fatalf("MouseReady = %v", err)
+	}
+}
+
+func TestPointerOperationsCheckReadinessBeforeSideEffects(t *testing.T) {
+	mouseErr := errors.New("input desktop unavailable")
+	system := &fakeSystem{mouseErr: mouseErr}
+	backend := newFakeBackend(system, nil)
+	operations := map[string]func() error{
+		"move absolute": func() error { return backend.MoveAbsolute(1, 2, nil) },
+		"move relative": func() error { return backend.MoveRelative(1, 2) },
+		"move smooth":   func() error { return backend.MoveSmooth(1, 2, false, 0, 0) },
+		"drag smooth":   func() error { return backend.DragSmooth(1, 2, 0, 0) },
+		"location": func() error {
+			_, _, err := backend.Location()
+			return err
+		},
+		"click":  func() error { return backend.Click("left", false) },
+		"toggle": func() error { return backend.Toggle("left", true) },
+		"scroll": func() error { return backend.Scroll(0, 1) },
+	}
+	for name, operation := range operations {
+		if err := operation(); !errors.Is(err, mouseErr) {
+			t.Errorf("%s error = %v, want readiness error", name, err)
+		}
+	}
+	if len(system.sends) != 0 {
+		t.Fatalf("readiness failures injected %d input transactions", len(system.sends))
+	}
+	if len(system.positions) != 0 {
+		t.Fatalf("readiness failures moved the pointer: %#v", system.positions)
+	}
+}
+
+func TestInvalidDragIsSideEffectFree(t *testing.T) {
+	system := &fakeSystem{}
+	backend := newFakeBackend(system, nil)
+	if err := backend.DragSmooth(10, 20, 0, maximumSmoothDelay+1); err == nil {
+		t.Fatal("DragSmooth accepted an excessive delay")
+	}
+	if strconv.IntSize == 64 {
+		outOfRange := int64(math.MaxInt32) + 1
+		if err := backend.DragSmooth(int(outOfRange), 20, 0, 0); err == nil {
+			t.Fatal("DragSmooth accepted an out-of-range coordinate")
+		}
+	}
+	if len(system.sends) != 0 {
+		t.Fatalf("invalid drag injected %d input transactions", len(system.sends))
+	}
+	if len(system.positions) != 0 {
+		t.Fatalf("invalid drag moved the pointer: %#v", system.positions)
+	}
+}
+
+func TestDragPlanningFailureIsSideEffectFree(t *testing.T) {
+	cursorErr := errors.New("cursor query failed")
+	system := &fakeSystem{cursorErr: cursorErr}
+	backend := newFakeBackend(system, nil)
+	if err := backend.DragSmooth(10, 20, 0, 0); !errors.Is(err, cursorErr) {
+		t.Fatalf("DragSmooth error = %v, want cursor error", err)
+	}
+	if len(system.sends) != 0 {
+		t.Fatalf("failed drag planning injected %d input transactions", len(system.sends))
 	}
 }

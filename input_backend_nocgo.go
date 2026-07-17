@@ -12,7 +12,7 @@ type pureGoKeyEvent struct {
 	// Modifiers contains the portable, backend-normalized modifiers used by
 	// X11 and portal-compatible backends. UserModifiers preserves only the
 	// modifiers supplied by the caller so layout-aware platforms can derive
-	// character modifiers from their active keyboard layout.
+	// character modifiers from their target keyboard layout.
 	Modifiers     []string
 	UserModifiers []string
 	PID           int
@@ -89,7 +89,7 @@ func pureGoInputCapabilities() (keyboard, mouse FeatureCapability) {
 		}
 	}
 	if backendName == featureBackendPureGoWindows {
-		keyboard.Notes += "; SendInput follows the active keyboard layout and Windows UIPI; CloseMainDisplayE releases RobotGo-owned persistent holds"
+		keyboard.Notes += "; SendInput follows the foreground target's keyboard layout and Windows UIPI; CloseMainDisplayE releases RobotGo-owned persistent holds"
 		mouse.Notes += "; pointer coordinates use the Windows virtual screen; CloseMainDisplayE releases RobotGo-owned persistent holds"
 	}
 	return keyboard, mouse

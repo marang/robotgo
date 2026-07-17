@@ -138,12 +138,12 @@ display enumeration, Screen Recording preflight, RGBA conversion, and
 CoreGraphics ownership are covered hermetically on both supported
 architectures.
 
-Windows non-CGO builds now provide a layout-aware `SendInput` keyboard and text
+Windows non-CGO builds now provide a foreground-layout-aware `SendInput` keyboard and text
 backend plus exact pointer movement/location, smooth movement and drag,
 buttons, horizontal and vertical scrolling, live readiness checks, partial
 injection rollback, ownership conflicts, and deterministic in-process cleanup.
 Exact Unicode text is encoded as UTF-16, while `KeyTap` resolves characters
-through the active Windows keyboard layout instead of assuming US key
+through the foreground target's Windows keyboard layout instead of assuming US key
 positions. Hermetic tests validate 32/64-bit `INPUT` layout and transaction
 semantics; the real input-desktop pointer test remains opt-in because it moves a
 global resource.

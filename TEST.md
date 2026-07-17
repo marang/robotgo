@@ -48,7 +48,7 @@ branch protection requires the stable three-OS, lint, vet, race, Wayland, and
 X11 evidence checks. Opt-in real-compositor jobs remain excluded until matching
 self-hosted runners are registered.
 
-Pure-Go Windows input has hermetic tests for Win32 `INPUT` layout, active-layout
+Pure-Go Windows input has hermetic tests for Win32 `INPUT` layout, foreground-layout
 key mapping, Unicode surrogate pairs, partial-injection rollback, ownership,
 buttons, scrolling, and movement. They run in the Windows non-CGO CI leg. A
 real input-desktop pointer probe is explicitly opt-in because it moves the

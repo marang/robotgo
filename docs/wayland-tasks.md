@@ -22,7 +22,7 @@ Current implementation baseline:
   scrolling, pointer location, explicit state errors, and deterministic
   cleanup/reconnect. It is selected only for X11-primary sessions and never as
   an implicit Xwayland fallback from Wayland.
-- Windows non-CGO builds provide layout-aware keyboard/text and pointer input
+- Windows non-CGO builds provide foreground-layout-aware keyboard/text and pointer input
   through user32, including exact Unicode, smooth movement/drag, horizontal and
   vertical scroll, ownership checks, partial-injection rollback, live
   readiness, and deterministic in-process cleanup.

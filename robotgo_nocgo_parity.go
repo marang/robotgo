@@ -34,7 +34,9 @@ func CloseMainDisplay() { _ = CloseMainDisplayE() }
 // server-global scratch mappings, so call it only after targets have processed
 // all prior keyboard input. Abnormal process termination can leave mappings
 // behind. If cleanup reports a pressed-key or modifier-map conflict, remove
-// that conflict and retry CloseMainDisplayE.
+// that conflict and retry CloseMainDisplayE. On Pure-Go Windows it releases
+// RobotGo-owned persistent key and button holds; process termination cannot run
+// this in-process cleanup.
 func CloseMainDisplayE() error { return closePureGoPlatformInput() }
 
 func InvalidateScreenBoundsCache() {}

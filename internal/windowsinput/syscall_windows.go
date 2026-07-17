@@ -5,6 +5,7 @@ package windowsinput
 import (
 	"errors"
 	"fmt"
+	"runtime"
 	"unsafe"
 
 	"golang.org/x/sys/windows"
@@ -28,8 +29,6 @@ const (
 	mouseEventHWheel     = 0x1000
 
 	wheelDelta = 120
-
-	mapVirtualKeyToScanCode = 0
 
 	shiftStateShift   = 1
 	shiftStateControl = 2
@@ -219,42 +218,52 @@ type inputSystem interface {
 	CursorPosition() (int32, int32, error)
 	SetCursorPosition(int32, int32) error
 	KeyDown(uint16) bool
-	VirtualKeyForRune(uint16) (uint16, uint8, bool)
-	ScanCodeForVirtualKey(uint16) uint16
+	VirtualKeyForRune(uint16) (uint16, uint8, bool, error)
 }
 
 type win32System struct {
-	sendInput        *windows.LazyProc
-	getCursorPos     *windows.LazyProc
-	setCursorPos     *windows.LazyProc
-	getAsyncKeyState *windows.LazyProc
-	vkKeyScanW       *windows.LazyProc
-	mapVirtualKeyW   *windows.LazyProc
+	sendInput                *windows.LazyProc
+	getCursorPos             *windows.LazyProc
+	setCursorPos             *windows.LazyProc
+	getAsyncKeyState         *windows.LazyProc
+	getForegroundWindow      *windows.LazyProc
+	getWindowThreadProcessID *windows.LazyProc
+	getKeyboardLayout        *windows.LazyProc
+	vkKeyScanExW             *windows.LazyProc
 }
 
 func newWin32System() *win32System {
 	user32 := windows.NewLazySystemDLL("user32.dll")
 	return &win32System{
-		sendInput:        user32.NewProc("SendInput"),
-		getCursorPos:     user32.NewProc("GetCursorPos"),
-		setCursorPos:     user32.NewProc("SetCursorPos"),
-		getAsyncKeyState: user32.NewProc("GetAsyncKeyState"),
-		vkKeyScanW:       user32.NewProc("VkKeyScanW"),
-		mapVirtualKeyW:   user32.NewProc("MapVirtualKeyW"),
+		sendInput:                user32.NewProc("SendInput"),
+		getCursorPos:             user32.NewProc("GetCursorPos"),
+		setCursorPos:             user32.NewProc("SetCursorPos"),
+		getAsyncKeyState:         user32.NewProc("GetAsyncKeyState"),
+		getForegroundWindow:      user32.NewProc("GetForegroundWindow"),
+		getWindowThreadProcessID: user32.NewProc("GetWindowThreadProcessId"),
+		getKeyboardLayout:        user32.NewProc("GetKeyboardLayout"),
+		vkKeyScanExW:             user32.NewProc("VkKeyScanExW"),
 	}
 }
 
 func findProcedures(procedures ...*windows.LazyProc) error {
 	for _, procedure := range procedures {
 		if err := procedure.Find(); err != nil {
-			return fmt.Errorf("resolve user32.%s: %w", procedure.Name, err)
+			return fmt.Errorf("%w: resolve user32.%s: %w", ErrUnsupported, procedure.Name, err)
 		}
 	}
 	return nil
 }
 
 func (system *win32System) KeyboardReady() error {
-	return findProcedures(system.sendInput, system.getAsyncKeyState, system.vkKeyScanW, system.mapVirtualKeyW)
+	return findProcedures(
+		system.sendInput,
+		system.getAsyncKeyState,
+		system.getForegroundWindow,
+		system.getWindowThreadProcessID,
+		system.getKeyboardLayout,
+		system.vkKeyScanExW,
+	)
 }
 
 func (system *win32System) MouseReady() error {
@@ -277,6 +286,7 @@ func (system *win32System) SendInput(records []inputRecord) (int, error) {
 		uintptr(unsafe.Pointer(&records[0])),
 		unsafe.Sizeof(records[0]),
 	)
+	runtime.KeepAlive(records)
 	count := int(inserted)
 	if count == len(records) {
 		return count, nil
@@ -320,18 +330,25 @@ func (system *win32System) KeyDown(key uint16) bool {
 	return int16(uint16(result)) < 0
 }
 
-func (system *win32System) VirtualKeyForRune(value uint16) (uint16, uint8, bool) {
-	result, _, _ := system.vkKeyScanW.Call(uintptr(value))
+func (system *win32System) VirtualKeyForRune(value uint16) (uint16, uint8, bool, error) {
+	foreground, _, _ := system.getForegroundWindow.Call()
+	if foreground == 0 {
+		return 0, 0, false, fmt.Errorf("%w: Windows has no foreground window whose keyboard layout can be queried", ErrUnsupported)
+	}
+	threadID, _, _ := system.getWindowThreadProcessID.Call(foreground, 0)
+	if threadID == 0 {
+		return 0, 0, false, fmt.Errorf("%w: foreground Windows thread is unavailable", ErrUnsupported)
+	}
+	layout, _, _ := system.getKeyboardLayout.Call(threadID)
+	if layout == 0 {
+		return 0, 0, false, fmt.Errorf("%w: foreground Windows keyboard layout is unavailable", ErrUnsupported)
+	}
+	result, _, _ := system.vkKeyScanExW.Call(uintptr(value), layout)
 	translated := uint16(result)
 	if translated == mathMaxUint16 {
-		return 0, 0, false
+		return 0, 0, false, nil
 	}
-	return translated & 0xff, uint8(translated >> 8), true
-}
-
-func (system *win32System) ScanCodeForVirtualKey(value uint16) uint16 {
-	result, _, _ := system.mapVirtualKeyW.Call(uintptr(value), mapVirtualKeyToScanCode)
-	return uint16(result)
+	return translated & 0xff, uint8(translated >> 8), true, nil
 }
 
 const mathMaxUint16 = ^uint16(0)
@@ -405,14 +422,6 @@ func copyUint32Set(source map[uint32]struct{}) map[uint32]struct{} {
 	return result
 }
 
-func (backend *Backend) prepareRecord(input *trackedInput) inputRecord {
-	if input.kind == trackedKey {
-		keyboard := (*keyboardInput)(unsafe.Pointer(&input.record.Payload))
-		keyboard.ScanCode = backend.system.ScanCodeForVirtualKey(uint16(input.code))
-	}
-	return input.record
-}
-
 func (backend *Backend) rollbackNewOwnershipLocked(
 	keysBefore map[uint16]struct{},
 	buttonsBefore map[uint32]struct{},
@@ -422,9 +431,7 @@ func (backend *Backend) rollbackNewOwnershipLocked(
 	for index := len(backend.ownedUnicode) - 1; index >= unicodeCountBefore; index-- {
 		unit := backend.ownedUnicode[index]
 		release := trackedUnicodeInput(unit, false)
-		inserted, err := backend.system.SendInput([]inputRecord{
-			backend.prepareRecord(&release),
-		})
+		inserted, err := backend.system.SendInput([]inputRecord{release.record})
 		if inserted == 1 {
 			backend.applyTrackedInput(release)
 		}
@@ -436,7 +443,7 @@ func (backend *Backend) rollbackNewOwnershipLocked(
 			continue
 		}
 		release := trackedKeyInputExtended(key, false, backend.ownedKeyExtended[key])
-		inserted, err := backend.system.SendInput([]inputRecord{backend.prepareRecord(&release)})
+		inserted, err := backend.system.SendInput([]inputRecord{release.record})
 		if inserted == 1 {
 			backend.applyTrackedInput(release)
 		}
@@ -448,7 +455,7 @@ func (backend *Backend) rollbackNewOwnershipLocked(
 			continue
 		}
 		release := trackedButtonInput(button, false)
-		inserted, err := backend.system.SendInput([]inputRecord{backend.prepareRecord(&release)})
+		inserted, err := backend.system.SendInput([]inputRecord{release.record})
 		if inserted == 1 {
 			backend.applyTrackedInput(release)
 		}
@@ -463,7 +470,7 @@ func (backend *Backend) sendTrackedLocked(inputs []trackedInput) error {
 	}
 	records := make([]inputRecord, len(inputs))
 	for index := range inputs {
-		records[index] = backend.prepareRecord(&inputs[index])
+		records[index] = inputs[index].record
 	}
 	keysBefore := copyUint16Set(backend.ownedKeys)
 	buttonsBefore := copyUint32Set(backend.ownedButtons)
