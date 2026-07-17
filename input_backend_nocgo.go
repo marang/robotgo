@@ -93,10 +93,14 @@ func pureGoInputCapabilities() (keyboard, mouse FeatureCapability) {
 		mouse.Notes += "; pointer coordinates use the Windows virtual screen; CloseMainDisplayE releases RobotGo-owned persistent holds"
 	}
 	if backendName == featureBackendPureGoQuartzInput {
-		keyboard.Available = false
-		keyboard.Reason = ErrNotSupported.Error()
-		keyboard.Notes = "Pure-Go macOS keyboard injection is not implemented yet"
+		keyboard.Notes = "Accessibility is preflighted without opening a consent dialog; Quartz key events support modifiers, process targeting, and exact UTF-16 text; media keys without a stable Quartz keycode return ErrNotSupported; CloseMainDisplayE releases RobotGo-owned persistent holds"
 		mouse.Notes = "Accessibility is preflighted without opening a consent dialog; pointer coordinates use the CoreGraphics global display space; CloseMainDisplayE releases RobotGo-owned persistent holds"
+		if err := backend.KeyboardReady(); err != nil {
+			keyboard.Available = false
+			keyboard.Reason = err.Error()
+		} else {
+			keyboard.Reason = "Pure-Go Quartz keyboard backend is ready"
+		}
 		if err := backend.MouseReady(); err != nil {
 			mouse.Available = false
 			mouse.Reason = err.Error()

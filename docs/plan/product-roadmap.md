@@ -35,7 +35,7 @@ The July 2026 hardening work establishes the foundation for this roadmap:
 | Current baseline | Complete in main | Native screencopy, screenshot portal fallback, bounded waits, cleanup, live capability probes, error APIs, non-CGO contract, dedicated race/vet jobs, protected stable CI checks | Keep required jobs green |
 | 1. Wayland input | Implementation complete; runtime validation blocked | Native virtual keyboard/pointer, consent-aware RemoteDesktop fallback, shared ScreenCast stream mapping, absolute pointer/touch, restore tokens, diagnostics and E2E harness | Register GNOME/KDE/wlroots runners and collect green CGO/non-CGO evidence |
 | 2. Capture | Hermetic implementation complete | Reliable one-shot paths plus one consent-aware ScreenCast session, reusable PipeWire frames, logical region crop, raw pixel conversion, metadata/restore tokens, cleanup, integration harness, and a non-skipping geometry/transform CI matrix | Real GNOME/KDE/wlroots evidence and sanitizer-backed native leak gate |
-| 3. Pure-Go | X11 complete; Windows input/window CI-evidenced; macOS capture/display and pointer implemented; broader phase partial | Build and feature-level introspection; non-CGO macOS CoreGraphics capture/display plus Quartz pointer input and Accessibility diagnostics; Windows capture, `SendInput` keyboard/pointer, and Win32 window control with blocking runtime probes; X11 capture and XGB/XTEST input; Wayland portal capture/input; permission/error contracts; shared behavioral parity; reproducible balanced benchmark tooling; optimized guardian-path decision evidence; explicit decision to retain native CGO as the X11 default; race-testable internal X11 core; re-exec guardian with application-`SIGKILL` recovery; protected three-OS CI | Complete macOS keyboard evaluation and assess further backends selectively |
+| 3. Pure-Go | X11 complete; Windows input/window CI-evidenced; macOS capture/display and keyboard/pointer implemented; broader phase partial | Build and feature-level introspection; non-CGO macOS CoreGraphics capture/display plus Quartz keyboard/pointer input and Accessibility diagnostics; Windows capture, `SendInput` keyboard/pointer, and Win32 window control with blocking runtime probes; X11 capture and XGB/XTEST input; Wayland portal capture/input; permission/error contracts; shared behavioral parity; reproducible balanced benchmark tooling; optimized guardian-path decision evidence; explicit decision to retain native CGO as the X11 default; race-testable internal X11 core; re-exec guardian with application-`SIGKILL` recovery; protected three-OS CI | Collect opt-in real macOS keyboard-injection evidence and assess further backends selectively |
 | 4. API/compositor gaps | Parity surface delivered; runtime support partial | Window-state error APIs, bitmap string helpers, `FindColorCS`, hook/event capability reporting, Sway/Hyprland/wlroots resolver | Compositor-backed state operations and cross-platform/runtime matrix coverage |
 | 5. Reliability product | Partial | Capability API/example and expanded CI variants | Versioned compatibility matrix, richer diagnostics, dedicated compositor jobs, sanitizer/leak gates |
 
@@ -140,13 +140,18 @@ architectures. Non-CGO macOS also reports the real Retina display-mode factor,
 returns scaled pixel dimensions with `GetScaleSize`, releases copied display
 modes deterministically, and verifies the real symbols/display query in the
 blocking macOS CI leg without requesting Screen Recording access.
-The same non-CGO build now provides Quartz pointer movement, relative and
-smooth movement, drag, single/double click, ownership-checked button toggles,
+The same non-CGO build now provides Quartz keyboard taps/combinations,
+ownership-checked persistent holds, PID-targeted events, exact UTF-16 text with
+surrogate-pair support, clipboard-assisted paste, and pointer movement,
+relative and smooth movement, drag, single/double click, ownership-checked button toggles,
 horizontal/vertical scrolling, and pointer location. It preflights
-Accessibility without prompting, releases owned buttons deterministically, and
-has a blocking real-framework preflight that never posts input. Pure-Go macOS
-keyboard injection remains explicitly unsupported and is the next macOS
-evaluation slice.
+Accessibility without prompting, releases owned keys/buttons deterministically,
+and has a blocking real-framework preflight that resolves keyboard and pointer
+symbols without posting input. Hermetic tests cover modifier ordering, foreign
+state, PID ownership, partial-event rollback, Unicode and cleanup. An opt-in
+Accessibility-gated test posts and releases a real modifier without typing into
+another application. Media/brightness keys and F21-F24 remain explicitly
+unsupported because Quartz exposes no safe stable keycode for them.
 
 Windows non-CGO builds now provide a foreground-layout-aware `SendInput` keyboard and text
 backend, clipboard-assisted Unicode paste, pixel-at-pointer queries, plus exact pointer movement/location, smooth movement and drag,

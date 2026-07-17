@@ -1,0 +1,127 @@
+package darwininput
+
+const (
+	keyA              uint16 = 0x00
+	keyS              uint16 = 0x01
+	keyD              uint16 = 0x02
+	keyF              uint16 = 0x03
+	keyH              uint16 = 0x04
+	keyG              uint16 = 0x05
+	keyZ              uint16 = 0x06
+	keyX              uint16 = 0x07
+	keyC              uint16 = 0x08
+	keyV              uint16 = 0x09
+	keyB              uint16 = 0x0b
+	keyQ              uint16 = 0x0c
+	keyW              uint16 = 0x0d
+	keyE              uint16 = 0x0e
+	keyR              uint16 = 0x0f
+	keyY              uint16 = 0x10
+	keyT              uint16 = 0x11
+	key1              uint16 = 0x12
+	key2              uint16 = 0x13
+	key3              uint16 = 0x14
+	key4              uint16 = 0x15
+	key6              uint16 = 0x16
+	key5              uint16 = 0x17
+	keyEqual          uint16 = 0x18
+	key9              uint16 = 0x19
+	key7              uint16 = 0x1a
+	keyMinus          uint16 = 0x1b
+	key8              uint16 = 0x1c
+	key0              uint16 = 0x1d
+	keyRightBracket   uint16 = 0x1e
+	keyO              uint16 = 0x1f
+	keyU              uint16 = 0x20
+	keyLeftBracket    uint16 = 0x21
+	keyI              uint16 = 0x22
+	keyP              uint16 = 0x23
+	keyL              uint16 = 0x25
+	keyJ              uint16 = 0x26
+	keyQuote          uint16 = 0x27
+	keyK              uint16 = 0x28
+	keySemicolon      uint16 = 0x29
+	keyBackslash      uint16 = 0x2a
+	keyComma          uint16 = 0x2b
+	keySlash          uint16 = 0x2c
+	keyN              uint16 = 0x2d
+	keyM              uint16 = 0x2e
+	keyPeriod         uint16 = 0x2f
+	keyTab            uint16 = 0x30
+	keySpace          uint16 = 0x31
+	keyGrave          uint16 = 0x32
+	keyDelete         uint16 = 0x33
+	keyRightCommand   uint16 = 0x36
+	keyCommand        uint16 = 0x37
+	keyShift          uint16 = 0x38
+	keyCapsLock       uint16 = 0x39
+	keyOption         uint16 = 0x3a
+	keyControl        uint16 = 0x3b
+	keyRightShift     uint16 = 0x3c
+	keyRightOption    uint16 = 0x3d
+	keyRightControl   uint16 = 0x3e
+	keyF17            uint16 = 0x40
+	keyKeypadDecimal  uint16 = 0x41
+	keyKeypadMultiply uint16 = 0x43
+	keyKeypadPlus     uint16 = 0x45
+	keyKeypadClear    uint16 = 0x47
+	keyKeypadDivide   uint16 = 0x4b
+	keyKeypadEnter    uint16 = 0x4c
+	keyKeypadMinus    uint16 = 0x4e
+	keyF18            uint16 = 0x4f
+	keyF19            uint16 = 0x50
+	keyKeypadEquals   uint16 = 0x51
+	keyKeypad0        uint16 = 0x52
+	keyKeypad1        uint16 = 0x53
+	keyKeypad2        uint16 = 0x54
+	keyKeypad3        uint16 = 0x55
+	keyKeypad4        uint16 = 0x56
+	keyKeypad5        uint16 = 0x57
+	keyKeypad6        uint16 = 0x58
+	keyKeypad7        uint16 = 0x59
+	keyF20            uint16 = 0x5a
+	keyKeypad8        uint16 = 0x5b
+	keyKeypad9        uint16 = 0x5c
+	keyF5             uint16 = 0x60
+	keyF6             uint16 = 0x61
+	keyF7             uint16 = 0x62
+	keyF3             uint16 = 0x63
+	keyF8             uint16 = 0x64
+	keyF9             uint16 = 0x65
+	keyF11            uint16 = 0x67
+	keyF13            uint16 = 0x69
+	keyF16            uint16 = 0x6a
+	keyF14            uint16 = 0x6b
+	keyF10            uint16 = 0x6d
+	keyF12            uint16 = 0x6f
+	keyF15            uint16 = 0x71
+	keyHelp           uint16 = 0x72
+	keyHome           uint16 = 0x73
+	keyPageUp         uint16 = 0x74
+	keyForwardDelete  uint16 = 0x75
+	keyF4             uint16 = 0x76
+	keyEnd            uint16 = 0x77
+	keyF2             uint16 = 0x78
+	keyPageDown       uint16 = 0x79
+	keyF1             uint16 = 0x7a
+	keyLeft           uint16 = 0x7b
+	keyRight          uint16 = 0x7c
+	keyDown           uint16 = 0x7d
+	keyUp             uint16 = 0x7e
+	keyReturn         uint16 = 0x24
+	keyEscape         uint16 = 0x35
+)
+
+const (
+	eventFlagMaskShift      uint64 = 1 << 17
+	eventFlagMaskControl    uint64 = 1 << 18
+	eventFlagMaskAlternate  uint64 = 1 << 19
+	eventFlagMaskCommand    uint64 = 1 << 20
+	eventFlagMaskNumericPad uint64 = 1 << 21
+	eventFlagMaskHelp       uint64 = 1 << 22
+
+	keyboardShortcutFlags = eventFlagMaskShift |
+		eventFlagMaskControl |
+		eventFlagMaskAlternate |
+		eventFlagMaskCommand
+)

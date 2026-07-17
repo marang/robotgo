@@ -5,9 +5,12 @@ package robotgo
 import (
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/marang/robotgo/internal/darwininput"
 )
+
+const maxDarwinTextDelayMilliseconds = int64(^uint64(0)>>1) / int64(time.Millisecond)
 
 type darwinInputBackend struct {
 	core *darwininput.Backend
@@ -36,20 +39,39 @@ func translatePureGoDarwinInputError(err error) error {
 	}
 }
 
-func (*darwinInputBackend) KeyboardReady() error {
-	return fmt.Errorf("%w: Pure-Go macOS keyboard injection is not implemented", ErrNotSupported)
+func (backend *darwinInputBackend) KeyboardReady() error {
+	return translatePureGoDarwinInputError(backend.core.KeyboardReady())
 }
 
 func (backend *darwinInputBackend) MouseReady() error {
 	return translatePureGoDarwinInputError(backend.core.MouseReady())
 }
 
-func (*darwinInputBackend) Key(pureGoKeyEvent) error {
-	return fmt.Errorf("%w: Pure-Go macOS keyboard injection is not implemented", ErrNotSupported)
+func (backend *darwinInputBackend) Key(event pureGoKeyEvent) error {
+	return translatePureGoDarwinInputError(backend.core.Key(darwininput.KeyEvent{
+		Key:       event.Key,
+		Modifiers: event.Modifiers,
+		PID:       event.PID,
+		Down:      event.Down,
+		Tap:       event.Tap,
+	}))
 }
 
-func (*darwinInputBackend) Text(pureGoTextEvent) error {
-	return fmt.Errorf("%w: Pure-Go macOS text injection is not implemented", ErrNotSupported)
+func (backend *darwinInputBackend) Text(event pureGoTextEvent) error {
+	if event.Delay < 0 {
+		return errors.New("robotgo: macOS text delay must be non-negative")
+	}
+	if int64(event.Delay) > maxDarwinTextDelayMilliseconds {
+		return fmt.Errorf(
+			"robotgo: macOS text delay %dms exceeds time.Duration",
+			event.Delay,
+		)
+	}
+	return translatePureGoDarwinInputError(backend.core.Text(darwininput.TextEvent{
+		Text:  event.Text,
+		PID:   event.PID,
+		Delay: time.Duration(event.Delay) * time.Millisecond,
+	}))
 }
 
 func (backend *darwinInputBackend) MoveAbsolute(x, y int, _ []int) error {

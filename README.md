@@ -73,7 +73,7 @@ workflow. `GetLinuxCapabilities` provides additional compositor detail.
 | Platform/session | Build | Current behavior |
 |---|---|---|
 | macOS | CGO-enabled default build | Native mouse, keyboard, capture, window, and process paths; macOS permissions still apply |
-| macOS | `CGO_ENABLED=0` | Pure-Go CoreGraphics capture, display bounds, real Retina scale, and Quartz pointer input (move/relative/smooth/drag/click/toggle/scroll/location) with explicit Screen Recording and Accessibility diagnostics; keyboard and other unavailable GUI operations return `ErrNotSupported` |
+| macOS | `CGO_ENABLED=0` | Pure-Go CoreGraphics capture, display bounds, real Retina scale, and Quartz keyboard/pointer input with exact UTF-16 text, owned holds, process targeting, cleanup, and explicit Screen Recording/Accessibility diagnostics; media keys without a stable Quartz keycode and other unavailable GUI operations return `ErrNotSupported` |
 | Windows | CGO-enabled default build | Native mouse, keyboard, capture, window, and process paths |
 | Windows | `CGO_ENABLED=0` | Pure-Go capture/display bounds, real Win32 DPI scale and pixel-at-pointer queries, foreground-layout-aware `SendInput` keyboard/text plus clipboard paste, complete pointer input, and Win32 window title/PID/handle/geometry/state/control operations with explicit errors |
 | Linux/X11 | CGO-enabled default build | X11/XTest input, capture, window, and process paths |
@@ -92,20 +92,43 @@ compositor to expose the corresponding virtual-input protocols. See
 Persistent capture runtime evidence is tracked separately in the
 [Wayland capture compatibility matrix](docs/compatibility/wayland-capture.md).
 
-## Pure-Go macOS pointer input
+## Pure-Go macOS input
 
-With `CGO_ENABLED=0`, macOS pointer automation uses Quartz events directly
-through runtime-loaded system frameworks. `MouseReady` and
-`GetRuntimeCapabilities` use the non-prompting Accessibility preflight: if
+With `CGO_ENABLED=0`, macOS keyboard and pointer automation use Quartz events directly
+through runtime-loaded system frameworks. `MouseReady`, `KeyboardReady`, and
+`GetRuntimeCapabilities` use the same non-prompting
+Accessibility preflight: if
 access is missing, they return/report `ErrPermissionDenied` with the relevant
 System Settings location. RobotGo never opens the consent dialog implicitly.
 
-The backend supports absolute and relative movement, bounded smooth movement,
+Keyboard support includes key taps, combinations, ownership-checked persistent
+key states, optional process targeting, exact UTF-16 text (including non-BMP
+characters), delays, and clipboard-assisted paste. Printable `KeyTap` values
+use physical macOS ANSI key positions for shortcut compatibility; use
+`TypeStrE` when exact layout-independent text is required. Media/brightness
+keys and F21-F24 have no safe stable Quartz keycode and return
+`ErrNotSupported`.
+
+Pointer support includes absolute and relative movement, bounded smooth movement,
 drag, single/double click, owned button toggles, horizontal/vertical pixel
 scrolling, and global pointer location. Persistent holds are ownership-checked;
-`CloseMainDisplayE` releases RobotGo-owned buttons before unloading the native
-frameworks. Pure-Go macOS keyboard injection remains explicitly unsupported.
-See [`examples/purego_macos_pointer`](examples/purego_macos_pointer).
+`CloseMainDisplayE` releases RobotGo-owned keys and buttons before unloading
+the native frameworks.
+
+```go
+if err := robotgo.KeyboardReady(); err != nil {
+	log.Fatal(err)
+}
+if err := robotgo.KeyTap("c", "cmd"); err != nil {
+	log.Fatal(err)
+}
+if err := robotgo.TypeStrE("Grüße 👋"); err != nil {
+	log.Fatal(err)
+}
+```
+
+See [`examples/purego_macos_input`](examples/purego_macos_input) and
+[`examples/purego_macos_pointer`](examples/purego_macos_pointer).
 
 ## Requirements
 

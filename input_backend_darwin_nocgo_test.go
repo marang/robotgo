@@ -32,36 +32,40 @@ func TestPureGoDarwinInputErrorTranslation(t *testing.T) {
 // real framework symbols and checks Accessibility status without posting input
 // or opening a macOS consent dialog.
 func TestPureGoDarwinInputRuntime(t *testing.T) {
-	if err := KeyboardReady(); !errors.Is(err, ErrNotSupported) {
-		t.Fatalf("KeyboardReady = %v, want ErrNotSupported", err)
-	}
-
 	capabilities := GetRuntimeCapabilities()
 	if capabilities.Mouse.Backend != featureBackendPureGoQuartzInput {
 		t.Fatalf("mouse capability = %+v, want Quartz backend", capabilities.Mouse)
 	}
-	if capabilities.Keyboard.Available ||
-		capabilities.Keyboard.Backend != featureBackendPureGoQuartzInput {
-		t.Fatalf("keyboard capability = %+v, want named unsupported Quartz keyboard", capabilities.Keyboard)
+	if capabilities.Keyboard.Backend != featureBackendPureGoQuartzInput {
+		t.Fatalf("keyboard capability = %+v, want Quartz backend", capabilities.Keyboard)
 	}
 
-	readyErr := MouseReady()
+	keyboardErr := KeyboardReady()
+	mouseErr := MouseReady()
 	switch {
-	case readyErr == nil:
-		if !capabilities.Mouse.Available {
-			t.Fatalf("MouseReady succeeded but capability = %+v", capabilities.Mouse)
+	case keyboardErr == nil && mouseErr == nil:
+		if !capabilities.Keyboard.Available || !capabilities.Mouse.Available {
+			t.Fatalf("input readiness succeeded but capabilities = %+v", capabilities)
 		}
-	case errors.Is(readyErr, ErrPermissionDenied):
-		if capabilities.Mouse.Available {
-			t.Fatalf("MouseReady denied but capability = %+v", capabilities.Mouse)
+	case errors.Is(keyboardErr, ErrPermissionDenied) &&
+		errors.Is(mouseErr, ErrPermissionDenied):
+		if capabilities.Keyboard.Available || capabilities.Mouse.Available {
+			t.Fatalf("input readiness denied but capabilities = %+v", capabilities)
 		}
-		if !strings.Contains(readyErr.Error(), "Accessibility") {
-			t.Fatalf("permission error lacks actionable Accessibility hint: %v", readyErr)
+		if !strings.Contains(keyboardErr.Error(), "Accessibility") ||
+			!strings.Contains(mouseErr.Error(), "Accessibility") {
+			t.Fatalf(
+				"permission errors lack actionable Accessibility hint: keyboard=%v mouse=%v",
+				keyboardErr, mouseErr,
+			)
 		}
-	case errors.Is(readyErr, ErrNotSupported):
-		t.Fatalf("required hosted-runner Quartz symbols are unavailable: %v", readyErr)
+	case errors.Is(keyboardErr, ErrNotSupported) || errors.Is(mouseErr, ErrNotSupported):
+		t.Fatalf(
+			"required hosted-runner Quartz symbols are unavailable: keyboard=%v mouse=%v",
+			keyboardErr, mouseErr,
+		)
 	default:
-		t.Fatalf("unexpected MouseReady error: %v", readyErr)
+		t.Fatalf("inconsistent input readiness: keyboard=%v mouse=%v", keyboardErr, mouseErr)
 	}
 
 	if err := CloseMainDisplayE(); err != nil {
