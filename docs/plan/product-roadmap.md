@@ -248,6 +248,10 @@ The compatibility surface now includes:
 
 - Error-returning window state/query APIs (`IsTopMostE`, `SetTopMostE`,
   `IsMinimizedE`, `IsMaximizedE`) with explicit unsupported behavior.
+- Hyprland active-window maximize query, set, and restore backed by its
+  compositor-reported state. Fullscreen remains distinct from maximized;
+  Sway/generic wlroots queries stay explicitly unsupported rather than
+  inferring state.
 - Bitmap string helpers (`CaptureBitmapStr`, `FindBitmapStr`, `BitmapFromStr`,
   `ToStrBitmap`).
 - Region/tolerance color search through `FindColorCS`/`FindcolorCS`.
@@ -256,8 +260,8 @@ The compatibility surface now includes:
 Remaining work must improve runtime support without inventing misleading
 cross-platform semantics:
 
-- Implement compositor-backed window state/query behavior where the compositor
-  exposes trustworthy state and retain explicit unsupported results elsewhere.
+- Extend compositor-backed state/query behavior beyond the delivered Hyprland
+  maximize slice only where equally trustworthy state is exposed.
 - Validate bitmap and color-search behavior across capture backends and
   supported platforms.
 - Stable multi-screen and bounds behavior for negative origins, transforms,

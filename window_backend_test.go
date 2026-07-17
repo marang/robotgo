@@ -299,6 +299,89 @@ func TestHyprlandWindowBackendTitle(t *testing.T) {
 	}
 }
 
+func TestHyprlandWindowBackendMaximized(t *testing.T) {
+	tmp := t.TempDir()
+	writeStubCommand(t, tmp, cmdHyprCtl)
+	t.Setenv(envPath, tmp)
+
+	old := runWindowCommand
+	t.Cleanup(func() { runWindowCommand = old })
+
+	tests := []struct {
+		name string
+		json string
+		want bool
+	}{
+		{name: "normal", json: `{"fullscreen":0}`, want: false},
+		{name: "maximized", json: `{"fullscreen":1}`, want: true},
+		{name: "fullscreen", json: `{"fullscreen":2}`, want: false},
+		{name: "legacy combined state", json: `{"fullscreen":3}`, want: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			runWindowCommand = func(ctx context.Context, name string, args ...string) ([]byte, error) {
+				_ = ctx
+				if name != cmdHyprCtl {
+					t.Fatalf("expected %q, got %q", cmdHyprCtl, name)
+				}
+				if len(args) != 2 || args[0] != argActiveWindow || args[1] != argJSON {
+					t.Fatalf("unexpected args: %#v", args)
+				}
+				return []byte(tt.json), nil
+			}
+
+			got, err := newHyprlandWindowBackend().Maximized()
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if got != tt.want {
+				t.Fatalf("Maximized() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestHyprlandWindowBackendMaximizedRejectsUnreliableState(t *testing.T) {
+	tmp := t.TempDir()
+	writeStubCommand(t, tmp, cmdHyprCtl)
+	t.Setenv(envPath, tmp)
+
+	old := runWindowCommand
+	t.Cleanup(func() { runWindowCommand = old })
+
+	tests := []struct {
+		name string
+		json string
+	}{
+		{name: "missing state", json: `{"title":"Editor"}`},
+		{name: "invalid state", json: `{"fullscreen":4}`},
+		{name: "malformed response", json: `{"fullscreen":`},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			runWindowCommand = func(context.Context, string, ...string) ([]byte, error) {
+				return []byte(tt.json), nil
+			}
+
+			_, err := newHyprlandWindowBackend().Maximized()
+			if !errors.Is(err, errWindowStateUnavailable) {
+				t.Fatalf("Maximized() error = %v, want errWindowStateUnavailable", err)
+			}
+		})
+	}
+}
+
+func TestHyprlandWindowBackendMaximizedRequiresHyprctl(t *testing.T) {
+	t.Setenv(envPath, t.TempDir())
+
+	_, err := newHyprlandWindowBackend().Maximized()
+	if !errors.Is(err, ErrNotSupported) {
+		t.Fatalf("Maximized() error = %v, want ErrNotSupported", err)
+	}
+}
+
 func TestCompositorSpecificBackendTitleByPIDUnsupported(t *testing.T) {
 	for _, b := range []windowBackend{newSwayWindowBackend(), newHyprlandWindowBackend()} {
 		_, err := b.Title(1234)
@@ -385,7 +468,7 @@ func TestHyprlandWindowBackendCloseActive(t *testing.T) {
 	}
 }
 
-func TestHyprlandWindowBackendMinMaxActiveViaWlrctl(t *testing.T) {
+func TestHyprlandWindowBackendMinimizeActiveViaWlrctl(t *testing.T) {
 	tmp := t.TempDir()
 	writeStubCommand(t, tmp, cmdWlrCtl)
 	t.Setenv(envPath, tmp)
@@ -407,18 +490,211 @@ func TestHyprlandWindowBackendMinMaxActiveViaWlrctl(t *testing.T) {
 	if err := b.Minimize(0, true, false); err != nil {
 		t.Fatalf("unexpected minimize error: %v", err)
 	}
-	if err := b.Maximize(0, true, false); err != nil {
-		t.Fatalf("unexpected maximize error: %v", err)
-	}
 
-	if len(calls) != 2 {
-		t.Fatalf("expected 2 calls, got %d", len(calls))
+	if len(calls) != 1 {
+		t.Fatalf("expected 1 call, got %d", len(calls))
 	}
 	if len(calls[0]) != 3 || calls[0][0] != argWindow || calls[0][1] != argMinimize || calls[0][2] != argStateActive {
 		t.Fatalf("unexpected minimize args: %#v", calls[0])
 	}
-	if len(calls[1]) != 3 || calls[1][0] != argWindow || calls[1][1] != argMaximize || calls[1][2] != argStateActive {
-		t.Fatalf("unexpected maximize args: %#v", calls[1])
+}
+
+func TestHyprlandWindowBackendMaximizeSetAndRestore(t *testing.T) {
+	tmp := t.TempDir()
+	writeStubCommand(t, tmp, cmdHyprCtl)
+	t.Setenv(envPath, tmp)
+
+	old := runWindowCommand
+	t.Cleanup(func() { runWindowCommand = old })
+
+	var calls [][]string
+	internal := hyprlandFullscreenNone
+	client := hyprlandFullscreenNone
+	runWindowCommand = func(ctx context.Context, name string, args ...string) ([]byte, error) {
+		_ = ctx
+		if name != cmdHyprCtl {
+			t.Fatalf("expected %q, got %q", cmdHyprCtl, name)
+		}
+		if len(args) == 2 && args[0] == argActiveWindow && args[1] == argJSON {
+			switch {
+			case internal == hyprlandFullscreenNone && client == hyprlandFullscreenNone:
+				return []byte(`{"fullscreen":0,"fullscreenClient":0}`), nil
+			case internal == hyprlandFullscreenMaximized && client == hyprlandFullscreenMaximized:
+				return []byte(`{"fullscreen":1,"fullscreenClient":1}`), nil
+			default:
+				t.Fatalf("unexpected test state internal=%d client=%d", internal, client)
+			}
+		}
+		calls = append(calls, append([]string(nil), args...))
+		if len(args) == 4 && args[0] == argDispatch && args[1] == argFullscreenState {
+			switch args[2] {
+			case argHyprlandNone:
+				internal, client = hyprlandFullscreenNone, hyprlandFullscreenNone
+			case argHyprlandMaximized:
+				internal, client = hyprlandFullscreenMaximized, hyprlandFullscreenMaximized
+			}
+		}
+		return []byte("ok"), nil
+	}
+
+	b := newHyprlandWindowBackend()
+	if err := b.Maximize(0, true, false); err != nil {
+		t.Fatalf("maximize failed: %v", err)
+	}
+	if err := b.Maximize(0, false, false); err != nil {
+		t.Fatalf("restore failed: %v", err)
+	}
+
+	want := [][]string{
+		{argDispatch, argFullscreenState, argHyprlandMaximized, argHyprlandMaximized},
+		{argDispatch, argFullscreenState, argHyprlandNone, argHyprlandNone},
+	}
+	if len(calls) != len(want) {
+		t.Fatalf("calls = %#v, want %#v", calls, want)
+	}
+	for i := range want {
+		if len(calls[i]) != len(want[i]) {
+			t.Fatalf("call %d = %#v, want %#v", i, calls[i], want[i])
+		}
+		for j := range want[i] {
+			if calls[i][j] != want[i][j] {
+				t.Fatalf("call %d = %#v, want %#v", i, calls[i], want[i])
+			}
+		}
+	}
+}
+
+func TestHyprlandWindowBackendMaximizeAvoidsLegacyToggle(t *testing.T) {
+	tmp := t.TempDir()
+	writeStubCommand(t, tmp, cmdHyprCtl)
+	t.Setenv(envPath, tmp)
+
+	old := runWindowCommand
+	t.Cleanup(func() { runWindowCommand = old })
+
+	dispatches := 0
+	runWindowCommand = func(ctx context.Context, name string, args ...string) ([]byte, error) {
+		_ = ctx
+		if name != cmdHyprCtl {
+			t.Fatalf("expected %q, got %q", cmdHyprCtl, name)
+		}
+		if len(args) == 2 && args[0] == argActiveWindow && args[1] == argJSON {
+			return []byte(`{"fullscreen":1,"fullscreenClient":1}`), nil
+		}
+		dispatches++
+		return []byte("ok"), nil
+	}
+
+	b := newHyprlandWindowBackend()
+	if err := b.Maximize(0, true, false); err != nil {
+		t.Fatalf("maximize already-maximized window: %v", err)
+	}
+	if dispatches != 0 {
+		t.Fatalf("already-maximized state dispatched %d commands; older Hyprland would toggle it off", dispatches)
+	}
+}
+
+func TestHyprlandWindowBackendMaximizeRejectsUnreliableState(t *testing.T) {
+	tmp := t.TempDir()
+	writeStubCommand(t, tmp, cmdHyprCtl)
+	t.Setenv(envPath, tmp)
+
+	old := runWindowCommand
+	t.Cleanup(func() { runWindowCommand = old })
+
+	tests := []struct {
+		name string
+		json string
+	}{
+		{name: "missing client state", json: `{"fullscreen":0}`},
+		{name: "invalid internal state", json: `{"fullscreen":4,"fullscreenClient":0}`},
+		{name: "invalid client state", json: `{"fullscreen":0,"fullscreenClient":-2}`},
+		{name: "malformed response", json: `{"fullscreen":`},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			runWindowCommand = func(context.Context, string, ...string) ([]byte, error) {
+				return []byte(tt.json), nil
+			}
+
+			err := newHyprlandWindowBackend().Maximize(0, true, false)
+			if !errors.Is(err, errWindowStateUnavailable) {
+				t.Fatalf("Maximize() error = %v, want errWindowStateUnavailable", err)
+			}
+		})
+	}
+}
+
+func TestHyprlandWindowBackendMaximizePreservesCommandError(t *testing.T) {
+	tmp := t.TempDir()
+	writeStubCommand(t, tmp, cmdHyprCtl)
+	t.Setenv(envPath, tmp)
+
+	old := runWindowCommand
+	t.Cleanup(func() { runWindowCommand = old })
+
+	wantErr := errors.New("dispatch failed")
+	runWindowCommand = func(ctx context.Context, name string, args ...string) ([]byte, error) {
+		_ = ctx
+		if name != cmdHyprCtl {
+			t.Fatalf("expected %q, got %q", cmdHyprCtl, name)
+		}
+		if len(args) == 2 && args[0] == argActiveWindow && args[1] == argJSON {
+			return []byte(`{"fullscreen":0,"fullscreenClient":0}`), nil
+		}
+		return nil, wantErr
+	}
+
+	err := newHyprlandWindowBackend().Maximize(0, true, false)
+	if !errors.Is(err, errWindowOperationFailed) {
+		t.Fatalf("Maximize() error = %v, want errWindowOperationFailed", err)
+	}
+	if !errors.Is(err, wantErr) {
+		t.Fatalf("Maximize() error = %v, want wrapped command error", err)
+	}
+}
+
+func TestHyprlandWindowBackendRestorePreservesFullscreen(t *testing.T) {
+	tmp := t.TempDir()
+	writeStubCommand(t, tmp, cmdHyprCtl)
+	t.Setenv(envPath, tmp)
+
+	old := runWindowCommand
+	t.Cleanup(func() { runWindowCommand = old })
+
+	dispatches := 0
+	runWindowCommand = func(ctx context.Context, name string, args ...string) ([]byte, error) {
+		_ = ctx
+		if name != cmdHyprCtl {
+			t.Fatalf("expected %q, got %q", cmdHyprCtl, name)
+		}
+		if len(args) == 2 && args[0] == argActiveWindow && args[1] == argJSON {
+			return []byte(`{"fullscreen":2,"fullscreenClient":2}`), nil
+		}
+		dispatches++
+		return []byte("ok"), nil
+	}
+
+	if err := newHyprlandWindowBackend().Maximize(0, false, false); err != nil {
+		t.Fatalf("restore fullscreen window: %v", err)
+	}
+	if dispatches != 0 {
+		t.Fatalf("restore on fullscreen state dispatched %d commands; want no-op", dispatches)
+	}
+}
+
+func TestNonHyprlandWindowBackendsRejectMaximizedQuery(t *testing.T) {
+	backends := []windowBackend{
+		newSwayWindowBackend(),
+		newWlrootsGenericWindowBackend(),
+		waylandCoreWindowBackend{compositor: compositorMutter},
+	}
+	for _, backend := range backends {
+		_, err := backend.Maximized()
+		if !errors.Is(err, ErrNotSupported) {
+			t.Fatalf("%s Maximized() error = %v, want ErrNotSupported", backend.Name(), err)
+		}
 	}
 }
 

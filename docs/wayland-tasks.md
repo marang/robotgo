@@ -67,6 +67,11 @@ Current implementation baseline:
 - `wlroots-generic` currently implements active-window minimize/maximize
   (state=true) when `wlrctl` is available; unsupported operations remain
   explicit.
+- `hyprland` uses the compositor's reported fullscreen mode for
+  `IsMaximizedE` and supports both maximize and restore through `hyprctl`.
+  Fullscreen is not reported as maximized. Sway and generic wlroots keep
+  returning `ErrNotSupported` because their available IPC does not expose a
+  trustworthy equivalent state.
 - Bitmap string helpers are available via `CaptureBitmapStr`,
   `FindBitmapStr`, `BitmapFromStr`, and `ToStrBitmap`.
 - Region/tolerance color search is available via `FindColorCS`/`FindcolorCS`.
@@ -86,15 +91,20 @@ Current implementation baseline:
   preconditions are not present.
 - wlroots min/max E2E test exists behind opt-in env flag:
   `ROBOTGO_WLROOTS_MINMAX_E2E=1`.
+- Hyprland maximize query/set/restore E2E coverage exists behind
+  `ROBOTGO_HYPRLAND_MAXIMIZE_E2E=1` and restores the initial supported state.
 
 Window backend support matrix (current):
 
-| Backend | Resolver trigger | Active title | Active close | PID/handle close | Activate/min/max |
-|---|---|---|---|---|---|
-| `sway` | `SWAYSOCK` or sway desktop/session | Yes (`swaymsg`) | Yes (`swaymsg kill`) | No (`ErrNotSupported`) | Yes (`wlrctl window minimize/maximize state:active`, state=true only) |
-| `hyprland` | `HYPRLAND_INSTANCE_SIGNATURE` or hyprland desktop/session | Yes (`hyprctl activewindow -j`) | Yes (`hyprctl dispatch killactive`) | No (`ErrNotSupported`) | Yes (`wlrctl window minimize/maximize state:active`, state=true only) |
-| `wlroots-generic` | wlroots-family compositor (wayfire/river/labwc/dwl/gamescope) | No (`ErrNotSupported`) | No (`ErrNotSupported`) | No (`ErrNotSupported`) | Yes (`wlrctl window minimize/maximize state:active`, state=true only) |
-| `wayland-core/*` | wayland session without specific/family backend support | No (`ErrNotSupported`) | No (`ErrNotSupported`) | No (`ErrNotSupported`) | No (`ErrNotSupported`) |
+| Backend | Resolver trigger | Active title | Active close | Minimize | Maximize/restore | `IsMaximizedE` |
+|---|---|---|---|---|---|---|
+| `sway` | `SWAYSOCK` or sway desktop/session | Yes (`swaymsg`) | Yes (`swaymsg kill`) | `wlrctl`, set only | `wlrctl`, set only | No (`ErrNotSupported`) |
+| `hyprland` | `HYPRLAND_INSTANCE_SIGNATURE` or hyprland desktop/session | Yes (`hyprctl activewindow -j`) | Yes (`hyprctl dispatch killactive`) | `wlrctl`, set only | Yes (`hyprctl`, set and restore) | Yes (`hyprctl activewindow -j`) |
+| `wlroots-generic` | wlroots-family compositor (wayfire/river/labwc/dwl/gamescope) | No (`ErrNotSupported`) | No (`ErrNotSupported`) | `wlrctl`, set only | `wlrctl`, set only | No (`ErrNotSupported`) |
+| `wayland-core/*` | wayland session without specific/family backend support | No (`ErrNotSupported`) | No (`ErrNotSupported`) | No (`ErrNotSupported`) | No (`ErrNotSupported`) | No (`ErrNotSupported`) |
+
+PID/handle-specific control remains unsupported for all listed Wayland
+backends.
 
 - Priority Backlog (1-7):
   - 1. Register protected GNOME/KDE/wlroots runners and validate the complete
@@ -106,8 +116,8 @@ Window backend support matrix (current):
     GNOME/KDE/wlroots runners and promote its leak/timeout tests to release
     gates. The implementation and opt-in integration harness are present.
     `[new vs robotgo-pro]`
-  - 3. Extend window state/query operations from explicit error parity to real
-    compositor-backed behavior where state is observable.
+  - 3. Continue window state/query operations beyond the delivered Hyprland
+    maximize slice where a compositor exposes equally trustworthy state.
   - 4. Wayland reliability matrix across wlroots/GNOME/KDE: multi-output,
     fractional scale, transforms, portal consent, and fallback.
     `[new vs robotgo-pro]`

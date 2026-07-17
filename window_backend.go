@@ -48,7 +48,7 @@ const (
 	notesWlrootsBackend            = "wlroots generic backend selected; operation support to be implemented via wlroots-compatible paths"
 	reasonCompositorSpecific       = "compositor-specific backend selected with partial operation support"
 	notesSwayPartialSupport        = "supports active-window title retrieval and close; active minimize/maximize available when wlrctl is present"
-	notesHyprPartialSupport        = "supports active-window title retrieval and close; active minimize/maximize available when wlrctl is present"
+	notesHyprPartialSupport        = "supports active-window title, close, and reliable maximize query/set/restore; active minimize requires wlrctl"
 	cmdSwayMsg                     = "swaymsg"
 	cmdHyprCtl                     = "hyprctl"
 	cmdWlrCtl                      = "wlrctl"
@@ -64,11 +64,19 @@ const (
 	argKill                        = "kill"
 	argDispatch                    = "dispatch"
 	argKillActive                  = "killactive"
+	argFullscreenState             = "fullscreenstate"
+	argHyprlandNone                = "0"
+	argHyprlandMaximized           = "1"
 	windowCommandTimeout           = 2 * time.Second
+	hyprlandFullscreenNone         = 0
+	hyprlandFullscreenMaximized    = 1
+	hyprlandFullscreenFull         = 2
+	hyprlandFullscreenMaxAndFull   = 3
 )
 
 var (
 	errWindowTitleUnavailable = errors.New("window title unavailable from compositor backend")
+	errWindowStateUnavailable = errors.New("window state unavailable from compositor backend")
 	errWindowOperationFailed  = errors.New("window operation failed for compositor backend")
 	runWindowCommand          = func(ctx context.Context, name string, args ...string) ([]byte, error) {
 		return exec.CommandContext(ctx, name, args...).Output()
@@ -90,6 +98,7 @@ type windowBackend interface {
 	SetActive(win Handle) error
 	Minimize(pid int, state bool, isPid bool) error
 	Maximize(pid int, state bool, isPid bool) error
+	Maximized() (bool, error)
 	Close(args ...int) error
 	Title(args ...int) (string, error)
 }
@@ -191,6 +200,10 @@ func (nativeWindowBackend) Maximize(pid int, state bool, isPid bool) error {
 	return nil
 }
 
+func (nativeWindowBackend) Maximized() (bool, error) {
+	return false, linuxWindowStateNotSupported("query maximized state")
+}
+
 func (nativeWindowBackend) Close(args ...int) error {
 	if err := nativeX11WindowReady(); err != nil {
 		return err
@@ -280,6 +293,10 @@ func (b waylandCoreWindowBackend) Maximize(pid int, state bool, isPid bool) erro
 	return b.unsupported("maximize window")
 }
 
+func (b waylandCoreWindowBackend) Maximized() (bool, error) {
+	return false, b.unsupported("query maximized state")
+}
+
 func (b waylandCoreWindowBackend) Close(args ...int) error {
 	_ = args
 	return b.unsupported("close window")
@@ -343,6 +360,9 @@ func (swayWindowBackend) Maximize(pid int, state bool, isPid bool) error {
 	}
 	return runWlrctlActiveWindowAction("maximize window", argMaximize)
 }
+func (swayWindowBackend) Maximized() (bool, error) {
+	return false, waylandWindowNotSupported("query maximized state")
+}
 func (swayWindowBackend) Close(args ...int) error {
 	if len(args) > 0 {
 		return waylandWindowNotSupported("close window by pid/handle")
@@ -397,10 +417,78 @@ func (hyprlandWindowBackend) Maximize(pid int, state bool, isPid bool) error {
 	if pid > 0 || isPid {
 		return waylandWindowNotSupported("maximize window by pid/handle")
 	}
-	if !state {
-		return waylandWindowNotSupported("restore maximized window")
+	if !hasCommand(cmdHyprCtl) {
+		return waylandWindowNotSupported("maximize window (hyprctl unavailable)")
 	}
-	return runWlrctlActiveWindowAction("maximize window", argMaximize)
+	info, err := getHyprlandActiveWindow()
+	if err != nil {
+		return fmt.Errorf("%w: %w", errWindowStateUnavailable, err)
+	}
+	if info.Fullscreen == nil || info.FullscreenClient == nil {
+		return fmt.Errorf(
+			"%w: hyprland response omitted fullscreen state",
+			errWindowStateUnavailable,
+		)
+	}
+	if !validHyprlandFullscreenMode(*info.Fullscreen) ||
+		!validHyprlandFullscreenMode(*info.FullscreenClient) {
+		return fmt.Errorf(
+			"%w: invalid hyprland fullscreen state internal=%d client=%d",
+			errWindowStateUnavailable,
+			*info.Fullscreen,
+			*info.FullscreenClient,
+		)
+	}
+
+	if state {
+		if *info.Fullscreen == hyprlandFullscreenMaximized &&
+			*info.FullscreenClient == hyprlandFullscreenMaximized {
+			return nil
+		}
+	} else {
+		if !hyprlandFullscreenModeIsMaximized(*info.Fullscreen) &&
+			!hyprlandFullscreenModeIsMaximized(*info.FullscreenClient) {
+			return nil
+		}
+	}
+
+	mode := argHyprlandNone
+	if state {
+		mode = argHyprlandMaximized
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), windowCommandTimeout)
+	defer cancel()
+	if _, err := runWindowCommand(
+		ctx,
+		cmdHyprCtl,
+		argDispatch,
+		argFullscreenState,
+		mode,
+		mode,
+	); err != nil {
+		return fmt.Errorf("%w: %w", errWindowOperationFailed, err)
+	}
+	return nil
+}
+func (hyprlandWindowBackend) Maximized() (bool, error) {
+	if !hasCommand(cmdHyprCtl) {
+		return false, waylandWindowNotSupported("query maximized state (hyprctl unavailable)")
+	}
+	info, err := getHyprlandActiveWindow()
+	if err != nil {
+		return false, fmt.Errorf("%w: %w", errWindowStateUnavailable, err)
+	}
+	if info.Fullscreen == nil {
+		return false, fmt.Errorf("%w: hyprland response omitted fullscreen state", errWindowStateUnavailable)
+	}
+	if !validHyprlandFullscreenMode(*info.Fullscreen) {
+		return false, fmt.Errorf(
+			"%w: invalid hyprland fullscreen state %d",
+			errWindowStateUnavailable,
+			*info.Fullscreen,
+		)
+	}
+	return hyprlandFullscreenModeIsMaximized(*info.Fullscreen), nil
 }
 func (hyprlandWindowBackend) Close(args ...int) error {
 	if len(args) > 0 {
@@ -468,6 +556,10 @@ func (wlrootsGenericWindowBackend) Maximize(pid int, state bool, isPid bool) err
 	return runWlrctlActiveWindowAction("maximize window", argMaximize)
 }
 
+func (wlrootsGenericWindowBackend) Maximized() (bool, error) {
+	return false, waylandWindowNotSupported("query maximized state")
+}
+
 func runWlrctlActiveWindowAction(op, action string) error {
 	if !hasCommand(cmdWlrCtl) {
 		return waylandWindowNotSupported(op + " (wlrctl unavailable)")
@@ -533,19 +625,37 @@ func getSwayActiveWindowTitle() (string, error) {
 }
 
 type hyprlandActiveWindow struct {
-	Title string `json:"title"`
+	Title            string `json:"title"`
+	Fullscreen       *int   `json:"fullscreen"`
+	FullscreenClient *int   `json:"fullscreenClient"`
 }
 
-func getHyprlandActiveWindowTitle() (string, error) {
+func validHyprlandFullscreenMode(mode int) bool {
+	return mode >= hyprlandFullscreenNone && mode <= hyprlandFullscreenMaxAndFull
+}
+
+func hyprlandFullscreenModeIsMaximized(mode int) bool {
+	return mode == hyprlandFullscreenMaximized || mode == hyprlandFullscreenMaxAndFull
+}
+
+func getHyprlandActiveWindow() (hyprlandActiveWindow, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), windowCommandTimeout)
 	defer cancel()
 	out, err := runWindowCommand(ctx, cmdHyprCtl, argActiveWindow, argJSON)
 	if err != nil {
-		return "", fmt.Errorf("%w: %v", errWindowTitleUnavailable, err)
+		return hyprlandActiveWindow{}, err
 	}
 	var info hyprlandActiveWindow
 	if err := json.Unmarshal(out, &info); err != nil {
-		return "", fmt.Errorf("%w: invalid hyprland json: %v", errWindowTitleUnavailable, err)
+		return hyprlandActiveWindow{}, fmt.Errorf("invalid hyprland json: %w", err)
+	}
+	return info, nil
+}
+
+func getHyprlandActiveWindowTitle() (string, error) {
+	info, err := getHyprlandActiveWindow()
+	if err != nil {
+		return "", fmt.Errorf("%w: %v", errWindowTitleUnavailable, err)
 	}
 	if strings.TrimSpace(info.Title) == "" {
 		return "", errWindowTitleUnavailable

@@ -2541,12 +2541,12 @@ func IsMaximized() bool {
 	return ok
 }
 
-// IsMaximizedE reports whether the current active window is maximized and
-// returns an explicit unsupported error on Linux backends without reliable
-// state query support.
+// IsMaximizedE reports whether the current active window is maximized.
+// Hyprland uses its compositor state; Linux backends without a trustworthy
+// query return an explicit unsupported error.
 func IsMaximizedE() (bool, error) {
 	if runtime.GOOS == "linux" {
-		return false, linuxWindowStateNotSupported("query maximized state")
+		return resolveWindowBackend().Maximized()
 	}
 	return bool(C.IsMaximized()), nil
 }
@@ -2679,8 +2679,8 @@ func MaxWindow(pid int, args ...interface{}) {
 	_ = MaxWindowE(pid, args...)
 }
 
-// MaxWindowE sets the window max state and returns an explicit unsupported
-// error on Wayland sessions.
+// MaxWindowE sets or restores the window max state. Wayland backends without
+// trustworthy compositor support return an explicit unsupported error.
 func MaxWindowE(pid int, args ...interface{}) error {
 	state, err := parseWindowStateArguments(args)
 	if err != nil {
