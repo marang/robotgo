@@ -489,6 +489,12 @@ func nativeWaylandKeyboardReady() error {
 	return err
 }
 
+func nativeWaylandKeyboardProtocolVersion() uint32 {
+	unlockKeyboard := lockLinuxKeyboard()
+	defer unlockKeyboard()
+	return uint32(C.robotgo_wayland_keyboard_protocol_version())
+}
+
 func closeWaylandKeyboard() { C.robotgo_wayland_keyboard_close() }
 
 func syncWaylandKeyboardForTest() int {

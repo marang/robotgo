@@ -22,6 +22,7 @@ func runtimeCapabilities() RuntimeCapabilities {
 	}
 	if runtime.GOOS == "linux" {
 		linux := GetLinuxCapabilities()
+		result.Compositor = linux.Compositor
 		result.Capture = linux.Capture
 		result.Bounds = linux.Bounds
 		result.Keyboard = linux.Keyboard

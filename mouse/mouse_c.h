@@ -296,12 +296,18 @@ enum RobotGoMouseStatus {
 	                }
 	                return rg_init_wayland();
 	        }
+	        static uint32_t robotgo_wayland_mouse_protocol_version(void) {
+	                return rg_wl_vptr_mgr == NULL
+	                        ? 0
+	                        : zwlr_virtual_pointer_manager_v1_get_version(rg_wl_vptr_mgr);
+	        }
 	        static void robotgo_wayland_mouse_close(void) { rg_cleanup_wayland(); }
 #endif /* ROBOTGO_USE_WAYLAND */
 	#ifndef ROBOTGO_USE_WAYLAND
 	        static bool robotgo_wayland_mouse_backend_selected(void) { return false; }
 	        static int robotgo_wayland_mouse_backend_enabled(void) { return 0; }
 	        static int robotgo_wayland_mouse_ready(void) { return 0; }
+	        static uint32_t robotgo_wayland_mouse_protocol_version(void) { return 0; }
 	        static void robotgo_wayland_mouse_close(void) { }
 	        static int robotgo_wayland_mouse_button_code(
 	                MMMouseButton button, uint32_t *code, unsigned int *index) {
@@ -322,6 +328,7 @@ enum RobotGoMouseStatus {
 static bool robotgo_wayland_mouse_backend_selected(void) { return false; }
 static int robotgo_wayland_mouse_backend_enabled(void) { return 0; }
 static int robotgo_wayland_mouse_ready(void) { return 0; }
+static uint32_t robotgo_wayland_mouse_protocol_version(void) { return 0; }
 static void robotgo_wayland_mouse_close(void) { }
 static int robotgo_wayland_mouse_button_code(
 	MMMouseButton button, uint32_t *code, unsigned int *index) {

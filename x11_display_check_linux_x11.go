@@ -99,6 +99,17 @@ func nativeX11CapabilityErrors() (displayErr error, inputErr error) {
 	return nil, nativeX11InputReadyLocked()
 }
 
+func nativeX11ProtocolVersion() (major, minor int, negotiated bool) {
+	unlock := lockNativeX11Display()
+	defer unlock()
+	var cMajor C.int
+	var cMinor C.int
+	if int(C.robotgo_x11_probe_input(&cMajor, &cMinor)) != int(C.ROBOTGO_X11_PROBE_OK) {
+		return int(cMajor), int(cMinor), false
+	}
+	return int(cMajor), int(cMinor), true
+}
+
 func x11MainDisplayAvailableLocked() bool {
 	return nativeX11DisplayReadyLocked() == nil
 }

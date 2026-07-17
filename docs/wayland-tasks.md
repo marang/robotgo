@@ -150,8 +150,9 @@ backends.
     releases owned input and restores only an exact unchanged, unpressed,
     non-modifier scratch claim. Foreign final images are preserved; exact-image
     ABA replacement is not observable in X11.
-  - 6. Publish versioned compatibility data and expand diagnostics with
-    protocol versions, permissions, and actionable remediation.
+  - 6. Keep the published runtime compatibility matrix and diagnostic schema
+    versioned. Schema v1 now reports negotiated protocol versions, permission
+    state, and actionable remediation without sensitive session data.
   - 7. Promote race/vet and native leak/sanitizer checks to blocking release
     gates, with dedicated GNOME/KDE/wlroots jobs.
 

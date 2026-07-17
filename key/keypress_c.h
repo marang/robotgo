@@ -1459,6 +1459,12 @@ enum RobotGoKeyStatus {
                 return refresh_wayland_keyboard();
         }
 
+        uint32_t robotgo_wayland_keyboard_protocol_version(void) {
+                return wk_vk_manager == NULL
+                        ? 0
+                        : zwp_virtual_keyboard_manager_v1_get_version(wk_vk_manager);
+        }
+
         int robotgo_wayland_keyboard_last_error(void) {
                 return wk_last_error;
         }
@@ -1669,6 +1675,7 @@ enum RobotGoKeyStatus {
 
 #ifndef ROBOTGO_WAYLAND_KEYBOARD_DIAG_DEFINED
 static inline int robotgo_wayland_keyboard_ready(void) { return 0; }
+static inline uint32_t robotgo_wayland_keyboard_protocol_version(void) { return 0; }
 static inline int robotgo_wayland_keyboard_last_error(void) { return 0; }
 static inline int robotgo_wayland_keyboard_backend_enabled(void) { return 0; }
 static inline void robotgo_wayland_keyboard_close(void) { }

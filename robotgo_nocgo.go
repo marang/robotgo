@@ -142,6 +142,14 @@ func DetectDisplayServer() DisplayServer {
 
 func configuredX11DisplaySelected() bool { return false }
 
+func nativeWaylandProtocolVersions() nativeWaylandProtocolInfo {
+	return nativeWaylandProtocolInfo{}
+}
+
+func nativeX11ProtocolVersion() (major, minor int, negotiated bool) {
+	return 0, 0, false
+}
+
 func GetLinuxCapabilities() LinuxCapabilities {
 	ds := selectedDisplayServer()
 	unsupported := FeatureCapability{
@@ -160,6 +168,9 @@ func GetLinuxCapabilities() LinuxCapabilities {
 		Window:         unsupported,
 		Hook:           unsupported,
 		Events:         unsupported,
+	}
+	if runtime.GOOS == "linux" && ds == DisplayServerWayland {
+		capabilities.Compositor = detectWaylandCompositor()
 	}
 	overrideCapture, captureOverridden := pureGoCaptureOverrideCapability()
 	if captureOverridden {
