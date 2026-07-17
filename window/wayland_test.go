@@ -63,9 +63,37 @@ func TestGetBoundsWayland(t *testing.T) {
 		t.Fatalf("expected Wayland, got %v", ds)
 	}
 
-	_, _, w, h := robotgo.GetBounds(0)
-	if w == 0 || h == 0 {
+	rect := robotgo.GetScreenRect()
+	if rect.W == 0 || rect.H == 0 {
 		t.Skip("wayland compositor did not provide bounds")
+	}
+	x, y, w, h := robotgo.GetBounds(0)
+	if x != rect.X || y != rect.Y || w != rect.W || h != rect.H {
+		t.Fatalf("GetBounds = (%d,%d %dx%d), screen rect = %+v", x, y, w, h, rect)
+	}
+	clientX, clientY, clientW, clientH := robotgo.GetClient(0)
+	if clientX != rect.X || clientY != rect.Y ||
+		clientW != rect.W || clientH != rect.H {
+		t.Fatalf(
+			"GetClient = (%d,%d %dx%d), screen rect = %+v",
+			clientX,
+			clientY,
+			clientW,
+			clientH,
+			rect,
+		)
+	}
+	if count := robotgo.DisplaysNum(); count != 1 {
+		t.Fatalf("DisplaysNum = %d, want 1", count)
+	}
+	if mainID := robotgo.GetMainId(); mainID != 0 {
+		t.Fatalf("GetMainId = %d, want 0", mainID)
+	}
+	if displayRect := robotgo.GetScreenRect(0); displayRect != rect {
+		t.Fatalf("GetScreenRect(0) = %+v, aggregate = %+v", displayRect, rect)
+	}
+	if invalid := robotgo.GetScreenRect(1); invalid != (robotgo.Rect{}) {
+		t.Fatalf("GetScreenRect(1) = %+v, want zero rect", invalid)
 	}
 }
 
@@ -96,6 +124,9 @@ func TestWaylandBoundsResourceRelease(t *testing.T) {
 		_, _, w, h = robotgo.GetClient(0)
 		if w == 0 || h == 0 {
 			t.Skip("wayland compositor did not provide client bounds")
+		}
+		if count := robotgo.DisplaysNum(); count != 1 {
+			t.Fatalf("DisplaysNum = %d, want 1", count)
 		}
 	}
 	after := countFDs(t)

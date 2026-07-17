@@ -545,18 +545,17 @@ func isWaylandSession() bool {
 }
 
 var (
-	reWaylandOutputID = regexp.MustCompile(`name:\s*([0-9]+)\s*$`)
-	rePosXY           = regexp.MustCompile(`x:\s*(-?[0-9]+),\s*y:\s*(-?[0-9]+)`)
-	reLogicalXY       = regexp.MustCompile(`logical_x:\s*(-?[0-9]+),\s*logical_y:\s*(-?[0-9]+)`)
-	reLogicalWH       = regexp.MustCompile(`logical_width:\s*([0-9]+),\s*logical_height:\s*([0-9]+)`)
-	reModeWH          = regexp.MustCompile(`width:\s*([0-9]+)\s*px,\s*height:\s*([0-9]+)\s*px`)
-	reXDGOutputID     = regexp.MustCompile(`output:\s*([0-9]+)\s*$`)
+	reWaylandOutputID  = regexp.MustCompile(`name:\s*([0-9]+)\s*$`)
+	rePosXY            = regexp.MustCompile(`x:\s*(-?[0-9]+),\s*y:\s*(-?[0-9]+)`)
+	reLogicalXY        = regexp.MustCompile(`logical_x:\s*(-?[0-9]+),\s*logical_y:\s*(-?[0-9]+)`)
+	reLogicalWH        = regexp.MustCompile(`logical_width:\s*([0-9]+),\s*logical_height:\s*([0-9]+)`)
+	reModeWH           = regexp.MustCompile(`width:\s*([0-9]+)\s*px,\s*height:\s*([0-9]+)\s*px`)
+	reXDGOutputID      = regexp.MustCompile(`output:\s*([0-9]+)\s*$`)
+	reWaylandScale     = regexp.MustCompile(`scale:\s*([0-9]+)`)
+	reWaylandTransform = regexp.MustCompile(
+		`transform:\s*([[:alnum:]_-]+)`,
+	)
 )
-
-type waylandOutputBounds struct {
-	x, y int
-	w, h int
-}
 
 type waylandWLModeState struct {
 	w, h int
@@ -671,9 +670,12 @@ func parseWaylandInfoBounds(raw string) (Rect, bool) {
 		pendingMode   waylandWLModeState
 		hasPending    bool
 		expectModeVal bool
+		scale         int
+		transform     int
 	}
 
 	xdgBounds := make(map[int]waylandOutputBounds)
+	var logicalBounds []waylandOutputBounds
 	var wlBounds []waylandOutputBounds
 
 	inXDG := false
@@ -682,7 +684,7 @@ func parseWaylandInfoBounds(raw string) (Rect, bool) {
 	var ws wlState
 
 	commitXDG := func() {
-		if !xs.hasID || !xs.hasLogicalWH {
+		if !xs.hasLogicalWH {
 			return
 		}
 		x := 0
@@ -691,16 +693,20 @@ func parseWaylandInfoBounds(raw string) (Rect, bool) {
 			x = xs.logicalX
 			y = xs.logicalY
 		}
-		xdgBounds[xs.outputID] = waylandOutputBounds{
+		bounds := waylandOutputBounds{
 			x: x,
 			y: y,
 			w: xs.logicalW,
 			h: xs.logicalH,
 		}
+		logicalBounds = append(logicalBounds, bounds)
+		if xs.hasID {
+			xdgBounds[xs.outputID] = bounds
+		}
 	}
 
 	commitWL := func() {
-		if !ws.hasID || !ws.hasPos {
+		if !ws.hasPos {
 			return
 		}
 		w := 0
@@ -713,8 +719,22 @@ func parseWaylandInfoBounds(raw string) (Rect, bool) {
 		if w <= 0 || h <= 0 {
 			return
 		}
-		if b, ok := xdgBounds[ws.outputID]; ok && b.w > 0 && b.h > 0 {
-			wlBounds = append(wlBounds, b)
+		if ws.hasID {
+			if b, ok := xdgBounds[ws.outputID]; ok && b.w > 0 && b.h > 0 {
+				wlBounds = append(wlBounds, b)
+				return
+			}
+		}
+		scale := ws.scale
+		if scale <= 0 {
+			scale = 1
+		}
+		w /= scale
+		h /= scale
+		if waylandTransformRotatesDimensions(ws.transform) {
+			w, h = h, w
+		}
+		if w <= 0 || h <= 0 {
 			return
 		}
 		wlBounds = append(wlBounds, waylandOutputBounds{
@@ -723,6 +743,10 @@ func parseWaylandInfoBounds(raw string) (Rect, bool) {
 			w: w,
 			h: h,
 		})
+	}
+
+	newWLState := func() wlState {
+		return wlState{scale: 1, transform: waylandTransformNormal}
 	}
 
 	sc := bufio.NewScanner(strings.NewReader(raw))
@@ -741,11 +765,11 @@ func parseWaylandInfoBounds(raw string) (Rect, bool) {
 			if inWL {
 				commitWL()
 				inWL = false
-				ws = wlState{}
+				ws = newWLState()
 			}
 			if strings.HasPrefix(line, "interface: 'wl_output'") {
 				inWL = true
-				ws = wlState{}
+				ws = newWLState()
 				if m := reWaylandOutputID.FindStringSubmatch(line); len(m) == 2 {
 					if id, err := strconv.Atoi(m[1]); err == nil {
 						ws.outputID = id
@@ -796,6 +820,16 @@ func parseWaylandInfoBounds(raw string) (Rect, bool) {
 		}
 
 		if inWL {
+			if m := reWaylandScale.FindStringSubmatch(line); len(m) == 2 {
+				if scale, err := strconv.Atoi(m[1]); err == nil && scale > 0 {
+					ws.scale = scale
+				}
+			}
+			if m := reWaylandTransform.FindStringSubmatch(line); len(m) == 2 {
+				if transform, ok := parseWaylandTransform(m[1]); ok {
+					ws.transform = transform
+				}
+			}
 			if m := rePosXY.FindStringSubmatch(line); len(m) == 3 {
 				x, errX := strconv.Atoi(m[1])
 				y, errY := strconv.Atoi(m[2])
@@ -837,6 +871,9 @@ func parseWaylandInfoBounds(raw string) (Rect, bool) {
 			}
 		}
 	}
+	if sc.Err() != nil {
+		return Rect{}, false
+	}
 
 	if inXDG {
 		commitXDG()
@@ -845,40 +882,11 @@ func parseWaylandInfoBounds(raw string) (Rect, bool) {
 		commitWL()
 	}
 
-	if len(wlBounds) == 0 {
-		return Rect{}, false
+	if len(logicalBounds) > 0 &&
+		(len(wlBounds) == 0 || len(logicalBounds) == len(wlBounds)) {
+		return aggregateWaylandOutputBounds(logicalBounds)
 	}
-	minX := wlBounds[0].x
-	minY := wlBounds[0].y
-	maxX := wlBounds[0].x + wlBounds[0].w
-	maxY := wlBounds[0].y + wlBounds[0].h
-
-	for i := 1; i < len(wlBounds); i++ {
-		b := wlBounds[i]
-		if b.x < minX {
-			minX = b.x
-		}
-		if b.y < minY {
-			minY = b.y
-		}
-		if b.x+b.w > maxX {
-			maxX = b.x + b.w
-		}
-		if b.y+b.h > maxY {
-			maxY = b.y + b.h
-		}
-	}
-
-	w := maxX - minX
-	h := maxY - minY
-	if w <= 0 || h <= 0 {
-		return Rect{}, false
-	}
-
-	return Rect{
-		Point{X: minX, Y: minY},
-		Size{W: w, H: h},
-	}, true
+	return aggregateWaylandOutputBounds(wlBounds)
 }
 
 func captureDebugf(format string, args ...interface{}) {
@@ -1223,7 +1231,7 @@ func GetScreenRect(displayId ...int) Rect {
 	unlock := lockNativeX11Display()
 	rect := getScreenRectLocked(display, false)
 	unlock()
-	if (rect.W <= 0 || rect.H <= 0) && isWaylandSession() {
+	if display < 0 && (rect.W <= 0 || rect.H <= 0) && isWaylandSession() {
 		if wlRect, ok := waylandScreenBoundsFallback(); ok {
 			return wlRect
 		}

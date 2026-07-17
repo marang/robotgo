@@ -151,6 +151,87 @@ static void output_logical_origin(const struct output *out, int *ox, int *oy) {
   }
 }
 
+struct output_ref {
+  struct output *output;
+  int x;
+  int y;
+  int w;
+  int h;
+  int primary;
+};
+
+static int compare_output_refs(const void *left, const void *right) {
+  const struct output_ref *a = left;
+  const struct output_ref *b = right;
+  if (a->primary != b->primary) {
+    return b->primary - a->primary;
+  }
+  if (a->y != b->y) {
+    return a->y < b->y ? -1 : 1;
+  }
+  if (a->x != b->x) {
+    return a->x < b->x ? -1 : 1;
+  }
+  if (a->output->name != b->output->name) {
+    return a->output->name < b->output->name ? -1 : 1;
+  }
+  return 0;
+}
+
+static struct output *output_by_stable_index(struct wl_list *outputs,
+                                             int display_id) {
+  if (!outputs || display_id < 0) {
+    return NULL;
+  }
+
+  int capacity = 0;
+  struct output *it;
+  wl_list_for_each(it, outputs, link) {
+    capacity++;
+  }
+  if (capacity <= 0) {
+    return NULL;
+  }
+
+  struct output_ref *refs = calloc((size_t)capacity, sizeof(*refs));
+  if (!refs) {
+    return NULL;
+  }
+  int count = 0;
+  wl_list_for_each(it, outputs, link) {
+    int x = 0;
+    int y = 0;
+    int w = 0;
+    int h = 0;
+    output_logical_origin(it, &x, &y);
+    output_logical_size(it, &w, &h);
+    long long right = (long long)x + w;
+    long long bottom = (long long)y + h;
+    if (w <= 0 || h <= 0 ||
+        right > INT_MAX || right < INT_MIN ||
+        bottom > INT_MAX || bottom < INT_MIN) {
+      continue;
+    }
+    refs[count].output = it;
+    refs[count].x = x;
+    refs[count].y = y;
+    refs[count].w = w;
+    refs[count].h = h;
+    refs[count].primary =
+        x <= 0 && right > 0 && y <= 0 && bottom > 0;
+    count++;
+  }
+  if (display_id >= count) {
+    free(refs);
+    return NULL;
+  }
+
+  qsort(refs, (size_t)count, sizeof(*refs), compare_output_refs);
+  struct output *selected = refs[display_id].output;
+  free(refs);
+  return selected;
+}
+
 static long long rect_intersection_area(struct int_rect a, struct int_rect b) {
   int x1 = a.x > b.x ? a.x : b.x;
   int y1 = a.y > b.y ? a.y : b.y;
@@ -371,6 +452,45 @@ int robotgo_wayland_select_output_rect_for_test(int req_x, int req_y,
     }
   }
   return best_index;
+}
+
+int robotgo_wayland_stable_output_name_for_test(const int *values,
+                                                 int output_count,
+                                                 int display_id) {
+  if (!values || output_count <= 0) {
+    return -1;
+  }
+  struct wl_list outputs;
+  wl_list_init(&outputs);
+  for (int i = 0; i < output_count; i++) {
+    const int *value = &values[i * 5];
+    struct output *out = calloc(1, sizeof(*out));
+    if (!out) {
+      struct output *item, *tmp;
+      wl_list_for_each_safe(item, tmp, &outputs, link) {
+        wl_list_remove(&item->link);
+        free(item);
+      }
+      return -1;
+    }
+    out->logical_x = value[0];
+    out->logical_y = value[1];
+    out->logical_w = value[2];
+    out->logical_h = value[3];
+    out->has_logical_pos = 1;
+    out->has_logical_size = 1;
+    out->name = (uint32_t)value[4];
+    wl_list_insert(outputs.prev, &out->link);
+  }
+
+  struct output *selected = output_by_stable_index(&outputs, display_id);
+  int result = selected ? (int)selected->name : -1;
+  struct output *out, *tmp;
+  wl_list_for_each_safe(out, tmp, &outputs, link) {
+    wl_list_remove(&out->link);
+    free(out);
+  }
+  return result;
 }
 #endif
 
@@ -1120,14 +1240,13 @@ MMBitmapRef capture_screen_wayland_impl(int32_t x, int32_t y, int32_t w,
   }
   struct output *out = NULL;
   if (display_id >= 0) {
-    int idx = 0;
-    struct output *it;
-    wl_list_for_each(it, &cap.outputs, link) {
-      if (idx == display_id) {
-        out = it;
-        break;
+    out = output_by_stable_index(&cap.outputs, display_id);
+    if (!out) {
+      if (err) {
+        *err = ScreengrabErrNoOutputs;
       }
-      idx++;
+      cleanup_capture(&cap);
+      return NULL;
     }
   }
   if (!out) {
@@ -1135,9 +1254,6 @@ MMBitmapRef capture_screen_wayland_impl(int32_t x, int32_t y, int32_t w,
     long long best_area = -1;
     struct output *it;
     wl_list_for_each(it, &cap.outputs, link) {
-      if (!it->has_mode || it->mode_w <= 0 || it->mode_h <= 0) {
-        continue;
-      }
       int lw = 0;
       int lh = 0;
       int ox = 0;

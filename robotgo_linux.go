@@ -39,21 +39,8 @@ import (
 // Wayland or X11 implementation based on DetectDisplayServer.
 func GetBounds(pid int, args ...int) (int, int, int, int) {
 	if base.DetectDisplayServer() == base.Wayland {
-		display := C.wl_display_connect(nil)
-		if display == nil {
-			log.Println("wl_display_connect failed")
-			rect := GetScreenRect(-1)
-			return rect.X, rect.Y, rect.W, rect.H
-		}
-		defer C.wl_display_disconnect(display)
-
-		var w, h C.int
-		if C.get_bounds_wayland(display, &w, &h) != 0 {
-			log.Println("get_bounds_wayland failed")
-			rect := GetScreenRect(-1)
-			return rect.X, rect.Y, rect.W, rect.H
-		}
-		return 0, 0, int(w), int(h)
+		rect := GetScreenRect(-1)
+		return rect.X, rect.Y, rect.W, rect.H
 	}
 	if !nativeX11BackendCompiled() {
 		return 0, 0, 0, 0
@@ -78,21 +65,8 @@ func GetBounds(pid int, args ...int) (int, int, int, int) {
 // Wayland or X11 implementation based on DetectDisplayServer.
 func GetClient(pid int, args ...int) (int, int, int, int) {
 	if base.DetectDisplayServer() == base.Wayland {
-		display := C.wl_display_connect(nil)
-		if display == nil {
-			log.Println("wl_display_connect failed")
-			rect := GetScreenRect(-1)
-			return rect.X, rect.Y, rect.W, rect.H
-		}
-		defer C.wl_display_disconnect(display)
-
-		var w, h C.int
-		if C.get_bounds_wayland(display, &w, &h) != 0 {
-			log.Println("get_bounds_wayland failed")
-			rect := GetScreenRect(-1)
-			return rect.X, rect.Y, rect.W, rect.H
-		}
-		return 0, 0, int(w), int(h)
+		rect := GetScreenRect(-1)
+		return rect.X, rect.Y, rect.W, rect.H
 	}
 	if !nativeX11BackendCompiled() {
 		return 0, 0, 0, 0
@@ -255,8 +229,18 @@ func GetXidByPid(xu *xgbutil.XUtil, pid int) (xproto.Window, error) {
 	return 0, errors.New("failed to find a window with a matching pid")
 }
 
-// DisplaysNum get the count of displays
+// DisplaysNum returns the number of outputs exposed by the active display
+// server without routing Wayland sessions through X11.
 func DisplaysNum() int {
+	if base.DetectDisplayServer() == base.Wayland {
+		display := C.wl_display_connect(nil)
+		if display == nil {
+			return 0
+		}
+		defer C.wl_display_disconnect(display)
+		return int(C.get_num_displays_wayland(display))
+	}
+
 	c, err := xgb.NewConn()
 	if err != nil {
 		return 0
@@ -276,8 +260,19 @@ func DisplaysNum() int {
 	return int(reply.Number)
 }
 
-// GetMainId get the main display id
+// GetMainId returns the primary display index for the active display server.
+// Wayland output indices are deterministic: the output containing logical
+// coordinate (0,0) is first, followed by geometry order.
 func GetMainId() int {
+	if base.DetectDisplayServer() == base.Wayland {
+		display := C.wl_display_connect(nil)
+		if display == nil {
+			return -1
+		}
+		defer C.wl_display_disconnect(display)
+		return int(C.get_main_display_wayland(display))
+	}
+
 	conn, err := xgb.NewConn()
 	if err != nil {
 		return -1

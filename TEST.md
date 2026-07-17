@@ -181,6 +181,8 @@ Purpose:
 - Linux Wayland screencopy/mock-server coverage
 - Hermetic native crop mapping for multi-output coordinates, fractional scale,
   overflow boundaries, and all eight output transforms
+- Hermetic aggregate/per-output bounds for negative origins, fractional
+  `xdg-output` geometry, stable display indices, scale, and all transforms
 - DRM helper tests
 
 Typical command:

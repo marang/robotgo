@@ -111,3 +111,156 @@ func TestWaylandMultiOutputSelectionMatrix(t *testing.T) {
 		})
 	}
 }
+
+func TestWaylandBoundsPreserveLogicalDesktopGeometry(t *testing.T) {
+	outputs := []waylandBoundsOutputForTest{
+		{
+			position:    [2]int{20, 30},
+			mode:        [2]int{1920, 1080},
+			scale:       1,
+			logicalPos:  [2]int{0, 0},
+			logicalSize: [2]int{1280, 720},
+			hasLogical:  true,
+			name:        30,
+		},
+		{
+			position:    [2]int{-1024, 0},
+			mode:        [2]int{1024, 768},
+			scale:       1,
+			logicalPos:  [2]int{-1024, 0},
+			logicalSize: [2]int{1024, 768},
+			hasLogical:  true,
+			name:        10,
+		},
+		{
+			position:  [2]int{1280, 0},
+			mode:      [2]int{2160, 3840},
+			transform: 1,
+			scale:     2,
+			name:      20,
+		},
+	}
+
+	aggregate, ok := resolveWaylandBoundsForTest(outputs, -1)
+	if !ok {
+		t.Fatal("aggregate bounds resolution failed")
+	}
+	if want := [4]int{-1024, 0, 4224, 1080}; aggregate != want {
+		t.Fatalf("aggregate bounds = %v, want %v", aggregate, want)
+	}
+
+	tests := []struct {
+		displayID int
+		want      [4]int
+	}{
+		{displayID: 0, want: [4]int{0, 0, 1280, 720}},
+		{displayID: 1, want: [4]int{-1024, 0, 1024, 768}},
+		{displayID: 2, want: [4]int{1280, 0, 1920, 1080}},
+	}
+	for _, test := range tests {
+		got, ok := resolveWaylandBoundsForTest(outputs, test.displayID)
+		if !ok {
+			t.Fatalf("display %d bounds resolution failed", test.displayID)
+		}
+		if got != test.want {
+			t.Fatalf("display %d bounds = %v, want %v", test.displayID, got, test.want)
+		}
+	}
+	if _, ok := resolveWaylandBoundsForTest(outputs, len(outputs)); ok {
+		t.Fatal("out-of-range display index unexpectedly resolved")
+	}
+}
+
+func TestWaylandBoundsAcceptLogicalGeometryWithoutCoreMode(t *testing.T) {
+	outputs := []waylandBoundsOutputForTest{{
+		logicalPos:  [2]int{-640, -360},
+		logicalSize: [2]int{1280, 720},
+		hasLogical:  true,
+		name:        1,
+	}}
+	got, ok := resolveWaylandBoundsForTest(outputs, -1)
+	if !ok {
+		t.Fatal("logical-only output bounds resolution failed")
+	}
+	if want := [4]int{-640, -360, 1280, 720}; got != want {
+		t.Fatalf("logical-only bounds = %v, want %v", got, want)
+	}
+}
+
+func TestWaylandBoundsRejectUnrepresentableAggregate(t *testing.T) {
+	const (
+		minInt32 = -1 << 31
+		maxInt32 = 1<<31 - 1
+	)
+	outputs := []waylandBoundsOutputForTest{
+		{
+			logicalPos:  [2]int{minInt32, 0},
+			logicalSize: [2]int{1, 1},
+			hasLogical:  true,
+			name:        1,
+		},
+		{
+			logicalPos:  [2]int{maxInt32 - 1, 0},
+			logicalSize: [2]int{1, 1},
+			hasLogical:  true,
+			name:        2,
+		},
+	}
+	if bounds, ok := resolveWaylandBoundsForTest(outputs, -1); ok {
+		t.Fatalf("unrepresentable aggregate unexpectedly resolved as %v", bounds)
+	}
+}
+
+func TestWaylandBoundsFallbackAppliesScaleAndTransforms(t *testing.T) {
+	for transform := 0; transform < 8; transform++ {
+		t.Run(string(rune('0'+transform)), func(t *testing.T) {
+			got, ok := resolveWaylandBoundsForTest(
+				[]waylandBoundsOutputForTest{{
+					position:  [2]int{-10, 20},
+					mode:      [2]int{2400, 1600},
+					transform: transform,
+					scale:     2,
+					name:      1,
+				}},
+				-1,
+			)
+			if !ok {
+				t.Fatal("fallback output bounds resolution failed")
+			}
+			want := [4]int{-10, 20, 1200, 800}
+			if transform == 1 || transform == 3 || transform == 5 || transform == 7 {
+				want = [4]int{-10, 20, 800, 1200}
+			}
+			if got != want {
+				t.Fatalf("transform %d bounds = %v, want %v", transform, got, want)
+			}
+		})
+	}
+}
+
+func TestWaylandExplicitDisplayIndexMatchesBoundsOrder(t *testing.T) {
+	outputs := [][5]int{
+		{-1920, 0, 1920, 1080, 58},
+		{0, 0, 1280, 720, 99},
+		{0, 720, 1280, 1024, 12},
+	}
+	tests := []struct {
+		displayID int
+		wantName  int
+	}{
+		{displayID: 0, wantName: 99},
+		{displayID: 1, wantName: 58},
+		{displayID: 2, wantName: 12},
+		{displayID: 3, wantName: -1},
+	}
+	for _, test := range tests {
+		if got := stableWaylandOutputNameForTest(outputs, test.displayID); got != test.wantName {
+			t.Fatalf(
+				"display %d selected registry output %d, want %d",
+				test.displayID,
+				got,
+				test.wantName,
+			)
+		}
+	}
+}
