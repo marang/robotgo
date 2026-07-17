@@ -49,7 +49,9 @@ type fakeInputStep struct {
 
 // fakeInputSequencer is an optional transport optimization. The stateful core
 // falls back to individual FakeInput calls when a connection does not provide
-// it. Implementations must execute steps in order and stop at the first error.
+// it. Implementations must execute steps in order, stop at the first error, and
+// retain cleanup ownership for any ambiguous or partially completed press until
+// a verified release or Close.
 type fakeInputSequencer interface {
 	FakeInputSequence(steps []fakeInputStep) error
 }
