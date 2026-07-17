@@ -769,16 +769,21 @@ Real Wayland input results are tracked in the
 - [Go API reference](https://pkg.go.dev/github.com/marang/robotgo)
 - [Key names and conversion](docs/keys.md)
 - [Testing guide](TEST.md)
+- [Release evidence format and verification](docs/compatibility/release-evidence-v1.md)
 - [X11 native-vs-Pure-Go evidence](docs/performance/x11-native-vs-purego.md)
 - [Current Wayland support and backlog](docs/wayland-tasks.md)
 - [Product roadmap](docs/plan/product-roadmap.md)
 - [Wayland implementation history](docs/wayland-history.md)
 
-The active product slice is Phase 4 API and compositor parity. Hyprland now
-provides trustworthy active-window maximize query, set, and restore while
-Sway and generic wlroots retain explicit unsupported query results because
-their available IPC does not expose an equivalent maximize state. The
-preceding Linux/X11 evaluation is complete: shared behavior is blocking CI,
+The active product slice is Phase 5 reliability hardening. Runtime Diagnostics
+v1, native sanitizer/leak gates, and a six-cell release-evidence workflow make
+support claims machine-readable and tied to exact source, test logs, and build
+identity. Published releases receive a checksummed evidence bundle. The
+remaining infrastructure blocker is protected real GNOME/KDE/wlroots evidence.
+Phase 4 already exposes the parity surface; Hyprland provides trustworthy
+active-window maximize query, set, and restore while Sway and generic wlroots
+retain explicit unsupported query results where their available IPC lacks an
+equivalent state. The preceding Linux/X11 evaluation is complete: shared behavior is blocking CI,
 current guardian-path decision evidence is versioned, and native CGO remains
 the default while Pure-Go supports CGO-disabled builds. The Pure-Go X11 core is
 race-testable and its separate guardian performs bounded, claim-checked cleanup

@@ -65,3 +65,6 @@ and diagnostic schema version.
 
 Detailed real-compositor evidence remains in
 [Wayland input](wayland-input.md) and [Wayland capture](wayland-capture.md).
+Exact source, build identity, test-log digests, and the embedded sanitized
+runtime report for published releases are defined by
+[Release Evidence v1](release-evidence-v1.md).

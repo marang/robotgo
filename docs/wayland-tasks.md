@@ -152,7 +152,9 @@ backends.
     ABA replacement is not observable in X11.
   - 6. Keep the published runtime compatibility matrix and diagnostic schema
     versioned. Schema v1 now reports negotiated protocol versions, permission
-    state, and actionable remediation without sensitive session data.
+    state, and actionable remediation without sensitive session data. Release
+    Evidence v1 binds that report and test-log digests to exact source across
+    the six native/Pure-Go hosted platform cells.
   - 7. Keep race/vet and the manifest-checked native ASan/LeakSanitizer ownership
     suites blocking. Provision the remaining dedicated GNOME/KDE/wlroots jobs.
 
