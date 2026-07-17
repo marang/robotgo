@@ -3,6 +3,7 @@
 package robotgo
 
 import (
+	"math"
 	"runtime"
 	"strconv"
 	"strings"
@@ -177,16 +178,23 @@ func GetHandByPid(target int, args ...int) Handle {
 	}
 	return Handle(handle)
 }
-func GetHandPid(target int, args ...int) Handle       { return GetHandByPid(target, args...) }
-func MicroSleep(tm float64)                           { time.Sleep(time.Duration(tm * float64(time.Millisecond))) }
-func PadHexs(hex CHex) string                         { return PadHex(uint32(hex)) }
-func UintToHex(value uint32) CHex                     { return CHex(value) }
-func Scaled(x int, displayID ...int) int              { return Scaled0(x, ScaleF(displayID...)) }
-func Scaled0(x int, factor float64) int               { return int(float64(x) * factor) }
-func Scaled1(x int, factor float64) int               { return int(float64(x) / factor) }
-func ScaleX() int                                     { return 96 }
-func Scale0() int                                     { return int(float64(ScaleX()) / 0.96) }
-func Scale1() int                                     { return 100 }
+func GetHandPid(target int, args ...int) Handle { return GetHandByPid(target, args...) }
+func MicroSleep(tm float64)                     { time.Sleep(time.Duration(tm * float64(time.Millisecond))) }
+func PadHexs(hex CHex) string                   { return PadHex(uint32(hex)) }
+func UintToHex(value uint32) CHex               { return CHex(value) }
+func Scaled(x int, displayID ...int) int        { return Scaled0(x, ScaleF(displayID...)) }
+func Scaled0(x int, factor float64) int         { return int(float64(x) * factor) }
+func Scaled1(x int, factor float64) int         { return int(float64(x) / factor) }
+func ScaleX() int {
+	if runtime.GOOS != "windows" {
+		return 0
+	}
+	return int(math.Round(96 * SysScale(-2)))
+}
+func Scale0() int { return int(float64(ScaleX()) / 0.96) }
+func Scale1() int {
+	return int(math.Round(float64(ScaleX()) * 100 / 96))
+}
 func Mul(x int) int                                   { return x * Scale1() / 100 }
 func MoveScale(x, y int, _ ...int) (int, int)         { return x, y }
 func MoveArgs(x, y int) (int, int)                    { mx, my := Location(); return mx + x, my + y }

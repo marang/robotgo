@@ -9,6 +9,7 @@ import (
 func main() {
 	// syscall.NewLazyDLL("user32.dll").NewProc("SetProcessDPIAware").Call()
 
+	fmt.Println("DPI scale factor:", robotgo.SysScale())
 	width, height := robotgo.GetScaleSize()
 	fmt.Println("get scale screen size: ", width, height)
 

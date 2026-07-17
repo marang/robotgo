@@ -149,7 +149,8 @@ semantics. The Windows non-CGO CI leg runs the explicitly gated real
 input-desktop pointer/pixel test and restores the original global cursor position.
 The same build provides Win32 window capability reporting, active handle/PID,
 PID-to-window resolution, titles, outer/client geometry, activation,
-minimize/maximize, topmost state, and graceful close. Its blocking runtime test
+minimize/maximize, topmost state, graceful close, and real Win32 DPI scale
+queries while retaining physical capture-space bounds. Its blocking runtime test
 creates and owns the target window, exercises each operation, and never mutates
 an unrelated application. The owned runtime window also contains an edit
 control that provides blocking evidence for clipboard-assisted Unicode paste

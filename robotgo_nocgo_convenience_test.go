@@ -4,6 +4,7 @@ package robotgo
 
 import (
 	"errors"
+	"math"
 	"reflect"
 	"testing"
 )
@@ -147,5 +148,43 @@ func TestGetLocationColorWithPropagatesLocationFailure(t *testing.T) {
 	}
 	if pixelCalled {
 		t.Fatal("pixel backend called after location failure")
+	}
+}
+
+func TestPureGoSysScaleForwardsWindowsTarget(t *testing.T) {
+	var got []int
+	scale := pureGoSysScale("windows", []int{42}, func(displayID ...int) float64 {
+		got = append([]int(nil), displayID...)
+		return 1.5
+	})
+	if scale != 1.5 {
+		t.Fatalf("scale = %v, want 1.5", scale)
+	}
+	if want := []int{42}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("display IDs = %v, want %v", got, want)
+	}
+}
+
+func TestPureGoSysScaleUsesNeutralFactorOutsideWindows(t *testing.T) {
+	called := false
+	scale := pureGoSysScale("linux", []int{42}, func(...int) float64 {
+		called = true
+		return 2
+	})
+	if scale != 1 {
+		t.Fatalf("scale = %v, want 1", scale)
+	}
+	if called {
+		t.Fatal("Windows scale callback called on Linux")
+	}
+}
+
+func TestPureGoSysScaleRejectsInvalidWindowsFactor(t *testing.T) {
+	for _, invalid := range []float64{0, -1, math.NaN()} {
+		if scale := pureGoSysScale("windows", nil, func(...int) float64 {
+			return invalid
+		}); scale != 1 {
+			t.Fatalf("scale for %v = %v, want neutral factor 1", invalid, scale)
+		}
 	}
 }

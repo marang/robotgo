@@ -67,8 +67,9 @@ Pure-Go Windows window control uses a self-owned Win32 top-level window, so the
 hosted runner can validate the full window contract and clipboard-assisted
 keyboard injection without typing into another application. The test covers
 capability reporting, PID/handle resolution, title, outer/client bounds,
-minimize/maximize, foreground activation, Unicode `PasteStr` into an owned edit
-control, topmost state, and `WM_CLOSE`:
+Win32 DPI scale without double-scaling capture bounds, minimize/maximize,
+foreground activation, Unicode `PasteStr` into an owned edit control, topmost
+state, and `WM_CLOSE`:
 
 ```powershell
 $env:CGO_ENABLED = "0"
