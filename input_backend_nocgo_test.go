@@ -11,6 +11,7 @@ import (
 )
 
 type fakePureGoInputBackend struct {
+	name         string
 	calls        []string
 	location     Point
 	keyboardErr  error
@@ -18,7 +19,12 @@ type fakePureGoInputBackend struct {
 	operationErr error
 }
 
-func (*fakePureGoInputBackend) Name() string { return "pure-go-test-input" }
+func (backend *fakePureGoInputBackend) Name() string {
+	if backend.name != "" {
+		return backend.name
+	}
+	return "pure-go-test-input"
+}
 
 func (backend *fakePureGoInputBackend) record(format string, args ...interface{}) error {
 	backend.calls = append(backend.calls, fmt.Sprintf(format, args...))
@@ -250,6 +256,27 @@ func TestPureGoInputCapabilitiesDoNotPerformLiveProbes(t *testing.T) {
 	}
 	if len(backend.calls) != 0 {
 		t.Fatalf("capability inspection performed live backend calls: %v", backend.calls)
+	}
+}
+
+func TestPureGoQuartzCapabilitiesPreflightPointerWithoutClaimingKeyboard(t *testing.T) {
+	mouseErr := errors.Join(ErrPermissionDenied, errors.New("Accessibility denied"))
+	backend := &fakePureGoInputBackend{
+		name:     featureBackendPureGoQuartzInput,
+		mouseErr: mouseErr,
+	}
+	installFakePureGoInputBackend(t, backend)
+
+	keyboard, mouse := pureGoInputCapabilities()
+	if keyboard.Available || keyboard.Backend != featureBackendPureGoQuartzInput ||
+		keyboard.Reason != ErrNotSupported.Error() {
+		t.Fatalf("keyboard capability = %+v, want explicit unsupported Quartz keyboard", keyboard)
+	}
+	if mouse.Available || mouse.Backend != featureBackendPureGoQuartzInput {
+		t.Fatalf("mouse capability = %+v, want unavailable Quartz pointer", mouse)
+	}
+	if !reflect.DeepEqual(backend.calls, []string{"mouse-ready"}) {
+		t.Fatalf("Quartz capability probe calls = %v, want only mouse-ready", backend.calls)
 	}
 }
 

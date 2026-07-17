@@ -1,4 +1,4 @@
-//go:build !cgo && !linux && !windows
+//go:build !cgo && !darwin && !linux && !windows
 
 package robotgo
 
