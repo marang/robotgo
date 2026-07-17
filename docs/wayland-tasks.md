@@ -16,7 +16,8 @@ Current implementation baseline:
   detection without portal or compositor probes.
 - Platform-neutral feature introspection is available via
   `GetRuntimeCapabilities`; macOS non-CGO builds report CoreGraphics capture,
-  display bounds, and Screen Recording permission state without prompting.
+  display bounds, real Retina scale, and Screen Recording permission state
+  without prompting.
 - Linux/X11 non-CGO builds provide a Pure-Go XGB/XTEST keyboard and pointer
   backend with live readiness probes, text/Unicode, smooth movement/drag,
   scrolling, pointer location, explicit state errors, and deterministic

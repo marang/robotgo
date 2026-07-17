@@ -33,8 +33,18 @@ The non-CGO suite runs on Linux, macOS, and Windows in CI. It also verifies
 runtime build/feature introspection, pixel-color parity, and hermetic Pure-Go
 capture dispatch for CoreGraphics, X11, Windows, and the Wayland screenshot
 portal. macOS tests use fake CoreGraphics bindings for deterministic permission,
-pixel, bounds, and resource-lifecycle coverage; they do not require a Screen
-Recording grant.
+pixel, bounds, Retina display-mode scale, and resource-lifecycle coverage. The
+macOS non-CGO leg also resolves the real CoreGraphics display-mode symbols and
+queries the active display scale as a blocking test; neither path requires a
+Screen Recording grant.
+
+The real scale probe can be reproduced on a macOS GUI runner without granting
+Screen Recording or Accessibility access:
+
+```bash
+CGO_ENABLED=0 go test \
+  -run '^TestPureGoDarwinDisplayScaleRuntime$' -count=1 -v .
+```
 
 Linux CI additionally runs the non-CGO X11 input backend against a real Xvfb
 server with XTEST 2.2 or newer and `us,de` keyboard layouts. A separate X11

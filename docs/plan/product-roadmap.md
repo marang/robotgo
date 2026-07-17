@@ -136,7 +136,10 @@ color APIs provide non-CGO capture through CoreGraphics on macOS, Windows and
 X11 screenshot paths, and the hardened screenshot portal on Wayland. macOS
 display enumeration, Screen Recording preflight, RGBA conversion, and
 CoreGraphics ownership are covered hermetically on both supported
-architectures.
+architectures. Non-CGO macOS also reports the real Retina display-mode factor,
+returns scaled pixel dimensions with `GetScaleSize`, releases copied display
+modes deterministically, and verifies the real symbols/display query in the
+blocking macOS CI leg without requesting Screen Recording access.
 
 Windows non-CGO builds now provide a foreground-layout-aware `SendInput` keyboard and text
 backend, clipboard-assisted Unicode paste, pixel-at-pointer queries, plus exact pointer movement/location, smooth movement and drag,
