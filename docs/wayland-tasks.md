@@ -193,4 +193,6 @@ Window backend support matrix (current):
     flag.
   - Keep `examples/purego_windows_input` readiness-only by default; global
     pointer or keyboard input requires explicit `-move` or `-text` flags.
+  - Keep the explicitly gated real Windows input-desktop pointer probe blocking
+    in the non-CGO Windows CI leg; it must restore the original cursor position.
   - Publish a versioned support matrix and troubleshooting guide.

@@ -681,10 +681,10 @@ state and avoids double payload encoding, with versioned evidence showing lower
 allocation cost. Balanced transient press/release pairs now share one guardian
 request while preserving per-step crash-cleanup ownership and the existing
 preflight/server-grab policy. Required remote checks now protect `main`.
-Pure-Go Windows input is the next delivered platform slice, with hermetic
-transaction tests and an opt-in real input-desktop probe. Further macOS and
-Windows backends remain selective work. Real GNOME/KDE/wlroots validation is an
-independent Wayland release gate.
+Pure-Go Windows input is a delivered platform slice, with hermetic transaction
+tests and a blocking real input-desktop pointer probe on the Windows CI runner.
+Further macOS and Windows backends remain selective work. Real
+GNOME/KDE/wlroots validation is an independent Wayland release gate.
 
 ## Upstream and attribution
 
