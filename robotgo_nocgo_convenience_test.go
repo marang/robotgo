@@ -6,6 +6,7 @@ import (
 	"errors"
 	"math"
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -187,4 +188,109 @@ func TestPureGoSysScaleRejectsInvalidWindowsFactor(t *testing.T) {
 			t.Fatalf("scale for %v = %v, want neutral factor 1", invalid, scale)
 		}
 	}
+}
+
+func TestDragWithUsesSelectedButtonAndReleasesIt(t *testing.T) {
+	var calls []string
+	err := dragWith(
+		80,
+		90,
+		[]string{"right"},
+		func(args ...interface{}) error {
+			calls = append(calls, "toggle:"+interfacesLabel(args))
+			return nil
+		},
+		func(x, y int, displayID ...int) error {
+			calls = append(calls, "move:80,90")
+			if x != 80 || y != 90 || len(displayID) != 0 {
+				t.Fatalf("move = (%d, %d, %v)", x, y, displayID)
+			}
+			return nil
+		},
+	)
+	if err != nil {
+		t.Fatalf("dragWith: %v", err)
+	}
+	if want := []string{"toggle:right", "move:80,90", "toggle:right,up"}; !reflect.DeepEqual(calls, want) {
+		t.Fatalf("calls = %v, want %v", calls, want)
+	}
+}
+
+func TestDragWithDefaultsToLeftButton(t *testing.T) {
+	var toggles [][]interface{}
+	err := dragWith(
+		1,
+		2,
+		nil,
+		func(args ...interface{}) error {
+			toggles = append(toggles, append([]interface{}(nil), args...))
+			return nil
+		},
+		func(int, int, ...int) error { return nil },
+	)
+	if err != nil {
+		t.Fatalf("dragWith: %v", err)
+	}
+	want := [][]interface{}{{"left"}, {"left", "up"}}
+	if !reflect.DeepEqual(toggles, want) {
+		t.Fatalf("toggles = %v, want %v", toggles, want)
+	}
+}
+
+func TestDragWithStopsWhenButtonDownFails(t *testing.T) {
+	downErr := errors.New("button down failed")
+	moveCalled := false
+	toggleCalls := 0
+	err := dragWith(
+		1,
+		2,
+		nil,
+		func(...interface{}) error {
+			toggleCalls++
+			return downErr
+		},
+		func(int, int, ...int) error {
+			moveCalled = true
+			return nil
+		},
+	)
+	if !errors.Is(err, downErr) {
+		t.Fatalf("error = %v, want %v", err, downErr)
+	}
+	if toggleCalls != 1 || moveCalled {
+		t.Fatalf("toggle calls = %d, move called = %v", toggleCalls, moveCalled)
+	}
+}
+
+func TestDragWithReleasesButtonAfterMoveFailure(t *testing.T) {
+	moveErr := errors.New("move failed")
+	releaseErr := errors.New("release failed")
+	toggleCalls := 0
+	err := dragWith(
+		1,
+		2,
+		nil,
+		func(...interface{}) error {
+			toggleCalls++
+			if toggleCalls == 2 {
+				return releaseErr
+			}
+			return nil
+		},
+		func(int, int, ...int) error { return moveErr },
+	)
+	if !errors.Is(err, moveErr) || !errors.Is(err, releaseErr) {
+		t.Fatalf("error = %v, want joined move and release errors", err)
+	}
+	if toggleCalls != 2 {
+		t.Fatalf("toggle calls = %d, want down and release", toggleCalls)
+	}
+}
+
+func interfacesLabel(values []interface{}) string {
+	parts := make([]string, len(values))
+	for i, value := range values {
+		parts[i] = value.(string)
+	}
+	return strings.Join(parts, ",")
 }
