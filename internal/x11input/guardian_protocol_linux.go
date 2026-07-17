@@ -49,6 +49,18 @@ type guardianEnvelope struct {
 	Error     string          `json:"error,omitempty"`
 }
 
+// guardianOutboundEnvelope accepts typed payloads so a frame and its payload
+// are marshaled once. The receiving envelope retains RawMessage for strict
+// operation-specific decoding.
+type guardianOutboundEnvelope struct {
+	Version   uint16 `json:"version"`
+	Kind      string `json:"kind"`
+	ID        uint64 `json:"id,omitempty"`
+	Operation string `json:"operation,omitempty"`
+	Payload   any    `json:"payload,omitempty"`
+	Error     string `json:"error,omitempty"`
+}
+
 type guardianHelloRequest struct {
 	Token              string `json:"token"`
 	Display            string `json:"display"`
@@ -119,19 +131,43 @@ type guardianFramedWriter struct {
 	writer io.Writer
 }
 
+type guardianFramedReader struct {
+	reader io.Reader
+	buffer []byte
+}
+
 func (writer *guardianFramedWriter) write(envelope guardianEnvelope) error {
 	encoded, err := json.Marshal(envelope)
 	if err != nil {
 		return fmt.Errorf("encode guardian frame: %w", err)
 	}
+	return writer.writeEncoded(encoded)
+}
+
+func (writer *guardianFramedWriter) writePayload(envelope guardianEnvelope, payload any) error {
+	encoded, err := json.Marshal(guardianOutboundEnvelope{
+		Version:   envelope.Version,
+		Kind:      envelope.Kind,
+		ID:        envelope.ID,
+		Operation: envelope.Operation,
+		Payload:   payload,
+		Error:     envelope.Error,
+	})
+	if err != nil {
+		return fmt.Errorf("encode guardian frame: %w", err)
+	}
+	return writer.writeEncoded(encoded)
+}
+
+func (writer *guardianFramedWriter) writeEncoded(encoded []byte) error {
 	if len(encoded) == 0 || len(encoded) > guardianMaximumFrame {
 		return fmt.Errorf("guardian frame size %d exceeds limit %d", len(encoded), guardianMaximumFrame)
 	}
-	header := make([]byte, 4)
-	binary.BigEndian.PutUint32(header, uint32(len(encoded)))
+	var header [4]byte
+	binary.BigEndian.PutUint32(header[:], uint32(len(encoded)))
 	writer.mu.Lock()
 	defer writer.mu.Unlock()
-	if err := writeAll(writer.writer, header); err != nil {
+	if err := writeAll(writer.writer, header[:]); err != nil {
 		return fmt.Errorf("write guardian frame header: %w", err)
 	}
 	if err := writeAll(writer.writer, encoded); err != nil {
@@ -141,16 +177,24 @@ func (writer *guardianFramedWriter) write(envelope guardianEnvelope) error {
 }
 
 func readGuardianEnvelope(reader io.Reader) (guardianEnvelope, error) {
+	framedReader := guardianFramedReader{reader: reader}
+	return framedReader.read()
+}
+
+func (reader *guardianFramedReader) read() (guardianEnvelope, error) {
 	var header [4]byte
-	if _, err := io.ReadFull(reader, header[:]); err != nil {
+	if _, err := io.ReadFull(reader.reader, header[:]); err != nil {
 		return guardianEnvelope{}, err
 	}
 	size := binary.BigEndian.Uint32(header[:])
 	if size == 0 || size > guardianMaximumFrame {
 		return guardianEnvelope{}, fmt.Errorf("invalid guardian frame size %d", size)
 	}
-	encoded := make([]byte, int(size))
-	if _, err := io.ReadFull(reader, encoded); err != nil {
+	if cap(reader.buffer) < int(size) {
+		reader.buffer = make([]byte, int(size))
+	}
+	encoded := reader.buffer[:int(size)]
+	if _, err := io.ReadFull(reader.reader, encoded); err != nil {
 		return guardianEnvelope{}, fmt.Errorf("read guardian frame body: %w", err)
 	}
 	var envelope guardianEnvelope

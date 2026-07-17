@@ -88,7 +88,8 @@ func runGuardianReexecChild() int {
 
 func serveGuardian(control io.ReadWriteCloser, expectedToken string, dialer Dialer) error {
 	writer := &guardianFramedWriter{writer: control}
-	helloEnvelope, err := readGuardianEnvelope(control)
+	reader := guardianFramedReader{reader: control}
+	helloEnvelope, err := reader.read()
 	if err != nil {
 		return err
 	}
@@ -130,7 +131,7 @@ func serveGuardian(control io.ReadWriteCloser, expectedToken string, dialer Dial
 	go server.forwardEvents()
 
 	for {
-		envelope, readErr := readGuardianEnvelope(control)
+		envelope, readErr := reader.read()
 		if readErr != nil {
 			server.stopForwardingEvents()
 			if errors.Is(readErr, io.EOF) || errors.Is(readErr, io.ErrUnexpectedEOF) {
@@ -259,20 +260,15 @@ func (server *guardianServer) forwardEvents() {
 		if err != nil {
 			event.Error = err.Error()
 		}
-		payload, payloadErr := guardianPayload(event)
-		if payloadErr != nil {
-			return
-		}
 		server.eventsMu.RLock()
 		if server.closing {
 			server.eventsMu.RUnlock()
 			return
 		}
-		writeErr := server.writer.write(guardianEnvelope{
+		writeErr := server.writer.writePayload(guardianEnvelope{
 			Version: guardianProtocolVersion,
 			Kind:    guardianFrameEvent,
-			Payload: payload,
-		})
+		}, event)
 		server.eventsMu.RUnlock()
 		if writeErr != nil || !open || err != nil {
 			return
@@ -360,21 +356,16 @@ func (server *guardianServer) dispatch(envelope guardianEnvelope) (any, error) {
 }
 
 func writeGuardianResponse(writer *guardianFramedWriter, request guardianEnvelope, response any, responseErr error) error {
-	payload, err := guardianPayload(response)
-	if err != nil {
-		return err
-	}
 	envelope := guardianEnvelope{
 		Version:   guardianProtocolVersion,
 		Kind:      guardianFrameResponse,
 		ID:        request.ID,
 		Operation: request.Operation,
-		Payload:   payload,
 	}
 	if responseErr != nil {
 		envelope.Error = responseErr.Error()
 	}
-	return writer.write(envelope)
+	return writer.writePayload(envelope, response)
 }
 
 func (server *guardianServer) changeKeyboardMapping(request guardianChangeKeyboardMappingRequest) error {
