@@ -36,7 +36,8 @@ Current technical differences include:
   explains backend choice, fallback, and unsupported behavior.
 - Sway, Hyprland, generic wlroots, and Wayland-core window backend resolution,
   with partial operations reported honestly instead of universal support being
-  implied.
+  implied. Hyprland additionally supports reliable active-window maximize
+  query, set, and restore through `hyprctl`.
 - A defined non-CGO contract: Pure-Go capture is available through CoreGraphics
   on macOS, native APIs on Windows, and X11. Windows and Linux/X11 additionally
   have keyboard/pointer backends; Wayland capture uses the consent-aware
@@ -633,6 +634,7 @@ The checked-in examples use this fork's module path and track the current API:
 - [Pure-Go Windows window inspection and opt-in control](examples/purego_windows_window/main.go)
 - [Consent-aware RemoteDesktop portal input](examples/remote_desktop_input/main.go)
 - [Persistent ScreenCast/PipeWire capture](examples/screencast_capture/main.go)
+- [Hyprland active-window maximize state](examples/wayland_window_state/main.go)
 - [Window and process helpers](examples/window/main.go)
 - [Display scaling](examples/scale/main.go)
 
@@ -730,8 +732,11 @@ Real Wayland input results are tracked in the
 - [Product roadmap](docs/plan/product-roadmap.md)
 - [Wayland implementation history](docs/wayland-history.md)
 
-The active product slice remains selective Phase 3 Pure-Go expansion. The
-Linux/X11 evaluation is complete: shared behavior is blocking CI,
+The active product slice is Phase 4 API and compositor parity. Hyprland now
+provides trustworthy active-window maximize query, set, and restore while
+Sway and generic wlroots retain explicit unsupported query results because
+their available IPC does not expose an equivalent maximize state. The
+preceding Linux/X11 evaluation is complete: shared behavior is blocking CI,
 current guardian-path decision evidence is versioned, and native CGO remains
 the default while Pure-Go supports CGO-disabled builds. The Pure-Go X11 core is
 race-testable and its separate guardian performs bounded, claim-checked cleanup

@@ -497,6 +497,10 @@ intentionally preserving a foreign replacement is not itself an error.
   - Opt-in for sway active-window title E2E integration (`GetTitleE`).
 - `ROBOTGO_HYPRLAND_TITLE_E2E=1`
   - Opt-in for hyprland active-window title E2E integration (`GetTitleE`).
+- `ROBOTGO_HYPRLAND_MAXIMIZE_E2E=1`
+  - Opt-in for Hyprland active-window maximize query/set/restore integration.
+    The test refuses to alter an initially fullscreen window and restores an
+    initial normal or maximized state during cleanup.
 - `ROBOTGO_REQUIRE_X11_INTEGRATION=1`
   - Makes missing `DISPLAY` or XTEST support fail the X11 integration suites;
     CI always enables it.

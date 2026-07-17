@@ -108,3 +108,76 @@ func TestWaylandWlrootsCloseWindowStillUnsupported(t *testing.T) {
 		t.Fatalf("CloseWindowKill expected ErrNotSupported, got: %v", err)
 	}
 }
+
+func TestWaylandHyprlandMaximizedPublicAPI(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("linux only")
+	}
+	tmp := t.TempDir()
+	writeStubCommand(t, tmp, cmdHyprCtl)
+	t.Setenv(envPath, tmp)
+
+	t.Setenv(envWaylandDisplay, testWaylandDisplay)
+	t.Setenv(envDisplay, "")
+	t.Setenv(envDesktop, "")
+	t.Setenv(envSessionDesktop, "")
+	t.Setenv(envSwaySock, "")
+	t.Setenv(envHyprlandSignature, "hyprland-test")
+
+	old := runWindowCommand
+	t.Cleanup(func() { runWindowCommand = old })
+
+	internal := hyprlandFullscreenNone
+	client := hyprlandFullscreenNone
+	runWindowCommand = func(ctx context.Context, name string, args ...string) ([]byte, error) {
+		_ = ctx
+		if name != cmdHyprCtl {
+			t.Fatalf("expected command %q, got %q", cmdHyprCtl, name)
+		}
+		if len(args) == 2 && args[0] == argActiveWindow && args[1] == argJSON {
+			if internal == hyprlandFullscreenMaximized &&
+				client == hyprlandFullscreenMaximized {
+				return []byte(`{"fullscreen":1,"fullscreenClient":1}`), nil
+			}
+			if internal == hyprlandFullscreenNone && client == hyprlandFullscreenNone {
+				return []byte(`{"fullscreen":0,"fullscreenClient":0}`), nil
+			}
+			t.Fatalf("unexpected test state internal=%d client=%d", internal, client)
+		}
+		if len(args) == 4 &&
+			args[0] == argDispatch &&
+			args[1] == argFullscreenState &&
+			args[2] == args[3] {
+			switch args[2] {
+			case argHyprlandMaximized:
+				internal, client = hyprlandFullscreenMaximized, hyprlandFullscreenMaximized
+			case argHyprlandNone:
+				internal, client = hyprlandFullscreenNone, hyprlandFullscreenNone
+			default:
+				t.Fatalf("unexpected maximize state: %q", args[2])
+			}
+			return []byte("ok"), nil
+		}
+		t.Fatalf("unexpected hyprctl args: %#v", args)
+		return nil, nil
+	}
+
+	maximized, err := IsMaximizedE()
+	if err != nil || maximized {
+		t.Fatalf("IsMaximizedE() = %v, %v; want false, nil", maximized, err)
+	}
+	if err := MaxWindowE(0, true); err != nil {
+		t.Fatalf("MaxWindowE(0, true) failed: %v", err)
+	}
+	maximized, err = IsMaximizedE()
+	if err != nil || !maximized {
+		t.Fatalf("IsMaximizedE() = %v, %v; want true, nil", maximized, err)
+	}
+	if err := MaxWindowE(0, false); err != nil {
+		t.Fatalf("MaxWindowE(0, false) failed: %v", err)
+	}
+	maximized, err = IsMaximizedE()
+	if err != nil || maximized {
+		t.Fatalf("IsMaximizedE() = %v, %v after restore; want false, nil", maximized, err)
+	}
+}
