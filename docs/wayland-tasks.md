@@ -22,6 +22,10 @@ Current implementation baseline:
   scrolling, pointer location, explicit state errors, and deterministic
   cleanup/reconnect. It is selected only for X11-primary sessions and never as
   an implicit Xwayland fallback from Wayland.
+- Windows non-CGO builds provide foreground-layout-aware keyboard/text and pointer input
+  through user32, including exact Unicode, smooth movement/drag, horizontal and
+  vertical scroll, ownership checks, partial-injection rollback, live
+  readiness, and deterministic in-process cleanup.
 - Non-CGO `CaptureImg`/`CaptureScreen`, their Go-bitmap/string variants, and
   pixel-color queries use the hardened screenshot portal on Wayland and the
   Pure-Go screenshot backend on X11/Windows; unsupported targets fail explicitly.
@@ -105,8 +109,8 @@ Window backend support matrix (current):
     contract. Current optimized guardian-path evidence retains native CGO as the
     X11 default while keeping Pure-Go supported for CGO-disabled builds. The
     lower-allocation request transport and balanced transient-input sequencing
-    preserve the crash contract. Protecting the checks and evaluating further
-    backends remain open. The Pure-Go core is now
+    preserve the crash contract. Stable checks now protect `main`; evaluating
+    further backends remains open. The Pure-Go core is now
     race-testable, and a separate X11 guardian uses an authenticated abstract
     Unix socket with kernel-verified peer credentials, bounded request dispatch,
     and deadline-bounded cleanup after an application-process `SIGKILL`. It
@@ -167,14 +171,14 @@ Window backend support matrix (current):
     enabling any of them as defaults.
 - CI/Testing:
   - Keep the current headless Weston, screencopy, portal, and non-CGO CI
-    commands green; eliminating unexpected hermetic skips and adding branch
-    protection remain open.
+    commands green; eliminate unexpected hermetic skips. Stable jobs are
+    required by `main` branch protection.
   - Keep the non-CGO Xvfb/XTEST input test on a configured `us,de` keymap in
     Linux CI; missing `DISPLAY` or XTEST must fail the matrix leg rather than
     skip. Keep the shared native/Pure-Go contract and report-only benchmark
     smoke green, including the native XTEST-disabled negative contract and
-    display-lifecycle stress; the resulting remote checks still need branch
-    protection.
+    display-lifecycle stress; the resulting stable remote checks are required
+    by `main` branch protection.
   - Keep the extracted Pure-Go X11 core in the blocking race job and its
     guardian-backed application-`SIGKILL` recovery in the non-skipping Xvfb
     manifest; guardian/host/X-server loss and X11 transport stalls beyond the
@@ -187,4 +191,6 @@ Window backend support matrix (current):
   - Keep `examples/purego_x11_input` side-effect-free by default; live
     readiness checks and global input must remain behind its explicit `-act`
     flag.
+  - Keep `examples/purego_windows_input` readiness-only by default; global
+    pointer or keyboard input requires explicit `-move` or `-text` flags.
   - Publish a versioned support matrix and troubleshooting guide.

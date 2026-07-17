@@ -44,7 +44,26 @@ every balanced-comparison benchmark once. The same job starts a reachable Xvfb w
 and verifies that native readiness rejects it without injecting input. Missing
 runtime prerequisites fail instead of turning these checks into successful
 skips. Performance numbers are report-only; correctness is blocking. Repository
-branch protection does not yet require the resulting remote checks.
+branch protection requires the stable three-OS, lint, vet, race, Wayland, and
+X11 evidence checks. Opt-in real-compositor jobs remain excluded until matching
+self-hosted runners are registered.
+
+Pure-Go Windows input has hermetic tests for Win32 `INPUT` layout, foreground-layout
+key mapping, Unicode surrogate pairs, partial-injection rollback, ownership,
+buttons, scrolling, and movement. They run in the Windows non-CGO CI leg. A
+real input-desktop pointer probe is explicitly opt-in because it moves the
+global cursor:
+
+```powershell
+$env:CGO_ENABLED = "0"
+$env:ROBOTGO_REQUIRE_WINDOWS_INPUT_INTEGRATION = "1"
+go test -tags windowsintegration -run "^TestPureGoWindowsInputRuntime$" -count=1 -v .
+```
+
+The runtime probe restores the original pointer position. Keyboard injection
+is kept hermetic in default CI because a generic hosted runner offers no
+trustworthy foreground target; the runnable example provides explicit manual
+validation.
 
 Opt-in macOS runtime capture benchmark:
 

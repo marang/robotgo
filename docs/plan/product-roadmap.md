@@ -32,10 +32,10 @@ The July 2026 hardening work establishes the foundation for this roadmap:
 
 | Area | Status | Delivered | Exit criteria still open |
 |---|---|---|---|
-| Current baseline | Complete in main | Native screencopy, screenshot portal fallback, bounded waits, cleanup, live capability probes, error APIs, non-CGO contract, dedicated race/vet jobs | Keep required jobs green and confirm repository branch protection |
+| Current baseline | Complete in main | Native screencopy, screenshot portal fallback, bounded waits, cleanup, live capability probes, error APIs, non-CGO contract, dedicated race/vet jobs, protected stable CI checks | Keep required jobs green |
 | 1. Wayland input | Implementation complete; runtime validation blocked | Native virtual keyboard/pointer, consent-aware RemoteDesktop fallback, shared ScreenCast stream mapping, absolute pointer/touch, restore tokens, diagnostics and E2E harness | Register GNOME/KDE/wlroots runners and collect green CGO/non-CGO evidence |
 | 2. Capture | Hermetic implementation complete | Reliable one-shot paths plus one consent-aware ScreenCast session, reusable PipeWire frames, logical region crop, raw pixel conversion, metadata/restore tokens, cleanup, integration harness, and a non-skipping geometry/transform CI matrix | Real GNOME/KDE/wlroots evidence and sanitizer-backed native leak gate |
-| 3. Pure-Go | X11 hardening and measurement complete; broader phase partial | Build and feature-level introspection; non-CGO macOS CoreGraphics, Windows, X11, and Wayland-portal capture; Linux/X11 XGB/XTEST input; permission/error contracts; shared behavioral parity; reproducible balanced benchmark tooling; optimized guardian-path decision evidence; explicit decision to retain native CGO as the X11 default; race-testable internal X11 core; re-exec guardian with application-`SIGKILL` recovery; lower-allocation request transport and safe balanced-input sequencing; three-OS CI; non-skipping multi-layout Xvfb input tests | Protect the remote CI checks, then assess further backends selectively |
+| 3. Pure-Go | X11 complete; Windows input implemented; broader phase partial | Build and feature-level introspection; non-CGO macOS CoreGraphics, Windows, X11, and Wayland-portal capture; Windows `SendInput` keyboard/pointer backend; Linux/X11 XGB/XTEST input; permission/error contracts; shared behavioral parity; reproducible balanced benchmark tooling; optimized guardian-path decision evidence; explicit decision to retain native CGO as the X11 default; race-testable internal X11 core; re-exec guardian with application-`SIGKILL` recovery; lower-allocation request transport and safe balanced-input sequencing; protected three-OS CI; non-skipping multi-layout Xvfb input tests | Collect real Windows input-desktop evidence, then assess further backends selectively |
 | 4. API/compositor gaps | Parity surface delivered; runtime support partial | Window-state error APIs, bitmap string helpers, `FindColorCS`, hook/event capability reporting, Sway/Hyprland/wlroots resolver | Compositor-backed state operations and cross-platform/runtime matrix coverage |
 | 5. Reliability product | Partial | Capability API/example and expanded CI variants | Versioned compatibility matrix, richer diagnostics, dedicated compositor jobs, sanitizer/leak gates |
 
@@ -138,6 +138,16 @@ display enumeration, Screen Recording preflight, RGBA conversion, and
 CoreGraphics ownership are covered hermetically on both supported
 architectures.
 
+Windows non-CGO builds now provide a foreground-layout-aware `SendInput` keyboard and text
+backend plus exact pointer movement/location, smooth movement and drag,
+buttons, horizontal and vertical scrolling, live readiness checks, partial
+injection rollback, ownership conflicts, and deterministic in-process cleanup.
+Exact Unicode text is encoded as UTF-16, while `KeyTap` resolves characters
+through the foreground target's Windows keyboard layout instead of assuming US key
+positions. Hermetic tests validate 32/64-bit `INPUT` layout and transaction
+semantics; the real input-desktop pointer test remains opt-in because it moves a
+global resource.
+
 Linux/X11 additionally has a Pure-Go XGB/XTEST keyboard and pointer backend for
 the error-returning input APIs, text/Unicode, pointer location, smooth
 movement/drag, scroll, live readiness probes, and deterministic connection and
@@ -155,9 +165,10 @@ X11 binaries pass one black-box public-API contract for capture, pointer,
 buttons, scroll, modifier order, and ASCII text without keyboard-map changes. A
 reproducible balanced benchmark script records raw observations, medians,
 quartiles, ratios, metadata, and runs a report-only CI smoke. The versioned
-decision-grade sample retains native CGO as the Linux/X11 default: Pure-Go wins
-pointer-movement latency and build portability, while native wins capture, most
-input operations and allocations. At the measured revision, native also had
+decision-grade sample retains native CGO as the Linux/X11 default: native wins
+the current measured capture and input latency/allocation comparisons, while
+Pure-Go provides CGO-disabled build portability. At the measured revision,
+native also had
 stronger Unicode crash isolation; the later Pure-Go guardian closes the targeted
 application-process-kill gap without changing that historical performance
 sample. The current guardian-path comparison shows native winning the measured
@@ -193,9 +204,9 @@ allocations by `24–33%` without weakening request correlation or cleanup.
 Balanced transient press/release pairs now share one guardian request while
 retaining per-step ownership, verified release, preflight, server-grab, timeout,
 and crash-recovery contracts. This reduces another `5–14%` of allocations for
-the affected click, scroll, key-press, and text benchmarks. Protecting the
-remote checks and selectively evaluating additional backends keep the broader
-Phase 3 partial.
+the affected click, scroll, key-press, and text benchmarks. Stable remote checks
+now protect `main`; selectively evaluating additional platform backends keeps
+the broader Phase 3 partial.
 
 Exit criteria:
 

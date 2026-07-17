@@ -38,10 +38,10 @@ Current technical differences include:
   with partial operations reported honestly instead of universal support being
   implied.
 - A defined non-CGO contract: Pure-Go capture is available through CoreGraphics
-  on macOS, native APIs on Windows, and X11. Linux/X11 additionally has an XTEST
-  keyboard/pointer backend; Wayland capture uses the consent-aware Screenshot
-  portal, and unavailable GUI operations return `ErrNotSupported` rather than
-  plausible zero values.
+  on macOS, native APIs on Windows, and X11. Windows and Linux/X11 additionally
+  have keyboard/pointer backends; Wayland capture uses the consent-aware
+  Screenshot portal, and unavailable GUI operations return `ErrNotSupported`
+  rather than plausible zero values.
 - Hermetic portal/compositor tests, tagged Wayland integration suites, and CI
   coverage for Linux, macOS, Windows, Wayland, portal, lint, and non-CGO modes.
 - Open, auditable native and Go backend code, including explicit resource
@@ -75,10 +75,11 @@ workflow. `GetLinuxCapabilities` provides additional compositor detail.
 | macOS | CGO-enabled default build | Native mouse, keyboard, capture, window, and process paths; macOS permissions still apply |
 | macOS | `CGO_ENABLED=0` | Pure-Go CoreGraphics capture and display bounds with explicit Screen Recording permission diagnostics; other unavailable GUI operations return `ErrNotSupported` |
 | Windows | CGO-enabled default build | Native mouse, keyboard, capture, window, and process paths |
+| Windows | `CGO_ENABLED=0` | Pure-Go capture/bounds plus foreground-layout-aware `SendInput` keyboard/text, exact pointer movement/location, smooth movement/drag, buttons, horizontal/vertical scroll, live readiness, ownership checks, and deterministic in-process cleanup |
 | Linux/X11 | CGO-enabled default build | X11/XTest input, capture, window, and process paths |
 | Linux/X11 | `CGO_ENABLED=0` | Pure-Go X11 capture/bounds plus XTEST mouse, keyboard, text/Unicode, pointer-location, smooth-move/drag, vertical scroll, and live readiness probes; horizontal scroll is explicitly unsupported |
 | Linux/Wayland | `-tags wayland` for native protocols; add `pipewire` for persistent ScreenCast frames | Native wlroots capture/input where compositor protocols exist, one-shot Screenshot fallback, reusable ScreenCast/PipeWire capture, explicit RemoteDesktop portal sessions, capability-aware window support |
-| Other supported platforms without CGO | `CGO_ENABLED=0` | Pure-Go capture works on macOS and Windows; Linux/Wayland uses the Screenshot portal; explicit RemoteDesktop sessions provide limited Pure-Go Wayland input; remaining unavailable operations return `ErrNotSupported` |
+| Other supported platforms without CGO | `CGO_ENABLED=0` | Linux/Wayland uses the Screenshot portal; explicit RemoteDesktop sessions provide limited Pure-Go Wayland input; remaining unavailable operations return `ErrNotSupported` |
 
 Wayland compositors intentionally restrict global automation. GNOME and KDE can
 use consent-aware Screenshot and RemoteDesktop portal paths. The explicit
@@ -583,6 +584,7 @@ The checked-in examples use this fork's module path and track the current API:
 - [Linux capabilities](examples/linux_capabilities/main.go)
 - [Cross-platform runtime capabilities](examples/runtime_capabilities/main.go)
 - [Pure-Go X11 input probe and opt-in demo](examples/purego_x11_input/main.go)
+- [Pure-Go Windows input readiness and opt-in demo](examples/purego_windows_input/main.go)
 - [Consent-aware RemoteDesktop portal input](examples/remote_desktop_input/main.go)
 - [Persistent ScreenCast/PipeWire capture](examples/screencast_capture/main.go)
 - [Window and process helpers](examples/window/main.go)
@@ -602,6 +604,21 @@ CGO_ENABLED=0 go run ./examples/purego_x11_input -act -text "Hello"
 
 Keyboard actions keep scratch mappings alive for two seconds before verified
 cleanup. Increase `-settle` when the focused XKB client may process input later.
+
+On Windows, the Pure-Go example performs readiness checks only unless `-move`
+or `-text` is supplied:
+
+```powershell
+$env:CGO_ENABLED = "0"
+go run ./examples/purego_windows_input
+go run ./examples/purego_windows_input -move 400,300 -text "Hello"
+```
+
+`SendInput` is subject to Windows User Interface Privilege Isolation: a
+normal-integrity process cannot inject input into a higher-integrity target.
+Persistent `KeyDown`/`MouseDown` state is owned by the backend and released by
+`CloseMainDisplayE`; callers should still use balanced operations or `defer`
+cleanup because process termination cannot run in-process cleanup.
 
 ## Testing
 
@@ -626,7 +643,8 @@ the reported guardian is the exact child that exits and is reaped. The
 measures the guardian path and retains native CGO as the X11 default while
 Pure-Go remains the supported CGO-disabled backend. The earlier direct-path
 sample remains linked from the performance report as historical evidence.
-Protecting the resulting remote checks remains a roadmap exit criterion.
+The stable remote checks are required by `main` branch protection. Real
+GNOME/KDE/wlroots jobs remain opt-in until matching runners are registered.
 
 Wayland and portal code has additional tagged suites:
 
@@ -653,7 +671,7 @@ Real Wayland input results are tracked in the
 - [Product roadmap](docs/plan/product-roadmap.md)
 - [Wayland implementation history](docs/wayland-history.md)
 
-The active product slice remains selective Phase 3 Pure-Go hardening. The
+The active product slice remains selective Phase 3 Pure-Go expansion. The
 Linux/X11 evaluation is complete: shared behavior is blocking CI,
 current guardian-path decision evidence is versioned, and native CGO remains
 the default while Pure-Go supports CGO-disabled builds. The Pure-Go X11 core is
@@ -662,9 +680,11 @@ after an application-process crash. Its request transport now reuses bounded
 state and avoids double payload encoding, with versioned evidence showing lower
 allocation cost. Balanced transient press/release pairs now share one guardian
 request while preserving per-step crash-cleanup ownership and the existing
-preflight/server-grab policy. Protecting remote checks and evaluating further
-backends remain. Real GNOME/KDE/wlroots validation is an independent Wayland
-release gate.
+preflight/server-grab policy. Required remote checks now protect `main`.
+Pure-Go Windows input is the next delivered platform slice, with hermetic
+transaction tests and an opt-in real input-desktop probe. Further macOS and
+Windows backends remain selective work. Real GNOME/KDE/wlroots validation is an
+independent Wayland release gate.
 
 ## Upstream and attribution
 
