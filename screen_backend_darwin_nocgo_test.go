@@ -5,12 +5,14 @@ package robotgo
 import (
 	"errors"
 	"image"
+	"math"
 	"testing"
 	"unsafe"
 )
 
 type darwinGraphicsCounters struct {
 	closeCalls        int
+	modeReleaseCalls  int
 	imageReleaseCalls int
 	colorReleaseCalls int
 	contextCalls      int
@@ -29,7 +31,16 @@ func fakeDarwinGraphics(bounds cgRect, counters *darwinGraphicsCounters) *darwin
 			}
 			return cgErrorSuccess
 		},
-		displayBounds:         func(uint32) cgRect { return bounds },
+		displayBounds:          func(uint32) cgRect { return bounds },
+		mainDisplayID:          func() uint32 { return 42 },
+		displayCopyDisplayMode: func(uint32) uintptr { return 21 },
+		displayModeGetPixelWidth: func(uintptr) uintptr {
+			return 200
+		},
+		displayModeGetWidth: func(uintptr) uintptr {
+			return 100
+		},
+		displayModeRelease:    func(uintptr) { counters.modeReleaseCalls++ },
 		windowListCreateImage: func(cgRect, uint32, uint32, uint32) uintptr { return 11 },
 		imageRelease:          func(uintptr) { counters.imageReleaseCalls++ },
 		colorSpaceCreateDeviceRGB: func() uintptr {
@@ -113,6 +124,167 @@ func TestDarwinDisplayBoundsUseEnclosingEdges(t *testing.T) {
 	}
 	if _, err := darwinDisplayBounds(api, 1); err == nil {
 		t.Fatal("out-of-range display index unexpectedly succeeded")
+	}
+}
+
+func TestDarwinDisplayScaleUsesRetinaWidthsAndReleasesMode(t *testing.T) {
+	counters := &darwinGraphicsCounters{}
+	api := fakeDarwinGraphics(cgRect{}, counters)
+	var requestedDisplay uint32
+	api.displayCopyDisplayMode = func(displayID uint32) uintptr {
+		requestedDisplay = displayID
+		return 55
+	}
+	api.displayModeGetPixelWidth = func(mode uintptr) uintptr {
+		if mode != 55 {
+			t.Fatalf("pixel-width mode = %d, want 55", mode)
+		}
+		return 3024
+	}
+	api.displayModeGetWidth = func(mode uintptr) uintptr {
+		if mode != 55 {
+			t.Fatalf("logical-width mode = %d, want 55", mode)
+		}
+		return 1512
+	}
+
+	scale, err := darwinDisplayScale(api, 77)
+	if err != nil {
+		t.Fatalf("darwinDisplayScale: %v", err)
+	}
+	if scale != 2 {
+		t.Fatalf("scale = %v, want 2", scale)
+	}
+	if requestedDisplay != 77 {
+		t.Fatalf("display ID = %d, want 77", requestedDisplay)
+	}
+	if counters.modeReleaseCalls != 1 {
+		t.Fatalf("display-mode releases = %d, want 1", counters.modeReleaseCalls)
+	}
+}
+
+func TestDarwinDisplayScaleUsesMainDisplay(t *testing.T) {
+	for _, displayID := range [][]int{nil, {-1}} {
+		counters := &darwinGraphicsCounters{}
+		api := fakeDarwinGraphics(cgRect{}, counters)
+		requestedDisplay := uint32(0)
+		api.mainDisplayID = func() uint32 { return 91 }
+		api.displayCopyDisplayMode = func(displayID uint32) uintptr {
+			requestedDisplay = displayID
+			return 55
+		}
+		if _, err := darwinDisplayScale(api, displayID...); err != nil {
+			t.Fatalf("darwinDisplayScale(%v): %v", displayID, err)
+		}
+		if requestedDisplay != 91 {
+			t.Fatalf("darwinDisplayScale(%v) display = %d, want main display 91", displayID, requestedDisplay)
+		}
+	}
+}
+
+func TestDarwinDisplayScaleReportsUnavailableAndInvalidModes(t *testing.T) {
+	counters := &darwinGraphicsCounters{}
+	api := fakeDarwinGraphics(cgRect{}, counters)
+	api.displayModeGetWidth = nil
+	if _, err := darwinDisplayScale(api); !errors.Is(err, ErrNotSupported) {
+		t.Fatalf("missing-symbol error = %v, want ErrNotSupported", err)
+	}
+
+	api = fakeDarwinGraphics(cgRect{}, counters)
+	api.displayCopyDisplayMode = func(uint32) uintptr { return 0 }
+	if _, err := darwinDisplayScale(api); err == nil {
+		t.Fatal("nil display mode unexpectedly succeeded")
+	}
+
+	api = fakeDarwinGraphics(cgRect{}, counters)
+	api.displayModeGetPixelWidth = func(uintptr) uintptr { return 0 }
+	if _, err := darwinDisplayScale(api); err == nil {
+		t.Fatal("zero pixel width unexpectedly succeeded")
+	}
+	if counters.modeReleaseCalls != 1 {
+		t.Fatalf("display-mode releases = %d, want release after invalid width", counters.modeReleaseCalls)
+	}
+
+	if _, err := darwinDisplayScale(api, -2); err == nil {
+		t.Fatal("invalid negative display ID unexpectedly succeeded")
+	}
+}
+
+func TestPureGoDarwinSysScaleEntryPoint(t *testing.T) {
+	previous := openDarwinGraphics
+	counters := &darwinGraphicsCounters{}
+	openDarwinGraphics = func() (*darwinGraphicsAPI, error) {
+		return fakeDarwinGraphics(cgRect{}, counters), nil
+	}
+	t.Cleanup(func() { openDarwinGraphics = previous })
+
+	if scale := SysScale(); scale != 2 {
+		t.Fatalf("SysScale() = %v, want 2", scale)
+	}
+	if counters.modeReleaseCalls != 1 || counters.closeCalls != 1 {
+		t.Fatalf("resource counters = %+v, want one mode release and framework close", counters)
+	}
+}
+
+func TestPureGoDarwinGetScaleSizeUsesRetinaFactor(t *testing.T) {
+	previous := openDarwinGraphics
+	counters := &darwinGraphicsCounters{}
+	openDarwinGraphics = func() (*darwinGraphicsAPI, error) {
+		return fakeDarwinGraphics(cgRect{Size: cgSize{Width: 3, Height: 2}}, counters), nil
+	}
+	t.Cleanup(func() { openDarwinGraphics = previous })
+
+	width, height := GetScaleSize()
+	if width != 6 || height != 4 {
+		t.Fatalf("GetScaleSize() = %dx%d, want 6x4 Retina pixels", width, height)
+	}
+	if counters.modeReleaseCalls != 1 || counters.closeCalls != 2 {
+		t.Fatalf("resource counters = %+v, want one mode release and two framework closes", counters)
+	}
+}
+
+func TestPureGoDarwinDisplayScaleRuntime(t *testing.T) {
+	api, err := openDarwinCoreGraphics()
+	if err != nil {
+		t.Fatalf("open CoreGraphics: %v", err)
+	}
+	defer func() {
+		if err := api.close(); err != nil {
+			t.Errorf("close CoreGraphics: %v", err)
+		}
+	}()
+
+	scale, err := darwinDisplayScale(api)
+	if err != nil {
+		t.Fatalf("query main-display scale: %v", err)
+	}
+	if !(scale > 0) {
+		t.Fatalf("main-display scale = %v, want positive factor", scale)
+	}
+	if publicScale := SysScale(); math.Abs(publicScale-scale) > 1e-9 {
+		t.Fatalf("SysScale() = %v, direct CoreGraphics scale = %v", publicScale, scale)
+	}
+	logicalWidth, logicalHeight := GetScreenSize()
+	scaledWidth, scaledHeight := GetScaleSize()
+	if logicalWidth <= 0 || logicalHeight <= 0 || scaledWidth <= 0 || scaledHeight <= 0 {
+		t.Fatalf(
+			"display sizes must be positive: logical=%dx%d scaled=%dx%d",
+			logicalWidth,
+			logicalHeight,
+			scaledWidth,
+			scaledHeight,
+		)
+	}
+	if scaledWidth != int(float64(logicalWidth)*scale) ||
+		scaledHeight != int(float64(logicalHeight)*scale) {
+		t.Fatalf(
+			"GetScaleSize() = %dx%d, logical=%dx%d scale=%v",
+			scaledWidth,
+			scaledHeight,
+			logicalWidth,
+			logicalHeight,
+			scale,
+		)
 	}
 }
 

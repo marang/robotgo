@@ -166,7 +166,21 @@ func TestPureGoSysScaleForwardsWindowsTarget(t *testing.T) {
 	}
 }
 
-func TestPureGoSysScaleUsesNeutralFactorOutsideWindows(t *testing.T) {
+func TestPureGoSysScaleForwardsDarwinTarget(t *testing.T) {
+	var got []int
+	scale := pureGoSysScale("darwin", []int{42}, func(displayID ...int) float64 {
+		got = append([]int(nil), displayID...)
+		return 2
+	})
+	if scale != 2 {
+		t.Fatalf("scale = %v, want 2", scale)
+	}
+	if want := []int{42}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("display IDs = %v, want %v", got, want)
+	}
+}
+
+func TestPureGoSysScaleUsesNeutralFactorOutsideSupportedPlatforms(t *testing.T) {
 	called := false
 	scale := pureGoSysScale("linux", []int{42}, func(...int) float64 {
 		called = true

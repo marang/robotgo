@@ -321,22 +321,25 @@ func alertArgs(args ...string) (string, string) {
 	return defaultButton, cancelButton
 }
 
-// SysScale returns the native DPI scale on Pure-Go Windows. Other non-CGO
-// platforms retain the neutral factor until their display backend exposes a
-// trustworthy scale query.
+// SysScale returns the native DPI/Retina scale on Pure-Go Windows and macOS.
+// Other non-CGO platforms, and a failed scale query, retain the neutral factor.
 func SysScale(displayID ...int) float64 {
-	return pureGoSysScale(runtime.GOOS, displayID, ScaleF)
+	scale := ScaleF
+	if runtime.GOOS == "darwin" {
+		scale = platformDarwinScale
+	}
+	return pureGoSysScale(runtime.GOOS, displayID, scale)
 }
 
 func pureGoSysScale(
 	goos string,
 	displayID []int,
-	windowsScale func(...int) float64,
+	platformScale func(...int) float64,
 ) float64 {
-	if goos != "windows" {
+	if goos != "windows" && goos != "darwin" {
 		return 1
 	}
-	scale := windowsScale(displayID...)
+	scale := platformScale(displayID...)
 	if !(scale > 0) {
 		return 1
 	}
@@ -801,11 +804,18 @@ func GetScreenRect(displayID ...int) Rect {
 	return GetDisplayRect(id)
 }
 
-// GetScaleSize returns the capture-space screen size. Pure-Go display bounds
-// already use the coordinates expected by the capture backend, so applying the
-// DPI factor again would double-scale Windows regions.
-func GetScaleSize(...int) (int, int) { return GetScreenSize() }
-func DisplaysNum() int               { return platformDisplayCount() }
+// GetScaleSize returns the display's scaled pixel size. CoreGraphics bounds are
+// logical points and therefore use the Retina factor; Pure-Go Windows bounds
+// are already physical pixels and must not be scaled again.
+func GetScaleSize(displayID ...int) (int, int) {
+	width, height := GetScreenSize()
+	if runtime.GOOS == "darwin" {
+		scale := SysScale(displayID...)
+		return int(float64(width) * scale), int(float64(height) * scale)
+	}
+	return width, height
+}
+func DisplaysNum() int { return platformDisplayCount() }
 
 // GetPixelColor returns the pixel color at (x, y) as a six-digit RGB string.
 func GetPixelColor(x, y int, displayID ...int) (string, error) {
