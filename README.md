@@ -599,6 +599,14 @@ On Linux, `GetPixelColor` and `GetPxColor` use the selected capture backend for
 a 1x1 region. Out-of-bounds coordinates and capture failures therefore return
 an error instead of being indistinguishable from a valid black pixel.
 
+`CaptureBitmapStr` serializes the selected backend's captured pixels in the
+versioned `robotgo.bitmap.v1` format. `FindBitmapStr` accepts one optional
+serialized haystack and otherwise captures the screen; its result is relative
+to that haystack. `FindColorCS` searches an explicit capture region and returns
+absolute screen coordinates. Its optional tolerance defaults to `0.01` and
+must be a finite value from `0` (exact) through `1` (any RGB color). All three
+helpers preserve capture backend errors.
+
 `GetLinuxCapabilities` reports the detected session, compositor, selected
 feature backends, fallbacks, and unsupported reasons:
 
@@ -634,6 +642,7 @@ The checked-in examples use this fork's module path and track the current API:
 - [Pure-Go Windows window inspection and opt-in control](examples/purego_windows_window/main.go)
 - [Consent-aware RemoteDesktop portal input](examples/remote_desktop_input/main.go)
 - [Persistent ScreenCast/PipeWire capture](examples/screencast_capture/main.go)
+- [Bitmap-string and region color-search helpers](examples/capture_helpers/main.go)
 - [Hyprland active-window maximize state](examples/wayland_window_state/main.go)
 - [Window and process helpers](examples/window/main.go)
 - [Display scaling](examples/scale/main.go)

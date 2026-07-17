@@ -51,6 +51,7 @@ func TestCaptureScreen(t *testing.T) {
 		t.Setenv("DISPLAY", "")
 		t.Setenv("WAYLAND_DISPLAY", "")
 		t.Setenv("ROBOTGO_FORCE_PORTAL", "1")
+		t.Setenv("ROBOTGO_DISABLE_PORTAL", "1")
 		t.Setenv("ROBOTGO_PORTAL_STUB_GREEN", "1")
 		img, err := robotgo.CaptureImg()
 		if err != nil {
@@ -61,6 +62,33 @@ func TestCaptureScreen(t *testing.T) {
 		}
 		if lb := robotgo.LastBackend(); lb != robotgo.BackendPortal {
 			t.Fatalf("expected portal backend, got %v", lb)
+		}
+
+		serialized, err := robotgo.CaptureBitmapStr(10, 20, 2, 2)
+		if err != nil {
+			t.Fatalf("portal CaptureBitmapStr failed: %v", err)
+		}
+		decoded, err := robotgo.BitmapFromStr(serialized)
+		if err != nil {
+			t.Fatalf("portal BitmapFromStr failed: %v", err)
+		}
+		if decoded.Width != 2 || decoded.Height != 2 {
+			t.Fatalf("portal decoded bitmap = %dx%d, want 2x2", decoded.Width, decoded.Height)
+		}
+		x, y, err := robotgo.FindBitmapStr(serialized)
+		if err != nil {
+			t.Fatalf("portal FindBitmapStr capture failed: %v", err)
+		}
+		if x != 0 || y != 0 {
+			t.Fatalf("portal FindBitmapStr = (%d,%d), want (0,0)", x, y)
+		}
+
+		x, y, err = robotgo.FindColorCS(10, 20, 2, 2, robotgo.CHex(0x00ff00), 0)
+		if err != nil {
+			t.Fatalf("portal FindColorCS failed: %v", err)
+		}
+		if x != 10 || y != 20 {
+			t.Fatalf("portal FindColorCS = (%d,%d), want (10,20)", x, y)
 		}
 	})
 }

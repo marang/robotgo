@@ -403,6 +403,50 @@ func TestPureGoCaptureImgReportsExplicitUnsupported(t *testing.T) {
 	}
 }
 
+func TestPureGoPortalCaptureHelperParity(t *testing.T) {
+	preservePureGoCaptureFakes(t)
+	t.Setenv(envWaylandDisplay, "wayland-test")
+	t.Setenv(envDisplay, "")
+	t.Setenv(envDisablePortal, "")
+
+	calls := 0
+	pureGoPortalCaptureImage = func(_ context.Context, x, y, width, height int) (image.Image, error) {
+		if x != -4 || y != 7 || width != 2 || height != 2 {
+			t.Fatalf("portal region = (%d,%d %dx%d), want (-4,7 2x2)", x, y, width, height)
+		}
+		calls++
+		img := image.NewRGBA(image.Rect(0, 0, width, height))
+		img.SetRGBA(1, 0, color.RGBA{R: 10, G: 20, B: 30, A: 255})
+		return img, nil
+	}
+
+	serialized, err := CaptureBitmapStr(-4, 7, 2, 2)
+	if err != nil {
+		t.Fatalf("CaptureBitmapStr error: %v", err)
+	}
+	decoded, err := BitmapFromStr(serialized)
+	if err != nil {
+		t.Fatalf("BitmapFromStr error: %v", err)
+	}
+	if decoded.Width != 2 || decoded.Height != 2 {
+		t.Fatalf("decoded bitmap = %dx%d, want 2x2", decoded.Width, decoded.Height)
+	}
+
+	x, y, err := FindColorCS(-4, 7, 2, 2, CHex(0x0a141e), 0)
+	if err != nil {
+		t.Fatalf("FindColorCS error: %v", err)
+	}
+	if x != -3 || y != 7 {
+		t.Fatalf("FindColorCS = (%d,%d), want (-3,7)", x, y)
+	}
+	if calls != 2 {
+		t.Fatalf("portal capture calls = %d, want 2", calls)
+	}
+	if LastBackend() != BackendPortal {
+		t.Fatalf("LastBackend = %q, want %q", LastBackend(), BackendPortal)
+	}
+}
+
 func TestPureGoCaptureImgWrapsPortalFailure(t *testing.T) {
 	preservePureGoCaptureFakes(t)
 	t.Setenv("WAYLAND_DISPLAY", "wayland-test")
