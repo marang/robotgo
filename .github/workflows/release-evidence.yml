@@ -1,0 +1,433 @@
+name: Release evidence
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-evidence-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release-evidence-validation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@v6
+        with:
+          go-version: 1.25.x
+      - name: Install native build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential pkg-config libx11-dev libxtst-dev \
+            libwayland-dev libxkbcommon-dev wayland-protocols \
+            libgbm-dev libdrm-dev
+      - name: Validate release evidence generator and verifier
+        shell: bash
+        run: |
+          set -euo pipefail
+          output="$RUNNER_TEMP/release-evidence-validation"
+          mkdir -p "$output"
+          test_command='go test -count=1 ./internal/releaseevidence ./internal/cmd/releaseevidence'
+          go test -count=1 \
+            ./internal/releaseevidence ./internal/cmd/releaseevidence \
+            2>&1 | tee "$output/test.log"
+          test -z "$(git status --porcelain --untracked-files=all)"
+          commit="$(git rev-parse HEAD)"
+          tree="$(git rev-parse 'HEAD^{tree}')"
+          test "$commit" = "$GITHUB_SHA"
+          go run ./internal/cmd/releaseevidence generate \
+            -out "$output/evidence.json" \
+            -test-log "$output/test.log" \
+            -commit "$commit" \
+            -tree "$tree" \
+            -ref "$GITHUB_REF" \
+            -run-id "$GITHUB_RUN_ID" \
+            -run-attempt "$GITHUB_RUN_ATTEMPT" \
+            -matrix linux-native-validation \
+            -test-command "$test_command" \
+            -expected-cgo true
+          go run ./internal/cmd/releaseevidence verify \
+            -evidence "$output/evidence.json" \
+            -expected-matrix linux-native-validation \
+            -expected-commit "$commit" \
+            -expected-tree "$tree" \
+            -expected-ref "$GITHUB_REF" \
+            -expected-test-command "$test_command"
+
+  snapshot:
+    if: github.event_name == 'release' || github.event_name == 'workflow_dispatch'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            cgo: "1"
+            expected_cgo: "true"
+            label: linux-native
+          - os: ubuntu-latest
+            cgo: "0"
+            expected_cgo: "false"
+            label: linux-purego
+          - os: macOS-latest
+            cgo: "1"
+            expected_cgo: "true"
+            label: macos-native
+          - os: macOS-latest
+            cgo: "0"
+            expected_cgo: "false"
+            label: macos-purego
+          - os: windows-latest
+            cgo: "1"
+            expected_cgo: "true"
+            label: windows-native
+          - os: windows-latest
+            cgo: "0"
+            expected_cgo: "false"
+            label: windows-purego
+    name: snapshot (${{ matrix.label }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          ref: ${{ github.event_name == 'release' && github.event.release.tag_name || github.ref }}
+      - uses: actions/setup-go@v6
+        with:
+          go-version: 1.25.x
+      - name: Install Linux native build dependencies
+        if: runner.os == 'Linux' && matrix.cgo == '1'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential pkg-config libx11-dev libxtst-dev \
+            libwayland-dev libxkbcommon-dev wayland-protocols \
+            libgbm-dev libdrm-dev
+      - name: Test exact source and generate evidence
+        shell: bash
+        env:
+          CGO_ENABLED: ${{ matrix.cgo }}
+        run: |
+          set -euo pipefail
+          output="$RUNNER_TEMP/release-evidence-${{ matrix.label }}"
+          mkdir -p "$output"
+          test_command='go test -count=1 ./...'
+          go test -count=1 ./... 2>&1 | tee "$output/test.log"
+          test -z "$(git status --porcelain --untracked-files=all)"
+          commit="$(git rev-parse HEAD)"
+          tree="$(git rev-parse 'HEAD^{tree}')"
+          test "$commit" = "$GITHUB_SHA"
+          go run ./internal/cmd/releaseevidence generate \
+            -out "$output/evidence.json" \
+            -test-log "$output/test.log" \
+            -commit "$commit" \
+            -tree "$tree" \
+            -ref "$GITHUB_REF" \
+            -run-id "$GITHUB_RUN_ID" \
+            -run-attempt "$GITHUB_RUN_ATTEMPT" \
+            -matrix "${{ matrix.label }}" \
+            -test-command "$test_command" \
+            -expected-cgo "${{ matrix.expected_cgo }}"
+          go run ./internal/cmd/releaseevidence verify \
+            -evidence "$output/evidence.json" \
+            -expected-matrix "${{ matrix.label }}" \
+            -expected-commit "$commit" \
+            -expected-tree "$tree" \
+            -expected-ref "$GITHUB_REF" \
+            -expected-test-command "$test_command"
+      - name: Upload matrix evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-evidence-${{ matrix.label }}
+          path: ${{ runner.temp }}/release-evidence-${{ matrix.label }}
+          if-no-files-found: error
+          retention-days: 90
+
+  protected-checks:
+    if: github.event_name == 'release' || github.event_name == 'workflow_dispatch'
+    needs: release-evidence-validation
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    permissions:
+      checks: read
+      contents: read
+      statuses: read
+    steps:
+      - name: Record successful protected checks for exact commit
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          output="$RUNNER_TEMP/release-required-checks"
+          mkdir -p "$output"
+          deadline=$((SECONDS + 600))
+          while :; do
+            gh api -H 'Accept: application/vnd.github+json' \
+              "repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA/check-runs?per_page=100" \
+              > "$output/check-runs-source.json"
+            gh api -H 'Accept: application/vnd.github+json' \
+              "repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA/status?per_page=100" \
+              > "$output/status-source.json"
+            : > "$output/rows.jsonl"
+            pending=0
+            while IFS= read -r check_name; do
+              row="$(jq -c --arg name "$check_name" '
+                [.check_runs[] | select(.name == $name)] |
+                sort_by(.started_at // .completed_at // "") |
+                last |
+                if . == null then empty else {
+                  name: .name,
+                  conclusion: .conclusion,
+                  provider: .app.slug,
+                  url: .html_url
+                } end
+              ' "$output/check-runs-source.json")"
+              conclusion="$(jq -r '.conclusion // ""' <<<"${row:-null}")"
+              if [ -z "$conclusion" ]; then
+                pending=1
+                continue
+              fi
+              if [ "$conclusion" != success ]; then
+                echo "required check failed: $check_name ($conclusion)" >&2
+                exit 1
+              fi
+              printf '%s\n' "$row" >> "$output/rows.jsonl"
+            done <<'EOF'
+          lint
+          nocgo (macOS-latest)
+          nocgo (ubuntu-latest)
+          nocgo (windows-latest)
+          ocr
+          race
+          release-evidence-validation
+          sanitizer
+          test (macOS-latest)
+          test (ubuntu-latest)
+          test (windows-latest)
+          vet
+          wayland-integration
+          x11-backend-evidence
+          EOF
+            status_row="$(jq -c '
+              [.statuses[] | select(.context == "ci/circleci: build")] |
+              sort_by(.created_at // "") |
+              last |
+              if . == null then empty else {
+                name: .context,
+                conclusion: .state,
+                provider: "circleci",
+                url: .target_url
+              } end
+            ' "$output/status-source.json")"
+            status_state="$(jq -r '.conclusion // ""' <<<"${status_row:-null}")"
+            case "$status_state" in
+              success)
+                printf '%s\n' "$status_row" >> "$output/rows.jsonl"
+                ;;
+              ""|pending)
+                pending=1
+                ;;
+              *)
+                echo "required status failed: ci/circleci: build ($status_state)" >&2
+                exit 1
+                ;;
+            esac
+            if [ "$pending" -eq 0 ]; then
+              break
+            fi
+            if [ "$SECONDS" -ge "$deadline" ]; then
+              echo "timed out waiting for required release checks" >&2
+              exit 1
+            fi
+            echo "waiting for required release checks"
+            sleep 10
+          done
+          jq -s --arg commit "$GITHUB_SHA" '{
+            schema_version: "1",
+            commit: $commit,
+            checks: sort_by(.name)
+          }' "$output/rows.jsonl" > "$output/required-checks.json"
+          rm "$output/check-runs-source.json" \
+            "$output/status-source.json" "$output/rows.jsonl"
+      - name: Upload protected-check evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-required-checks
+          path: ${{ runner.temp }}/release-required-checks
+          if-no-files-found: error
+          retention-days: 90
+
+  package:
+    if: github.event_name == 'release' || github.event_name == 'workflow_dispatch'
+    needs: [protected-checks, release-evidence-validation, snapshot]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      archive: ${{ steps.bundle.outputs.archive }}
+      checksum: ${{ steps.bundle.outputs.checksum }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          ref: ${{ github.event_name == 'release' && github.event.release.tag_name || github.ref }}
+      - uses: actions/setup-go@v6
+        with:
+          go-version: 1.25.x
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: release-evidence-*
+          path: evidence
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-required-checks
+          path: required-checks
+      - name: Verify and package complete release matrix
+        id: bundle
+        shell: bash
+        env:
+          CGO_ENABLED: "0"
+        run: |
+          set -euo pipefail
+          expected="$(printf '%s\n' \
+            linux-native linux-purego \
+            macos-native macos-purego \
+            windows-native windows-purego | LC_ALL=C sort)"
+          actual="$(find evidence -mindepth 1 -maxdepth 1 -type d \
+            -name 'release-evidence-*' -printf '%f\n' | \
+            sed 's/^release-evidence-//' | LC_ALL=C sort)"
+          if [ "$actual" != "$expected" ]; then
+            echo "release evidence matrix mismatch" >&2
+            printf 'expected:\n%s\nactual:\n%s\n' \
+              "$expected" "${actual:-<empty>}" >&2
+            exit 1
+          fi
+          commit="$(git rev-parse HEAD)"
+          tree="$(git rev-parse 'HEAD^{tree}')"
+          test "$commit" = "$GITHUB_SHA"
+          required_files="$(find required-checks -mindepth 1 -maxdepth 1 \
+            -printf '%f\n' | LC_ALL=C sort)"
+          if [ "$required_files" != 'required-checks.json' ]; then
+            echo "unexpected protected-check evidence files" >&2
+            exit 1
+          fi
+          expected_checks="$(printf '%s\n' \
+            'ci/circleci: build' \
+            lint \
+            'nocgo (macOS-latest)' \
+            'nocgo (ubuntu-latest)' \
+            'nocgo (windows-latest)' \
+            ocr race release-evidence-validation sanitizer \
+            'test (macOS-latest)' \
+            'test (ubuntu-latest)' \
+            'test (windows-latest)' \
+            vet wayland-integration x11-backend-evidence | LC_ALL=C sort)"
+          actual_checks="$(jq -r '.checks[].name' \
+            required-checks/required-checks.json | LC_ALL=C sort)"
+          if [ "$actual_checks" != "$expected_checks" ]; then
+            echo "protected-check evidence manifest mismatch" >&2
+            printf 'expected:\n%s\nactual:\n%s\n' \
+              "$expected_checks" "${actual_checks:-<empty>}" >&2
+            exit 1
+          fi
+          jq -e --arg commit "$commit" '
+            .schema_version == "1" and
+            .commit == $commit and
+            (.checks | length) == 15 and
+            all(.checks[];
+              .conclusion == "success" and
+              (.provider | type) == "string" and
+              (.provider | length) > 0 and
+              (.url | type) == "string" and
+              (.url | length) > 0
+            )
+          ' required-checks/required-checks.json >/dev/null
+          test_command='go test -count=1 ./...'
+          while IFS= read -r label; do
+            directory="evidence/release-evidence-$label"
+            files="$(find "$directory" -mindepth 1 -maxdepth 1 \
+              -printf '%f\n' | LC_ALL=C sort)"
+            if [ "$files" != $'evidence.json\ntest.log' ]; then
+              echo "unexpected files in release evidence cell $label" >&2
+              printf 'actual:\n%s\n' "${files:-<empty>}" >&2
+              exit 1
+            fi
+            go run ./internal/cmd/releaseevidence verify \
+              -evidence "$directory/evidence.json" \
+              -expected-matrix "$label" \
+              -expected-commit "$commit" \
+              -expected-tree "$tree" \
+              -expected-ref "$GITHUB_REF" \
+              -expected-test-command "$test_command"
+          done <<EOF
+          $expected
+          EOF
+          short_commit="${GITHUB_SHA:0:12}"
+          safe_ref="${GITHUB_REF_NAME//\//-}"
+          case "$safe_ref" in
+            ""|*[!A-Za-z0-9._-]*)
+              echo "release ref cannot form a safe evidence filename" >&2
+              exit 1
+              ;;
+          esac
+          if [ "${#safe_ref}" -gt 128 ]; then
+            echo "release ref is too long for a stable evidence filename" >&2
+            exit 1
+          fi
+          archive="robotgo-release-evidence-${safe_ref}-${short_commit}.tar.gz"
+          cp required-checks/required-checks.json evidence/
+          mkdir -p bundle
+          tar --sort=name --mtime='UTC 1970-01-01' \
+            --owner=0 --group=0 --numeric-owner \
+            -C evidence -czf "bundle/$archive" .
+          (
+            cd bundle
+            sha256sum "$archive" > "$archive.sha256"
+          )
+          printf 'archive=%s\nchecksum=%s\n' \
+            "$archive" "$archive.sha256" >> "$GITHUB_OUTPUT"
+      - name: Upload complete release evidence bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-evidence-bundle
+          path: bundle
+          if-no-files-found: error
+          retention-days: 90
+
+  publish:
+    if: github.event_name == 'release'
+    needs: package
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-evidence-bundle
+          path: bundle
+      - name: Verify and attach evidence to published release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          cd bundle
+          sha256sum -c "${{ needs.package.outputs.checksum }}"
+          gh release upload "$GITHUB_REF_NAME" \
+            "${{ needs.package.outputs.archive }}" \
+            "${{ needs.package.outputs.checksum }}" \
+            --repo "$GITHUB_REPOSITORY" \
+            --clobber

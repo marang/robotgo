@@ -554,6 +554,49 @@ Run tag-gated suites as needed for the area you changed. Native or Pure-Go X11
 input changes must also run the required `x11integration` comparison command
 above.
 
+## Release Evidence
+
+The `Release evidence` workflow validates its schema on every pull request and
+`main` push. Published releases and manual dispatches additionally run the
+default suite for native CGO and Pure-Go builds on Linux, macOS, and Windows,
+then verify and package all six evidence cells.
+
+On a clean Linux native checkout, reproduce the generator/verifier path with:
+
+```bash
+set -euo pipefail
+output=/tmp/robotgo-release-evidence-local
+rm -rf "$output"
+mkdir -p "$output"
+test_command='go test -count=1 ./internal/releaseevidence ./internal/cmd/releaseevidence'
+go test -count=1 \
+  ./internal/releaseevidence ./internal/cmd/releaseevidence \
+  2>&1 | tee "$output/test.log"
+test -z "$(git status --porcelain --untracked-files=all)"
+go run ./internal/cmd/releaseevidence generate \
+  -out "$output/evidence.json" \
+  -test-log "$output/test.log" \
+  -commit "$(git rev-parse HEAD)" \
+  -tree "$(git rev-parse 'HEAD^{tree}')" \
+  -ref "refs/heads/$(git branch --show-current)" \
+  -run-id 1 \
+  -run-attempt 1 \
+  -matrix linux-native-validation \
+  -test-command "$test_command" \
+  -expected-cgo true
+go run ./internal/cmd/releaseevidence verify \
+  -evidence "$output/evidence.json" \
+  -expected-matrix linux-native-validation \
+  -expected-commit "$(git rev-parse HEAD)" \
+  -expected-tree "$(git rev-parse 'HEAD^{tree}')" \
+  -expected-ref "refs/heads/$(git branch --show-current)" \
+  -expected-test-command "$test_command"
+```
+
+The versioned schema, matrix, release-asset behavior, and consumer verification
+commands are documented in
+[Release Evidence v1](docs/compatibility/release-evidence-v1.md).
+
 ## Sequential Crash-Tracking Run (No Parallelism)
 
 When debugging intermittent crashes/aborts, run tests sequentially and persist

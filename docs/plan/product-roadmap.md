@@ -37,7 +37,7 @@ The July 2026 hardening work establishes the foundation for this roadmap:
 | 2. Capture | Hermetic implementation complete | Reliable one-shot paths plus one consent-aware ScreenCast session, reusable PipeWire frames, logical region crop, raw pixel conversion, metadata/restore tokens, cleanup, integration harness, non-skipping geometry/transform CI, and sanitizer-backed native ownership gates | Real GNOME/KDE/wlroots evidence |
 | 3. Pure-Go | X11 complete; Windows input/window CI-evidenced; macOS capture/display and keyboard/pointer implemented; broader phase partial | Build and feature-level introspection; non-CGO macOS CoreGraphics capture/display plus Quartz keyboard/pointer input and Accessibility diagnostics; Windows capture, `SendInput` keyboard/pointer, and Win32 window control with blocking runtime probes; X11 capture and XGB/XTEST input; Wayland portal capture/input; permission/error contracts; shared behavioral parity; reproducible balanced benchmark tooling; optimized guardian-path decision evidence; explicit decision to retain native CGO as the X11 default; race-testable internal X11 core; re-exec guardian with application-`SIGKILL` recovery; protected three-OS CI | Collect opt-in real macOS keyboard-injection evidence and assess further backends selectively |
 | 4. API/compositor gaps | Parity surface delivered; runtime support partial | Window-state error APIs, bitmap string helpers, `FindColorCS`, hook/event capability reporting, Sway/Hyprland/wlroots resolver | Compositor-backed state operations and cross-platform/runtime matrix coverage |
-| 5. Reliability product | Partial | Capability APIs, versioned sanitized runtime diagnostics/example, compatibility matrix v1, expanded CI variants, blocking ASan/LeakSanitizer ownership gates | Dedicated compositor jobs and release evidence snapshots |
+| 5. Reliability product | Partial | Capability APIs, versioned sanitized runtime diagnostics/example, compatibility matrix v1, expanded CI variants, blocking ASan/LeakSanitizer ownership gates, six-cell checksummed release-evidence pipeline | Dedicated compositor jobs and the first published release evidence asset |
 
 No delivery phase is complete until all of its exit criteria are blocking and
 green. Phase 1 implementation is merged; its real-compositor evidence remains
@@ -297,8 +297,14 @@ blocking support from pending runtime evidence. CI covers three operating
 systems, non-CGO, tagged Wayland/portal, Weston integration, and a blocking
 Linux native ASan/LeakSanitizer gate. The sanitizer job verifies its hermetic
 Wayland ownership-test manifest and covers allocation/free, timeout cleanup,
-and descriptor ownership. Dedicated GNOME/KDE/wlroots jobs and release evidence
-snapshots remain open.
+and descriptor ownership. Release Evidence v1 records exact commit/tree/ref,
+toolchain and runtime identity, sanitized diagnostics, the passed command, and
+the test-log SHA-256 for native/Pure-Go Linux, macOS, and Windows cells. It also
+requires and records the complete protected CircleCI/lint/vet/race/sanitizer/
+platform/Wayland/X11 check set for the exact commit. A published release
+receives the verified bundle and checksum; manual runs remain read-only
+artifacts. Dedicated GNOME/KDE/wlroots jobs and the first published release
+asset remain open.
 
 Releases require:
 
