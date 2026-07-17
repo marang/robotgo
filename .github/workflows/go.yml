@@ -136,6 +136,15 @@ jobs:
         env:
           CGO_ENABLED: "0"
         run: go test -v ./...
+      - name: Test Pure-Go Windows input desktop
+        if: runner.os == 'Windows'
+        env:
+          CGO_ENABLED: "0"
+          ROBOTGO_REQUIRE_WINDOWS_INPUT_INTEGRATION: "1"
+        run: >-
+          go test -tags windowsintegration
+          -run "^TestPureGoWindowsInputRuntime$"
+          -count=1 -timeout=30s -v .
       - name: Test non-CGO OCR compatibility stubs
         if: runner.os == 'Linux'
         env:
