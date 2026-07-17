@@ -1,0 +1,101 @@
+=== RUN   TestNativeX11StatefulInputDoesNotSwitchToPortalOnUp
+--- PASS: TestNativeX11StatefulInputDoesNotSwitchToPortalOnUp (0.00s)
+=== RUN   TestNativeX11UnicodeFailsBeforeMutation
+=== RUN   TestNativeX11UnicodeFailsBeforeMutation/text_preflight
+=== RUN   TestNativeX11UnicodeFailsBeforeMutation/code_point
+--- PASS: TestNativeX11UnicodeFailsBeforeMutation (0.21s)
+    --- PASS: TestNativeX11UnicodeFailsBeforeMutation/text_preflight (0.10s)
+    --- PASS: TestNativeX11UnicodeFailsBeforeMutation/code_point (0.10s)
+=== RUN   TestNativeX11UnmappedKeyFailsBeforeModifierInput
+--- PASS: TestNativeX11UnmappedKeyFailsBeforeModifierInput (0.10s)
+=== RUN   TestNativeX11KeyPressKeepsResolvedKeycodesAcrossKeymapChange
+--- PASS: TestNativeX11KeyPressKeepsResolvedKeycodesAcrossKeymapChange (0.02s)
+=== RUN   TestNativeX11TextKeymapFailureIsAtomic
+--- PASS: TestNativeX11TextKeymapFailureIsAtomic (0.21s)
+=== RUN   TestNativeX11TextUsesActiveGermanKeymap
+--- PASS: TestNativeX11TextUsesActiveGermanKeymap (0.07s)
+=== RUN   TestNativeX11TextRejectsMidStreamKeymapChange
+--- PASS: TestNativeX11TextRejectsMidStreamKeymapChange (0.36s)
+=== RUN   TestNativeX11ForeignHeldKeysNeverReleased
+=== RUN   TestNativeX11ForeignHeldKeysNeverReleased/text_main_key_and_full_string_preflight
+=== RUN   TestNativeX11ForeignHeldKeysNeverReleased/compound_key_modifier
+=== RUN   TestNativeX11ForeignHeldKeysNeverReleased/unowned_key-up
+--- PASS: TestNativeX11ForeignHeldKeysNeverReleased (0.31s)
+    --- PASS: TestNativeX11ForeignHeldKeysNeverReleased/text_main_key_and_full_string_preflight (0.10s)
+    --- PASS: TestNativeX11ForeignHeldKeysNeverReleased/compound_key_modifier (0.10s)
+    --- PASS: TestNativeX11ForeignHeldKeysNeverReleased/unowned_key-up (0.10s)
+=== RUN   TestNativeX11TextHonorsActiveXKBState
+=== RUN   TestNativeX11TextHonorsActiveXKBState/foreign_Shift_is_reused_but_never_released
+=== RUN   TestNativeX11TextHonorsActiveXKBState/foreign_Level3_selector_is_reused
+=== RUN   TestNativeX11TextHonorsActiveXKBState/Caps_Lock_state_is_preserved
+=== RUN   TestNativeX11TextHonorsActiveXKBState/shortcut_modifier_fails_closed
+--- PASS: TestNativeX11TextHonorsActiveXKBState (0.26s)
+    --- PASS: TestNativeX11TextHonorsActiveXKBState/foreign_Shift_is_reused_but_never_released (0.05s)
+    --- PASS: TestNativeX11TextHonorsActiveXKBState/foreign_Level3_selector_is_reused (0.05s)
+    --- PASS: TestNativeX11TextHonorsActiveXKBState/Caps_Lock_state_is_preserved (0.06s)
+    --- PASS: TestNativeX11TextHonorsActiveXKBState/shortcut_modifier_fails_closed (0.10s)
+=== RUN   TestNativeX11KeyToggleOwnershipSurvivesKeymapChange
+--- PASS: TestNativeX11KeyToggleOwnershipSurvivesKeymapChange (0.03s)
+=== RUN   TestNativeX11KeyToggleSharesOnlyOwnedModifiers
+--- PASS: TestNativeX11KeyToggleSharesOnlyOwnedModifiers (0.09s)
+=== RUN   TestNativeX11ToggleOwnershipFollowsDisplayLifecycle
+=== RUN   TestNativeX11ToggleOwnershipFollowsDisplayLifecycle/close_releases_and_invalidates_ownership
+=== RUN   TestNativeX11ToggleOwnershipFollowsDisplayLifecycle/retarget_releases_and_invalidates_ownership
+=== RUN   TestNativeX11ToggleOwnershipFollowsDisplayLifecycle/close_releases_and_invalidates_mouse_ownership
+=== RUN   TestNativeX11ToggleOwnershipFollowsDisplayLifecycle/stateful_unobservable_wheel_buttons_are_unsupported
+--- PASS: TestNativeX11ToggleOwnershipFollowsDisplayLifecycle (0.07s)
+    --- PASS: TestNativeX11ToggleOwnershipFollowsDisplayLifecycle/close_releases_and_invalidates_ownership (0.03s)
+    --- PASS: TestNativeX11ToggleOwnershipFollowsDisplayLifecycle/retarget_releases_and_invalidates_ownership (0.03s)
+    --- PASS: TestNativeX11ToggleOwnershipFollowsDisplayLifecycle/close_releases_and_invalidates_mouse_ownership (0.00s)
+    --- PASS: TestNativeX11ToggleOwnershipFollowsDisplayLifecycle/stateful_unobservable_wheel_buttons_are_unsupported (0.00s)
+=== RUN   TestNativeX11ExplicitInvalidDisplayNeverFallsBack
+--- PASS: TestNativeX11ExplicitInvalidDisplayNeverFallsBack (0.11s)
+=== RUN   TestNativeX11PixelColorOutOfBoundsReturnsError
+--- PASS: TestNativeX11PixelColorOutOfBoundsReturnsError (0.00s)
+=== RUN   TestNativeX11DisplayLifecycleConcurrent
+--- PASS: TestNativeX11DisplayLifecycleConcurrent (0.82s)
+=== RUN   TestNativeX11EnvironmentToggleLifecycleConcurrent
+--- PASS: TestNativeX11EnvironmentToggleLifecycleConcurrent (0.09s)
+=== RUN   TestX11BackendBehavioralParity
+=== RUN   TestX11BackendBehavioralParity/capture
+=== RUN   TestX11BackendBehavioralParity/pointer
+=== RUN   TestX11BackendBehavioralParity/buttons_and_scroll
+=== RUN   TestX11BackendBehavioralParity/horizontal_wheel_backend_contract
+=== RUN   TestX11BackendBehavioralParity/named_key
+=== RUN   TestX11BackendBehavioralParity/modifier_order
+=== RUN   TestX11BackendBehavioralParity/text_and_keyboard_state
+--- PASS: TestX11BackendBehavioralParity (0.20s)
+    --- PASS: TestX11BackendBehavioralParity/capture (0.00s)
+    --- PASS: TestX11BackendBehavioralParity/pointer (0.01s)
+    --- PASS: TestX11BackendBehavioralParity/buttons_and_scroll (0.01s)
+    --- PASS: TestX11BackendBehavioralParity/horizontal_wheel_backend_contract (0.01s)
+    --- PASS: TestX11BackendBehavioralParity/named_key (0.00s)
+    --- PASS: TestX11BackendBehavioralParity/modifier_order (0.00s)
+    --- PASS: TestX11BackendBehavioralParity/text_and_keyboard_state (0.06s)
+=== RUN   TestX11XTestVersionAtLeast
+=== PAUSE TestX11XTestVersionAtLeast
+=== RUN   TestNativeX11ConfiguredTargetAppliesToWindowAndScale
+--- PASS: TestNativeX11ConfiguredTargetAppliesToWindowAndScale (0.00s)
+=== RUN   TestNativeX11ClientCoordinatesThroughReparenting
+--- PASS: TestNativeX11ClientCoordinatesThroughReparenting (0.00s)
+=== RUN   TestNativeX11DestroyedWindowDoesNotAbort
+--- PASS: TestNativeX11DestroyedWindowDoesNotAbort (3.02s)
+=== CONT  TestX11XTestVersionAtLeast
+=== RUN   TestX11XTestVersionAtLeast/missing_reply
+=== PAUSE TestX11XTestVersionAtLeast/missing_reply
+=== RUN   TestX11XTestVersionAtLeast/older_minor
+=== PAUSE TestX11XTestVersionAtLeast/older_minor
+=== RUN   TestX11XTestVersionAtLeast/minimum
+=== PAUSE TestX11XTestVersionAtLeast/minimum
+=== RUN   TestX11XTestVersionAtLeast/newer_major
+=== PAUSE TestX11XTestVersionAtLeast/newer_major
+=== CONT  TestX11XTestVersionAtLeast/missing_reply
+=== CONT  TestX11XTestVersionAtLeast/newer_major
+=== CONT  TestX11XTestVersionAtLeast/minimum
+=== CONT  TestX11XTestVersionAtLeast/older_minor
+--- PASS: TestX11XTestVersionAtLeast (0.00s)
+    --- PASS: TestX11XTestVersionAtLeast/missing_reply (0.00s)
+    --- PASS: TestX11XTestVersionAtLeast/newer_major (0.00s)
+    --- PASS: TestX11XTestVersionAtLeast/minimum (0.00s)
+    --- PASS: TestX11XTestVersionAtLeast/older_minor (0.00s)
+PASS

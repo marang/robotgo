@@ -95,9 +95,9 @@ negative contract with the command in [TEST.md](../../TEST.md#x11integration-nat
 ## Current decision
 
 The current decision-grade sample measures commit
-`6c064690be8ba6e8e57934298f394f224aba30a9`, including the re-executed Pure-Go
+`817656f2d52140581f7f6c5535d86f050ee6663b`, including the re-executed Pure-Go
 guardian. Its raw output, behavior logs, metadata, and completion record are in
-[data/x11-2026-07-17-6c06469](data/x11-2026-07-17-6c06469/summary.md). Both
+[data/x11-2026-07-17-817656f](data/x11-2026-07-17-817656f/summary.md). Both
 implementations passed the complete shared contract and their exact
 backend-specific safety manifests; the Pure-Go manifest includes a real
 application-process `SIGKILL` and verified guardian cleanup.
@@ -113,11 +113,11 @@ source snapshot or the balanced same-server comparison.
 
 | Criterion | Evidence | Decision impact |
 |---|---|---|
-| Capture | Pure-Go/native median latency ratio `3.462x`; 116 versus 2 Go allocations per operation | Native retains a material throughput and allocation advantage; guardian IPC is not involved in capture |
-| Stateful buttons and keys | Pure-Go/native median latency ratios `5.364x` for button toggles, `10.976x` for key toggles, and `2.072x` for delayed key presses | The per-request guardian safety boundary is measurable and native remains preferable for common input sequences |
-| Scroll | Pure-Go/native median latency ratio `9.453x` for vertical scroll; Pure-Go horizontal scroll remains explicitly unsupported because X11 does not expose reliable wheel-button state | Native remains preferable for scrolling |
-| Pointer queries and moves | Pure-Go/native median latency ratios are `5.734x` for location, `2.401x` for absolute movement, and `1.632x` for relative movement | The guardian reverses the earlier direct-connection movement advantage; native is now faster for all measured pointer operations |
-| Delayed click and ASCII text | Ratios are `1.101x` and `1.336x`; configured user-visible delays dominate much of the end-to-end result | Keep the operations supported, but do not use their ratios alone for backend selection |
+| Capture | Pure-Go/native median latency ratio `3.420x`; 116 versus 2 Go allocations per operation | Native retains a material throughput and allocation advantage; guardian IPC is not involved in capture |
+| Stateful buttons and keys | Pure-Go/native median latency ratios `5.078x` for button toggles, `10.183x` for key toggles, and `2.059x` for delayed key presses | The per-request guardian safety boundary remains measurable and native remains preferable for common input sequences |
+| Scroll | Pure-Go/native median latency ratio `8.821x` for vertical scroll; Pure-Go horizontal scroll remains explicitly unsupported because X11 does not expose reliable wheel-button state | Native remains preferable for scrolling |
+| Pointer queries and moves | Pure-Go/native median latency ratios are `5.608x` for location, `2.400x` for absolute movement, and `1.602x` for relative movement | IPC round trips dominate the remaining gap; native remains faster for all measured pointer operations |
+| Delayed click and ASCII text | Ratios are `1.106x` and `1.331x`; configured user-visible delays dominate much of the end-to-end result | Keep the operations supported, but do not use their ratios alone for backend selection |
 | Build and Unicode behavior | Pure-Go removes the C/Xlib build dependency and retains managed Unicode scratch mappings; native avoids server-global temporary mappings | Keep Pure-Go useful and supported for CGO-disabled builds |
 | Lifecycle behavior | The Pure-Go safety manifest passes real application-process `SIGKILL` recovery with claim-checked, deadline-bounded guardian cleanup | The measured IPC cost buys a concrete crash-isolation guarantee absent from the historical direct-connection sample |
 
@@ -125,16 +125,26 @@ source snapshot or the balanced same-server comparison.
 Keep the Pure-Go X11 backend as the supported CGO-disabled implementation. This
 is not a rejection of Pure-Go: it preserves useful X11 automation without CGO
 and now provides measured crash isolation, while native wins every current
-latency comparison and most Go allocation comparisons. Native also avoids
+latency and reported Go-allocation comparison. Native also avoids
 server-global Unicode mappings entirely. The Pure-Go guardian restores those
 mappings after a targeted application-process kill while it and a responsive
 X server survive. Its cleanup is deadline-bounded and restores only an exact
 unchanged, unpressed, non-modifier final image; foreign final images are
 preserved, while an exact-image ABA replacement is not observable in X11.
 
-The earlier pre-guardian sample remains available in
+Compared with the immediately preceding guardian sample at
+[data/x11-2026-07-17-6c06469](data/x11-2026-07-17-6c06469/summary.md), reusing
+the request timer, response channel, and frame-read buffer while avoiding
+double payload marshaling reduces Pure-Go input allocations by `24–33%`.
+Allocated Go bytes fall by `41–50%` for pointer/mouse operations and about
+`19–20%` for keyboard/text operations. Balanced median latencies remain in the
+same range, confirming that round trips—not these removed allocations—dominate
+the remaining gap. The optimization preserves request correlation, fail-closed
+response-ID handling, timeout teardown, and the full crash-recovery manifest.
+
+The pre-guardian sample remains available in
 [data/x11-2026-07-16-d5fd51c](data/x11-2026-07-16-d5fd51c/summary.md) as
-historical evidence. It must not be presented as current performance. Future
-work may reduce guardian round trips or allocations only if the same behavior,
-race, and crash-recovery contracts remain blocking; the evidence does not
-justify weakening the safety boundary or changing the default.
+historical evidence. Neither older sample may be presented as current
+performance. Future work may reduce guardian round trips only if the same
+behavior, race, and crash-recovery contracts remain blocking; the evidence does
+not justify weakening the safety boundary or changing the default.

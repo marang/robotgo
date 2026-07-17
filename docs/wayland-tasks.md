@@ -102,10 +102,11 @@ Window backend support matrix (current):
     behavioral contract run in non-skipping Xvfb/XTEST CI. A balanced benchmark
     smoke is report-only. Native X11 now has atomic input preflight, one shared
     configured-display lifecycle/target, live XTEST readiness, and an XTEST-disabled negative
-    contract. Current decision-grade guardian-path evidence retains native CGO
-    as the X11 default while keeping Pure-Go supported for CGO-disabled builds.
-    Protecting the checks, evaluating safe IPC/allocation reductions, and
-    evaluating further backends remain open. The Pure-Go core is now
+    contract. Current optimized guardian-path evidence retains native CGO as the
+    X11 default while keeping Pure-Go supported for CGO-disabled builds. The
+    lower-allocation request transport preserves the crash contract. Protecting
+    the checks, evaluating safe round-trip reductions, and evaluating further
+    backends remain open. The Pure-Go core is now
     race-testable, and a separate X11 guardian uses an authenticated abstract
     Unix socket with kernel-verified peer credentials, bounded request dispatch,
     and deadline-bounded cleanup after an application-process `SIGKILL`. It

@@ -622,7 +622,7 @@ X11 runtime support fails instead of skipping; see
 the exact commands and prerequisites. The crash proof additionally inspects
 `/proc/<pid>/task/<tid>/children` under a Linux child subreaper to verify that
 the reported guardian is the exact child that exits and is reaped. The
-[current decision-grade comparison](docs/performance/data/x11-2026-07-17-6c06469/summary.md)
+[current decision-grade comparison](docs/performance/data/x11-2026-07-17-817656f/summary.md)
 measures the guardian path and retains native CGO as the X11 default while
 Pure-Go remains the supported CGO-disabled backend. The earlier direct-path
 sample remains linked from the performance report as historical evidence.
@@ -658,9 +658,11 @@ Linux/X11 evaluation is complete: shared behavior is blocking CI,
 current guardian-path decision evidence is versioned, and native CGO remains
 the default while Pure-Go supports CGO-disabled builds. The Pure-Go X11 core is
 race-testable and its separate guardian performs bounded, claim-checked cleanup
-after an application-process crash. Safe guardian-cost optimization,
-protecting remote checks, and evaluating further backends remain. Real
-GNOME/KDE/wlroots validation is an independent Wayland release gate.
+after an application-process crash. Its request transport now reuses bounded
+state and avoids double payload encoding, with versioned evidence showing lower
+allocation cost. Safe round-trip optimization, protecting remote checks, and
+evaluating further backends remain. Real GNOME/KDE/wlroots validation is an
+independent Wayland release gate.
 
 ## Upstream and attribution
 
