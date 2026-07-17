@@ -4,6 +4,7 @@ package robotgo
 
 import (
 	"errors"
+	"runtime"
 	"testing"
 )
 
@@ -12,15 +13,28 @@ func TestNonCGOPortableAPIContract(t *testing.T) {
 	_ = capabilities.Hook
 	_ = capabilities.Events
 
-	unsupported := []error{
-		CloseWindowE(),
-		MinWindowE(0),
-		MaxWindowE(0),
-		SetTopMostE(true),
-	}
-	for _, err := range unsupported {
-		if !errors.Is(err, ErrNotSupported) {
-			t.Fatalf("non-CGO operation error = %v, want ErrNotSupported", err)
+	if runtime.GOOS == "windows" {
+		invalidTargets := []error{
+			SetActiveE(0),
+			MinWindowE(0),
+			MaxWindowE(0),
+		}
+		for _, err := range invalidTargets {
+			if err == nil || errors.Is(err, ErrNotSupported) {
+				t.Fatalf("Pure-Go Windows invalid-target error = %v, want explicit backend error", err)
+			}
+		}
+	} else {
+		unsupported := []error{
+			CloseWindowE(),
+			MinWindowE(0),
+			MaxWindowE(0),
+			SetTopMostE(true),
+		}
+		for _, err := range unsupported {
+			if !errors.Is(err, ErrNotSupported) {
+				t.Fatalf("non-CGO operation error = %v, want ErrNotSupported", err)
+			}
 		}
 	}
 	if err := MinWindowE(0, "invalid"); err == nil || errors.Is(err, ErrNotSupported) {
