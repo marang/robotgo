@@ -17,6 +17,7 @@ package robotgo
 
 import (
 	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/vcaesar/tt"
@@ -188,12 +189,13 @@ func TestImage(t *testing.T) {
 	tt.NotNil(t, bit)
 
 	img := ToImage(bit)
-	err = SavePng(img, "robot_test.png")
+	output := t.TempDir()
+	err = SavePng(img, filepath.Join(output, "robot_test.png"))
 	tt.Nil(t, err)
 
 	img1, err := CaptureImg(10, 10, 20, 20)
 	tt.Nil(t, err)
-	e := Save(img1, "robot_img.jpeg", 50)
+	e := Save(img1, filepath.Join(output, "robot_img.jpeg"), 50)
 	tt.Nil(t, e)
 
 	tt.Equal(t, 20, Width(img1))
