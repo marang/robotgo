@@ -14,6 +14,7 @@ const (
 	featureBackendNativeCGO          = "native-cgo"
 	featureBackendPureGoPrefix       = "pure-go-"
 	featureBackendPureGoCoreGraphics = "pure-go-coregraphics"
+	featureBackendPureGoQuartzInput  = "pure-go-quartz-input"
 	featureBackendPureGoWindows      = "pure-go-windows"
 	featureBackendPureGoX11          = "pure-go-x11"
 	featureBackendGoProcess          = "go-process"

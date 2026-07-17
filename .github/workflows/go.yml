@@ -146,6 +146,15 @@ jobs:
           -run "^TestPureGoWindowsInputRuntime$"
           -count=1 -timeout=30s -v .
 
+      - name: Test Pure-Go macOS input preflight
+        if: runner.os == 'macOS'
+        env:
+          CGO_ENABLED: "0"
+        run: >-
+          go test
+          -run "^TestPureGoDarwinInputRuntime$"
+          -count=1 -timeout=30s -v .
+
       - name: Test Pure-Go Windows window and paste desktop
         if: runner.os == 'Windows'
         env:

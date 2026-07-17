@@ -16,8 +16,13 @@ Current implementation baseline:
   detection without portal or compositor probes.
 - Platform-neutral feature introspection is available via
   `GetRuntimeCapabilities`; macOS non-CGO builds report CoreGraphics capture,
-  display bounds, real Retina scale, and Screen Recording permission state
-  without prompting.
+  display bounds, real Retina scale, Screen Recording permission, and Quartz
+  pointer/Accessibility state without prompting.
+- macOS non-CGO builds provide a Pure-Go Quartz pointer backend with absolute,
+  relative and smooth movement, drag, click/double-click, owned button toggles,
+  horizontal/vertical scroll, pointer location, deterministic cleanup, and
+  explicit Accessibility denial. Pure-Go macOS keyboard injection remains
+  explicitly unsupported.
 - Linux/X11 non-CGO builds provide a Pure-Go XGB/XTEST keyboard and pointer
   backend with live readiness probes, text/Unicode, smooth movement/drag,
   scrolling, pointer location, explicit state errors, and deterministic
