@@ -1,4 +1,4 @@
-// Package darwininput provides RobotGo's Pure-Go macOS pointer backend.
+// Package darwininput provides RobotGo's Pure-Go macOS input backend.
 package darwininput
 
 import (
@@ -40,16 +40,21 @@ type mouseButton struct {
 
 type inputSystem interface {
 	Ready() error
+	KeyboardReady() error
 	CursorPosition() (point, error)
 	ButtonDown(uint32) (bool, error)
+	KeyDown(uint16) (bool, error)
+	ModifierFlags() (uint64, error)
 	PostMouse(eventType uint32, location point, button uint32, clickState int64) error
 	PostScroll(horizontal, vertical int32) error
+	PostKey(key uint16, down bool, flags uint64, pid int32) error
+	PostUnicode(units []uint16, down bool, flags uint64, pid int32) error
 	Close() error
 }
 
 type openSystem func() (inputSystem, error)
 
-// Backend serializes Quartz pointer transactions and tracks persistent holds.
+// Backend serializes Quartz input transactions and tracks persistent holds.
 type Backend struct {
 	mu sync.Mutex
 
@@ -57,10 +62,12 @@ type Backend struct {
 	system inputSystem
 	sleep  func(time.Duration)
 
-	ownedButtons map[uint32]mouseButton
-	ownedOrder   []uint32
-	lastLocation point
-	hasLocation  bool
+	ownedButtons  map[uint32]mouseButton
+	ownedOrder    []uint32
+	ownedKeys     map[uint16]ownedKey
+	ownedKeyOrder []uint16
+	lastLocation  point
+	hasLocation   bool
 }
 
 // New creates a lazily initialized backend backed by macOS frameworks.
@@ -76,6 +83,7 @@ func newBackend(open openSystem, sleep func(time.Duration)) *Backend {
 		open:         open,
 		sleep:        sleep,
 		ownedButtons: make(map[uint32]mouseButton),
+		ownedKeys:    make(map[uint16]ownedKey),
 	}
 }
 
@@ -498,7 +506,7 @@ func (backend *Backend) Scroll(x, y int) error {
 	return system.PostScroll(int32(x), int32(y))
 }
 
-// Close releases RobotGo-owned buttons and unloads the native frameworks.
+// Close releases RobotGo-owned input and unloads the native frameworks.
 func (backend *Backend) Close() error {
 	backend.mu.Lock()
 	defer backend.mu.Unlock()
@@ -507,6 +515,34 @@ func (backend *Backend) Close() error {
 	}
 	system := backend.system
 	var closeErr error
+	if len(backend.ownedKeys) > 0 {
+		flags, flagsErr := system.ModifierFlags()
+		if flagsErr != nil {
+			return flagsErr
+		}
+		flags |= backend.ownedModifierFlagsLocked()
+		ownedOrder := append([]uint16(nil), backend.ownedKeyOrder...)
+		released := make(map[uint16]struct{}, len(ownedOrder))
+		for index := len(ownedOrder) - 1; index >= 0; index-- {
+			key, owned := backend.ownedKeys[ownedOrder[index]]
+			if !owned {
+				continue
+			}
+			nextFlags, flagsErr := backend.flagsAfterReleaseLocked(
+				system, key, flags, released,
+			)
+			if flagsErr != nil {
+				closeErr = errors.Join(closeErr, flagsErr)
+				continue
+			}
+			releaseErr := backend.releaseKeyLocked(system, key, nextFlags)
+			closeErr = errors.Join(closeErr, releaseErr)
+			if releaseErr == nil {
+				flags = nextFlags
+				released[key.code] = struct{}{}
+			}
+		}
+	}
 	if len(backend.ownedButtons) > 0 {
 		location, locationErr := system.CursorPosition()
 		if locationErr != nil && backend.hasLocation {
@@ -526,13 +562,15 @@ func (backend *Backend) Close() error {
 			closeErr = errors.Join(closeErr, backend.releaseLocked(system, button, location, 1))
 		}
 	}
-	if len(backend.ownedButtons) > 0 {
+	if len(backend.ownedKeys) > 0 || len(backend.ownedButtons) > 0 {
 		return closeErr
 	}
 	closeErr = errors.Join(closeErr, system.Close())
 	backend.system = nil
 	backend.ownedButtons = make(map[uint32]mouseButton)
 	backend.ownedOrder = backend.ownedOrder[:0]
+	backend.ownedKeys = make(map[uint16]ownedKey)
+	backend.ownedKeyOrder = backend.ownedKeyOrder[:0]
 	backend.hasLocation = false
 	return closeErr
 }

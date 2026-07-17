@@ -5,6 +5,7 @@ package darwininput
 import (
 	"errors"
 	"fmt"
+	"runtime"
 
 	"github.com/ebitengine/purego"
 )
@@ -34,10 +35,16 @@ type nativeSystem struct {
 	eventGetLocation       func(uintptr) point
 	eventSourceCreate      func(int32) uintptr
 	eventSourceButtonState func(int32, uint32) bool
+	eventSourceKeyState    func(int32, uint16) bool
+	eventSourceFlagsState  func(int32) uint64
 	eventCreateMouse       func(uintptr, uint32, point, uint32) uintptr
 	eventCreateScroll      func(uintptr, uint32, uint32, int32, int32, int32) uintptr
+	eventCreateKeyboard    func(uintptr, uint16, bool) uintptr
+	eventSetUnicodeString  func(uintptr, uintptr, *uint16)
+	eventSetFlags          func(uintptr, uint64)
 	eventSetIntegerField   func(uintptr, uint32, int64)
 	eventPost              func(uint32, uintptr)
+	eventPostToPID         func(int32, uintptr)
 	cfRelease              func(uintptr)
 }
 
@@ -77,10 +84,16 @@ func openNativeSystem() (inputSystem, error) {
 		{system.coreGraphicsHandle, &system.eventGetLocation, "CGEventGetLocation"},
 		{system.coreGraphicsHandle, &system.eventSourceCreate, "CGEventSourceCreate"},
 		{system.coreGraphicsHandle, &system.eventSourceButtonState, "CGEventSourceButtonState"},
+		{system.coreGraphicsHandle, &system.eventSourceKeyState, "CGEventSourceKeyState"},
+		{system.coreGraphicsHandle, &system.eventSourceFlagsState, "CGEventSourceFlagsState"},
 		{system.coreGraphicsHandle, &system.eventCreateMouse, "CGEventCreateMouseEvent"},
 		{system.coreGraphicsHandle, &system.eventCreateScroll, "CGEventCreateScrollWheelEvent2"},
+		{system.coreGraphicsHandle, &system.eventCreateKeyboard, "CGEventCreateKeyboardEvent"},
+		{system.coreGraphicsHandle, &system.eventSetUnicodeString, "CGEventKeyboardSetUnicodeString"},
+		{system.coreGraphicsHandle, &system.eventSetFlags, "CGEventSetFlags"},
 		{system.coreGraphicsHandle, &system.eventSetIntegerField, "CGEventSetIntegerValueField"},
 		{system.coreGraphicsHandle, &system.eventPost, "CGEventPost"},
+		{system.coreGraphicsHandle, &system.eventPostToPID, "CGEventPostToPid"},
 		{system.coreFoundationHandle, &system.cfRelease, "CFRelease"},
 	}
 	for _, function := range required {
@@ -111,10 +124,22 @@ func (system *nativeSystem) Ready() error {
 	}
 	event := system.eventCreate(0)
 	if event == 0 {
-		return errors.New("CoreGraphics could not create a pointer-location event; an active macOS GUI session is required")
+		return errors.New("CoreGraphics could not create an input preflight event; an active macOS GUI session is required")
 	}
 	system.cfRelease(event)
 	return nil
+}
+
+func (system *nativeSystem) KeyboardReady() error {
+	// Creating and releasing an event does not inject input or prompt for
+	// consent. Do it before the Accessibility check so denied CI runners still
+	// exercise the real PureGo function signature.
+	event := system.eventCreateKeyboard(system.eventSource, keyA, true)
+	if event == 0 {
+		return errors.New("CoreGraphics could not create a keyboard preflight event")
+	}
+	system.cfRelease(event)
+	return system.Ready()
 }
 
 func (system *nativeSystem) CursorPosition() (point, error) {
@@ -128,6 +153,14 @@ func (system *nativeSystem) CursorPosition() (point, error) {
 
 func (system *nativeSystem) ButtonDown(button uint32) (bool, error) {
 	return system.eventSourceButtonState(cgEventSourceStateCombinedSession, button), nil
+}
+
+func (system *nativeSystem) KeyDown(key uint16) (bool, error) {
+	return system.eventSourceKeyState(cgEventSourceStateCombinedSession, key), nil
+}
+
+func (system *nativeSystem) ModifierFlags() (uint64, error) {
+	return system.eventSourceFlagsState(cgEventSourceStateCombinedSession), nil
 }
 
 func (system *nativeSystem) PostMouse(
@@ -171,6 +204,50 @@ func (system *nativeSystem) PostScroll(horizontal, vertical int32) error {
 	}
 	defer system.cfRelease(event)
 	system.eventPost(cgHIDEventTap, event)
+	return nil
+}
+
+func (system *nativeSystem) postKeyboardEvent(event uintptr, flags uint64, pid int32) {
+	system.eventSetFlags(event, flags)
+	if pid == 0 {
+		system.eventPost(cgHIDEventTap, event)
+		return
+	}
+	system.eventPostToPID(pid, event)
+}
+
+func (system *nativeSystem) PostKey(
+	key uint16,
+	down bool,
+	flags uint64,
+	pid int32,
+) error {
+	event := system.eventCreateKeyboard(system.eventSource, key, down)
+	if event == 0 {
+		return fmt.Errorf("CoreGraphics could not create keyboard event for keycode %#x", key)
+	}
+	defer system.cfRelease(event)
+	system.postKeyboardEvent(event, flags, pid)
+	return nil
+}
+
+func (system *nativeSystem) PostUnicode(
+	units []uint16,
+	down bool,
+	flags uint64,
+	pid int32,
+) error {
+	if len(units) == 0 {
+		return errors.New("CoreGraphics Unicode keyboard event requires at least one UTF-16 code unit")
+	}
+	event := system.eventCreateKeyboard(system.eventSource, 0, down)
+	if event == 0 {
+		return errors.New("CoreGraphics could not create Unicode keyboard event")
+	}
+	defer system.cfRelease(event)
+	system.eventSetUnicodeString(event, uintptr(len(units)), &units[0])
+	runtime.KeepAlive(units)
+	system.postKeyboardEvent(event, flags, pid)
 	return nil
 }
 

@@ -36,9 +36,9 @@ portal. macOS tests use fake CoreGraphics bindings for deterministic permission,
 pixel, bounds, Retina display-mode scale, and resource-lifecycle coverage. The
 macOS non-CGO leg also resolves the real CoreGraphics display-mode symbols and
 queries the active display scale as a blocking test. It additionally resolves
-the real Quartz input and Accessibility symbols and performs a non-prompting
-permission preflight without posting input. None of these runtime checks
-requires a Screen Recording or Accessibility grant.
+the real Quartz keyboard/pointer and Accessibility symbols and performs a
+non-prompting permission preflight without posting input. None of these runtime
+checks requires a Screen Recording or Accessibility grant.
 
 The real scale probe can be reproduced on a macOS GUI runner without granting
 Screen Recording or Accessibility access:
@@ -56,16 +56,17 @@ CGO_ENABLED=0 go test \
   -run '^TestPureGoDarwinInputRuntime$' -count=1 -v .
 ```
 
-After granting Accessibility access, the opt-in real pointer test moves to the
-center of the main display and restores the original location during cleanup:
+After granting Accessibility access, the opt-in real input tests move to the
+center of the main display and restore the original location, and exercise one
+ownership-checked Shift hold/release without typing text:
 
 ```bash
 CGO_ENABLED=0 ROBOTGO_REQUIRE_DARWIN_INPUT_INTEGRATION=1 \
   go test -tags darwinintegration \
-  -run '^TestPureGoDarwinPointerIntegration$' -count=1 -v .
+  -run '^TestPureGoDarwin(Pointer|Keyboard)Integration$' -count=1 -v .
 ```
 
-This integration test is not run on GitHub-hosted macOS because those runners
+These integration tests are not run on GitHub-hosted macOS because those runners
 do not grant Accessibility control to repository test binaries. The
 non-prompting symbol and permission contract remains blocking there.
 

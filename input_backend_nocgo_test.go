@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"math"
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -259,7 +260,7 @@ func TestPureGoInputCapabilitiesDoNotPerformLiveProbes(t *testing.T) {
 	}
 }
 
-func TestPureGoQuartzCapabilitiesPreflightPointerWithoutClaimingKeyboard(t *testing.T) {
+func TestPureGoQuartzCapabilitiesPreflightKeyboardAndPointer(t *testing.T) {
 	mouseErr := errors.Join(ErrPermissionDenied, errors.New("Accessibility denied"))
 	backend := &fakePureGoInputBackend{
 		name:     featureBackendPureGoQuartzInput,
@@ -268,15 +269,34 @@ func TestPureGoQuartzCapabilitiesPreflightPointerWithoutClaimingKeyboard(t *test
 	installFakePureGoInputBackend(t, backend)
 
 	keyboard, mouse := pureGoInputCapabilities()
-	if keyboard.Available || keyboard.Backend != featureBackendPureGoQuartzInput ||
-		keyboard.Reason != ErrNotSupported.Error() {
-		t.Fatalf("keyboard capability = %+v, want explicit unsupported Quartz keyboard", keyboard)
+	if !keyboard.Available || keyboard.Backend != featureBackendPureGoQuartzInput {
+		t.Fatalf("keyboard capability = %+v, want available Quartz keyboard", keyboard)
 	}
 	if mouse.Available || mouse.Backend != featureBackendPureGoQuartzInput {
 		t.Fatalf("mouse capability = %+v, want unavailable Quartz pointer", mouse)
 	}
-	if !reflect.DeepEqual(backend.calls, []string{"mouse-ready"}) {
-		t.Fatalf("Quartz capability probe calls = %v, want only mouse-ready", backend.calls)
+	if !reflect.DeepEqual(backend.calls, []string{"keyboard-ready", "mouse-ready"}) {
+		t.Fatalf("Quartz capability probe calls = %v, want keyboard and mouse readiness", backend.calls)
+	}
+}
+
+func TestPureGoQuartzCapabilitiesReportKeyboardDenialSeparately(t *testing.T) {
+	keyboardErr := errors.Join(ErrPermissionDenied, errors.New("Accessibility denied"))
+	backend := &fakePureGoInputBackend{
+		name:        featureBackendPureGoQuartzInput,
+		keyboardErr: keyboardErr,
+	}
+	installFakePureGoInputBackend(t, backend)
+
+	keyboard, mouse := pureGoInputCapabilities()
+	if keyboard.Available || !strings.Contains(keyboard.Reason, "Accessibility denied") {
+		t.Fatalf("keyboard capability = %+v, want explicit denial", keyboard)
+	}
+	if !mouse.Available || mouse.Backend != featureBackendPureGoQuartzInput {
+		t.Fatalf("mouse capability = %+v, want available Quartz pointer", mouse)
+	}
+	if !reflect.DeepEqual(backend.calls, []string{"keyboard-ready", "mouse-ready"}) {
+		t.Fatalf("Quartz capability probe calls = %v", backend.calls)
 	}
 }
 

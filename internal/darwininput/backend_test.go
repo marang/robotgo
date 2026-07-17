@@ -16,20 +16,46 @@ type recordedMouseEvent struct {
 	clickState int64
 }
 
+type recordedKeyEvent struct {
+	key   uint16
+	down  bool
+	flags uint64
+	pid   int32
+}
+
+type recordedUnicodeEvent struct {
+	units []uint16
+	down  bool
+	flags uint64
+	pid   int32
+}
+
 type fakeInputSystem struct {
-	readyErr       error
-	location       point
-	locationErr    error
-	buttons        map[uint32]bool
-	buttonStateErr error
-	mouseEvents    []recordedMouseEvent
-	scrolls        [][2]int32
-	postMouseCalls int
-	postMouseErrAt int
-	closeCalls     int
+	readyErr         error
+	location         point
+	locationErr      error
+	buttons          map[uint32]bool
+	buttonStateErr   error
+	keys             map[uint16]bool
+	keyStateErr      error
+	modifierFlags    uint64
+	modifierFlagsErr error
+	mouseEvents      []recordedMouseEvent
+	scrolls          [][2]int32
+	keyEvents        []recordedKeyEvent
+	unicodeEvents    []recordedUnicodeEvent
+	postMouseCalls   int
+	postMouseErrAt   int
+	postKeyCalls     int
+	postKeyErrAt     int
+	postUnicodeCalls int
+	postUnicodeErrAt int
+	closeCalls       int
 }
 
 func (system *fakeInputSystem) Ready() error { return system.readyErr }
+
+func (system *fakeInputSystem) KeyboardReady() error { return system.readyErr }
 
 func (system *fakeInputSystem) CursorPosition() (point, error) {
 	return system.location, system.locationErr
@@ -37,6 +63,14 @@ func (system *fakeInputSystem) CursorPosition() (point, error) {
 
 func (system *fakeInputSystem) ButtonDown(button uint32) (bool, error) {
 	return system.buttons[button], system.buttonStateErr
+}
+
+func (system *fakeInputSystem) KeyDown(key uint16) (bool, error) {
+	return system.keys[key], system.keyStateErr
+}
+
+func (system *fakeInputSystem) ModifierFlags() (uint64, error) {
+	return system.modifierFlags, system.modifierFlagsErr
 }
 
 func (system *fakeInputSystem) PostMouse(
@@ -68,6 +102,61 @@ func (system *fakeInputSystem) PostScroll(horizontal, vertical int32) error {
 	return nil
 }
 
+func (system *fakeInputSystem) PostKey(key uint16, down bool, flags uint64, pid int32) error {
+	system.postKeyCalls++
+	if system.postKeyErrAt == system.postKeyCalls {
+		return errors.New("post key failed")
+	}
+	system.keyEvents = append(system.keyEvents, recordedKeyEvent{
+		key: key, down: down, flags: flags, pid: pid,
+	})
+	system.keys[key] = down
+	switch key {
+	case keyShift, keyRightShift:
+		if system.keys[keyShift] || system.keys[keyRightShift] {
+			system.modifierFlags |= eventFlagMaskShift
+		} else {
+			system.modifierFlags &^= eventFlagMaskShift
+		}
+	case keyControl, keyRightControl:
+		if system.keys[keyControl] || system.keys[keyRightControl] {
+			system.modifierFlags |= eventFlagMaskControl
+		} else {
+			system.modifierFlags &^= eventFlagMaskControl
+		}
+	case keyOption, keyRightOption:
+		if system.keys[keyOption] || system.keys[keyRightOption] {
+			system.modifierFlags |= eventFlagMaskAlternate
+		} else {
+			system.modifierFlags &^= eventFlagMaskAlternate
+		}
+	case keyCommand, keyRightCommand:
+		if system.keys[keyCommand] || system.keys[keyRightCommand] {
+			system.modifierFlags |= eventFlagMaskCommand
+		} else {
+			system.modifierFlags &^= eventFlagMaskCommand
+		}
+	}
+	return nil
+}
+
+func (system *fakeInputSystem) PostUnicode(
+	units []uint16,
+	down bool,
+	flags uint64,
+	pid int32,
+) error {
+	system.postUnicodeCalls++
+	if system.postUnicodeErrAt == system.postUnicodeCalls {
+		return errors.New("post unicode failed")
+	}
+	system.unicodeEvents = append(system.unicodeEvents, recordedUnicodeEvent{
+		units: append([]uint16(nil), units...),
+		down:  down, flags: flags, pid: pid,
+	})
+	return nil
+}
+
 func (system *fakeInputSystem) Close() error {
 	system.closeCalls++
 	return nil
@@ -76,6 +165,9 @@ func (system *fakeInputSystem) Close() error {
 func testBackend(system *fakeInputSystem, sleeps *[]time.Duration) *Backend {
 	if system.buttons == nil {
 		system.buttons = make(map[uint32]bool)
+	}
+	if system.keys == nil {
+		system.keys = make(map[uint16]bool)
 	}
 	return newBackend(
 		func() (inputSystem, error) { return system, nil },
