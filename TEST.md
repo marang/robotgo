@@ -51,9 +51,9 @@ self-hosted runners are registered.
 Pure-Go Windows input has hermetic tests for Win32 `INPUT` layout,
 foreground-layout key mapping, Unicode surrogate pairs, partial-injection
 rollback, ownership, buttons, scrolling, movement, clipboard-paste sequencing,
-and pixel-at-pointer dispatch. They run in the Windows non-CGO CI leg. The same
-leg runs a real input-desktop pointer and pixel-color probe and restores the
-original global cursor position:
+legacy drag release-on-failure, and pixel-at-pointer dispatch. They run in the
+Windows non-CGO CI leg. The same leg runs a real input-desktop pointer and
+pixel-color probe and restores the original global cursor position:
 
 ```powershell
 $env:CGO_ENABLED = "0"

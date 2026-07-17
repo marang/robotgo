@@ -3,6 +3,7 @@
 package robotgo
 
 import (
+	"errors"
 	"math"
 	"runtime"
 	"strconv"
@@ -58,7 +59,28 @@ func CloseMainDisplay() { _ = CloseMainDisplayE() }
 func CloseMainDisplayE() error { return closePureGoPlatformInput() }
 
 func InvalidateScreenBoundsCache() {}
-func Drag(int, int, ...string)     {}
+func Drag(x, y int, args ...string) {
+	_ = dragWith(x, y, args, Toggle, MoveE)
+}
+
+func dragWith(
+	x, y int,
+	args []string,
+	toggle func(...interface{}) error,
+	move func(int, int, ...int) error,
+) error {
+	button := "left"
+	if len(args) > 0 {
+		button = args[0]
+	}
+	if err := toggle(button); err != nil {
+		return err
+	}
+	moveErr := move(x, y)
+	releaseErr := toggle(button, "up")
+	return errors.Join(moveErr, releaseErr)
+}
+
 func FreeBitmapArr(bits ...CBitmap) {
 	for _, bit := range bits {
 		FreeBitmap(bit)
