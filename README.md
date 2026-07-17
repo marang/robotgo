@@ -75,7 +75,7 @@ workflow. `GetLinuxCapabilities` provides additional compositor detail.
 | macOS | CGO-enabled default build | Native mouse, keyboard, capture, window, and process paths; macOS permissions still apply |
 | macOS | `CGO_ENABLED=0` | Pure-Go CoreGraphics capture and display bounds with explicit Screen Recording permission diagnostics; other unavailable GUI operations return `ErrNotSupported` |
 | Windows | CGO-enabled default build | Native mouse, keyboard, capture, window, and process paths |
-| Windows | `CGO_ENABLED=0` | Pure-Go capture/bounds plus foreground-layout-aware `SendInput` keyboard/text, exact pointer movement/location, smooth movement/drag, buttons, horizontal/vertical scroll, live readiness, ownership checks, and deterministic in-process cleanup |
+| Windows | `CGO_ENABLED=0` | Pure-Go capture/display bounds, foreground-layout-aware `SendInput` keyboard/text, complete pointer input, and Win32 window title/PID/handle/geometry/state/control operations with explicit errors |
 | Linux/X11 | CGO-enabled default build | X11/XTest input, capture, window, and process paths |
 | Linux/X11 | `CGO_ENABLED=0` | Pure-Go X11 capture/bounds plus XTEST mouse, keyboard, text/Unicode, pointer-location, smooth-move/drag, vertical scroll, and live readiness probes; horizontal scroll is explicitly unsupported |
 | Linux/Wayland | `-tags wayland` for native protocols; add `pipewire` for persistent ScreenCast frames | Native wlroots capture/input where compositor protocols exist, one-shot Screenshot fallback, reusable ScreenCast/PipeWire capture, explicit RemoteDesktop portal sessions, capability-aware window support |
@@ -500,6 +500,13 @@ available in Wayland core. `LocationE` and unsupported window operations return
 window support through compositor-specific tools; inspect capabilities instead
 of assuming parity with X11.
 
+Pure-Go Windows builds provide window introspection and control through Win32:
+active handle/PID, title, outer/client bounds, activation, minimize/maximize,
+topmost state, and graceful close. PID lookup prefers a visible, unowned
+top-level window and falls back to another top-level window owned by the
+process. Windows may deny `SetActiveE` under its foreground-activation policy;
+the error is returned instead of reporting false success.
+
 ### Runtime diagnostics
 
 `GetRuntimeBackendInfo` is platform-neutral and reports whether the current
@@ -585,6 +592,7 @@ The checked-in examples use this fork's module path and track the current API:
 - [Cross-platform runtime capabilities](examples/runtime_capabilities/main.go)
 - [Pure-Go X11 input probe and opt-in demo](examples/purego_x11_input/main.go)
 - [Pure-Go Windows input readiness and opt-in demo](examples/purego_windows_input/main.go)
+- [Pure-Go Windows window inspection and opt-in control](examples/purego_windows_window/main.go)
 - [Consent-aware RemoteDesktop portal input](examples/remote_desktop_input/main.go)
 - [Persistent ScreenCast/PipeWire capture](examples/screencast_capture/main.go)
 - [Window and process helpers](examples/window/main.go)
@@ -619,6 +627,17 @@ normal-integrity process cannot inject input into a higher-integrity target.
 Persistent `KeyDown`/`MouseDown` state is owned by the backend and released by
 `CloseMainDisplayE`; callers should still use balanced operations or `defer`
 cleanup because process termination cannot run in-process cleanup.
+
+The Windows window example is read-only by default. `-activate` and `-minimize`
+are explicit opt-ins:
+
+```powershell
+$env:CGO_ENABLED = "0"
+go run ./examples/purego_windows_window
+go run ./examples/purego_windows_window -pid 1234
+go run ./examples/purego_windows_window -handle 123456 -activate
+go run ./examples/purego_windows_window -pid 1234 -minimize
+```
 
 ## Testing
 
@@ -683,7 +702,10 @@ request while preserving per-step crash-cleanup ownership and the existing
 preflight/server-grab policy. Required remote checks now protect `main`.
 Pure-Go Windows input is a delivered platform slice, with hermetic transaction
 tests and a blocking real input-desktop pointer probe on the Windows CI runner.
-Further macOS and Windows backends remain selective work. Real
+Pure-Go Windows window introspection/control is the next delivered slice, with
+a self-owned Win32 test window covering PID/handle resolution, title, geometry,
+state changes, activation, topmost state, and graceful close. Further macOS and
+Windows backends remain selective work. Real
 GNOME/KDE/wlroots validation is an independent Wayland release gate.
 
 ## Upstream and attribution

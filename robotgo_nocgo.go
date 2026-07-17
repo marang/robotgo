@@ -15,6 +15,7 @@ import (
 
 	"github.com/marang/robotgo/clipboard"
 	inputportal "github.com/marang/robotgo/input/portal"
+	"github.com/marang/robotgo/internal/windowswindow"
 )
 
 const Version = "v1.00.0.1189, MT. Baker!"
@@ -322,13 +323,47 @@ func alertArgs(args ...string) (string, string) {
 
 func SysScale(...int) float64 { return 1 }
 
-func GetBounds(int, ...int) (int, int, int, int) { return 0, 0, 0, 0 }
-func GetClient(int, ...int) (int, int, int, int) { return 0, 0, 0, 0 }
-func GetTitle(...int) string                     { return "" }
-func SetActive(Handle)                           {}
-func SetActiveE(Handle) error                    { return ErrNotSupported }
-func ActivePid(int, ...int) error                { return ErrNotSupported }
-func ActiveName(string) error                    { return ErrNotSupported }
+func GetBounds(target int, args ...int) (int, int, int, int) {
+	return pureGoWindowBounds(target, len(args) > 0 || currentTreatAsHandle(), false)
+}
+func GetClient(target int, args ...int) (int, int, int, int) {
+	return pureGoWindowBounds(target, len(args) > 0 || currentTreatAsHandle(), true)
+}
+func GetTitle(args ...int) string {
+	title, _ := GetTitleE(args...)
+	return title
+}
+func SetActive(handle Handle) { _ = SetActiveE(handle) }
+func SetActiveE(handle Handle) error {
+	backend, err := pureGoWindowBackend()
+	if err != nil {
+		return err
+	}
+	return backend.Activate(windowswindow.Handle(handle))
+}
+func ActivePid(target int, args ...int) error {
+	backend, err := pureGoWindowBackend()
+	if err != nil {
+		return err
+	}
+	handle, err := backend.Resolve(target, len(args) > 0 || currentTreatAsHandle())
+	if err != nil {
+		return err
+	}
+	return backend.Activate(handle)
+}
+func ActiveName(name string) error {
+	pids, err := FindIds(name)
+	if err != nil {
+		return err
+	}
+	for _, pid := range pids {
+		if err := ActivePid(pid); err == nil {
+			return nil
+		}
+	}
+	return fmt.Errorf("%w: no window found for process name %q", windowswindow.ErrWindowNotFound, name)
+}
 
 const (
 	KeyA           = "a"
@@ -827,10 +862,24 @@ func U8ToHex(rgb *uint8) uint32 {
 		*(*uint8)(unsafe.Add(unsafe.Pointer(rgb), 2)),
 	)
 }
-func GetActive() Handle             { return 0 }
-func GetHandle() int                { return 0 }
-func GetPid() int                   { return os.Getpid() }
-func MinWindow(int, ...interface{}) {}
-func MaxWindow(int, ...interface{}) {}
-func CloseWindow(...int)            {}
-func CloseWindowKill(...int) error  { return ErrNotSupported }
+func GetActive() Handle {
+	handle, _ := pureGoWindowActive()
+	return Handle(handle)
+}
+func GetHandle() int { return int(GetActive()) }
+func GetPid() int {
+	backend, err := pureGoWindowBackend()
+	if err != nil {
+		return 0
+	}
+	handle, err := backend.Active()
+	if err != nil {
+		return 0
+	}
+	pid, _ := backend.PID(handle)
+	return pid
+}
+func MinWindow(target int, args ...interface{}) { _ = MinWindowE(target, args...) }
+func MaxWindow(target int, args ...interface{}) { _ = MaxWindowE(target, args...) }
+func CloseWindow(args ...int)                   { _ = CloseWindowE(args...) }
+func CloseWindowKill(...int) error              { return ErrNotSupported }

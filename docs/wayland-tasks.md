@@ -110,7 +110,10 @@ Window backend support matrix (current):
     X11 default while keeping Pure-Go supported for CGO-disabled builds. The
     lower-allocation request transport and balanced transient-input sequencing
     preserve the crash contract. Stable checks now protect `main`; evaluating
-    further backends remains open. The Pure-Go core is now
+    further backends remains open. Pure-Go Windows also provides Win32 window
+    introspection/control, backed by a blocking self-owned runtime-window test
+    for PID/handle resolution, geometry, state, activation, topmost, and close.
+    The Pure-Go X11 core is now
     race-testable, and a separate X11 guardian uses an authenticated abstract
     Unix socket with kernel-verified peer credentials, bounded request dispatch,
     and deadline-bounded cleanup after an application-process `SIGKILL`. It
