@@ -26,7 +26,8 @@ Current implementation baseline:
   through user32, including exact Unicode, smooth movement/drag, horizontal and
   vertical scroll, ownership checks, partial-injection rollback, live
   readiness, deterministic in-process cleanup, clipboard-assisted paste, and
-  pixel-at-pointer queries.
+  pixel-at-pointer queries. Win32 DPI scale is reported without re-scaling
+  capture bounds that are already in physical pixel coordinates.
 - Non-CGO `CaptureImg`/`CaptureScreen`, their Go-bitmap/string variants, and
   pixel-color queries use the hardened screenshot portal on Wayland and the
   Pure-Go screenshot backend on X11/Windows; unsupported targets fail explicitly.

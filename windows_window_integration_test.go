@@ -4,6 +4,7 @@ package robotgo
 
 import (
 	"fmt"
+	"math"
 	"os"
 	"runtime"
 	"syscall"
@@ -29,6 +30,29 @@ func TestPureGoWindowsWindowRuntime(t *testing.T) {
 	capability := GetRuntimeCapabilities().Window
 	if !capability.Available || capability.Backend != featureBackendPureGoWindows {
 		t.Fatalf("window capability = %+v", capability)
+	}
+
+	dpi := GetDPI(handle)
+	wantScale := float64(dpi) / 96
+	if wantScale == 0 {
+		wantScale = 1
+	}
+	if scale := SysScale(int(handle)); math.Abs(scale-wantScale) > 1e-9 {
+		t.Fatalf("SysScale(handle) = %v, want %v from %d DPI", scale, wantScale, dpi)
+	}
+	if scale := SysScale(-2); !(scale > 0) {
+		t.Fatalf("SysScale(desktop) = %v, want positive factor", scale)
+	}
+	if dpi := ScaleX(); dpi <= 0 {
+		t.Fatalf("ScaleX() = %d, want positive Windows DPI", dpi)
+	}
+	screenWidth, screenHeight := GetScreenSize()
+	scaleWidth, scaleHeight := GetScaleSize()
+	if scaleWidth != screenWidth || scaleHeight != screenHeight {
+		t.Fatalf(
+			"GetScaleSize() = %dx%d, GetScreenSize() = %dx%d; Pure-Go bounds are already physical pixels",
+			scaleWidth, scaleHeight, screenWidth, screenHeight,
+		)
 	}
 
 	title, err := GetTitleE(int(handle), 1)

@@ -321,7 +321,27 @@ func alertArgs(args ...string) (string, string) {
 	return defaultButton, cancelButton
 }
 
-func SysScale(...int) float64 { return 1 }
+// SysScale returns the native DPI scale on Pure-Go Windows. Other non-CGO
+// platforms retain the neutral factor until their display backend exposes a
+// trustworthy scale query.
+func SysScale(displayID ...int) float64 {
+	return pureGoSysScale(runtime.GOOS, displayID, ScaleF)
+}
+
+func pureGoSysScale(
+	goos string,
+	displayID []int,
+	windowsScale func(...int) float64,
+) float64 {
+	if goos != "windows" {
+		return 1
+	}
+	scale := windowsScale(displayID...)
+	if !(scale > 0) {
+		return 1
+	}
+	return scale
+}
 
 func GetBounds(target int, args ...int) (int, int, int, int) {
 	return pureGoWindowBounds(target, len(args) > 0 || currentTreatAsHandle(), false)
@@ -780,6 +800,10 @@ func GetScreenRect(displayID ...int) Rect {
 	}
 	return GetDisplayRect(id)
 }
+
+// GetScaleSize returns the capture-space screen size. Pure-Go display bounds
+// already use the coordinates expected by the capture backend, so applying the
+// DPI factor again would double-scale Windows regions.
 func GetScaleSize(...int) (int, int) { return GetScreenSize() }
 func DisplaysNum() int               { return platformDisplayCount() }
 
