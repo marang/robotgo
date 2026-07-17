@@ -144,6 +144,9 @@ func TestWaylandHyprlandMaximizedPublicAPI(t *testing.T) {
 			}
 			t.Fatalf("unexpected test state internal=%d client=%d", internal, client)
 		}
+		if len(args) == 2 && args[0] == argStatus && args[1] == argJSON {
+			return []byte(`{"configProvider":"hyprlang"}`), nil
+		}
 		if len(args) == 4 &&
 			args[0] == argDispatch &&
 			args[1] == argFullscreenState &&

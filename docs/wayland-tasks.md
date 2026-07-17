@@ -74,9 +74,12 @@ Current implementation baseline:
   explicit.
 - `hyprland` uses the compositor's reported fullscreen mode for
   `IsMaximizedE` and supports both maximize and restore through `hyprctl`.
-  Fullscreen is not reported as maximized. Sway and generic wlroots keep
-  returning `ErrNotSupported` because their available IPC does not expose a
-  trustworthy equivalent state.
+  Close/maximize mutations select the active `hyprlang` or Hyprland 0.55+ Lua
+  dispatcher from `hyprctl status -j`; older versions without that request use
+  the legacy syntax. Transport failures and malformed successful status
+  responses fail before mutation. Fullscreen is not reported as maximized.
+  Sway and generic wlroots keep returning `ErrNotSupported` because their
+  available IPC does not expose a trustworthy equivalent state.
 - Bitmap string helpers are available via `CaptureBitmapStr`,
   `FindBitmapStr`, `BitmapFromStr`, and `ToStrBitmap`.
 - Region/tolerance color search is available via `FindColorCS`/`FindcolorCS`.
@@ -108,7 +111,7 @@ Window backend support matrix (current):
 | Backend | Resolver trigger | Active title | Active close | Minimize | Maximize/restore | `IsMaximizedE` |
 |---|---|---|---|---|---|---|
 | `sway` | `SWAYSOCK` or sway desktop/session | Yes (`swaymsg`) | Yes (`swaymsg kill`) | `wlrctl`, set only | `wlrctl`, set only | No (`ErrNotSupported`) |
-| `hyprland` | `HYPRLAND_INSTANCE_SIGNATURE` or hyprland desktop/session | Yes (`hyprctl activewindow -j`) | Yes (`hyprctl dispatch killactive`) | `wlrctl`, set only | Yes (`hyprctl`, set and restore) | Yes (`hyprctl activewindow -j`) |
+| `hyprland` | `HYPRLAND_INSTANCE_SIGNATURE` or hyprland desktop/session | Yes (`hyprctl activewindow -j`) | Yes (provider-aware `hyprctl`) | `wlrctl`, set only | Yes (provider-aware `hyprctl`, set and restore) | Yes (`hyprctl activewindow -j`) |
 | `wlroots-generic` | wlroots-family compositor (wayfire/river/labwc/dwl/gamescope) | No (`ErrNotSupported`) | No (`ErrNotSupported`) | `wlrctl`, set only | `wlrctl`, set only | No (`ErrNotSupported`) |
 | `wayland-core/*` | wayland session without specific/family backend support | No (`ErrNotSupported`) | No (`ErrNotSupported`) | No (`ErrNotSupported`) | No (`ErrNotSupported`) | No (`ErrNotSupported`) |
 

@@ -530,7 +530,9 @@ intentionally preserving a foreign replacement is not itself an error.
 - `ROBOTGO_HYPRLAND_MAXIMIZE_E2E=1`
   - Opt-in for Hyprland active-window maximize query/set/restore integration.
     The test refuses to alter an initially fullscreen window and restores an
-    initial normal or maximized state during cleanup.
+    initial normal or maximized state during cleanup. It exercises the
+    provider-aware dispatcher selected by `hyprctl status -j`, including
+    Hyprland 0.55+ Lua configurations.
 - `ROBOTGO_REQUIRE_X11_INTEGRATION=1`
   - Makes missing `DISPLAY` or XTEST support fail the X11 integration suites;
     CI always enables it.

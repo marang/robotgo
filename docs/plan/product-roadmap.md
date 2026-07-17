@@ -36,7 +36,7 @@ The July 2026 hardening work establishes the foundation for this roadmap:
 | 1. Wayland input | Implementation complete; runtime validation blocked | Native virtual keyboard/pointer, consent-aware RemoteDesktop fallback, shared ScreenCast stream mapping, absolute pointer/touch, restore tokens, diagnostics and E2E harness | Register GNOME/KDE/wlroots runners and collect green CGO/non-CGO evidence |
 | 2. Capture | Hermetic implementation complete | Reliable one-shot paths plus one consent-aware ScreenCast session, reusable PipeWire frames, logical region crop, raw pixel conversion, metadata/restore tokens, cleanup, integration harness, non-skipping geometry/transform CI, and sanitizer-backed native ownership gates | Real GNOME/KDE/wlroots evidence |
 | 3. Pure-Go | X11 complete; Windows input/window CI-evidenced; macOS capture/display and keyboard/pointer implemented; broader phase partial | Build and feature-level introspection; non-CGO macOS CoreGraphics capture/display plus Quartz keyboard/pointer input and Accessibility diagnostics; Windows capture, `SendInput` keyboard/pointer, and Win32 window control with blocking runtime probes; X11 capture and XGB/XTEST input; Wayland portal capture/input; permission/error contracts; shared behavioral parity; reproducible balanced benchmark tooling; optimized guardian-path decision evidence; explicit decision to retain native CGO as the X11 default; race-testable internal X11 core; re-exec guardian with application-`SIGKILL` recovery; protected three-OS CI | Collect opt-in real macOS keyboard-injection evidence and assess further backends selectively |
-| 4. API/compositor gaps | Parity surface delivered; runtime support partial | Window-state error APIs, bitmap string helpers, `FindColorCS`, hook/event capability reporting, Sway/Hyprland/wlroots resolver | Compositor-backed state operations and cross-platform/runtime matrix coverage |
+| 4. API/compositor gaps | Parity surface delivered; runtime support partial | Window-state error APIs, bitmap string helpers, `FindColorCS`, hook/event capability reporting, Sway/Hyprland/wlroots resolver, provider-aware Hyprland 0.55+ Lua window dispatch | Compositor-backed state operations and cross-platform/runtime matrix coverage |
 | 5. Reliability product | Partial | Capability APIs, versioned sanitized runtime diagnostics/example, compatibility matrix v1, expanded CI variants, blocking ASan/LeakSanitizer ownership gates, six-cell checksummed release-evidence pipeline | Dedicated compositor jobs and the first published release evidence asset |
 
 No delivery phase is complete until all of its exit criteria are blocking and
@@ -251,7 +251,9 @@ The compatibility surface now includes:
 - Hyprland active-window maximize query, set, and restore backed by its
   compositor-reported state. Fullscreen remains distinct from maximized;
   Sway/generic wlroots queries stay explicitly unsupported rather than
-  inferring state.
+  inferring state. Mutating close/maximize operations select the active
+  `hyprlang` or Hyprland 0.55+ Lua dispatcher syntax and fail closed on
+  provider-query transport failures or malformed successful detection.
 - Bitmap string helpers (`CaptureBitmapStr`, `FindBitmapStr`, `BitmapFromStr`,
   `ToStrBitmap`).
 - Region/tolerance color search through `FindColorCS`/`FindcolorCS`.

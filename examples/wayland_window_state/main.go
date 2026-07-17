@@ -9,8 +9,8 @@ import (
 )
 
 func main() {
-	maximize := flag.Bool("maximize", false, "maximize the active Hyprland window")
-	restore := flag.Bool("restore", false, "restore the active Hyprland window")
+	maximize := flag.Bool("maximize", false, "maximize the active Hyprland window (hyprlang or Lua config)")
+	restore := flag.Bool("restore", false, "restore the active Hyprland window (hyprlang or Lua config)")
 	flag.Parse()
 
 	if *maximize && *restore {
