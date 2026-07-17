@@ -153,8 +153,8 @@ backends.
   - 6. Keep the published runtime compatibility matrix and diagnostic schema
     versioned. Schema v1 now reports negotiated protocol versions, permission
     state, and actionable remediation without sensitive session data.
-  - 7. Promote race/vet and native leak/sanitizer checks to blocking release
-    gates, with dedicated GNOME/KDE/wlroots jobs.
+  - 7. Keep race/vet and the manifest-checked native ASan/LeakSanitizer ownership
+    suites blocking. Provision the remaining dedicated GNOME/KDE/wlroots jobs.
 
 - Recently completed parity work:
   - Window state/query APIs expose `IsTopMostE`, `IsMinimizedE`,
@@ -220,8 +220,9 @@ backends.
     manifest; guardian/host/X-server loss and X11 transport stalls beyond the
     cleanup deadline remain outside that scoped guarantee.
   - Provision the existing dedicated GNOME, KDE, and wlroots runtime workflow.
-  - Keep the race/vet CI jobs green and protect them; add leak/sanitizer and
-    bounds-across-outputs gates.
+  - Keep the race/vet and native ASan/LeakSanitizer CI jobs green and protected.
+    The sanitizer gate covers the default CGO suite plus hermetic screencopy
+    allocation/free, bounded timeout cleanup, and FD ownership paths.
 - Examples/Docs:
   - Add backend selection flags in examples (dmabuf, wl_shm, portal).
   - Keep `examples/purego_x11_input` side-effect-free by default; live

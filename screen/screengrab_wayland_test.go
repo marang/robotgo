@@ -88,12 +88,14 @@ func TestScreencopyDmabuf(t *testing.T) {
 
 	waitForMockServer(t, dir, sock)
 
-	if _, err := CaptureScreen(); err != nil {
+	bitmap, err := CaptureScreen()
+	if err != nil {
 		if errors.Is(err, robotgo.ErrDmabufImport) || errors.Is(err, robotgo.ErrDmabufMap) || errors.Is(err, robotgo.ErrDmabufDevice) || errors.Is(err, robotgo.ErrDmabufModifiers) {
 			t.Skip("dmabuf allocation not available")
 		}
 		t.Fatalf("capture failed: %v", err)
 	}
+	t.Cleanup(func() { robotgo.FreeBitmap(bitmap) })
 	if got := robotgo.LastBackend(); got != robotgo.BackendScreencopy {
 		t.Fatalf("backend = %q, want %q", got, robotgo.BackendScreencopy)
 	}
@@ -115,9 +117,11 @@ func TestScreencopyWlShm(t *testing.T) {
 
 	waitForMockServer(t, dir, sock)
 
-	if _, err := CaptureScreen(); err != nil {
+	bitmap, err := CaptureScreen()
+	if err != nil {
 		t.Fatalf("capture failed: %v", err)
 	}
+	t.Cleanup(func() { robotgo.FreeBitmap(bitmap) })
 	if got := robotgo.LastBackend(); got != robotgo.BackendScreencopy {
 		t.Fatalf("backend = %q, want %q", got, robotgo.BackendScreencopy)
 	}

@@ -38,6 +38,25 @@ CGO_ENABLED=1 golangci-lint run --timeout=5m ./...
 CGO_ENABLED=0 golangci-lint run --timeout=5m ./...
 ```
 
+Linux native ownership boundaries are a blocking AddressSanitizer and
+LeakSanitizer target. Reproduce the default gate on a CGO-capable Linux
+`amd64` host with GCC:
+
+```bash
+ASAN_OPTIONS=detect_leaks=1:halt_on_error=1:strict_string_checks=1 \
+  go test -asan -count=1 ./...
+
+ASAN_OPTIONS=detect_leaks=1:halt_on_error=1:strict_string_checks=1 \
+  go test -asan -tags "wayland test" ./screen \
+  -run '^TestScreencopy(WlShm|TimeoutIsBounded|DmabufFailureDoesNotCloseStdin)$' \
+  -count=1 -timeout=60s -v
+```
+
+The tagged tests use hermetic Wayland protocol servers and must all pass; CI
+checks their manifest so a missing or renamed ownership test cannot silently
+reduce coverage. The gate covers allocation/free, timeout cleanup, and file
+descriptor ownership without requiring a graphical session or render node.
+
 The non-CGO suite runs on Linux, macOS, and Windows in CI. It also verifies
 runtime build/feature introspection, pixel-color parity, and hermetic Pure-Go
 capture dispatch for CoreGraphics, X11, Windows, and the Wayland screenshot
@@ -87,9 +106,9 @@ every balanced-comparison benchmark once. The same job starts a reachable Xvfb w
 and verifies that native readiness rejects it without injecting input. Missing
 runtime prerequisites fail instead of turning these checks into successful
 skips. Performance numbers are report-only; correctness is blocking. Repository
-branch protection requires the stable three-OS, lint, vet, race, Wayland, and
-X11 evidence checks. Opt-in real-compositor jobs remain excluded until matching
-self-hosted runners are registered.
+branch protection requires the stable three-OS, lint, vet, race, sanitizer,
+Wayland, and X11 evidence checks. Opt-in real-compositor jobs remain excluded
+until matching self-hosted runners are registered.
 
 Pure-Go Windows input has hermetic tests for Win32 `INPUT` layout,
 foreground-layout key mapping, Unicode surrogate pairs, partial-injection

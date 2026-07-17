@@ -26,18 +26,18 @@ The July 2026 hardening work establishes the foundation for this roadmap:
   portal input on Wayland, and an XGB/XTEST input backend for X11-primary Linux
   sessions; remaining unavailable GUI operations return `ErrNotSupported`.
 - CI covers lint, default tests on Linux/macOS/Windows, non-CGO, Wayland, portal,
-  Weston integration, race, and vet variants.
+  Weston integration, race, vet, and native sanitizer/leak variants.
 
 ## Execution Status (2026-07-17)
 
 | Area | Status | Delivered | Exit criteria still open |
 |---|---|---|---|
-| Current baseline | Complete in main | Native screencopy, screenshot portal fallback, bounded waits, cleanup, live capability probes, error APIs, non-CGO contract, dedicated race/vet jobs, protected stable CI checks | Keep required jobs green |
+| Current baseline | Complete in main | Native screencopy, screenshot portal fallback, bounded waits, cleanup, live capability probes, error APIs, non-CGO contract, dedicated race/vet/sanitizer jobs, protected stable CI checks | Keep required jobs green |
 | 1. Wayland input | Implementation complete; runtime validation blocked | Native virtual keyboard/pointer, consent-aware RemoteDesktop fallback, shared ScreenCast stream mapping, absolute pointer/touch, restore tokens, diagnostics and E2E harness | Register GNOME/KDE/wlroots runners and collect green CGO/non-CGO evidence |
-| 2. Capture | Hermetic implementation complete | Reliable one-shot paths plus one consent-aware ScreenCast session, reusable PipeWire frames, logical region crop, raw pixel conversion, metadata/restore tokens, cleanup, integration harness, and a non-skipping geometry/transform CI matrix | Real GNOME/KDE/wlroots evidence and sanitizer-backed native leak gate |
+| 2. Capture | Hermetic implementation complete | Reliable one-shot paths plus one consent-aware ScreenCast session, reusable PipeWire frames, logical region crop, raw pixel conversion, metadata/restore tokens, cleanup, integration harness, non-skipping geometry/transform CI, and sanitizer-backed native ownership gates | Real GNOME/KDE/wlroots evidence |
 | 3. Pure-Go | X11 complete; Windows input/window CI-evidenced; macOS capture/display and keyboard/pointer implemented; broader phase partial | Build and feature-level introspection; non-CGO macOS CoreGraphics capture/display plus Quartz keyboard/pointer input and Accessibility diagnostics; Windows capture, `SendInput` keyboard/pointer, and Win32 window control with blocking runtime probes; X11 capture and XGB/XTEST input; Wayland portal capture/input; permission/error contracts; shared behavioral parity; reproducible balanced benchmark tooling; optimized guardian-path decision evidence; explicit decision to retain native CGO as the X11 default; race-testable internal X11 core; re-exec guardian with application-`SIGKILL` recovery; protected three-OS CI | Collect opt-in real macOS keyboard-injection evidence and assess further backends selectively |
 | 4. API/compositor gaps | Parity surface delivered; runtime support partial | Window-state error APIs, bitmap string helpers, `FindColorCS`, hook/event capability reporting, Sway/Hyprland/wlroots resolver | Compositor-backed state operations and cross-platform/runtime matrix coverage |
-| 5. Reliability product | Partial | Capability APIs, versioned sanitized runtime diagnostics/example, compatibility matrix v1, expanded CI variants | Dedicated compositor jobs, sanitizer/leak gates, release evidence snapshots |
+| 5. Reliability product | Partial | Capability APIs, versioned sanitized runtime diagnostics/example, compatibility matrix v1, expanded CI variants, blocking ASan/LeakSanitizer ownership gates | Dedicated compositor jobs and release evidence snapshots |
 
 No delivery phase is complete until all of its exit criteria are blocking and
 green. Phase 1 implementation is merged; its real-compositor evidence remains
@@ -294,9 +294,11 @@ versions, non-prompting permission state, and remediation without exposing
 display addresses, restore tokens, stream identifiers, or unrelated environment
 values. The published `docs/compatibility/runtime-v1.md` matrix distinguishes
 blocking support from pending runtime evidence. CI covers three operating
-systems, non-CGO, tagged Wayland/portal, and Weston integration. Dedicated
-GNOME/KDE/wlroots jobs, release evidence snapshots, and native sanitizer gates
-remain open.
+systems, non-CGO, tagged Wayland/portal, Weston integration, and a blocking
+Linux native ASan/LeakSanitizer gate. The sanitizer job verifies its hermetic
+Wayland ownership-test manifest and covers allocation/free, timeout cleanup,
+and descriptor ownership. Dedicated GNOME/KDE/wlroots jobs and release evidence
+snapshots remain open.
 
 Releases require:
 
