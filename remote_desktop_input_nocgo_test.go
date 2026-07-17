@@ -9,6 +9,9 @@ import (
 )
 
 func TestNonCGOHighLevelPortalInput(t *testing.T) {
+	// Exercise the portal fallback itself even on non-CGO platforms that have
+	// gained a preferred local input backend (currently Windows and X11).
+	installFakePureGoInputBackend(t, nil)
 	t.Setenv(envWaylandDisplay, "robotgo-test-wayland")
 	t.Setenv(envDisplay, "")
 	oldMouseSleep, oldKeySleep := MouseSleep, KeySleep
