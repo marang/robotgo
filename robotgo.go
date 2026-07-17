@@ -254,6 +254,20 @@ func probeRemoteDesktopCapability() FeatureCapability {
 	}
 }
 
+func nativeWaylandProtocolVersions() nativeWaylandProtocolInfo {
+	if selectedDisplayServer() != DisplayServerWayland {
+		return nativeWaylandProtocolInfo{}
+	}
+	info := nativeWaylandProtocolInfo{
+		Screencopy: uint32(C.robotgo_wayland_screencopy_version()),
+	}
+	info.VirtualKeyboard = nativeWaylandKeyboardProtocolVersion()
+	unlockMouse := lockLinuxMouse()
+	info.VirtualPointer = uint32(C.robotgo_wayland_mouse_protocol_version())
+	unlockMouse()
+	return info
+}
+
 // GetLinuxCapabilities reports runtime feature availability for Linux sessions.
 // On non-Linux platforms it returns a zero-value capability set.
 func GetLinuxCapabilities() LinuxCapabilities {

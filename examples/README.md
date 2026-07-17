@@ -10,6 +10,7 @@ Run an example from the repository root, for example:
 
 ```bash
 go run ./examples/runtime_capabilities
+go run ./examples/runtime_diagnostics
 go run ./examples/screen_full
 ```
 
@@ -17,6 +18,8 @@ Available examples:
 
 - [`runtime_capabilities`](runtime_capabilities/main.go): cross-platform build,
   backend, feature, permission, and unsupported diagnostics.
+- [`runtime_diagnostics`](runtime_diagnostics/main.go): versioned JSON with
+  selected backends, protocol versions, permission state, and remediation.
 - [`linux_capabilities`](linux_capabilities/main.go): detailed Linux display
   server, compositor, portal, and fallback diagnostics.
 - [`screen`](screen/main.go): capture, pixel, bitmap, and display operations.

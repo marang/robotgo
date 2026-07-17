@@ -25,4 +25,8 @@ func nativeX11CapabilityErrors() (displayErr error, inputErr error) {
 	return err, err
 }
 
+func nativeX11ProtocolVersion() (major, minor int, negotiated bool) {
+	return 0, 0, false
+}
+
 func x11MainDisplayAvailableLocked() bool { return false }

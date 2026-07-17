@@ -22,6 +22,15 @@ CGO_ENABLED=0 go test -tags "ocr" ./...
 go test -tags "ocr" ./...
 ```
 
+The default and non-CGO suites also lock the versioned runtime-diagnostic
+schema, stable feature ordering, deadline-bounded portal probes, sanitized
+output, negotiated protocol versions, permission states, and remediation.
+Inspect a live host without opening a consent dialog with:
+
+```bash
+go run ./examples/runtime_diagnostics
+```
+
 Both build variants are blocking linter targets as well:
 
 ```bash

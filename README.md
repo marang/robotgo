@@ -63,11 +63,12 @@ for this fork.
 | Windows | Active window, title, close, minimize/maximize, topmost queries/setters, bounds/client geometry, and compositor-specific Wayland variants where supported |
 | Processes | Enumerate, inspect, find, activate, and terminate processes |
 | Images | Go image/bitmap conversion, template helpers, encoding, saving, and optional OCR |
-| Diagnostics | Build/backend detection plus feature-level capability, permission, fallback, and unsupported reporting |
+| Diagnostics | Versioned, sanitized build/backend, protocol-version, permission, fallback, remediation, and unsupported reporting |
 
 Availability is platform- and backend-dependent. Prefer error-returning APIs
 and inspect `GetRuntimeCapabilities` when an operation is required for a
-workflow. `GetLinuxCapabilities` provides additional compositor detail.
+workflow. `GetRuntimeDiagnostics` provides the stable machine-readable report;
+`GetLinuxCapabilities` remains the compact Linux-specific view.
 
 ## Support overview
 
@@ -583,6 +584,24 @@ fmt.Println("mouse:", caps.Mouse.Available, caps.Mouse.Backend, caps.Mouse.Reaso
 fmt.Println("process:", caps.Process.Available, caps.Process.Backend)
 ```
 
+`GetRuntimeDiagnostics` returns the versioned schema used by support tooling.
+It adds negotiated Wayland/portal/XTEST versions, non-prompting permission
+state, and remediation while excluding display addresses, restore tokens,
+stream identifiers, and unrelated environment values:
+
+```go
+ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+defer cancel()
+report := robotgo.GetRuntimeDiagnostics(ctx)
+fmt.Println("schema:", report.SchemaVersion)
+fmt.Println("protocols:", report.Protocols)
+fmt.Println("permissions:", report.Permissions)
+fmt.Println("remediation:", report.Remediation)
+```
+
+The published support contract is
+[Runtime Compatibility Matrix v1](docs/compatibility/runtime-v1.md).
+
 On Linux/X11 with `CGO_ENABLED=0`, capability inspection reports the selected
 `pure-go-x11` keyboard and mouse backends without opening an X connection. Call
 `KeyboardReady` or `MouseReady` for a live XTEST 2.2+ check before acting. A
@@ -635,6 +654,7 @@ fmt.Println("window:", caps.Window.Backend, caps.Window.Available, caps.Window.R
 Run the complete diagnostic example with:
 
 ```bash
+go run ./examples/runtime_diagnostics
 go run -tags wayland ./examples/linux_capabilities
 ```
 
@@ -649,6 +669,7 @@ The checked-in examples use this fork's module path and track the current API:
 - [Cross-platform aggregate and per-output bounds](examples/display_bounds/main.go)
 - [Linux capabilities](examples/linux_capabilities/main.go)
 - [Cross-platform runtime capabilities](examples/runtime_capabilities/main.go)
+- [Versioned runtime diagnostics](examples/runtime_diagnostics/main.go)
 - [Pure-Go X11 input probe and opt-in demo](examples/purego_x11_input/main.go)
 - [Pure-Go Windows input readiness and opt-in demo](examples/purego_windows_input/main.go)
 - [Pure-Go Windows window inspection and opt-in control](examples/purego_windows_window/main.go)

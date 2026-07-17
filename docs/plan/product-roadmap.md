@@ -37,12 +37,12 @@ The July 2026 hardening work establishes the foundation for this roadmap:
 | 2. Capture | Hermetic implementation complete | Reliable one-shot paths plus one consent-aware ScreenCast session, reusable PipeWire frames, logical region crop, raw pixel conversion, metadata/restore tokens, cleanup, integration harness, and a non-skipping geometry/transform CI matrix | Real GNOME/KDE/wlroots evidence and sanitizer-backed native leak gate |
 | 3. Pure-Go | X11 complete; Windows input/window CI-evidenced; macOS capture/display and keyboard/pointer implemented; broader phase partial | Build and feature-level introspection; non-CGO macOS CoreGraphics capture/display plus Quartz keyboard/pointer input and Accessibility diagnostics; Windows capture, `SendInput` keyboard/pointer, and Win32 window control with blocking runtime probes; X11 capture and XGB/XTEST input; Wayland portal capture/input; permission/error contracts; shared behavioral parity; reproducible balanced benchmark tooling; optimized guardian-path decision evidence; explicit decision to retain native CGO as the X11 default; race-testable internal X11 core; re-exec guardian with application-`SIGKILL` recovery; protected three-OS CI | Collect opt-in real macOS keyboard-injection evidence and assess further backends selectively |
 | 4. API/compositor gaps | Parity surface delivered; runtime support partial | Window-state error APIs, bitmap string helpers, `FindColorCS`, hook/event capability reporting, Sway/Hyprland/wlroots resolver | Compositor-backed state operations and cross-platform/runtime matrix coverage |
-| 5. Reliability product | Partial | Capability API/example and expanded CI variants | Versioned compatibility matrix, richer diagnostics, dedicated compositor jobs, sanitizer/leak gates |
+| 5. Reliability product | Partial | Capability APIs, versioned sanitized runtime diagnostics/example, compatibility matrix v1, expanded CI variants | Dedicated compositor jobs, sanitizer/leak gates, release evidence snapshots |
 
 No delivery phase is complete until all of its exit criteria are blocking and
 green. Phase 1 implementation is merged; its real-compositor evidence remains
-an infrastructure blocker. The active implementation slice is Phase 3 Pure-Go
-backend parity and measurement.
+an infrastructure blocker. The active implementation slice is Phase 5
+reliability hardening; protected real-desktop evidence remains runner-dependent.
 
 ## Delivery Order
 
@@ -288,11 +288,15 @@ diagnostic API/example that reports selected backends, protocol versions,
 fallback decisions, permissions, and actionable remediation without exposing
 sensitive environment data.
 
-Current status: `GetLinuxCapabilities` and its runnable example expose selected
-feature backends, availability, fallbacks, reasons, and notes. CI covers three
-operating systems, non-CGO, tagged Wayland/portal, and Weston integration.
-Protocol versions, permission state, remediation guidance, versioned support
-data, dedicated GNOME/KDE/wlroots jobs, and native sanitizer gates remain open.
+Current status: `GetRuntimeDiagnostics` schema v1 and its runnable JSON example
+report selected feature backends, fallbacks, negotiated Wayland/portal/XTEST
+versions, non-prompting permission state, and remediation without exposing
+display addresses, restore tokens, stream identifiers, or unrelated environment
+values. The published `docs/compatibility/runtime-v1.md` matrix distinguishes
+blocking support from pending runtime evidence. CI covers three operating
+systems, non-CGO, tagged Wayland/portal, and Weston integration. Dedicated
+GNOME/KDE/wlroots jobs, release evidence snapshots, and native sanitizer gates
+remain open.
 
 Releases require:
 

@@ -16,6 +16,7 @@
 #include <limits.h>
 #include <poll.h>
 #include <stdint.h>
+#include <stdatomic.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -651,6 +652,8 @@ struct capture {
   int err_code;
 };
 
+static _Atomic uint32_t robotgo_last_screencopy_version = 0;
+
 static void attach_xdg_output(struct capture *cap, struct output *out) {
   if (!cap || !out || !cap->xdg_output_manager || !out->wl_output || out->xdg_output) {
     return;
@@ -1137,6 +1140,7 @@ int robotgo_wayland_screencopy_ready(void) {
   struct capture cap = {0};
   cap.drm_fd = -1;
   wl_list_init(&cap.outputs);
+  atomic_store(&robotgo_last_screencopy_version, 0);
 
   cap.display = wl_display_connect(NULL);
   if (!cap.display) {
@@ -1154,10 +1158,18 @@ int robotgo_wayland_screencopy_ready(void) {
     return 0;
   }
 
+  if (cap.manager) {
+    atomic_store(&robotgo_last_screencopy_version,
+                 zwlr_screencopy_manager_v1_get_version(cap.manager));
+  }
   int ready = cap.manager != NULL && !wl_list_empty(&cap.outputs) &&
               (cap.shm != NULL || cap.dmabuf != NULL);
   cleanup_capture(&cap);
   return ready;
+}
+
+uint32_t robotgo_wayland_screencopy_version(void) {
+  return atomic_load(&robotgo_last_screencopy_version);
 }
 
 // capture_screen_wayland_impl performs the actual capture logic. The backend

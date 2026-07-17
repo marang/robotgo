@@ -40,6 +40,7 @@ static inline MMBitmapRef capture_screen_wayland(int32_t x, int32_t y, int32_t w
   return NULL;
 }
 static inline int robotgo_wayland_screencopy_ready(void) { return 0; }
+static inline uint32_t robotgo_wayland_screencopy_version(void) { return 0; }
 #elif defined(IS_LINUX)
 #if !defined(DISPLAY_SERVER_WAYLAND)
 #include "../base/xdisplay_c.h"
@@ -65,6 +66,7 @@ MMBitmapRef capture_screen_wayland(int32_t x, int32_t y, int32_t w, int32_t h,
                                    int32_t display_id, int8_t isPid,
                                    int32_t backend, int32_t *err);
 int robotgo_wayland_screencopy_ready(void);
+uint32_t robotgo_wayland_screencopy_version(void);
 #endif
 // Portal capture is available on Linux regardless of Wayland build tag.
 MMBitmapRef capture_screen_portal(int32_t x, int32_t y, int32_t w, int32_t h,
@@ -83,6 +85,7 @@ static inline MMBitmapRef capture_screen_wayland(int32_t x, int32_t y,
   return NULL;
 }
 static inline int robotgo_wayland_screencopy_ready(void) { return 0; }
+static inline uint32_t robotgo_wayland_screencopy_version(void) { return 0; }
 #endif
 #elif defined(IS_WINDOWS)
 #include <string.h>
@@ -128,6 +131,7 @@ static inline MMBitmapRef capture_screen_wayland(int32_t x, int32_t y, int32_t w
   return NULL;
 }
 static inline int robotgo_wayland_screencopy_ready(void) { return 0; }
+static inline uint32_t robotgo_wayland_screencopy_version(void) { return 0; }
 #endif
 
 #if defined(IS_MACOSX) && __ENVIRONMENT_MAC_OS_X_VERSION_MIN_REQUIRED__ > 140400

@@ -37,7 +37,10 @@ type RuntimeBackendInfo struct {
 // current platform and build. Availability may include bounded runtime probes;
 // inspecting RuntimeBackendInfo never performs those probes.
 type RuntimeCapabilities struct {
-	Runtime       RuntimeBackendInfo
+	Runtime RuntimeBackendInfo
+	// Compositor is the detected Linux Wayland compositor family. It is empty
+	// on other platforms and display servers.
+	Compositor    string
 	Capture       FeatureCapability
 	Bounds        FeatureCapability
 	Keyboard      FeatureCapability
