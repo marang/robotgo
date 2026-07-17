@@ -104,8 +104,8 @@ Window backend support matrix (current):
     configured-display lifecycle/target, live XTEST readiness, and an XTEST-disabled negative
     contract. Current optimized guardian-path evidence retains native CGO as the
     X11 default while keeping Pure-Go supported for CGO-disabled builds. The
-    lower-allocation request transport preserves the crash contract. Protecting
-    the checks, evaluating safe round-trip reductions, and evaluating further
+    lower-allocation request transport and balanced transient-input sequencing
+    preserve the crash contract. Protecting the checks and evaluating further
     backends remain open. The Pure-Go core is now
     race-testable, and a separate X11 guardian uses an authenticated abstract
     Unix socket with kernel-verified peer credentials, bounded request dispatch,

@@ -35,7 +35,7 @@ The July 2026 hardening work establishes the foundation for this roadmap:
 | Current baseline | Complete in main | Native screencopy, screenshot portal fallback, bounded waits, cleanup, live capability probes, error APIs, non-CGO contract, dedicated race/vet jobs | Keep required jobs green and confirm repository branch protection |
 | 1. Wayland input | Implementation complete; runtime validation blocked | Native virtual keyboard/pointer, consent-aware RemoteDesktop fallback, shared ScreenCast stream mapping, absolute pointer/touch, restore tokens, diagnostics and E2E harness | Register GNOME/KDE/wlroots runners and collect green CGO/non-CGO evidence |
 | 2. Capture | Hermetic implementation complete | Reliable one-shot paths plus one consent-aware ScreenCast session, reusable PipeWire frames, logical region crop, raw pixel conversion, metadata/restore tokens, cleanup, integration harness, and a non-skipping geometry/transform CI matrix | Real GNOME/KDE/wlroots evidence and sanitizer-backed native leak gate |
-| 3. Pure-Go | X11 hardening and measurement complete; broader phase partial | Build and feature-level introspection; non-CGO macOS CoreGraphics, Windows, X11, and Wayland-portal capture; Linux/X11 XGB/XTEST input; permission/error contracts; shared behavioral parity; reproducible balanced benchmark tooling; optimized guardian-path decision evidence; explicit decision to retain native CGO as the X11 default; race-testable internal X11 core; re-exec guardian with application-`SIGKILL` recovery; lower-allocation request transport; three-OS CI; non-skipping multi-layout Xvfb input tests | Protect the remote CI checks, evaluate safe guardian round-trip reductions, then assess further backends selectively |
+| 3. Pure-Go | X11 hardening and measurement complete; broader phase partial | Build and feature-level introspection; non-CGO macOS CoreGraphics, Windows, X11, and Wayland-portal capture; Linux/X11 XGB/XTEST input; permission/error contracts; shared behavioral parity; reproducible balanced benchmark tooling; optimized guardian-path decision evidence; explicit decision to retain native CGO as the X11 default; race-testable internal X11 core; re-exec guardian with application-`SIGKILL` recovery; lower-allocation request transport and safe balanced-input sequencing; three-OS CI; non-skipping multi-layout Xvfb input tests | Protect the remote CI checks, then assess further backends selectively |
 | 4. API/compositor gaps | Parity surface delivered; runtime support partial | Window-state error APIs, bitmap string helpers, `FindColorCS`, hook/event capability reporting, Sway/Hyprland/wlroots resolver | Compositor-backed state operations and cross-platform/runtime matrix coverage |
 | 5. Reliability product | Partial | Capability API/example and expanded CI variants | Versioned compatibility matrix, richer diagnostics, dedicated compositor jobs, sanitizer/leak gates |
 
@@ -160,7 +160,9 @@ pointer-movement latency and build portability, while native wins capture, most
 input operations and allocations. At the measured revision, native also had
 stronger Unicode crash isolation; the later Pure-Go guardian closes the targeted
 application-process-kill gap without changing that historical performance
-sample. The comparison also exposed and fixed native
+sample. The current guardian-path comparison shows native winning the measured
+latency and Go-allocation metrics while Pure-Go provides CGO-disabled build
+portability and managed Unicode mappings. The comparison also exposed and fixed native
 modifier-release ordering and unsafe server-global Unicode mapping. Native X11
 now preflights complete text and modified keys before injection. Its Xlib
 display, capture, input, readiness, replacement, and close paths share a locked
@@ -188,8 +190,12 @@ guardian path and confirms that its crash isolation adds material IPC latency,
 so native CGO remains the default. Reusing bounded request state, reading frames
 through a reusable buffer, and avoiding double payload marshaling reduce input
 allocations by `24–33%` without weakening request correlation or cleanup.
-Protecting the remote checks, evaluating safe round-trip reductions, and
-selectively evaluating additional backends keep the broader Phase 3 partial.
+Balanced transient press/release pairs now share one guardian request while
+retaining per-step ownership, verified release, preflight, server-grab, timeout,
+and crash-recovery contracts. This reduces another `5–14%` of allocations for
+the affected click, scroll, key-press, and text benchmarks. Protecting the
+remote checks and selectively evaluating additional backends keep the broader
+Phase 3 partial.
 
 Exit criteria:
 
