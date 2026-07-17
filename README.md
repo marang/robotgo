@@ -418,6 +418,17 @@ pure X11 session it reports Window and Hook capabilities as unavailable;
 error-returning window operations return `ErrNotSupported`. Use the default
 Linux build for an X11 session.
 
+Wayland display bounds use logical compositor coordinates. `GetScreenRect()`
+and any negative display index return the aggregate desktop rectangle,
+including a negative origin. `GetScreenSize()` returns that aggregate width and
+height. Non-negative indices select individual outputs in deterministic order:
+the output containing logical `(0,0)` is index `0`, followed by top-to-bottom,
+left-to-right geometry order. `DisplaysNum()` and `GetMainId()` query Wayland
+directly and do not require Xwayland. An out-of-range index returns a zero
+rectangle; it never silently falls back to the aggregate desktop. Native
+`xdg-output` logical geometry takes precedence, preserving fractional scale;
+the core-output fallback applies integer scale and all eight transforms.
+
 Capture selection is:
 
 1. Native `wlr-screencopy` using DMA-BUF when supported.
@@ -635,6 +646,7 @@ The checked-in examples use this fork's module path and track the current API:
 - [Keyboard and clipboard](examples/key/main.go)
 - [Screen capture and pixels](examples/screen/main.go)
 - [Full-screen capture with backend reporting](examples/screen_full/main.go)
+- [Cross-platform aggregate and per-output bounds](examples/display_bounds/main.go)
 - [Linux capabilities](examples/linux_capabilities/main.go)
 - [Cross-platform runtime capabilities](examples/runtime_capabilities/main.go)
 - [Pure-Go X11 input probe and opt-in demo](examples/purego_x11_input/main.go)

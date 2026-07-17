@@ -260,6 +260,11 @@ The compatibility surface now includes:
   coordinates, and capture-error propagation. Hermetic tests exercise native
   Wayland screencopy, the Screenshot portal, and Pure-Go backend dispatch;
   generic string/search tests run in both CGO and non-CGO builds.
+- Native Wayland aggregate/per-output bounds preserve negative origins,
+  fractional `xdg-output` logical sizes, integer core-output scale, and all
+  transforms. Display indices are deterministic and shared with screencopy;
+  display count/main-index queries no longer depend on X11. The
+  `wayland-info` fallback also handles output records without numeric IDs.
 - Hook/event capability reporting on Wayland.
 
 Remaining work must improve runtime support without inventing misleading
@@ -269,8 +274,8 @@ cross-platform semantics:
   maximize slice only where equally trustworthy state is exposed.
 - Add protected real-desktop capture-helper evidence beyond the delivered
   hermetic native Wayland, portal, and cross-build backend contracts.
-- Stable multi-screen and bounds behavior for negative origins, transforms,
-  scale, and absent display identifiers.
+- Collect protected real-compositor multi-output bounds evidence beyond the
+  delivered hermetic geometry matrix and single-output Weston integration.
 
 Every addition needs unit tests, an applicable runtime integration test, and a
 runnable example unless the environment makes one technically impossible.

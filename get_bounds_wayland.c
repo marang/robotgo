@@ -8,8 +8,6 @@
 #include <string.h>
 
 struct registry_data {
-  struct wl_compositor **compositor;
-  struct xdg_wm_base **wm_base;
   struct zxdg_output_manager_v1 **xdg_output_manager;
   struct wl_list *outputs;
 };
@@ -18,6 +16,7 @@ struct output_info {
   struct wl_list link;
   struct wl_output *output;
   struct zxdg_output_v1 *xdg_output;
+  uint32_t name;
   int32_t x;
   int32_t y;
   int32_t logical_x;
@@ -87,6 +86,220 @@ static void output_logical_origin(const struct output_info *oi, int *ox, int *oy
     *oy = oi->y;
   }
 }
+
+struct output_rect_ref {
+  const struct output_info *output;
+  int x;
+  int y;
+  int w;
+  int h;
+  int primary;
+};
+
+static int output_rect(const struct output_info *oi,
+                       struct output_rect_ref *rect) {
+  if (!oi || !rect) {
+    return -1;
+  }
+
+  int w = 0;
+  int h = 0;
+  int x = 0;
+  int y = 0;
+  output_logical_size(oi, &w, &h);
+  output_logical_origin(oi, &x, &y);
+  if (w <= 0 || h <= 0) {
+    return -1;
+  }
+
+  long long right = (long long)x + (long long)w;
+  long long bottom = (long long)y + (long long)h;
+  if (right > INT_MAX || right < INT_MIN ||
+      bottom > INT_MAX || bottom < INT_MIN) {
+    return -1;
+  }
+
+  rect->output = oi;
+  rect->x = x;
+  rect->y = y;
+  rect->w = w;
+  rect->h = h;
+  rect->primary = x <= 0 && right > 0 && y <= 0 && bottom > 0;
+  return 0;
+}
+
+static int compare_output_rect_refs(const void *left, const void *right) {
+  const struct output_rect_ref *a = left;
+  const struct output_rect_ref *b = right;
+  if (a->primary != b->primary) {
+    return b->primary - a->primary;
+  }
+  if (a->y != b->y) {
+    return a->y < b->y ? -1 : 1;
+  }
+  if (a->x != b->x) {
+    return a->x < b->x ? -1 : 1;
+  }
+  if (a->output->name != b->output->name) {
+    return a->output->name < b->output->name ? -1 : 1;
+  }
+  return 0;
+}
+
+static int collect_output_rects(struct wl_list *outputs,
+                                struct output_rect_ref **rects_out) {
+  if (!outputs || !rects_out) {
+    return -1;
+  }
+
+  int capacity = 0;
+  struct output_info *oi;
+  wl_list_for_each(oi, outputs, link) {
+    capacity++;
+  }
+  if (capacity <= 0) {
+    return 0;
+  }
+
+  struct output_rect_ref *rects =
+      calloc((size_t)capacity, sizeof(*rects));
+  if (!rects) {
+    return -1;
+  }
+
+  int count = 0;
+  wl_list_for_each(oi, outputs, link) {
+    if (output_rect(oi, &rects[count]) == 0) {
+      count++;
+    }
+  }
+  if (count == 0) {
+    free(rects);
+    return 0;
+  }
+
+  qsort(rects, (size_t)count, sizeof(*rects), compare_output_rect_refs);
+  *rects_out = rects;
+  return count;
+}
+
+static int resolve_output_rect(struct wl_list *outputs, int display_id,
+                               int *x, int *y, int *width, int *height) {
+  struct output_rect_ref *rects = NULL;
+  int count = collect_output_rects(outputs, &rects);
+  if (count <= 0) {
+    return -1;
+  }
+
+  long long min_x;
+  long long min_y;
+  long long max_x;
+  long long max_y;
+  if (display_id >= 0) {
+    if (display_id >= count) {
+      free(rects);
+      return -1;
+    }
+    const struct output_rect_ref *rect = &rects[display_id];
+    min_x = rect->x;
+    min_y = rect->y;
+    max_x = (long long)rect->x + rect->w;
+    max_y = (long long)rect->y + rect->h;
+  } else {
+    min_x = rects[0].x;
+    min_y = rects[0].y;
+    max_x = (long long)rects[0].x + rects[0].w;
+    max_y = (long long)rects[0].y + rects[0].h;
+    for (int i = 1; i < count; i++) {
+      long long right = (long long)rects[i].x + rects[i].w;
+      long long bottom = (long long)rects[i].y + rects[i].h;
+      if (rects[i].x < min_x) {
+        min_x = rects[i].x;
+      }
+      if (rects[i].y < min_y) {
+        min_y = rects[i].y;
+      }
+      if (right > max_x) {
+        max_x = right;
+      }
+      if (bottom > max_y) {
+        max_y = bottom;
+      }
+    }
+  }
+  free(rects);
+
+  long long w = max_x - min_x;
+  long long h = max_y - min_y;
+  if (min_x < INT_MIN || min_x > INT_MAX ||
+      min_y < INT_MIN || min_y > INT_MAX ||
+      w <= 0 || w > INT_MAX || h <= 0 || h > INT_MAX) {
+    return -1;
+  }
+  if (x) {
+    *x = (int)min_x;
+  }
+  if (y) {
+    *y = (int)min_y;
+  }
+  if (width) {
+    *width = (int)w;
+  }
+  if (height) {
+    *height = (int)h;
+  }
+  return 0;
+}
+
+#ifdef ROBOTGO_WAYLAND_TEST
+int robotgo_wayland_resolve_bounds_for_test(const int *values, int count,
+                                             int display_id,
+                                             int *x, int *y,
+                                             int *width, int *height) {
+  if (!values || count <= 0) {
+    return -1;
+  }
+
+  struct wl_list outputs;
+  wl_list_init(&outputs);
+  for (int i = 0; i < count; i++) {
+    const int *value = &values[i * 12];
+    struct output_info *oi = calloc(1, sizeof(*oi));
+    if (!oi) {
+      struct output_info *item, *tmp;
+      wl_list_for_each_safe(item, tmp, &outputs, link) {
+        wl_list_remove(&item->link);
+        free(item);
+      }
+      return -1;
+    }
+    oi->x = value[0];
+    oi->y = value[1];
+    oi->mode_w = value[2];
+    oi->mode_h = value[3];
+    oi->transform = value[4];
+    oi->scale = value[5];
+    oi->logical_x = value[6];
+    oi->logical_y = value[7];
+    oi->logical_w = value[8];
+    oi->logical_h = value[9];
+    oi->has_mode = value[2] > 0 && value[3] > 0;
+    oi->has_logical_pos = (value[10] & 1) != 0;
+    oi->has_logical_size = (value[10] & 2) != 0;
+    oi->name = (uint32_t)value[11];
+    wl_list_insert(outputs.prev, &oi->link);
+  }
+
+  int result =
+      resolve_output_rect(&outputs, display_id, x, y, width, height);
+  struct output_info *oi, *tmp;
+  wl_list_for_each_safe(oi, tmp, &outputs, link) {
+    wl_list_remove(&oi->link);
+    free(oi);
+  }
+  return result;
+}
+#endif
 
 static void output_geometry(void *data, struct wl_output *output,
                             int32_t x, int32_t y, int32_t physical_width,
@@ -198,13 +411,7 @@ static void registry_handle_global(void *data, struct wl_registry *registry,
                                    uint32_t name, const char *interface,
                                    uint32_t version) {
   struct registry_data *rdata = data;
-  if (strcmp(interface, "wl_compositor") == 0) {
-    *rdata->compositor =
-        wl_registry_bind(registry, name, &wl_compositor_interface, 1);
-  } else if (strcmp(interface, "xdg_wm_base") == 0) {
-    *rdata->wm_base =
-        wl_registry_bind(registry, name, &xdg_wm_base_interface, 1);
-  } else if (strcmp(interface, zxdg_output_manager_v1_interface.name) == 0) {
+  if (strcmp(interface, zxdg_output_manager_v1_interface.name) == 0) {
     uint32_t ver = version > 3 ? 3 : version;
     *rdata->xdg_output_manager =
         wl_registry_bind(registry, name, &zxdg_output_manager_v1_interface, ver);
@@ -220,6 +427,7 @@ static void registry_handle_global(void *data, struct wl_registry *registry,
       return;
     }
     oi->scale = 1;
+    oi->name = name;
     uint32_t ver = version > 2 ? 2 : version;
     oi->output = wl_registry_bind(registry, name, &wl_output_interface, ver);
     if (!oi->output) {
@@ -239,81 +447,12 @@ static const struct wl_registry_listener registry_listener = {
     .global_remove = NULL,
 };
 
-struct bounds_data {
-  int *width;
-  int *height;
-};
-
-static void xdg_toplevel_handle_configure(void *data,
-                                          struct xdg_toplevel *toplevel,
-                                          int32_t width, int32_t height,
-                                          struct wl_array *states) {
-  struct bounds_data *bdata = data;
-  if (bdata->width) {
-    *bdata->width = width;
+static void cleanup_outputs(struct wl_list *outputs) {
+  if (!outputs) {
+    return;
   }
-  if (bdata->height) {
-    *bdata->height = height;
-  }
-}
-
-static const struct xdg_toplevel_listener xdg_toplevel_listener = {
-    .configure = xdg_toplevel_handle_configure,
-    .close = NULL,
-};
-
-int get_bounds_wayland(struct wl_display *display, int *width, int *height) {
-  if (!display) {
-    return -1;
-  }
-
-  struct wl_compositor *compositor = NULL;
-  struct xdg_wm_base *wm_base = NULL;
-  struct zxdg_output_manager_v1 *xdg_output_manager = NULL;
-  struct wl_list outputs;
-  wl_list_init(&outputs);
-  struct registry_data rdata = {&compositor, &wm_base, &xdg_output_manager, &outputs};
-
-  struct wl_registry *registry = wl_display_get_registry(display);
-  wl_registry_add_listener(registry, &registry_listener, &rdata);
-  wl_display_roundtrip(display);
-  wl_registry_destroy(registry);
-  // Drain wl_output listeners.
-  wl_display_roundtrip(display);
-
-  int min_x = INT_MAX;
-  int min_y = INT_MAX;
-  int max_x = INT_MIN;
-  int max_y = INT_MIN;
   struct output_info *oi, *tmp;
-  wl_list_for_each(oi, &outputs, link) {
-    if (!oi->has_mode || oi->mode_w <= 0 || oi->mode_h <= 0) {
-      continue;
-    }
-    int lw = 0;
-    int lh = 0;
-    int ox = 0;
-    int oy = 0;
-    output_logical_size(oi, &lw, &lh);
-    output_logical_origin(oi, &ox, &oy);
-    if (lw <= 0 || lh <= 0) {
-      continue;
-    }
-    if (ox < min_x) {
-      min_x = ox;
-    }
-    if (oy < min_y) {
-      min_y = oy;
-    }
-    if (ox + lw > max_x) {
-      max_x = ox + lw;
-    }
-    if (oy + lh > max_y) {
-      max_y = oy + lh;
-    }
-  }
-
-  wl_list_for_each_safe(oi, tmp, &outputs, link) {
+  wl_list_for_each_safe(oi, tmp, outputs, link) {
     if (oi->xdg_output) {
       zxdg_output_v1_destroy(oi->xdg_output);
     }
@@ -323,72 +462,115 @@ int get_bounds_wayland(struct wl_display *display, int *width, int *height) {
     wl_list_remove(&oi->link);
     free(oi);
   }
+}
 
-  if (min_x != INT_MAX && max_x > min_x && max_y > min_y) {
-    if (width) {
-      *width = max_x - min_x;
-    }
-    if (height) {
-      *height = max_y - min_y;
-    }
-    if (wm_base) {
-      xdg_wm_base_destroy(wm_base);
-    }
-    if (xdg_output_manager) {
-      zxdg_output_manager_v1_destroy(xdg_output_manager);
-    }
-    if (compositor) {
-      wl_compositor_destroy(compositor);
-    }
-    return 0;
-  }
-
-  if (!compositor || !wm_base) {
-    if (wm_base) {
-      xdg_wm_base_destroy(wm_base);
-    }
-    if (xdg_output_manager) {
-      zxdg_output_manager_v1_destroy(xdg_output_manager);
-    }
-    if (compositor) {
-      wl_compositor_destroy(compositor);
-    }
-    return -1;
-  }
-
-  struct wl_surface *surface = wl_compositor_create_surface(compositor);
-  if (!surface) {
-    return -1;
-  }
-
-  struct xdg_surface *xdg_surface =
-      xdg_wm_base_get_xdg_surface(wm_base, surface);
-  if (!xdg_surface) {
-    wl_surface_destroy(surface);
-    return -1;
-  }
-
-  struct bounds_data bdata = {width, height};
-  struct xdg_toplevel *xdg_toplevel = xdg_surface_get_toplevel(xdg_surface);
-  xdg_toplevel_add_listener(xdg_toplevel, &xdg_toplevel_listener, &bdata);
-
-  wl_surface_commit(surface);
-  wl_display_roundtrip(display);
-
-  xdg_toplevel_destroy(xdg_toplevel);
-  xdg_surface_destroy(xdg_surface);
-  wl_surface_destroy(surface);
-  xdg_wm_base_destroy(wm_base);
+static void cleanup_xdg_output_manager(
+    struct zxdg_output_manager_v1 *xdg_output_manager) {
   if (xdg_output_manager) {
     zxdg_output_manager_v1_destroy(xdg_output_manager);
   }
-  wl_compositor_destroy(compositor);
+}
 
-  if (width && *width <= 0) {
+int get_screen_rect_wayland(struct wl_display *display, int display_id,
+                            int *x, int *y, int *width, int *height) {
+  if (!display) {
     return -1;
   }
-  if (height && *height <= 0) {
+
+  struct zxdg_output_manager_v1 *xdg_output_manager = NULL;
+  struct wl_list outputs;
+  wl_list_init(&outputs);
+  struct registry_data rdata = {&xdg_output_manager, &outputs};
+
+  struct wl_registry *registry = wl_display_get_registry(display);
+  if (!registry ||
+      wl_registry_add_listener(registry, &registry_listener, &rdata) != 0) {
+    if (registry) {
+      wl_registry_destroy(registry);
+    }
     return -1;
   }
-  return 0;
+  int ready = wl_display_roundtrip(display) >= 0;
+  wl_registry_destroy(registry);
+  // Drain wl_output listeners.
+  if (ready) {
+    ready = wl_display_roundtrip(display) >= 0;
+  }
+  if (!ready) {
+    cleanup_outputs(&outputs);
+    cleanup_xdg_output_manager(xdg_output_manager);
+    return -1;
+  }
+
+  int resolved_x = 0;
+  int resolved_y = 0;
+  int resolved_w = 0;
+  int resolved_h = 0;
+  int resolved = resolve_output_rect(&outputs, display_id,
+                                     &resolved_x, &resolved_y,
+                                     &resolved_w, &resolved_h);
+  cleanup_outputs(&outputs);
+
+  if (resolved == 0) {
+    if (x) {
+      *x = resolved_x;
+    }
+    if (y) {
+      *y = resolved_y;
+    }
+    if (width) {
+      *width = resolved_w;
+    }
+    if (height) {
+      *height = resolved_h;
+    }
+    cleanup_xdg_output_manager(xdg_output_manager);
+    return 0;
+  }
+
+  cleanup_xdg_output_manager(xdg_output_manager);
+  return -1;
+}
+
+int get_bounds_wayland(struct wl_display *display, int *width, int *height) {
+  return get_screen_rect_wayland(display, -1, NULL, NULL, width, height);
+}
+
+static int query_display_count(struct wl_display *display) {
+  if (!display) {
+    return 0;
+  }
+
+  struct zxdg_output_manager_v1 *xdg_output_manager = NULL;
+  struct wl_list outputs;
+  wl_list_init(&outputs);
+  struct registry_data rdata = {&xdg_output_manager, &outputs};
+
+  struct wl_registry *registry = wl_display_get_registry(display);
+  if (!registry) {
+    return 0;
+  }
+  int ready =
+      wl_registry_add_listener(registry, &registry_listener, &rdata) == 0 &&
+      wl_display_roundtrip(display) >= 0;
+  wl_registry_destroy(registry);
+  if (ready) {
+    ready = wl_display_roundtrip(display) >= 0;
+  }
+
+  struct output_rect_ref *rects = NULL;
+  int count = ready ? collect_output_rects(&outputs, &rects) : 0;
+  free(rects);
+
+  cleanup_outputs(&outputs);
+  cleanup_xdg_output_manager(xdg_output_manager);
+  return count > 0 ? count : 0;
+}
+
+int get_num_displays_wayland(struct wl_display *display) {
+  return query_display_count(display);
+}
+
+int get_main_display_wayland(struct wl_display *display) {
+  return query_display_count(display) > 0 ? 0 : -1;
 }

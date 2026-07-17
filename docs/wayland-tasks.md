@@ -51,6 +51,11 @@ Current implementation baseline:
 - Fallback output bounds use short success/failure TTLs and can be refreshed
   explicitly with `InvalidateScreenBoundsCache`, so hotplug and scale changes
   do not remain cached for the lifetime of the process.
+- Native aggregate/per-output bounds preserve logical negative origins,
+  fractional `xdg-output` sizes, core-output scale, and all transforms.
+  Deterministic output indices are shared with screencopy, Wayland display
+  count/main-index queries avoid X11, and the `wayland-info` fallback accepts
+  output records without numeric identifiers.
 - An explicitly started ScreenCast session provides reusable PipeWire frames
   behind the `pipewire` build tag. It preserves stream geometry/serial metadata,
   supports logical region crop with fractional scaling, converts negotiated raw
@@ -179,7 +184,8 @@ backends.
 - Window APIs:
   - Extend compositor-backed move/resize/activate/topmost/minimize/title
     behavior while preserving explicit `ErrNotSupported` elsewhere.
-  - Make `GetBounds`/`GetClient` robust via `xdg-output` (multi-output + fractional scaling).
+  - Validate the delivered `GetBounds`/`GetClient` `xdg-output` multi-output
+    and fractional-scale contract on protected wlroots/GNOME/KDE runners.
   - Add resource‑leak checks for Wayland window helpers.
 - API Parity Follow-up:
   - Extend compositor-backed implementations for existing topmost/min/max

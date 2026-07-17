@@ -4,6 +4,7 @@ package robotgo
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -151,6 +152,70 @@ interface: 'wl_output',                                  version:  4, name: 58
 	}
 	if rect.X != 10 || rect.Y != 20 || rect.W != 800 || rect.H != 600 {
 		t.Fatalf("unexpected bounds: %+v", rect)
+	}
+}
+
+func TestParseWaylandInfoBoundsWithoutOutputIdentifiers(t *testing.T) {
+	raw := `interface: 'zxdg_output_manager_v1', version: 3
+	xdg_output_v1
+		logical_x: -1280, logical_y: 0
+		logical_width: 1280, logical_height: 720
+	xdg_output_v1
+		logical_x: 0, logical_y: -900
+		logical_width: 1600, logical_height: 900
+interface: 'wl_output', version: 4
+	x: -1920, y: 0, scale: 1,
+	mode:
+		width: 1920 px, height: 1080 px, refresh: 60.000 Hz,
+		flags: current
+interface: 'wl_output', version: 4
+	x: 0, y: -900, scale: 1,
+	mode:
+		width: 2400 px, height: 1350 px, refresh: 60.000 Hz,
+		flags: current
+`
+	rect, ok := parseWaylandInfoBounds(raw)
+	if !ok {
+		t.Fatal("expected identifier-free xdg-output parse success")
+	}
+	if want := (Rect{
+		Point: Point{X: -1280, Y: -900},
+		Size:  Size{W: 2880, H: 1620},
+	}); rect != want {
+		t.Fatalf("identifier-free logical bounds = %+v, want %+v", rect, want)
+	}
+}
+
+func TestParseWaylandInfoBoundsCoreFallbackScaleAndTransform(t *testing.T) {
+	raw := `interface: 'wl_output', version: 4
+	x: -800, y: 20, physical_width: 600 mm, physical_height: 340 mm,
+	transform: 90,
+	scale: 2
+	mode:
+		width: 2400 px, height: 1600 px, refresh: 60.000 Hz,
+		flags: current
+`
+	rect, ok := parseWaylandInfoBounds(raw)
+	if !ok {
+		t.Fatal("expected core-output fallback parse success")
+	}
+	if want := (Rect{
+		Point: Point{X: -800, Y: 20},
+		Size:  Size{W: 800, H: 1200},
+	}); rect != want {
+		t.Fatalf("scaled transformed bounds = %+v, want %+v", rect, want)
+	}
+}
+
+func TestParseWaylandInfoBoundsRejectsOverflow(t *testing.T) {
+	maxInt := int(^uint(0) >> 1)
+	raw := fmt.Sprintf(`interface: 'zxdg_output_manager_v1', version: 3
+	xdg_output_v1
+		logical_x: %d, logical_y: 0
+		logical_width: 2, logical_height: 1
+`, maxInt)
+	if rect, ok := parseWaylandInfoBounds(raw); ok {
+		t.Fatalf("overflowing bounds unexpectedly parsed as %+v", rect)
 	}
 }
 

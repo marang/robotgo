@@ -10,11 +10,13 @@ Bounds wayland_get_bounds(void) {
     return bounds;
   }
 
+  int x = 0;
+  int y = 0;
   int width = 0;
   int height = 0;
-  if (get_bounds_wayland(display, &width, &height) == 0) {
-    bounds.X = 0;
-    bounds.Y = 0;
+  if (get_screen_rect_wayland(display, -1, &x, &y, &width, &height) == 0) {
+    bounds.X = x;
+    bounds.Y = y;
     bounds.W = width;
     bounds.H = height;
   }

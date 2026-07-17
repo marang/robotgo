@@ -16,20 +16,30 @@
 #endif
 
 #if defined(IS_LINUX) && defined(ROBOTGO_USE_WAYLAND)
-static inline int wayland_main_bounds(int32_t *w, int32_t *h) {
+static inline int wayland_screen_rect(int32_t display_id, int32_t *x,
+                                      int32_t *y, int32_t *w, int32_t *h) {
     struct wl_display *display = wl_display_connect(NULL);
     if (!display) {
         return -1;
     }
 
+    int xx = 0;
+    int yy = 0;
     int ww = 0;
     int hh = 0;
-    int rc = get_bounds_wayland(display, &ww, &hh);
+    int rc = get_screen_rect_wayland(display, display_id,
+                                     &xx, &yy, &ww, &hh);
     wl_display_disconnect(display);
     if (rc != 0 || ww <= 0 || hh <= 0) {
         return -1;
     }
 
+    if (x) {
+        *x = (int32_t)xx;
+    }
+    if (y) {
+        *y = (int32_t)yy;
+    }
     if (w) {
         *w = (int32_t)ww;
     }
@@ -37,6 +47,10 @@ static inline int wayland_main_bounds(int32_t *w, int32_t *h) {
         *h = (int32_t)hh;
     }
     return 0;
+}
+
+static inline int wayland_main_bounds(int32_t *w, int32_t *h) {
+    return wayland_screen_rect(-1, NULL, NULL, w, h);
 }
 #endif
 
@@ -184,11 +198,13 @@ static inline MMRectInt32 getScreenRect(int32_t display_id) {
                     (int32_t)DisplayWidth(display, screen),
                     (int32_t)DisplayHeight(display, screen));
 #else
+    int32_t x = 0;
+    int32_t y = 0;
     int32_t w = 0;
     int32_t h = 0;
 #if defined(ROBOTGO_USE_WAYLAND)
-    if (wayland_main_bounds(&w, &h) == 0) {
-        return MMRectInt32Make(0, 0, w, h);
+    if (wayland_screen_rect(display_id, &x, &y, &w, &h) == 0) {
+        return MMRectInt32Make(x, y, w, h);
     }
 #endif
     return MMRectInt32Make(0, 0, 0, 0);
