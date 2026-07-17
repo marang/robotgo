@@ -35,6 +35,25 @@ type PointerState struct {
 	Mask  uint16
 }
 
+// fakeInputStep describes one already validated transient XTEST operation.
+// delayAfter is executed by an out-of-process connection owner so a balanced
+// press/release sequence needs only one control-channel round trip.
+type fakeInputStep struct {
+	eventType  byte
+	detail     byte
+	root       xproto.Window
+	x          int16
+	y          int16
+	delayAfter time.Duration
+}
+
+// fakeInputSequencer is an optional transport optimization. The stateful core
+// falls back to individual FakeInput calls when a connection does not provide
+// it. Implementations must execute steps in order and stop at the first error.
+type fakeInputSequencer interface {
+	FakeInputSequence(steps []fakeInputStep) error
+}
+
 // Connection owns every X11 primitive used by Backend. The boundary is
 // intentionally complete so another process can own the same transaction and
 // lifecycle machinery without exposing *xgb.Conn to the stateful core. Close

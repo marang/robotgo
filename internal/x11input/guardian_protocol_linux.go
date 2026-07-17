@@ -14,8 +14,9 @@ import (
 )
 
 const (
-	guardianProtocolVersion uint16 = 2
-	guardianMaximumFrame           = 1 << 20
+	guardianProtocolVersion   uint16 = 3
+	guardianMaximumFrame             = 1 << 20
+	guardianMaximumInputSteps        = 4096
 )
 
 const (
@@ -37,6 +38,7 @@ const (
 	guardianOperationPressedKeys           = "pressed-keys"
 	guardianOperationQueryPointer          = "query-pointer"
 	guardianOperationFakeInput             = "fake-input"
+	guardianOperationFakeInputSequence     = "fake-input-sequence"
 	guardianOperationClose                 = "close"
 )
 
@@ -119,6 +121,15 @@ type guardianFakeInputRequest struct {
 	Root      xproto.Window `json:"root"`
 	X         int16         `json:"x"`
 	Y         int16         `json:"y"`
+}
+
+type guardianFakeInputStep struct {
+	guardianFakeInputRequest
+	DelayAfterNano int64 `json:"delay_after_nano,omitempty"`
+}
+
+type guardianFakeInputSequenceRequest struct {
+	Steps []guardianFakeInputStep `json:"steps"`
 }
 
 type guardianEvent struct {

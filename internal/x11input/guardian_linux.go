@@ -704,6 +704,25 @@ func (connection *guardianConnection) FakeInput(eventType, detail byte, root xpr
 	}, nil)
 }
 
+func (connection *guardianConnection) FakeInputSequence(steps []fakeInputStep) error {
+	request := guardianFakeInputSequenceRequest{
+		Steps: make([]guardianFakeInputStep, len(steps)),
+	}
+	for index, step := range steps {
+		request.Steps[index] = guardianFakeInputStep{
+			guardianFakeInputRequest: guardianFakeInputRequest{
+				EventType: step.eventType,
+				Detail:    step.detail,
+				Root:      step.root,
+				X:         step.x,
+				Y:         step.y,
+			},
+			DelayAfterNano: int64(step.delayAfter),
+		}
+	}
+	return connection.request(guardianOperationFakeInputSequence, request, nil)
+}
+
 func guardianTokenFromEnvironment() (string, bool) {
 	token := os.Getenv(guardianEnvironmentToken)
 	if len(token) != 64 {

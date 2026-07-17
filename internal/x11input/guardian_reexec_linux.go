@@ -346,6 +346,12 @@ func (server *guardianServer) dispatch(envelope guardianEnvelope) (any, error) {
 			return nil, err
 		}
 		return nil, server.fakeInput(request)
+	case guardianOperationFakeInputSequence:
+		var request guardianFakeInputSequenceRequest
+		if err := decodeGuardianPayload(envelope.Payload, &request); err != nil {
+			return nil, err
+		}
+		return nil, server.fakeInputSequence(request)
 	case guardianOperationClose:
 		server.stopForwardingEvents()
 		cleanupErr := server.cleanup(false)
@@ -589,6 +595,45 @@ func (server *guardianServer) fakeInput(request guardianFakeInputRequest) error 
 		server.removeOwnedInput(request.Detail, true)
 	case byte(xproto.ButtonRelease):
 		server.removeOwnedInput(request.Detail, false)
+	}
+	return nil
+}
+
+func (server *guardianServer) fakeInputSequence(request guardianFakeInputSequenceRequest) error {
+	if len(request.Steps) == 0 || len(request.Steps) > guardianMaximumInputSteps {
+		return fmt.Errorf(
+			"X11 guardian fake-input sequence has %d steps; want 1..%d",
+			len(request.Steps), guardianMaximumInputSteps,
+		)
+	}
+	timeout := server.requestTimeout
+	if timeout <= 0 {
+		timeout = guardianDefaultRequestTimeout
+	}
+	var totalDelay time.Duration
+	for index, step := range request.Steps {
+		delay := time.Duration(step.DelayAfterNano)
+		if delay < 0 || delay > guardianMaximumDuration {
+			return fmt.Errorf("X11 guardian fake-input sequence delay at step %d is outside 0..%s", index, guardianMaximumDuration)
+		}
+		if index == len(request.Steps)-1 && delay != 0 {
+			return errors.New("X11 guardian fake-input sequence cannot delay after its final step")
+		}
+		if delay > timeout-totalDelay {
+			return fmt.Errorf("X11 guardian fake-input sequence delays exceed request timeout %s", timeout)
+		}
+		totalDelay += delay
+	}
+	if totalDelay >= timeout {
+		return fmt.Errorf("X11 guardian fake-input sequence delays must be shorter than request timeout %s", timeout)
+	}
+	for index, step := range request.Steps {
+		if err := server.fakeInput(step.guardianFakeInputRequest); err != nil {
+			return fmt.Errorf("X11 guardian fake-input sequence step %d: %w", index, err)
+		}
+		if step.DelayAfterNano > 0 {
+			time.Sleep(time.Duration(step.DelayAfterNano))
+		}
 	}
 	return nil
 }

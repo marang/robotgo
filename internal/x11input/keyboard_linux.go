@@ -338,6 +338,30 @@ func (backend *Backend) sendKeyLocked(code xproto.Keycode, down bool) error {
 	return nil
 }
 
+func (backend *Backend) sendKeyTapLocked(code xproto.Keycode) (bool, error) {
+	sequencer, ok := backend.conn.(fakeInputSequencer)
+	if !ok {
+		return false, nil
+	}
+	err := sequencer.FakeInputSequence([]fakeInputStep{
+		{
+			eventType:  byte(xproto.KeyPress),
+			detail:     byte(code),
+			root:       backend.root,
+			delayAfter: backend.config.KeyHoldDelay,
+		},
+		{
+			eventType: byte(xproto.KeyRelease),
+			detail:    byte(code),
+			root:      backend.root,
+		},
+	})
+	if err != nil {
+		return true, errors.Join(errX11Connection, err)
+	}
+	return true, nil
+}
+
 func appendUniqueKeycode(codes []xproto.Keycode, code xproto.Keycode) []xproto.Keycode {
 	if code == 0 {
 		return codes
@@ -564,6 +588,14 @@ func (backend *Backend) tapResolvedLocked(resolved x11ResolvedKey, modifierCodes
 	pressed, err := backend.pressedKeysLocked()
 	if err != nil {
 		return err
+	}
+	if len(modifierCodes) == 0 {
+		if backend.keyRefs[resolved.code] > 0 || x11KeycodePressed(pressed, resolved.code) {
+			return fmt.Errorf("robotgo: X11 keycode %d is already held; refusing to alter foreign input state", resolved.code)
+		}
+		if sequenced, sequenceErr := backend.sendKeyTapLocked(resolved.code); sequenced {
+			return sequenceErr
+		}
 	}
 	ownedModifiers, err := backend.acquireModifiersLocked(modifierCodes, pressed)
 	if err != nil {
