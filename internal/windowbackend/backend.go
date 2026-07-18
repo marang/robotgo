@@ -13,6 +13,8 @@ var (
 	ErrOperation = errors.New("window operation failed")
 	// ErrUnsupported reports a missing platform or window-manager capability.
 	ErrUnsupported = errors.New("window operation unsupported")
+	// ErrPermission reports a platform security policy that denied window access.
+	ErrPermission = errors.New("window operation permission denied")
 )
 
 // Handle is an opaque native top-level window identifier.
