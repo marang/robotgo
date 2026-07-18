@@ -11,7 +11,16 @@
 
 package robotgo
 
-import ps "github.com/vcaesar/gops"
+import (
+	"errors"
+	"fmt"
+
+	ps "github.com/vcaesar/gops"
+)
+
+// ErrInvalidPID reports a process identifier that cannot safely identify one
+// process on the current platform.
+var ErrInvalidPID = errors.New("invalid process id")
 
 // Nps process struct
 type Nps struct {
@@ -74,5 +83,19 @@ func Run(path string) ([]byte, error) {
 
 // Kill kill the process by PID
 func Kill(pid int) error {
-	return ps.Kill(pid)
+	return killProcessWith(pid, ps.Kill)
+}
+
+func killProcessWith(pid int, kill func(int) error) error {
+	if err := validateProcessIDForKill(pid); err != nil {
+		return err
+	}
+	return kill(pid)
+}
+
+func validateProcessIDForKill(pid int) error {
+	if pid <= 0 || uint64(pid) > maxProcessIDForKill {
+		return fmt.Errorf("%w: %d", ErrInvalidPID, pid)
+	}
+	return nil
 }

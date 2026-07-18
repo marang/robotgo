@@ -343,8 +343,10 @@ the test-log SHA-256 for native/Pure-Go Linux, macOS, and Windows cells. It also
 requires and records the complete protected CircleCI/lint/vet/race/sanitizer/
 platform/Wayland/X11 check set for the exact commit. A published release
 receives the verified bundle and checksum; manual runs remain read-only
-artifacts. Dedicated GNOME/KDE/wlroots jobs and the first published release
-asset remain open.
+artifacts. Process termination rejects non-positive and platform-overflow PIDs
+before invoking the operating system, preventing Unix process-group signaling
+through `Kill(0)` or a narrowed negative PID. Dedicated GNOME/KDE/wlroots jobs
+and the first published release asset remain open.
 
 Releases require:
 
