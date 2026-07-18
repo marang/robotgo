@@ -24,6 +24,10 @@ Current implementation baseline:
   button toggles, horizontal/vertical scroll, pointer location, deterministic
   cleanup, and explicit Accessibility denial. Media/brightness keys without
   stable Quartz keycodes remain explicitly unsupported.
+- macOS non-CGO builds provide Accessibility-backed active/PID/CGWindowID
+  window resolution, title, AX frame bounds, activation, minimize/restore,
+  minimized-state query, and close. Permission is preflighted without prompting;
+  maximize/topmost remain explicitly unsupported.
 - Linux/X11 non-CGO builds provide a Pure-Go XGB/XTEST keyboard and pointer
   backend with live readiness probes, text/Unicode, smooth movement/drag,
   scrolling, pointer location, explicit state errors, and deterministic

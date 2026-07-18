@@ -15,6 +15,7 @@ const (
 	featureBackendPureGoPrefix       = "pure-go-"
 	featureBackendPureGoCoreGraphics = "pure-go-coregraphics"
 	featureBackendPureGoQuartzInput  = "pure-go-quartz-input"
+	featureBackendPureGoMacOSWindow  = "pure-go-macos-accessibility-window"
 	featureBackendPureGoWindows      = "pure-go-windows"
 	featureBackendPureGoX11          = "pure-go-x11"
 	featureBackendGoProcess          = "go-process"

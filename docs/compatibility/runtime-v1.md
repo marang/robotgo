@@ -20,7 +20,7 @@ available. A pending row is not a passing row.
 | GNOME/Wayland | CGO and Pure Go portal paths | implemented / evidence pending | Protected GNOME runner required for RemoteDesktop and persistent ScreenCast evidence |
 | KDE Plasma/Wayland | CGO and Pure Go portal paths | implemented / evidence pending | Protected KDE runner required for RemoteDesktop and persistent ScreenCast evidence |
 | macOS | Native CGO | supported | Hosted macOS build/test; Screen Recording and Accessibility are runtime permissions |
-| macOS | Pure Go | supported, granted-input evidence pending | CoreGraphics capture/bounds/scale and Quartz input contracts; real symbol and non-prompting permission preflight are blocking; permission-granted injection is opt-in |
+| macOS | Pure Go | supported, granted-input/window evidence pending | CoreGraphics capture/bounds/scale, Quartz input, and Accessibility window contracts; real symbol and non-prompting permission preflights are blocking; permission-granted input and self-owned-window mutations remain opt-in |
 | Windows | Native CGO | supported | Hosted Windows build/test |
 | Windows | Pure Go | supported | Hosted non-CGO tests plus real input-desktop pointer/pixel and self-owned window/control evidence |
 

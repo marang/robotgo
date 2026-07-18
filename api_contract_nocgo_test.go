@@ -13,7 +13,7 @@ func TestNonCGOPortableAPIContract(t *testing.T) {
 	_ = capabilities.Hook
 	_ = capabilities.Events
 
-	if runtime.GOOS == "windows" {
+	if runtime.GOOS == "windows" || runtime.GOOS == "darwin" {
 		invalidTargets := []error{
 			SetActiveE(0),
 			MinWindowE(0),
@@ -21,7 +21,11 @@ func TestNonCGOPortableAPIContract(t *testing.T) {
 		}
 		for _, err := range invalidTargets {
 			if err == nil || errors.Is(err, ErrNotSupported) {
-				t.Fatalf("Pure-Go Windows invalid-target error = %v, want explicit backend error", err)
+				t.Fatalf(
+					"Pure-Go %s invalid-target error = %v, want explicit backend error",
+					runtime.GOOS,
+					err,
+				)
 			}
 		}
 	} else {

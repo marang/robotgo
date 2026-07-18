@@ -39,3 +39,5 @@ func platformPureGoWindowCapability() FeatureCapability {
 		Notes:     "runtime X server access is validated per operation; mutations require a consistent EWMH manager that advertises the operation",
 	}
 }
+
+func closePureGoPlatformWindow() error { return nil }

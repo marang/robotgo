@@ -1,4 +1,4 @@
-//go:build !windows && !linux && !cgo
+//go:build !windows && !linux && !darwin && !cgo
 
 package robotgo
 
@@ -14,3 +14,5 @@ func platformPureGoWindowCapability() FeatureCapability {
 		Notes:  "no matching Pure-Go window backend is active in this build",
 	}
 }
+
+func closePureGoPlatformWindow() error { return nil }
