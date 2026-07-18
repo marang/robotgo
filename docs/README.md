@@ -7,6 +7,8 @@ Use the following documents as the primary entry points:
 - [Test guide](../TEST.md) for validation commands and runtime prerequisites.
 - [Product roadmap](plan/product-roadmap.md) for delivery phases.
 - [Wayland status](wayland-tasks.md) for backend support and open Wayland work.
+- [Upstream compatibility audit](compatibility/upstream-master.md) for
+  selectively adopted and intentionally rejected upstream changes.
 
 API details are available through examples and Go documentation. Lasting
 backend behavior and support contracts are documented in this directory.

@@ -842,6 +842,7 @@ Real Wayland input results are tracked in the
 - [Key names and conversion](docs/keys.md)
 - [Testing guide](TEST.md)
 - [Release evidence format and verification](docs/compatibility/release-evidence-v1.md)
+- [Upstream compatibility audit](docs/compatibility/upstream-master.md)
 - [X11 native-vs-Pure-Go evidence](docs/performance/x11-native-vs-purego.md)
 - [Current Wayland support and backlog](docs/wayland-tasks.md)
 - [Product roadmap](docs/plan/product-roadmap.md)
