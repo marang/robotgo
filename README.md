@@ -130,6 +130,18 @@ CGWindowID-to-Accessibility mapping uses the same runtime-resolved macOS bridge
 as the native backend; if that bridge is absent, capability probing reports the
 backend as unsupported instead of degrading silently.
 
+On Windows and Linux/X11 Pure-Go window backends, `CloseWindowKill` resolves the
+window's actual owner, captures its process identity, acquires a stable process
+reference, verifies that the reference still represents that identity, and
+revalidates window ownership before requesting the graceful close. Windows
+retains one creation-time-verified process handle; Linux verifies the exact
+`/proc/<pid>` instance around `pidfd_open` and retains that `pidfd` through the
+bounded 1.5-second wait and optional force-kill. Owner/identity changes, failed
+probes, and pre-bind exits abort without a destructive fallback. macOS still
+performs the graceful close, but returns `ErrNotSupported` if the process
+remains alive because macOS offers no equivalent stable process handle for a
+safe fallback.
+
 ```go
 if err := robotgo.KeyboardReady(); err != nil {
 	log.Fatal(err)

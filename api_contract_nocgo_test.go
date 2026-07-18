@@ -18,6 +18,8 @@ func TestNonCGOPortableAPIContract(t *testing.T) {
 			SetActiveE(0),
 			MinWindowE(0),
 			MaxWindowE(0),
+			CloseWindowE(0),
+			CloseWindowKill(0),
 		}
 		for _, err := range invalidTargets {
 			if err == nil || errors.Is(err, ErrNotSupported) {

@@ -958,4 +958,3 @@ func GetPid() int {
 func MinWindow(target int, args ...interface{}) { _ = MinWindowE(target, args...) }
 func MaxWindow(target int, args ...interface{}) { _ = MaxWindowE(target, args...) }
 func CloseWindow(args ...int)                   { _ = CloseWindowE(args...) }
-func CloseWindowKill(...int) error              { return ErrNotSupported }

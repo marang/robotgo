@@ -211,6 +211,19 @@ full public contract, and proves fail-closed behavior after manager loss. The
 runnable example is inspection-only unless `-act` and an explicit mutation are
 supplied.
 
+Across the Pure-Go macOS, Windows, and X11 window backends, `CloseWindowKill`
+resolves the actual owner PID and uses a bounded wait with a final deadline
+probe. Windows and Linux acquire a stable process reference before requesting
+the graceful close, verify the bound reference against a process identity
+captured before acquisition, revalidate the window owner, and retain that same
+verified process handle or `pidfd` through the optional force-kill. Linux uses
+the exact procfs process-instance identity around `pidfd_open`; Windows uses
+the process creation time from the stable handle. Owner/identity changes and
+probe failures abort without a destructive fallback. macOS captures process
+identity for the graceful wait and returns explicit unsupported if graceful
+close is insufficient because it has no equivalent stable process handle.
+Hermetic tests never terminate a real process.
+
 The Linux/X11 evaluation slice of Phase 3 is complete. Native CGO and Pure-Go
 X11 binaries pass one black-box public-API contract for capture, pointer,
 buttons, scroll, modifier order, and ASCII text without keyboard-map changes. A

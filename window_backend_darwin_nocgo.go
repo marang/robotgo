@@ -24,6 +24,7 @@ func platformPureGoWindowCapability() FeatureCapability {
 		Backend: featureBackendPureGoMacOSWindow,
 		Notes: "active/PID/CGWindowID resolution, title, AX frame bounds, " +
 			"activation, minimize/restore, minimized state, and close are supported; " +
+			"CloseWindowKill can request graceful close but has no safe force-kill fallback; " +
 			"client bounds equal the AX frame; maximize and topmost are explicitly unsupported; " +
 			"CGWindowID-to-Accessibility mapping requires the runtime-resolved macOS bridge",
 	}
