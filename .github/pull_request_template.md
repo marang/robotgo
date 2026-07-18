@@ -41,5 +41,6 @@ rollback or fallback behavior. -->
 - [ ] User-facing documentation is updated where required
 - [ ] Build tags and platform boundaries were reviewed
 - [ ] Resource and file-descriptor cleanup was reviewed
-- [ ] CI and all reviewer comments, including Codex when configured, will be
-      checked before merge
+- [ ] CI, review threads, and automated-review results or reactions, including
+      Codex when configured, will be checked against the current head before
+      merge

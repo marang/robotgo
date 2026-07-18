@@ -86,7 +86,8 @@ For every open PR, inspect all of the following:
 2. submitted reviews and their state
 3. inline review threads, including `isResolved` and `isOutdated`
 4. requested reviewers and the overall review decision
-5. Codex review output when Codex is configured or requested as a reviewer
+5. PR reactions used by automated reviewers to signal a clean review
+6. Codex review output when Codex is configured or requested as a reviewer
 
 Do not rely on a flat comment list: it can omit thread resolution and inline
 context. Use a thread-aware GitHub query (`reviewThreads`) or an equivalent
@@ -95,6 +96,14 @@ tool.
 No Codex comment on a draft PR means only that no comment exists yet. It does
 not mean Codex reviewed the change. Mark the PR ready, confirm that the expected
 review was requested or triggered, and check again before merge.
+
+In this repository, Codex reviews are submitted by
+`chatgpt-codex-connector[bot]`. A review with suggestions is visible as a
+submitted review and inline threads; a clean review may be represented only by
+the bot's thumbs-up reaction. Confirm that the review names the current head
+commit, or that the clean reaction happened after the latest review trigger
+with no later push. A result for an older commit is stale; trigger a fresh
+review and wait for its result.
 
 Classify each finding as:
 
@@ -126,7 +135,8 @@ A PR is ready to merge only when all applicable conditions are true:
 - there is no active `CHANGES_REQUESTED` review
 - there are no unresolved actionable review threads
 - configured or explicitly requested reviewers, including Codex, have had the
-  opportunity to review the ready PR
+  opportunity to review the ready PR, and their result applies to the current
+  head
 - default and relevant tagged tests pass
 - public behavior and test instructions are documented where required
 - no test or development run leaves sensitive desktop, clipboard, OCR, input,
@@ -160,9 +170,10 @@ Before declaring a PR complete:
 - [ ] PR is ready for review, not draft.
 - [ ] CI was checked on the current head.
 - [ ] Top-level comments, reviews, and thread-aware inline comments were read.
-- [ ] Codex feedback was checked when Codex is configured or requested.
+- [ ] Automated-review reactions were checked.
+- [ ] Codex feedback or its clean-review reaction was checked against the
+      current head when Codex is configured or requested.
 - [ ] All actionable findings were fixed or explicitly tracked.
 - [ ] Relevant checks were rerun after the last fix.
 - [ ] No sensitive test or development artifacts remain.
 - [ ] Merge state and local `main` were verified after merge.
-
