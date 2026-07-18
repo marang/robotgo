@@ -99,6 +99,10 @@ func nativeX11CapabilityErrors() (displayErr error, inputErr error) {
 	return nil, nativeX11InputReadyLocked()
 }
 
+func runtimeX11CapabilityErrors() (displayErr error, inputErr error) {
+	return nativeX11CapabilityErrors()
+}
+
 func nativeX11ProtocolVersion() (major, minor int, negotiated bool) {
 	unlock := lockNativeX11Display()
 	defer unlock()

@@ -431,10 +431,20 @@ func GetLinuxCapabilities() LinuxCapabilities {
 		c.Events = c.Hook
 
 	case DisplayServerX11:
-		displayErr, inputErr := nativeX11CapabilityErrors()
+		displayErr, inputErr := runtimeX11CapabilityErrors()
+		nativeBackendReason := "native X11 backend is not compiled for this build"
+		if displayErr != nil {
+			nativeBackendReason = displayErr.Error()
+		}
 		if capabilityProbeSucceeded(displayErr) {
-			c.Capture = FeatureCapability{Available: true, Backend: "x11", Reason: "X11 display connection is available", Notes: "native X11 capture path"}
-			c.Bounds = FeatureCapability{Available: true, Backend: "x11", Reason: "X11 display connection is available", Notes: "native X11 bounds path"}
+			captureNotes := "native X11 capture path"
+			boundsNotes := "native X11 bounds path"
+			if !nativeX11BackendCompiled() {
+				captureNotes = "XGB/Xinerama compatibility capture path"
+				boundsNotes = "XGB/Xinerama compatibility bounds path"
+			}
+			c.Capture = FeatureCapability{Available: true, Backend: "x11", Reason: "X11 display connection is available", Notes: captureNotes}
+			c.Bounds = FeatureCapability{Available: true, Backend: "x11", Reason: "X11 display connection is available", Notes: boundsNotes}
 		} else {
 			c.Capture = FeatureCapability{Available: false, Backend: "x11", Reason: displayErr.Error(), Notes: "check DISPLAY and X11 server access"}
 			c.Bounds = c.Capture
@@ -449,12 +459,12 @@ func GetLinuxCapabilities() LinuxCapabilities {
 		if capabilityProbeSucceeded(displayErr) && nativeX11BackendCompiled() {
 			c.Window = FeatureCapability{Available: true, Backend: "x11", Reason: "X11 display connection is available", Notes: "native X11 activation, title, and close path"}
 		} else {
-			c.Window = FeatureCapability{Available: false, Backend: "x11", Reason: displayErr.Error(), Notes: "build the native X11 backend and verify the configured X11 display"}
+			c.Window = FeatureCapability{Available: false, Backend: "x11", Reason: nativeBackendReason, Notes: "build the native X11 backend and verify the configured X11 display"}
 		}
 		if capabilityProbeSucceeded(displayErr) && nativeX11BackendCompiled() {
 			c.Hook = FeatureCapability{Available: true, Backend: "x11", Reason: "X11 display connection is available", Notes: "native X11 hook/event path"}
 		} else {
-			c.Hook = FeatureCapability{Available: false, Backend: "x11", Reason: displayErr.Error(), Notes: "build the native X11 backend and verify the configured X11 display"}
+			c.Hook = FeatureCapability{Available: false, Backend: "x11", Reason: nativeBackendReason, Notes: "build the native X11 backend and verify the configured X11 display"}
 		}
 		c.Events = c.Hook
 
@@ -1466,6 +1476,9 @@ func CaptureGo(args ...int) (Bitmap, error) {
 
 // CaptureImg capture the screen and return image.Image, error
 func CaptureImg(args ...int) (image.Image, error) {
+	if img, handled, err := platformCaptureImgFallback(args...); handled {
+		return img, err
+	}
 	bit, err := CaptureScreen(args...)
 	if err != nil {
 		return nil, err

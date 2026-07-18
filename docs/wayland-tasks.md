@@ -44,6 +44,10 @@ Current implementation baseline:
 - Non-CGO `CaptureImg`/`CaptureScreen`, their Go-bitmap/string variants, and
   pixel-color queries use the hardened screenshot portal on Wayland and the
   Pure-Go screenshot backend on X11/Windows; unsupported targets fail explicitly.
+- Shared `Capture` and display-bounds helpers no longer route Wayland-primary
+  sessions through X11. Error-returning bounds and display-count variants make
+  Pure-Go Wayland's unavailable non-prompting geometry explicit while legacy
+  APIs retain zero-value compatibility.
 - Capability introspection probes the live screencopy protocol, desktop portal
   D-Bus owner, virtual pointer and virtual keyboard instead of inferring support
   solely from session environment variables.

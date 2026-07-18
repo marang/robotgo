@@ -293,6 +293,8 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             build-essential pkg-config libx11-dev libxtst-dev \
+            libwayland-dev libxkbcommon-dev wayland-protocols \
+            libgbm-dev libdrm-dev \
             xvfb xauth x11-xkb-utils libxkbcommon-tools
       - name: Run native and Pure-Go X11 contract and benchmark smoke
         env:
@@ -331,6 +333,34 @@ jobs:
               printf "%s\n" "$output"
               if ! printf "%s\n" "$output" | grep -Eq "^--- PASS: ${test_name} \\(.*\\)$"; then
                 echo "missing-XTEST test did not pass" >&2
+                exit 1
+              fi
+            '
+      - name: Preserve X11 capture in Wayland-enabled builds
+        env:
+          CGO_ENABLED: "1"
+        run: |
+          xvfb-run -a \
+            -s '-screen 0 640x480x24 -nolisten tcp -noreset' \
+            sh -eu -c '
+              unset WAYLAND_DISPLAY XDG_SESSION_TYPE
+              test_name=TestWaylandBuildPreservesX11Capture
+              listed="$(go test -tags "wayland x11integration" \
+                -list "^${test_name}$" .)"
+              printf "%s\n" "$listed"
+              if ! printf "%s\n" "$listed" | grep -Fxq "$test_name"; then
+                echo "Wayland-enabled X11 capture test is absent" >&2
+                exit 1
+              fi
+              if ! output="$(go test -tags "wayland x11integration" \
+                -run "^${test_name}$" -count=1 -timeout=30s -v .)"; then
+                printf "%s\n" "$output"
+                exit 1
+              fi
+              printf "%s\n" "$output"
+              if ! printf "%s\n" "$output" | \
+                grep -Eq "^--- PASS: ${test_name} \\(.*\\)$"; then
+                echo "Wayland-enabled X11 capture test did not pass" >&2
                 exit 1
               fi
             '

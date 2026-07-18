@@ -15,10 +15,30 @@ import (
 	"image"
 )
 
-// GetDisplayBounds gets the display screen bounds
+// GetDisplayBounds gets the display screen bounds. Use GetDisplayBoundsE when
+// backend failures must be distinguished from an empty legacy result.
 func GetDisplayBounds(i int) (x, y, w, h int) {
-	bs := platformDisplayBounds(i)
-	return bs.Min.X, bs.Min.Y, bs.Dx(), bs.Dy()
+	x, y, w, h, _ = GetDisplayBoundsE(i)
+	return x, y, w, h
+}
+
+// GetDisplayBoundsE gets the display screen bounds and reports invalid display
+// indices, unavailable backends, and empty backend results explicitly.
+func GetDisplayBoundsE(i int) (x, y, w, h int, err error) {
+	if i < 0 {
+		return 0, 0, 0, 0, invalidDisplayIndexError(i)
+	}
+	if err := pureGoWaylandBoundsError(); err != nil {
+		return 0, 0, 0, 0, err
+	}
+	bounds, err := platformDisplayBoundsE(i)
+	if err != nil {
+		return 0, 0, 0, 0, err
+	}
+	if err := validateDisplayRectangle(bounds); err != nil {
+		return 0, 0, 0, 0, err
+	}
+	return bounds.Min.X, bounds.Min.Y, bounds.Dx(), bounds.Dy(), nil
 }
 
 // GetDisplayRect gets the display rect

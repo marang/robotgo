@@ -87,7 +87,7 @@ group.
 | Linux/X11 | CGO-enabled default build | X11/XTest input, capture, window, and process paths |
 | Linux/X11 | `CGO_ENABLED=0` | Pure-Go X11 capture/bounds, XTEST input, and window title/PID/handle/geometry/state/control through X11/EWMH; horizontal scroll and window mutations without a consistent EWMH window manager are explicitly unsupported |
 | Linux/Wayland | `-tags wayland` for native protocols; add `pipewire` for persistent ScreenCast frames | Native wlroots capture/input where compositor protocols exist, one-shot Screenshot fallback, reusable ScreenCast/PipeWire capture, explicit RemoteDesktop portal sessions, capability-aware window support |
-| Other supported platforms without CGO | `CGO_ENABLED=0` | Linux/Wayland uses the Screenshot portal; explicit RemoteDesktop sessions provide limited Pure-Go Wayland input; remaining unavailable operations return `ErrNotSupported` |
+| Other supported platforms without CGO | `CGO_ENABLED=0` | Linux/Wayland uses the Screenshot portal without implicit Xwayland capture; non-prompting bounds remain explicitly unsupported; explicit RemoteDesktop sessions provide limited Pure-Go Wayland input |
 
 Wayland compositors intentionally restrict global automation. GNOME and KDE can
 use consent-aware Screenshot and RemoteDesktop portal paths. The explicit
@@ -344,6 +344,8 @@ empty. `DetectDisplayServer` remains an environment-only observation; runtime
 backend information and capabilities report the explicitly selected X11
 target. A Wayland environment remains authoritative, so RobotGo does not route
 a Wayland-primary operation through X11 merely because Xwayland is present.
+CGO binaries compiled with `-tags wayland` retain the XGB/Xinerama `Capture`,
+`CaptureImg`, and bounds compatibility paths when run in a real X11 session.
 
 Linux/X11 also supports capture, bounds, and input without a C compiler or X11
 development headers:
@@ -667,6 +669,15 @@ after opening, including decode-error paths, so sensitive desktop images are
 not left behind. On macOS, capture returns `ErrPermissionDenied` with
 remediation when Screen Recording access is absent; capability inspection
 never requests that permission implicitly.
+
+Display geometry has error-returning variants: `GetDisplayBoundsE`,
+`GetScreenSizeE`, `GetScreenRectE`, and `DisplaysNumE`.
+Use them when backend availability matters. In a Pure-Go Wayland build these
+return `ErrNotSupported` rather than querying an Xwayland `DISPLAY` or opening a
+consent dialog. Their legacy counterparts retain zero-value compatibility.
+CGO-enabled Linux keeps the legacy `Capture` helper and bounds on the selected
+session path (native protocol or its documented Wayland fallback), so a
+Wayland-primary path never falls through to X11.
 
 Use `CaptureImg()` with no arguments for a full-screen capture. Region capture
 requires at least `x, y, width, height`; partial argument lists, non-positive
