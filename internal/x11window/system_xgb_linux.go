@@ -85,7 +85,11 @@ func (system *nativeSystem) ActiveWindow() (windowbackend.Handle, error) {
 	}
 	defer xu.Conn().Close()
 
-	active, activeErr := ewmh.ActiveWindowGet(xu)
+	active, activeErr := windowProperty(
+		xu.Conn(),
+		xu.RootWin(),
+		atomActiveWindow,
+	)
 	if activeErr == nil && active != xproto.WindowNone {
 		return windowbackend.Handle(active), nil
 	}

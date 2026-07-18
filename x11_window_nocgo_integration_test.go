@@ -312,6 +312,41 @@ func TestPureGoX11WindowIntrospectionAndControl(t *testing.T) {
 	if handle := robotgo.GetHandle(); handle != int(harness.window) {
 		t.Fatalf("GetHandle() = %#x, want %#x", handle, harness.window)
 	}
+	setPureGoMalformedX11Property(
+		t,
+		harness,
+		harness.root,
+		"_NET_ACTIVE_WINDOW",
+		xproto.AtomCardinal,
+		32,
+		[]byte{1, 0, 0, 0},
+	)
+	if handle := robotgo.GetHandle(); handle != int(harness.window) {
+		t.Fatalf(
+			"GetHandle() with wrong _NET_ACTIVE_WINDOW type = %#x, want focused window %#x",
+			handle,
+			harness.window,
+		)
+	}
+	setPureGoMalformedX11Property(
+		t,
+		harness,
+		harness.root,
+		"_NET_ACTIVE_WINDOW",
+		xproto.AtomWindow,
+		32,
+		nil,
+	)
+	if handle := robotgo.GetHandle(); handle != int(harness.window) {
+		t.Fatalf(
+			"GetHandle() with empty _NET_ACTIVE_WINDOW = %#x, want focused window %#x",
+			handle,
+			harness.window,
+		)
+	}
+	if err := ewmh.ActiveWindowSet(manager.xu, harness.window); err != nil {
+		t.Fatalf("restore EWMH active window: %v", err)
+	}
 	if pid := robotgo.GetPid(); pid != os.Getpid() {
 		t.Fatalf("GetPid() = %d, want %d", pid, os.Getpid())
 	}
@@ -433,4 +468,35 @@ func TestPureGoX11WindowIntrospectionAndControl(t *testing.T) {
 			err,
 		)
 	}
+}
+
+func setPureGoMalformedX11Property(
+	t *testing.T,
+	harness *x11InputHarness,
+	window xproto.Window,
+	name string,
+	propertyType xproto.Atom,
+	format byte,
+	payload []byte,
+) {
+	t.Helper()
+	property := testX11Atom(t, harness.conn, name)
+	unitBytes := uint32(format / 8)
+	valueLen := uint32(0)
+	if unitBytes != 0 {
+		valueLen = uint32(len(payload)) / unitBytes
+	}
+	if err := xproto.ChangePropertyChecked(
+		harness.conn,
+		xproto.PropModeReplace,
+		window,
+		property,
+		propertyType,
+		format,
+		valueLen,
+		payload,
+	).Check(); err != nil {
+		t.Fatalf("set malformed %s: %v", name, err)
+	}
+	harness.conn.Sync()
 }
