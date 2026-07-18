@@ -26,6 +26,7 @@ type nativeAPI struct {
 	axUIElementSetAttributeValue           func(uintptr, uintptr, uintptr) int32
 	axUIElementGetWindow                   func(uintptr, *uint32) int32
 	axValueGetType                         func(uintptr) uint32
+	axValueGetTypeID                       func() uintptr
 	axValueGetValue                        func(uintptr, uint32, unsafe.Pointer) bool
 	getFrontProcess                        func(*processSerialNumber) int32
 	getProcessForPID                       func(int32, *processSerialNumber) int32
@@ -109,6 +110,7 @@ func openNativeAPI() (*nativeAPI, error) {
 		{api.applicationServicesHandle, &api.axUIElementSetAttributeValue, "AXUIElementSetAttributeValue"},
 		{api.applicationServicesHandle, &api.axUIElementGetWindow, "_AXUIElementGetWindow"},
 		{api.applicationServicesHandle, &api.axValueGetType, "AXValueGetType"},
+		{api.applicationServicesHandle, &api.axValueGetTypeID, "AXValueGetTypeID"},
 		{api.applicationServicesHandle, &api.axValueGetValue, "AXValueGetValue"},
 		{api.applicationServicesHandle, &api.getFrontProcess, "GetFrontProcess"},
 		{api.applicationServicesHandle, &api.getProcessForPID, "GetProcessForPID"},

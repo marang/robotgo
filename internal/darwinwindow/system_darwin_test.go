@@ -45,7 +45,7 @@ func TestEnclosingRect(t *testing.T) {
 		{
 			name:       "unrepresentable edge",
 			position:   point{X: maximumExactCoordinate},
-			dimensions: size{Width: 1, Height: 1},
+			dimensions: size{Width: 2, Height: 1},
 			wantErr:    true,
 		},
 	}
@@ -73,6 +73,7 @@ func TestAXCallErrorClassification(t *testing.T) {
 	}{
 		{name: "success", result: axErrorSuccess},
 		{name: "permission", result: axErrorAPIDisabled, want: ErrPermission},
+		{name: "unsupported attribute", result: axErrorAttributeUnsupported, want: ErrUnsupported},
 		{name: "unsupported action", result: axErrorActionUnsupported, want: ErrUnsupported},
 		{name: "unsupported implementation", result: axErrorNotImplemented, want: ErrUnsupported},
 		{name: "stale element", result: axErrorInvalidUIElement, want: errWindowUnavailable},

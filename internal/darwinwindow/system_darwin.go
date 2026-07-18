@@ -16,19 +16,21 @@ const (
 	coreFoundationFramework      = "/System/Library/Frameworks/CoreFoundation.framework/CoreFoundation"
 	coreGraphicsFramework        = "/System/Library/Frameworks/CoreGraphics.framework/CoreGraphics"
 
-	axErrorSuccess                 int32  = 0
-	axErrorInvalidUIElement        int32  = -25202
-	axErrorActionUnsupported       int32  = -25206
-	axErrorNotImplemented          int32  = -25208
-	axErrorAPIDisabled             int32  = -25211
-	axValueCGPointType             uint32 = 1
-	axValueCGSizeType              uint32 = 2
-	cfNumberSInt32Type             int64  = 3
-	cfStringEncodingUTF8           uint32 = 0x08000100
-	setFrontProcessFrontWindowOnly uint32 = 1 << 0
-	maximumAXWindows                      = 4096
-	maximumAXStringBytes                  = 1 << 20
-	maximumExactCoordinate                = 1 << 53
+	axErrorSuccess                           int32  = 0
+	axErrorInvalidUIElement                  int32  = -25202
+	axErrorAttributeUnsupported              int32  = -25205
+	axErrorActionUnsupported                 int32  = -25206
+	axErrorNotImplemented                    int32  = -25208
+	axErrorAPIDisabled                       int32  = -25211
+	axErrorParameterizedAttributeUnsupported int32  = -25213
+	axValueCGPointType                       uint32 = 1
+	axValueCGSizeType                        uint32 = 2
+	cfNumberSInt32Type                       int64  = 3
+	cfStringEncodingUTF8                     uint32 = 0x08000100
+	setFrontProcessFrontWindowOnly           uint32 = 1 << 0
+	maximumAXWindows                                = 4096
+	maximumAXStringBytes                            = 1 << 20
+	maximumExactCoordinate                          = 1 << 53
 )
 
 var errWindowUnavailable = errors.New("macOS window is unavailable")
@@ -161,6 +163,14 @@ func (system *nativeSystem) WindowRect(handle windowbackend.Handle) (windowbacke
 		return windowbackend.Rect{}, err
 	}
 	defer api.cfRelease(positionValue)
+	if err := requireCFType(
+		api,
+		positionValue,
+		api.axValueGetTypeID(),
+		"AXPosition",
+	); err != nil {
+		return windowbackend.Rect{}, err
+	}
 	if valueType := api.axValueGetType(positionValue); valueType != axValueCGPointType {
 		return windowbackend.Rect{}, fmt.Errorf(
 			"AX position has type %d, want CGPoint type %d",
@@ -173,6 +183,14 @@ func (system *nativeSystem) WindowRect(handle windowbackend.Handle) (windowbacke
 		return windowbackend.Rect{}, err
 	}
 	defer api.cfRelease(sizeValue)
+	if err := requireCFType(
+		api,
+		sizeValue,
+		api.axValueGetTypeID(),
+		"AXSize",
+	); err != nil {
+		return windowbackend.Rect{}, err
+	}
 	if valueType := api.axValueGetType(sizeValue); valueType != axValueCGSizeType {
 		return windowbackend.Rect{}, fmt.Errorf(
 			"AX size has type %d, want CGSize type %d",

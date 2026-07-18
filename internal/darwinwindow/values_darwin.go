@@ -248,7 +248,10 @@ func axCallError(operation string, result int32) error {
 	switch result {
 	case axErrorAPIDisabled:
 		return fmt.Errorf("%w: %s failed with AXError %d", ErrPermission, operation, result)
-	case axErrorActionUnsupported, axErrorNotImplemented:
+	case axErrorAttributeUnsupported,
+		axErrorActionUnsupported,
+		axErrorNotImplemented,
+		axErrorParameterizedAttributeUnsupported:
 		return fmt.Errorf("%w: %s failed with AXError %d", ErrUnsupported, operation, result)
 	case axErrorInvalidUIElement:
 		return fmt.Errorf("%w: %s failed with AXError %d", errWindowUnavailable, operation, result)
