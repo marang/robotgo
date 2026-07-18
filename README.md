@@ -130,6 +130,13 @@ CGWindowID-to-Accessibility mapping uses the same runtime-resolved macOS bridge
 as the native backend; if that bridge is absent, capability probing reports the
 backend as unsupported instead of degrading silently.
 
+On every supported Pure-Go window backend, `CloseWindowKill` resolves the
+window's actual owner and process start time, requests a graceful close, waits
+for a bounded 1.5-second grace period, and force-terminates only if both PID and
+process identity still match. A failed identity probe aborts without
+force-killing, and detected PID reuse is treated as the original process having
+exited.
+
 ```go
 if err := robotgo.KeyboardReady(); err != nil {
 	log.Fatal(err)

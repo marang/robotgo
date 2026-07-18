@@ -105,6 +105,17 @@ application. Permission-granted activation, minimize/restore, and close remain
 opt-in runtime evidence until a self-owned macOS test-window harness is
 available; tests must not mutate an unrelated developer window.
 
+Pure-Go `CloseWindowKill` tests use fake window/process backends. They cover
+PID, handle and active-window resolution, graceful exit, the bounded force-kill
+fallback, deadline races, and fail-closed probe errors without terminating a
+real process:
+
+```bash
+CGO_ENABLED=0 go test \
+  -run '^(TestCloseWindowKill|TestCloseWindowProcessIdentity|TestWaitForWindowProcessExit)' \
+  -count=1 -v .
+```
+
 After granting Accessibility access, the opt-in real input tests move to the
 center of the main display and restore the original location, and exercise one
 ownership-checked Shift hold/release without typing text:

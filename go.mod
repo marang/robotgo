@@ -8,6 +8,7 @@ require (
 	github.com/jezek/xgb v1.3.1
 	github.com/jezek/xgbutil v0.0.0-20260124183602-9fd151d6a51a
 	github.com/otiai10/gosseract/v2 v2.4.1
+	github.com/shirou/gopsutil/v4 v4.26.6
 	github.com/tailscale/win v0.0.0-20260619195133-2d76c33a64c1
 	github.com/vcaesar/gops v0.42.0
 	github.com/vcaesar/imgo v0.42.0
@@ -23,7 +24,6 @@ require (
 	github.com/go-ole/go-ole v1.3.0 // indirect
 	github.com/lufia/plan9stats v0.0.0-20260627054121-477a66015f15 // indirect
 	github.com/power-devops/perfstat v0.0.0-20240221224432-82ca36839d55 // indirect
-	github.com/shirou/gopsutil/v4 v4.26.6 // indirect
 	github.com/tklauser/go-sysconf v0.4.0 // indirect
 	github.com/tklauser/numcpus v0.12.0 // indirect
 	github.com/yusufpapurcu/wmi v1.2.4 // indirect
