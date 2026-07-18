@@ -39,6 +39,8 @@ readonly -a NATIVE_ONLY_BEHAVIOR_TESTS=(
 )
 readonly -a PUREGO_ONLY_BEHAVIOR_TESTS=(
 	'TestPureGoX11RejectsImplicitDependencyPortalFallback'
+	'TestPureGoX11WindowCapabilitySelection'
+	'TestPureGoX11WindowCapabilityRejectsWaylandConflict'
 	'TestPureGoX11MultiLayoutConfiguration'
 	'TestPureGoX11Capabilities'
 	'TestPureGoX11PointerInput'
@@ -58,6 +60,7 @@ readonly -a PUREGO_ONLY_BEHAVIOR_TESTS=(
 	'TestPureGoX11EventDrainDoesNotStall'
 	'TestPureGoX11CloseMainDisplayReconnects'
 	'TestPureGoX11SessionSwitchReleasesOwnedInput'
+	'TestPureGoX11WindowIntrospectionAndControl'
 )
 readonly -a EXPECTED_BENCHMARK_NAMES=(
 	'BenchmarkCaptureImgRuntime'
