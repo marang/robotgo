@@ -72,6 +72,9 @@ func closeWindowProcessKill(pid int, identity int64) error {
 		false,
 		nativePID,
 	)
+	if errors.Is(err, windows.ERROR_INVALID_PARAMETER) {
+		return nil
+	}
 	if err != nil {
 		return fmt.Errorf("open process %d for termination: %w", pid, err)
 	}

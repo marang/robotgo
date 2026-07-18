@@ -36,7 +36,7 @@ func platformPureGoWindowCapability() FeatureCapability {
 		Available: true,
 		Backend:   featureBackendPureGoX11,
 		Reason:    "Pure-Go X11 window introspection and EWMH control are selected",
-		Notes:     "runtime X server access is validated per operation; mutations require a consistent EWMH manager that advertises the operation",
+		Notes:     "runtime X server access is validated per operation; mutations require a consistent EWMH manager that advertises the operation; CloseWindowKill force fallback requires Linux pidfd support",
 	}
 }
 

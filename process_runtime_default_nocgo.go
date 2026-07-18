@@ -1,34 +1,21 @@
-//go:build !cgo && !windows
+//go:build !cgo && !windows && !linux
 
 package robotgo
 
 import (
-	"errors"
 	"fmt"
+	"runtime"
 )
 
 func closeWindowProcessExists(pid int) (bool, error) {
 	return PidExists(pid)
 }
 
-func closeWindowProcessKill(pid int, identity int64) error {
-	currentIdentity, err := closeWindowProcessIdentity(pid)
-	if err != nil {
-		exists, existsErr := closeWindowProcessExists(pid)
-		if existsErr != nil {
-			return fmt.Errorf(
-				"verify process %d before termination: %w",
-				pid,
-				errors.Join(err, existsErr),
-			)
-		}
-		if !exists {
-			return nil
-		}
-		return fmt.Errorf("verify process %d before termination: %w", pid, err)
-	}
-	if currentIdentity != identity {
-		return nil
-	}
-	return Kill(pid)
+func closeWindowProcessKill(pid int, _ int64) error {
+	return fmt.Errorf(
+		"%w: Pure-Go %s cannot bind force-kill to process %d without a stable process handle",
+		ErrNotSupported,
+		runtime.GOOS,
+		pid,
+	)
 }
