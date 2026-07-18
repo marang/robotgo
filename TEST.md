@@ -31,6 +31,10 @@ Inspect a live host without opening a consent dialog with:
 go run ./examples/runtime_diagnostics
 ```
 
+Process-termination validation is tested only through an injected fake killer:
+the suite proves that zero, negative, and platform-overflow PIDs are rejected
+without sending a real signal or terminating a process.
+
 Both build variants are blocking linter targets as well:
 
 ```bash

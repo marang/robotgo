@@ -71,6 +71,11 @@ and inspect `GetRuntimeCapabilities` when an operation is required for a
 workflow. `GetRuntimeDiagnostics` provides the stable machine-readable report;
 `GetLinuxCapabilities` remains the compact Linux-specific view.
 
+`Kill` accepts only a positive process identifier that fits the platform PID
+range. Invalid values return `ErrInvalidPID` before any operating-system signal
+or termination call; in particular, `Kill(0)` can never target a Unix process
+group.
+
 ## Support overview
 
 | Platform/session | Build | Current behavior |
