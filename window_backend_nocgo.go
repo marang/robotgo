@@ -21,6 +21,43 @@ type publicPureGoWindowBackend struct {
 	windowbackend.Backend
 }
 
+func (backend publicPureGoWindowBackend) Active() (windowbackend.Handle, error) {
+	handle, err := backend.Backend.Active()
+	return handle, translatePureGoWindowError(err)
+}
+
+func (backend publicPureGoWindowBackend) Resolve(
+	target int,
+	isHandle bool,
+) (windowbackend.Handle, error) {
+	handle, err := backend.Backend.Resolve(target, isHandle)
+	return handle, translatePureGoWindowError(err)
+}
+
+func (backend publicPureGoWindowBackend) Select(target int, isHandle bool) error {
+	return translatePureGoWindowError(backend.Backend.Select(target, isHandle))
+}
+
+func (backend publicPureGoWindowBackend) PID(handle windowbackend.Handle) (int, error) {
+	pid, err := backend.Backend.PID(handle)
+	return pid, translatePureGoWindowError(err)
+}
+
+func (backend publicPureGoWindowBackend) Title(
+	handle windowbackend.Handle,
+) (string, error) {
+	title, err := backend.Backend.Title(handle)
+	return title, translatePureGoWindowError(err)
+}
+
+func (backend publicPureGoWindowBackend) Bounds(
+	handle windowbackend.Handle,
+	client bool,
+) (windowbackend.Rect, error) {
+	rect, err := backend.Backend.Bounds(handle, client)
+	return rect, translatePureGoWindowError(err)
+}
+
 func (backend publicPureGoWindowBackend) Activate(handle windowbackend.Handle) error {
 	return translatePureGoWindowError(backend.Backend.Activate(handle))
 }
@@ -58,10 +95,17 @@ func (backend publicPureGoWindowBackend) Close(handle windowbackend.Handle) erro
 }
 
 func translatePureGoWindowError(err error) error {
-	if err == nil || !errors.Is(err, windowbackend.ErrUnsupported) {
+	if err == nil {
 		return err
 	}
-	return fmt.Errorf("%w: %w", ErrNotSupported, err)
+	switch {
+	case errors.Is(err, windowbackend.ErrPermission):
+		return fmt.Errorf("%w: %w", ErrPermissionDenied, err)
+	case errors.Is(err, windowbackend.ErrUnsupported):
+		return fmt.Errorf("%w: %w", ErrNotSupported, err)
+	default:
+		return err
+	}
 }
 
 func pureGoWindowCapability() FeatureCapability {

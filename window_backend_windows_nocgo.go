@@ -21,3 +21,5 @@ func platformPureGoWindowCapability() FeatureCapability {
 		Notes:     "PID targets prefer visible unowned top-level windows; Windows foreground-activation policy still applies",
 	}
 }
+
+func closePureGoPlatformWindow() error { return nil }

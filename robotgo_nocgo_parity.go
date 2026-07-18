@@ -55,8 +55,11 @@ func CloseMainDisplay() { _ = CloseMainDisplayE() }
 // behind. If cleanup reports a pressed-key or modifier-map conflict, remove
 // that conflict and retry CloseMainDisplayE. On Pure-Go Windows it releases
 // RobotGo-owned persistent key and button holds; process termination cannot run
-// this in-process cleanup.
-func CloseMainDisplayE() error { return closePureGoPlatformInput() }
+// this in-process cleanup. On Pure-Go macOS it also unloads window-control
+// framework references after releasing owned input state.
+func CloseMainDisplayE() error {
+	return errors.Join(closePureGoPlatformInput(), closePureGoPlatformWindow())
+}
 
 func InvalidateScreenBoundsCache() {}
 func Drag(x, y int, args ...string) {

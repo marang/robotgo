@@ -65,6 +65,15 @@ func darwinRuntimePermissions(
 			),
 			Reason: capabilities.Mouse.Reason,
 		},
+		{
+			Feature: runtimeFeatureWindow,
+			Name:    "Accessibility",
+			State: permissionFromCapability(
+				capabilities.Window,
+				"backend is ready",
+			),
+			Reason: capabilities.Window.Reason,
+		},
 	}
 }
 
