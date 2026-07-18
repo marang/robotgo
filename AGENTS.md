@@ -180,6 +180,10 @@ For functions that expose dimensions or rectangles:
 
 ## 10) Documentation and Change Hygiene
 
+The operational branch, pull-request, CI, reviewer, merge, and cleanup loop is
+defined in `docs/workflow_conventions.md`. Follow it for normal repository work;
+this file remains authoritative for engineering and safety rules.
+
 Any backend behavior change should update affected docs:
 
 1. `README.md` for user-visible backend behavior/env vars.
