@@ -29,7 +29,7 @@ The July 2026 hardening work establishes the foundation for this roadmap:
 - CI covers lint, default tests on Linux/macOS/Windows, non-CGO, Wayland, portal,
   Weston integration, race, vet, and native sanitizer/leak variants.
 
-## Execution Status (2026-07-17)
+## Execution Status (2026-07-18)
 
 | Area | Status | Delivered | Exit criteria still open |
 |---|---|---|---|
@@ -223,6 +223,10 @@ probe failures abort without a destructive fallback. macOS captures process
 identity for the graceful wait and returns explicit unsupported if graceful
 close is insufficient because it has no equivalent stable process handle.
 Hermetic tests never terminate a real process.
+
+The current upstream public-helper surface is also source-compatible without
+adopting upstream's breaking `Click` signature change. The versioned upstream
+audit records which changes are adopted, superseded, or rejected and why.
 
 The Linux/X11 evaluation slice of Phase 3 is complete. Native CGO and Pure-Go
 X11 binaries pass one black-box public-API contract for capture, pointer,
