@@ -167,6 +167,9 @@ func TestBackendPermissionAndValidation(t *testing.T) {
 	system.readyErr = ErrPermission
 	backend := New(system)
 
+	if err := backend.Activate(0); !errors.Is(err, windowbackend.ErrInvalidWindow) {
+		t.Fatalf("Activate(0) = %v, want validation before permission preflight", err)
+	}
 	if _, err := backend.Active(); !errors.Is(err, ErrPermission) {
 		t.Fatalf("Active() = %v, want permission error", err)
 	}

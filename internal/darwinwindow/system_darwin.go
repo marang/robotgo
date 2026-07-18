@@ -16,6 +16,17 @@ const (
 	coreFoundationFramework      = "/System/Library/Frameworks/CoreFoundation.framework/CoreFoundation"
 	coreGraphicsFramework        = "/System/Library/Frameworks/CoreGraphics.framework/CoreGraphics"
 
+	axCloseButtonAttributeName   = "AXCloseButton"
+	axFocusedWindowAttributeName = "AXFocusedWindow"
+	axMainWindowAttributeName    = "AXMainWindow"
+	axMinimizedAttributeName     = "AXMinimized"
+	axPositionAttributeName      = "AXPosition"
+	axPressActionName            = "AXPress"
+	axRaiseActionName            = "AXRaise"
+	axSizeAttributeName          = "AXSize"
+	axTitleAttributeName         = "AXTitle"
+	axWindowsAttributeName       = "AXWindows"
+
 	axErrorSuccess                           int32  = 0
 	axErrorInvalidUIElement                  int32  = -25202
 	axErrorAttributeUnsupported              int32  = -25205

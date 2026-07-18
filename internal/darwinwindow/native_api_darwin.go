@@ -5,6 +5,7 @@ package darwinwindow
 import (
 	"errors"
 	"fmt"
+	"runtime"
 	"unsafe"
 
 	"github.com/ebitengine/purego"
@@ -14,6 +15,7 @@ type nativeAPI struct {
 	applicationServicesHandle uintptr
 	coreFoundationHandle      uintptr
 	coreGraphicsHandle        uintptr
+	ownedCFValues             []uintptr
 
 	axIsProcessTrusted                     func() bool
 	axUIElementCreateApplication           func(int32) uintptr
@@ -45,6 +47,7 @@ type nativeAPI struct {
 	cfRelease                              func(uintptr)
 	cfRetain                               func(uintptr) uintptr
 	cfStringGetCString                     func(uintptr, *byte, int64, uint32) bool
+	cfStringCreateWithCString              func(uintptr, *byte, uint32) uintptr
 	cfStringGetLength                      func(uintptr) int64
 	cfStringGetMaximumSizeForEncoding      func(int64, uint32) int64
 	cfStringGetTypeID                      func() uintptr
@@ -128,6 +131,7 @@ func openNativeAPI() (*nativeAPI, error) {
 		{api.coreFoundationHandle, &api.cfNumberGetTypeID, "CFNumberGetTypeID"},
 		{api.coreFoundationHandle, &api.cfRelease, "CFRelease"},
 		{api.coreFoundationHandle, &api.cfRetain, "CFRetain"},
+		{api.coreFoundationHandle, &api.cfStringCreateWithCString, "CFStringCreateWithCString"},
 		{api.coreFoundationHandle, &api.cfStringGetCString, "CFStringGetCString"},
 		{api.coreFoundationHandle, &api.cfStringGetLength, "CFStringGetLength"},
 		{api.coreFoundationHandle, &api.cfStringGetMaximumSizeForEncoding, "CFStringGetMaximumSizeForEncoding"},
@@ -143,16 +147,6 @@ func openNativeAPI() (*nativeAPI, error) {
 		target *uintptr
 		name   string
 	}{
-		{api.applicationServicesHandle, &api.axCloseButtonAttribute, "kAXCloseButtonAttribute"},
-		{api.applicationServicesHandle, &api.axFocusedWindowAttribute, "kAXFocusedWindowAttribute"},
-		{api.applicationServicesHandle, &api.axMainWindowAttribute, "kAXMainWindowAttribute"},
-		{api.applicationServicesHandle, &api.axMinimizedAttribute, "kAXMinimizedAttribute"},
-		{api.applicationServicesHandle, &api.axPositionAttribute, "kAXPositionAttribute"},
-		{api.applicationServicesHandle, &api.axPressAction, "kAXPressAction"},
-		{api.applicationServicesHandle, &api.axRaiseAction, "kAXRaiseAction"},
-		{api.applicationServicesHandle, &api.axSizeAttribute, "kAXSizeAttribute"},
-		{api.applicationServicesHandle, &api.axTitleAttribute, "kAXTitleAttribute"},
-		{api.applicationServicesHandle, &api.axWindowsAttribute, "kAXWindowsAttribute"},
 		{api.coreFoundationHandle, &api.cfBooleanFalse, "kCFBooleanFalse"},
 		{api.coreFoundationHandle, &api.cfBooleanTrue, "kCFBooleanTrue"},
 		{api.coreGraphicsHandle, &api.cgWindowOwnerPID, "kCGWindowOwnerPID"},
@@ -162,7 +156,48 @@ func openNativeAPI() (*nativeAPI, error) {
 			return nil, errors.Join(err, api.close())
 		}
 	}
+	strings := []struct {
+		target *uintptr
+		value  string
+	}{
+		{&api.axCloseButtonAttribute, axCloseButtonAttributeName},
+		{&api.axFocusedWindowAttribute, axFocusedWindowAttributeName},
+		{&api.axMainWindowAttribute, axMainWindowAttributeName},
+		{&api.axMinimizedAttribute, axMinimizedAttributeName},
+		{&api.axPositionAttribute, axPositionAttributeName},
+		{&api.axPressAction, axPressActionName},
+		{&api.axRaiseAction, axRaiseActionName},
+		{&api.axSizeAttribute, axSizeAttributeName},
+		{&api.axTitleAttribute, axTitleAttributeName},
+		{&api.axWindowsAttribute, axWindowsAttributeName},
+	}
+	for _, value := range strings {
+		ref, stringErr := api.createString(value.value)
+		if stringErr != nil {
+			return nil, errors.Join(stringErr, api.close())
+		}
+		*value.target = ref
+	}
 	return api, nil
+}
+
+func (api *nativeAPI) createString(value string) (uintptr, error) {
+	bytes := append([]byte(value), 0)
+	ref := api.cfStringCreateWithCString(
+		0,
+		&bytes[0],
+		cfStringEncodingUTF8,
+	)
+	runtime.KeepAlive(bytes)
+	if ref == 0 {
+		return 0, fmt.Errorf(
+			"%w: create macOS string constant %q",
+			ErrUnsupported,
+			value,
+		)
+	}
+	api.ownedCFValues = append(api.ownedCFValues, ref)
+	return ref, nil
 }
 
 func bindNativeFunction(handle uintptr, target any, name string) error {
@@ -189,6 +224,12 @@ func bindNativeValue(handle uintptr, target *uintptr, name string) error {
 
 func (api *nativeAPI) close() error {
 	var closeErr error
+	if api.cfRelease != nil {
+		for index := len(api.ownedCFValues) - 1; index >= 0; index-- {
+			api.cfRelease(api.ownedCFValues[index])
+		}
+	}
+	api.ownedCFValues = nil
 	if api.coreFoundationHandle != 0 {
 		closeErr = errors.Join(closeErr, purego.Dlclose(api.coreFoundationHandle))
 		api.coreFoundationHandle = 0

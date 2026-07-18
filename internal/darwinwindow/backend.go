@@ -110,13 +110,13 @@ func (backend *Backend) Resolve(target int, isHandle bool) (windowbackend.Handle
 	if target <= 0 {
 		return 0, fmt.Errorf("%w: target must be positive, got %d", windowbackend.ErrWindowNotFound, target)
 	}
-	if err := backend.Ready(); err != nil {
-		return 0, err
-	}
 	if isHandle {
 		handle := windowbackend.Handle(uintptr(target))
 		if uint64(handle) > math.MaxUint32 {
 			return 0, fmt.Errorf("%w: CGWindowID %#x exceeds uint32", windowbackend.ErrInvalidWindow, uintptr(handle))
+		}
+		if err := backend.Ready(); err != nil {
+			return 0, err
 		}
 		if err := backend.validateReady(handle); err != nil {
 			return 0, err
@@ -125,6 +125,9 @@ func (backend *Backend) Resolve(target int, isHandle bool) (windowbackend.Handle
 	}
 	if int64(target) > math.MaxInt32 {
 		return 0, fmt.Errorf("%w: pid %d exceeds macOS pid_t", windowbackend.ErrWindowNotFound, target)
+	}
+	if err := backend.Ready(); err != nil {
+		return 0, err
 	}
 	handle, err := backend.system.FindWindowByPID(int32(target))
 	if err != nil {
@@ -334,6 +337,9 @@ func (backend *Backend) Close(handle windowbackend.Handle) error {
 }
 
 func (backend *Backend) validate(handle windowbackend.Handle) error {
+	if err := validateHandle(handle); err != nil {
+		return err
+	}
 	if err := backend.Ready(); err != nil {
 		return err
 	}
@@ -341,8 +347,8 @@ func (backend *Backend) validate(handle windowbackend.Handle) error {
 }
 
 func (backend *Backend) validateReady(handle windowbackend.Handle) error {
-	if handle == 0 || uint64(handle) > math.MaxUint32 {
-		return fmt.Errorf("%w: CGWindowID %#x", windowbackend.ErrInvalidWindow, uintptr(handle))
+	if err := validateHandle(handle); err != nil {
+		return err
 	}
 	valid, err := backend.system.WindowExists(handle)
 	if err != nil {
@@ -354,6 +360,13 @@ func (backend *Backend) validateReady(handle windowbackend.Handle) error {
 		)
 	}
 	if !valid {
+		return fmt.Errorf("%w: CGWindowID %#x", windowbackend.ErrInvalidWindow, uintptr(handle))
+	}
+	return nil
+}
+
+func validateHandle(handle windowbackend.Handle) error {
+	if handle == 0 || uint64(handle) > math.MaxUint32 {
 		return fmt.Errorf("%w: CGWindowID %#x", windowbackend.ErrInvalidWindow, uintptr(handle))
 	}
 	return nil
