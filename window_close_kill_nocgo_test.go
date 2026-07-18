@@ -91,19 +91,20 @@ func (backend *closeKillWindowBackend) Close(handle windowbackend.Handle) error 
 }
 
 type fakeCloseKillRuntime struct {
-	now           time.Time
-	exists        []bool
-	existsErr     error
-	existsCalls   int
-	identity      int64
-	identities    []int64
-	identityErr   error
-	identityErrs  []error
-	identityCalls int
-	sleepTotal    time.Duration
-	killedPID     int
-	killErr       error
-	unexpectedOp  bool
+	now            time.Time
+	exists         []bool
+	existsErr      error
+	existsCalls    int
+	identity       int64
+	identities     []int64
+	identityErr    error
+	identityErrs   []error
+	identityCalls  int
+	sleepTotal     time.Duration
+	killedPID      int
+	killedIdentity int64
+	killErr        error
+	unexpectedOp   bool
 }
 
 func (runtime *fakeCloseKillRuntime) dependencies() closeWindowKillRuntime {
@@ -154,8 +155,9 @@ func (runtime *fakeCloseKillRuntime) dependencies() closeWindowKillRuntime {
 			}
 			return identity, nil
 		},
-		kill: func(pid int) error {
+		kill: func(pid int, identity int64) error {
 			runtime.killedPID = pid
+			runtime.killedIdentity = identity
 			return runtime.killErr
 		},
 	}
@@ -213,6 +215,9 @@ func TestCloseWindowKillWithHandleForceKillsAfterGracePeriod(t *testing.T) {
 	}
 	if runtime.killedPID != 42 {
 		t.Fatalf("killed PID = %d, want 42", runtime.killedPID)
+	}
+	if runtime.killedIdentity != 100 {
+		t.Fatalf("killed process identity = %d, want 100", runtime.killedIdentity)
 	}
 	if runtime.unexpectedOp {
 		t.Fatal("process polling consumed an unexpected scripted result")
@@ -416,6 +421,34 @@ func TestCloseWindowKillHandlesExitBetweenExistenceAndIdentityProbe(t *testing.T
 	}
 	if runtime.sleepTotal != 0 {
 		t.Fatalf("slept %v after process exit", runtime.sleepTotal)
+	}
+}
+
+func TestCloseWindowKillRevalidatesAfterFinalSleep(t *testing.T) {
+	backend := &closeKillWindowBackend{resolved: 70, pid: 42}
+	exists := make([]bool, 16)
+	for index := 0; index < len(exists)-1; index++ {
+		exists[index] = true
+	}
+	runtime := &fakeCloseKillRuntime{exists: exists}
+
+	err := closeWindowKillWith(
+		backend,
+		[]int{42},
+		false,
+		runtime.dependencies(),
+	)
+	if err != nil {
+		t.Fatalf("closeWindowKillWith() error = %v", err)
+	}
+	if runtime.sleepTotal != closeWindowKillGracePeriod {
+		t.Fatalf("sleep total = %v, want %v", runtime.sleepTotal, closeWindowKillGracePeriod)
+	}
+	if runtime.existsCalls != len(exists) {
+		t.Fatalf("existence probes = %d, want %d", runtime.existsCalls, len(exists))
+	}
+	if runtime.killedPID != 0 {
+		t.Fatalf("process that exited after final sleep was killed: %d", runtime.killedPID)
 	}
 }
 
