@@ -131,12 +131,14 @@ as the native backend; if that bridge is absent, capability probing reports the
 backend as unsupported instead of degrading silently.
 
 On Windows and Linux/X11 Pure-Go window backends, `CloseWindowKill` resolves the
-window's actual owner and process start time, requests a graceful close, and
-waits for a bounded 1.5-second grace period. Windows binds the fallback to a
-verified process handle; Linux uses a verified `pidfd`. A failed identity probe
-or detected PID reuse aborts without force-killing. macOS still performs the
-graceful close, but returns `ErrNotSupported` if the process remains alive
-because macOS offers no equivalent stable process handle for a safe fallback.
+window's actual owner, acquires a stable process reference before requesting
+the graceful close, revalidates window ownership, and waits for a bounded
+1.5-second grace period. Windows retains one verified process handle; Linux
+retains one `pidfd` through the wait and optional force-kill. Owner changes,
+failed probes, and pre-bind exits abort without a destructive fallback. macOS
+still performs the graceful close, but returns `ErrNotSupported` if the process
+remains alive because macOS offers no equivalent stable process handle for a
+safe fallback.
 
 ```go
 if err := robotgo.KeyboardReady(); err != nil {

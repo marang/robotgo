@@ -16,6 +16,7 @@ type closeKillWindowBackend struct {
 	activeHandle  windowbackend.Handle
 	resolved      windowbackend.Handle
 	pid           int
+	pids          []int
 	activeErr     error
 	resolveErr    error
 	pidErr        error
@@ -46,6 +47,11 @@ func (backend *closeKillWindowBackend) Selected() windowbackend.Handle { return 
 
 func (backend *closeKillWindowBackend) PID(handle windowbackend.Handle) (int, error) {
 	backend.calls = append(backend.calls, fmt.Sprintf("pid:%d", handle))
+	if len(backend.pids) > 0 {
+		pid := backend.pids[0]
+		backend.pids = backend.pids[1:]
+		return pid, backend.pidErr
+	}
 	return backend.pid, backend.pidErr
 }
 
@@ -104,6 +110,8 @@ type fakeCloseKillRuntime struct {
 	killedPID      int
 	killedIdentity int64
 	killErr        error
+	closeErr       error
+	closeCalls     int
 	unexpectedOp   bool
 }
 
@@ -119,48 +127,96 @@ func (runtime *fakeCloseKillRuntime) dependencies() closeWindowKillRuntime {
 			runtime.sleepTotal += delay
 			runtime.now = runtime.now.Add(delay)
 		},
-		pidExists: func(int) (bool, error) {
-			runtime.existsCalls++
-			if runtime.existsErr != nil {
-				return false, runtime.existsErr
+		openProcess: func(pid int) (closeWindowProcess, error) {
+			identity, err := runtime.nextIdentity()
+			if err != nil {
+				return nil, err
 			}
-			if len(runtime.exists) == 0 {
-				runtime.unexpectedOp = true
-				return false, errors.New("unexpected process probe")
-			}
-			exists := runtime.exists[0]
-			if len(runtime.exists) > 1 {
-				runtime.exists = runtime.exists[1:]
-			}
-			return exists, nil
-		},
-		processIdentity: func(int) (int64, error) {
-			runtime.identityCalls++
-			if len(runtime.identityErrs) > 0 {
-				identityErr := runtime.identityErrs[0]
-				runtime.identityErrs = runtime.identityErrs[1:]
-				if identityErr != nil {
-					return 0, identityErr
-				}
-			}
-			if runtime.identityErr != nil {
-				return 0, runtime.identityErr
-			}
-			if len(runtime.identities) == 0 {
-				return runtime.identity, nil
-			}
-			identity := runtime.identities[0]
-			if len(runtime.identities) > 1 {
-				runtime.identities = runtime.identities[1:]
-			}
-			return identity, nil
-		},
-		kill: func(pid int, identity int64) error {
-			runtime.killedPID = pid
-			runtime.killedIdentity = identity
-			return runtime.killErr
+			return &fakeCloseWindowProcess{
+				pid:      pid,
+				identity: identity,
+				runtime:  runtime,
+			}, nil
 		},
 	}
+}
+
+type fakeCloseWindowProcess struct {
+	pid      int
+	identity int64
+	runtime  *fakeCloseKillRuntime
+}
+
+func (process *fakeCloseWindowProcess) Running() (bool, error) {
+	runtime := process.runtime
+	exists, err := runtime.nextExists()
+	if err != nil {
+		return false, err
+	}
+	if !exists {
+		return false, nil
+	}
+	identity, err := runtime.nextIdentity()
+	if err != nil {
+		stillExists, probeErr := runtime.nextExists()
+		if probeErr != nil {
+			return false, errors.Join(err, probeErr)
+		}
+		if !stillExists {
+			return false, nil
+		}
+		return false, err
+	}
+	return identity == process.identity, nil
+}
+
+func (process *fakeCloseWindowProcess) Kill() error {
+	process.runtime.killedPID = process.pid
+	process.runtime.killedIdentity = process.identity
+	return process.runtime.killErr
+}
+
+func (process *fakeCloseWindowProcess) Close() error {
+	process.runtime.closeCalls++
+	return process.runtime.closeErr
+}
+
+func (runtime *fakeCloseKillRuntime) nextIdentity() (int64, error) {
+	runtime.identityCalls++
+	if len(runtime.identityErrs) > 0 {
+		identityErr := runtime.identityErrs[0]
+		runtime.identityErrs = runtime.identityErrs[1:]
+		if identityErr != nil {
+			return 0, identityErr
+		}
+	}
+	if runtime.identityErr != nil {
+		return 0, runtime.identityErr
+	}
+	if len(runtime.identities) == 0 {
+		return runtime.identity, nil
+	}
+	identity := runtime.identities[0]
+	if len(runtime.identities) > 1 {
+		runtime.identities = runtime.identities[1:]
+	}
+	return identity, nil
+}
+
+func (runtime *fakeCloseKillRuntime) nextExists() (bool, error) {
+	runtime.existsCalls++
+	if runtime.existsErr != nil {
+		return false, runtime.existsErr
+	}
+	if len(runtime.exists) == 0 {
+		runtime.unexpectedOp = true
+		return false, errors.New("unexpected process probe")
+	}
+	exists := runtime.exists[0]
+	if len(runtime.exists) > 1 {
+		runtime.exists = runtime.exists[1:]
+	}
+	return exists, nil
 }
 
 func TestCloseWindowKillWithPIDAllowsGracefulExit(t *testing.T) {
@@ -183,7 +239,7 @@ func TestCloseWindowKillWithPIDAllowsGracefulExit(t *testing.T) {
 			backend.resolveHandle,
 		)
 	}
-	if got, want := backend.calls, []string{"resolve", "pid:70", "close:70"}; !reflect.DeepEqual(got, want) {
+	if got, want := backend.calls, []string{"resolve", "pid:70", "pid:70", "close:70"}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("backend calls = %v, want %v", got, want)
 	}
 	if runtime.killedPID != 0 {
@@ -222,6 +278,9 @@ func TestCloseWindowKillWithHandleForceKillsAfterGracePeriod(t *testing.T) {
 	if runtime.unexpectedOp {
 		t.Fatal("process polling consumed an unexpected scripted result")
 	}
+	if runtime.closeCalls != 1 {
+		t.Fatalf("stable process reference closes = %d, want 1", runtime.closeCalls)
+	}
 }
 
 func TestCloseWindowKillWithUsesActiveWindowWithoutTarget(t *testing.T) {
@@ -232,7 +291,7 @@ func TestCloseWindowKillWithUsesActiveWindowWithoutTarget(t *testing.T) {
 	if err != nil {
 		t.Fatalf("closeWindowKillWith() error = %v", err)
 	}
-	if got, want := backend.calls, []string{"active", "pid:70", "close:70"}; !reflect.DeepEqual(got, want) {
+	if got, want := backend.calls, []string{"active", "pid:70", "pid:70", "close:70"}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("backend calls = %v, want %v", got, want)
 	}
 }
@@ -310,6 +369,9 @@ func TestCloseWindowKillWithFailsClosed(t *testing.T) {
 				runtime.killedPID,
 			)
 		}
+		if runtime.closeCalls != 1 {
+			t.Fatalf("stable process reference closes = %d, want 1", runtime.closeCalls)
+		}
 	})
 
 	t.Run("process probe failure", func(t *testing.T) {
@@ -356,6 +418,28 @@ func TestCloseWindowKillWithFailsClosed(t *testing.T) {
 		}
 	})
 
+	t.Run("stable process reference close failure", func(t *testing.T) {
+		closeErr := errors.New("stable process close failed")
+		backend := &closeKillWindowBackend{resolved: 70, pid: 42}
+		runtime := &fakeCloseKillRuntime{
+			exists:   []bool{false},
+			closeErr: closeErr,
+		}
+
+		err := closeWindowKillWith(
+			backend,
+			[]int{42},
+			false,
+			runtime.dependencies(),
+		)
+		if !errors.Is(err, closeErr) {
+			t.Fatalf("error = %v, want process-reference close error", err)
+		}
+		if runtime.closeCalls != 1 {
+			t.Fatalf("stable process reference closes = %d, want 1", runtime.closeCalls)
+		}
+	})
+
 	t.Run("invalid resolved pid", func(t *testing.T) {
 		backend := &closeKillWindowBackend{resolved: 70}
 		runtime := &fakeCloseKillRuntime{exists: []bool{true}}
@@ -396,6 +480,33 @@ func TestCloseWindowKillDoesNotKillReusedPID(t *testing.T) {
 	}
 	if runtime.sleepTotal != 0 {
 		t.Fatalf("slept %v after PID identity changed", runtime.sleepTotal)
+	}
+}
+
+func TestCloseWindowKillRejectsOwnerChangeAfterProcessBinding(t *testing.T) {
+	backend := &closeKillWindowBackend{
+		resolved: 70,
+		pids:     []int{42, 43},
+	}
+	runtime := &fakeCloseKillRuntime{exists: []bool{true}}
+
+	err := closeWindowKillWith(
+		backend,
+		[]int{42},
+		false,
+		runtime.dependencies(),
+	)
+	if !errors.Is(err, windowbackend.ErrWindowNotFound) {
+		t.Fatalf("error = %v, want changed-owner window error", err)
+	}
+	if got, want := backend.calls, []string{"resolve", "pid:70", "pid:70"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("backend calls = %v, want %v", got, want)
+	}
+	if runtime.killedPID != 0 {
+		t.Fatalf("replacement process was force-killed: %d", runtime.killedPID)
+	}
+	if runtime.closeCalls != 1 {
+		t.Fatalf("stable process reference closes = %d, want 1", runtime.closeCalls)
 	}
 }
 
@@ -459,7 +570,12 @@ func TestWaitForWindowProcessExitReportsKillFailure(t *testing.T) {
 		killErr: killErr,
 	}
 
-	err := waitForWindowProcessExit(42, 100, runtime.dependencies())
+	dependencies := runtime.dependencies()
+	process, openErr := dependencies.openProcess(42)
+	if openErr != nil {
+		t.Fatalf("open fake process: %v", openErr)
+	}
+	err := waitForWindowProcessExit(42, process, dependencies)
 	if !errors.Is(err, killErr) {
 		t.Fatalf("error = %v, want kill error", err)
 	}
@@ -469,7 +585,7 @@ func TestWaitForWindowProcessExitReportsKillFailure(t *testing.T) {
 }
 
 func TestWaitForWindowProcessExitRejectsIncompleteRuntime(t *testing.T) {
-	err := waitForWindowProcessExit(42, 100, closeWindowKillRuntime{})
+	err := waitForWindowProcessExit(42, nil, closeWindowKillRuntime{})
 	if !errors.Is(err, windowbackend.ErrOperation) {
 		t.Fatalf("error = %v, want window operation error", err)
 	}

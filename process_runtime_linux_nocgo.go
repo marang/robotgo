@@ -16,86 +16,100 @@ const (
 )
 
 type linuxPIDFDRuntime struct {
-	openPIDFD       func(int, int) (int, error)
-	closeFD         func(int) error
-	sendSignal      func(int, unix.Signal, *unix.Siginfo, int) error
-	processIdentity func(int) (int64, error)
+	openPIDFD  func(int, int) (int, error)
+	closeFD    func(int) error
+	sendSignal func(int, unix.Signal, *unix.Siginfo, int) error
 }
 
-func closeWindowProcessExists(pid int) (bool, error) {
-	return PidExists(pid)
+type linuxCloseWindowProcess struct {
+	pid     int
+	pidfd   int
+	runtime linuxPIDFDRuntime
 }
 
-func closeWindowProcessKill(pid int, identity int64) error {
-	return closeWindowProcessKillLinux(
+func openCloseWindowProcess(pid int) (closeWindowProcess, error) {
+	return openCloseWindowProcessLinux(
 		pid,
-		identity,
 		linuxPIDFDRuntime{
-			openPIDFD:       unix.PidfdOpen,
-			closeFD:         unix.Close,
-			sendSignal:      unix.PidfdSendSignal,
-			processIdentity: closeWindowProcessIdentity,
+			openPIDFD:  unix.PidfdOpen,
+			closeFD:    unix.Close,
+			sendSignal: unix.PidfdSendSignal,
 		},
 	)
 }
 
-func closeWindowProcessKillLinux(
+func openCloseWindowProcessLinux(
 	pid int,
-	identity int64,
 	runtime linuxPIDFDRuntime,
-) (resultErr error) {
-	if runtime.openPIDFD == nil || runtime.closeFD == nil ||
-		runtime.sendSignal == nil || runtime.processIdentity == nil {
-		return fmt.Errorf("%w: incomplete Linux pidfd runtime", ErrNotSupported)
+) (closeWindowProcess, error) {
+	if pid <= 0 {
+		return nil, fmt.Errorf("invalid Linux process id %d", pid)
+	}
+	if runtime.openPIDFD == nil || runtime.closeFD == nil || runtime.sendSignal == nil {
+		return nil, fmt.Errorf("%w: incomplete Linux pidfd runtime", ErrNotSupported)
 	}
 	pidfd, err := runtime.openPIDFD(pid, linuxPIDFDOpenFlags)
 	if err != nil {
-		if errors.Is(err, unix.ESRCH) {
-			return nil
-		}
 		if errors.Is(err, unix.ENOSYS) || errors.Is(err, unix.EINVAL) {
-			return fmt.Errorf(
-				"%w: Linux pidfd force-kill is unavailable: %w",
+			return nil, fmt.Errorf(
+				"%w: Linux pidfd process binding is unavailable: %w",
 				ErrNotSupported,
 				err,
 			)
 		}
-		return fmt.Errorf("open pidfd for process %d: %w", pid, err)
+		return nil, fmt.Errorf("open pidfd for process %d: %w", pid, err)
 	}
-	defer func() {
-		resultErr = errors.Join(resultErr, runtime.closeFD(pidfd))
-	}()
+	return &linuxCloseWindowProcess{
+		pid:     pid,
+		pidfd:   pidfd,
+		runtime: runtime,
+	}, nil
+}
 
-	currentIdentity, err := runtime.processIdentity(pid)
-	if err != nil {
-		probeErr := runtime.sendSignal(
-			pidfd,
-			linuxPIDFDProcessExistenceSignal,
-			nil,
-			linuxPIDFDSendSignalFlags,
-		)
-		if errors.Is(probeErr, unix.ESRCH) {
-			return nil
-		}
-		if probeErr != nil {
-			return fmt.Errorf(
-				"verify pidfd process %d after identity failure: %w",
-				pid,
-				errors.Join(err, probeErr),
-			)
-		}
-		return fmt.Errorf("verify pidfd process %d identity: %w", pid, err)
+func (process *linuxCloseWindowProcess) Running() (bool, error) {
+	if process == nil || process.pidfd < 0 {
+		return false, fmt.Errorf("%w: Linux pidfd process reference is closed", ErrNotSupported)
 	}
-	if currentIdentity != identity {
-		return nil
+	err := process.runtime.sendSignal(
+		process.pidfd,
+		linuxPIDFDProcessExistenceSignal,
+		nil,
+		linuxPIDFDSendSignalFlags,
+	)
+	switch {
+	case errors.Is(err, unix.ESRCH):
+		return false, nil
+	case err != nil:
+		return false, fmt.Errorf("probe pidfd process %d: %w", process.pid, err)
+	default:
+		return true, nil
 	}
-	if err := runtime.sendSignal(
-		pidfd,
+}
+
+func (process *linuxCloseWindowProcess) Kill() error {
+	if process == nil || process.pidfd < 0 {
+		return fmt.Errorf("%w: Linux pidfd process reference is closed", ErrNotSupported)
+	}
+	err := process.runtime.sendSignal(
+		process.pidfd,
 		unix.SIGKILL,
 		nil,
 		linuxPIDFDSendSignalFlags,
-	); err != nil && !errors.Is(err, unix.ESRCH) {
-		return fmt.Errorf("force-kill pidfd process %d: %w", pid, err)
+	)
+	if err != nil && !errors.Is(err, unix.ESRCH) {
+		return fmt.Errorf("force-kill pidfd process %d: %w", process.pid, err)
+	}
+	return nil
+}
+
+func (process *linuxCloseWindowProcess) Close() error {
+	if process == nil || process.pidfd < 0 {
+		return nil
+	}
+	pidfd := process.pidfd
+	process.pidfd = -1
+	if err := process.runtime.closeFD(pidfd); err != nil {
+		return fmt.Errorf("close pidfd for process %d: %w", process.pid, err)
 	}
 	return nil
 }

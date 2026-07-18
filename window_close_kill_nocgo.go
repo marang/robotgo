@@ -16,11 +16,15 @@ const (
 )
 
 type closeWindowKillRuntime struct {
-	now             func() time.Time
-	sleep           func(time.Duration)
-	pidExists       func(int) (bool, error)
-	processIdentity func(int) (int64, error)
-	kill            func(int, int64) error
+	now         func() time.Time
+	sleep       func(time.Duration)
+	openProcess func(int) (closeWindowProcess, error)
+}
+
+type closeWindowProcess interface {
+	Running() (bool, error)
+	Kill() error
+	Close() error
 }
 
 // CloseWindowKill closes the target window and ensures the owning process
@@ -43,11 +47,9 @@ func CloseWindowKill(args ...int) error {
 
 func platformCloseWindowKillRuntime() closeWindowKillRuntime {
 	return closeWindowKillRuntime{
-		now:             time.Now,
-		sleep:           time.Sleep,
-		pidExists:       closeWindowProcessExists,
-		processIdentity: closeWindowProcessIdentity,
-		kill:            closeWindowProcessKill,
+		now:         time.Now,
+		sleep:       time.Sleep,
+		openProcess: openCloseWindowProcess,
 	}
 }
 
@@ -56,7 +58,7 @@ func closeWindowKillWith(
 	args []int,
 	treatAsHandle bool,
 	runtime closeWindowKillRuntime,
-) error {
+) (resultErr error) {
 	if err := runtime.validate(); err != nil {
 		return err
 	}
@@ -64,22 +66,37 @@ func closeWindowKillWith(
 	if err != nil {
 		return err
 	}
-	identity, err := runtime.processIdentity(pid)
+	process, err := runtime.openProcess(pid)
 	if err != nil {
-		return fmt.Errorf("capture window process %d identity: %w", pid, err)
+		return fmt.Errorf("bind window process %d before close: %w", pid, err)
 	}
-	if identity <= 0 {
+	if process == nil {
+		return fmt.Errorf("%w: process binder returned nil for pid %d", windowbackend.ErrOperation, pid)
+	}
+	defer func() {
+		resultErr = errors.Join(resultErr, process.Close())
+	}()
+
+	// Re-read ownership after acquiring the stable process reference. If the
+	// original owner exited during acquisition, do not close the stale window
+	// or bind a destructive fallback to a replacement that reused its PID.
+	currentPID, err := backend.PID(handle)
+	if err != nil {
+		return err
+	}
+	if currentPID != pid {
 		return fmt.Errorf(
-			"%w: window process %d returned invalid identity %d",
-			windowbackend.ErrOperation,
+			"%w: window handle %#x owner changed from pid %d to %d",
+			windowbackend.ErrWindowNotFound,
+			uintptr(handle),
 			pid,
-			identity,
+			currentPID,
 		)
 	}
 	if err := backend.Close(handle); err != nil {
 		return err
 	}
-	return waitForWindowProcessExit(pid, identity, runtime)
+	return waitForWindowProcessExit(pid, process, runtime)
 }
 
 func resolveCloseWindowKillTarget(
@@ -116,27 +133,22 @@ func resolveCloseWindowKillTarget(
 
 func waitForWindowProcessExit(
 	pid int,
-	identity int64,
+	process closeWindowProcess,
 	runtime closeWindowKillRuntime,
 ) error {
 	if err := runtime.validate(); err != nil {
 		return err
 	}
-	if identity <= 0 {
-		return fmt.Errorf(
-			"%w: invalid process identity %d for pid %d",
-			windowbackend.ErrOperation,
-			identity,
-			pid,
-		)
+	if process == nil {
+		return fmt.Errorf("%w: nil process reference for pid %d", windowbackend.ErrOperation, pid)
 	}
 	deadline := runtime.now().Add(closeWindowKillGracePeriod)
 	for runtime.now().Before(deadline) {
-		matches, err := windowProcessMatches(pid, identity, runtime)
+		running, err := process.Running()
 		if err != nil {
-			return err
+			return fmt.Errorf("check window process %d after graceful close: %w", pid, err)
 		}
-		if !matches {
+		if !running {
 			return nil
 		}
 
@@ -144,53 +156,21 @@ func waitForWindowProcessExit(
 		delay := min(closeWindowKillPollInterval, remaining)
 		runtime.sleep(delay)
 	}
-	matches, err := windowProcessMatches(pid, identity, runtime)
+	running, err := process.Running()
 	if err != nil {
-		return err
+		return fmt.Errorf("check window process %d at grace deadline: %w", pid, err)
 	}
-	if !matches {
+	if !running {
 		return nil
 	}
-	if err := runtime.kill(pid, identity); err != nil {
+	if err := process.Kill(); err != nil {
 		return fmt.Errorf("force-kill window process %d: %w", pid, err)
 	}
 	return nil
 }
 
-func windowProcessMatches(
-	pid int,
-	identity int64,
-	runtime closeWindowKillRuntime,
-) (bool, error) {
-	exists, err := runtime.pidExists(pid)
-	if err != nil {
-		return false, fmt.Errorf("check window process %d after graceful close: %w", pid, err)
-	}
-	if !exists {
-		return false, nil
-	}
-	currentIdentity, err := runtime.processIdentity(pid)
-	if err != nil {
-		stillExists, probeErr := runtime.pidExists(pid)
-		if probeErr != nil {
-			return false, fmt.Errorf(
-				"verify window process %d identity after probe failure: %w",
-				pid,
-				errors.Join(err, probeErr),
-			)
-		}
-		if !stillExists {
-			return false, nil
-		}
-		return false, fmt.Errorf("verify window process %d identity: %w", pid, err)
-	}
-	return currentIdentity == identity, nil
-}
-
 func (runtime closeWindowKillRuntime) validate() error {
-	if runtime.now == nil || runtime.sleep == nil ||
-		runtime.pidExists == nil || runtime.processIdentity == nil ||
-		runtime.kill == nil {
+	if runtime.now == nil || runtime.sleep == nil || runtime.openProcess == nil {
 		return fmt.Errorf(
 			"%w: incomplete CloseWindowKill runtime",
 			windowbackend.ErrOperation,

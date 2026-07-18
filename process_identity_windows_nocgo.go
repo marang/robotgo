@@ -3,12 +3,34 @@
 package robotgo
 
 import (
-	"errors"
 	"fmt"
 	"math"
 
 	"golang.org/x/sys/windows"
 )
+
+type windowsCloseWindowProcess struct {
+	pid    int
+	handle windows.Handle
+}
+
+func openCloseWindowProcess(pid int) (closeWindowProcess, error) {
+	nativePID, err := windowsCloseWindowProcessID(pid)
+	if err != nil {
+		return nil, err
+	}
+	handle, err := windows.OpenProcess(
+		windows.PROCESS_TERMINATE|
+			windows.PROCESS_QUERY_LIMITED_INFORMATION|
+			windows.SYNCHRONIZE,
+		false,
+		nativePID,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("open stable process handle for pid %d: %w", pid, err)
+	}
+	return &windowsCloseWindowProcess{pid: pid, handle: handle}, nil
+}
 
 func closeWindowProcessIdentity(pid int) (int64, error) {
 	nativePID, err := windowsCloseWindowProcessID(pid)
@@ -30,27 +52,13 @@ func closeWindowProcessIdentity(pid int) (int64, error) {
 	return windowsProcessIdentityFromHandle(handle, pid)
 }
 
-func closeWindowProcessExists(pid int) (bool, error) {
-	nativePID, err := windowsCloseWindowProcessID(pid)
-	if err != nil {
-		return false, err
+func (process *windowsCloseWindowProcess) Running() (bool, error) {
+	if process == nil || process.handle == 0 {
+		return false, fmt.Errorf("%w: Windows process handle is closed", ErrNotSupported)
 	}
-	handle, err := windows.OpenProcess(windows.SYNCHRONIZE, false, nativePID)
-	switch {
-	case errors.Is(err, windows.ERROR_ACCESS_DENIED):
-		return true, nil
-	case errors.Is(err, windows.ERROR_INVALID_PARAMETER):
-		return false, nil
-	case err != nil:
-		return false, fmt.Errorf("open process %d for existence check: %w", pid, err)
-	}
-	defer func() {
-		_ = windows.CloseHandle(handle)
-	}()
-
-	status, err := windows.WaitForSingleObject(handle, 0)
+	status, err := windows.WaitForSingleObject(process.handle, 0)
 	if err != nil {
-		return false, fmt.Errorf("wait for process %d: %w", pid, err)
+		return false, fmt.Errorf("wait for process %d: %w", process.pid, err)
 	}
 	switch status {
 	case uint32(windows.WAIT_TIMEOUT):
@@ -58,38 +66,31 @@ func closeWindowProcessExists(pid int) (bool, error) {
 	case windows.WAIT_OBJECT_0:
 		return false, nil
 	default:
-		return false, fmt.Errorf("wait for process %d returned status %#x", pid, status)
+		return false, fmt.Errorf("wait for process %d returned status %#x", process.pid, status)
 	}
 }
 
-func closeWindowProcessKill(pid int, identity int64) error {
-	nativePID, err := windowsCloseWindowProcessID(pid)
-	if err != nil {
-		return err
+func (process *windowsCloseWindowProcess) Kill() error {
+	if process == nil || process.handle == 0 {
+		return fmt.Errorf("%w: Windows process handle is closed", ErrNotSupported)
 	}
-	handle, err := windows.OpenProcess(
-		windows.PROCESS_TERMINATE|windows.PROCESS_QUERY_LIMITED_INFORMATION,
-		false,
-		nativePID,
-	)
-	if errors.Is(err, windows.ERROR_INVALID_PARAMETER) {
+	if err := windows.TerminateProcess(process.handle, 1); err != nil {
+		if running, waitErr := process.Running(); waitErr == nil && !running {
+			return nil
+		}
+		return fmt.Errorf("terminate process %d: %w", process.pid, err)
+	}
+	return nil
+}
+
+func (process *windowsCloseWindowProcess) Close() error {
+	if process == nil || process.handle == 0 {
 		return nil
 	}
-	if err != nil {
-		return fmt.Errorf("open process %d for termination: %w", pid, err)
-	}
-	defer func() {
-		_ = windows.CloseHandle(handle)
-	}()
-	currentIdentity, err := windowsProcessIdentityFromHandle(handle, pid)
-	if err != nil {
-		return fmt.Errorf("verify process %d before termination: %w", pid, err)
-	}
-	if currentIdentity != identity {
-		return nil
-	}
-	if err := windows.TerminateProcess(handle, 1); err != nil {
-		return fmt.Errorf("terminate process %d: %w", pid, err)
+	handle := process.handle
+	process.handle = 0
+	if err := windows.CloseHandle(handle); err != nil {
+		return fmt.Errorf("close process %d handle: %w", process.pid, err)
 	}
 	return nil
 }
