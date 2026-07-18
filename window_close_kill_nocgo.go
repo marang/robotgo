@@ -16,9 +16,19 @@ const (
 )
 
 type closeWindowKillRuntime struct {
-	now         func() time.Time
-	sleep       func(time.Duration)
-	openProcess func(int) (closeWindowProcess, error)
+	now             func() time.Time
+	sleep           func(time.Duration)
+	processIdentity func(int) (closeWindowProcessFingerprint, error)
+	openProcess     func(int, closeWindowProcessFingerprint) (closeWindowProcess, error)
+}
+
+type closeWindowProcessFingerprint struct {
+	primary   uint64
+	secondary uint64
+}
+
+func (identity closeWindowProcessFingerprint) valid() bool {
+	return identity.primary != 0 || identity.secondary != 0
 }
 
 type closeWindowProcess interface {
@@ -47,9 +57,10 @@ func CloseWindowKill(args ...int) error {
 
 func platformCloseWindowKillRuntime() closeWindowKillRuntime {
 	return closeWindowKillRuntime{
-		now:         time.Now,
-		sleep:       time.Sleep,
-		openProcess: openCloseWindowProcess,
+		now:             time.Now,
+		sleep:           time.Sleep,
+		processIdentity: captureCloseWindowProcessIdentity,
+		openProcess:     openCloseWindowProcess,
 	}
 }
 
@@ -66,7 +77,14 @@ func closeWindowKillWith(
 	if err != nil {
 		return err
 	}
-	process, err := runtime.openProcess(pid)
+	identity, err := runtime.processIdentity(pid)
+	if err != nil {
+		return fmt.Errorf("capture window process %d identity before binding: %w", pid, err)
+	}
+	if !identity.valid() {
+		return fmt.Errorf("%w: invalid process identity for pid %d", windowbackend.ErrOperation, pid)
+	}
+	process, err := runtime.openProcess(pid, identity)
 	if err != nil {
 		return fmt.Errorf("bind window process %d before close: %w", pid, err)
 	}
@@ -170,7 +188,8 @@ func waitForWindowProcessExit(
 }
 
 func (runtime closeWindowKillRuntime) validate() error {
-	if runtime.now == nil || runtime.sleep == nil || runtime.openProcess == nil {
+	if runtime.now == nil || runtime.sleep == nil ||
+		runtime.processIdentity == nil || runtime.openProcess == nil {
 		return fmt.Errorf(
 			"%w: incomplete CloseWindowKill runtime",
 			windowbackend.ErrOperation,

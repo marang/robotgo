@@ -108,8 +108,8 @@ available; tests must not mutate an unrelated developer window.
 Pure-Go `CloseWindowKill` tests use fake window/process backends. They cover
 PID, handle and active-window resolution, graceful exit, the bounded force-kill
 fallback, pre-close stable Linux `pidfd` binding, post-bind owner
-revalidation, deadline races, and fail-closed probe errors without terminating
-a real process:
+revalidation, pre-bind process-identity changes, deadline races, and
+fail-closed probe errors without terminating a real process:
 
 ```bash
 CGO_ENABLED=0 go test \

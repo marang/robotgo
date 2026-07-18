@@ -3,6 +3,7 @@
 package robotgo
 
 import (
+	"errors"
 	"fmt"
 	"math"
 
@@ -14,7 +15,23 @@ type windowsCloseWindowProcess struct {
 	handle windows.Handle
 }
 
-func openCloseWindowProcess(pid int) (closeWindowProcess, error) {
+func captureCloseWindowProcessIdentity(
+	pid int,
+) (closeWindowProcessFingerprint, error) {
+	identity, err := closeWindowProcessIdentity(pid)
+	if err != nil {
+		return closeWindowProcessFingerprint{}, err
+	}
+	return closeWindowProcessFingerprint{primary: uint64(identity)}, nil
+}
+
+func openCloseWindowProcess(
+	pid int,
+	expected closeWindowProcessFingerprint,
+) (closeWindowProcess, error) {
+	if !expected.valid() {
+		return nil, fmt.Errorf("invalid expected Windows process identity for pid %d", pid)
+	}
 	nativePID, err := windowsCloseWindowProcessID(pid)
 	if err != nil {
 		return nil, err
@@ -28,6 +45,16 @@ func openCloseWindowProcess(pid int) (closeWindowProcess, error) {
 	)
 	if err != nil {
 		return nil, fmt.Errorf("open stable process handle for pid %d: %w", pid, err)
+	}
+	current, identityErr := windowsProcessIdentityFromHandle(handle, pid)
+	if identityErr != nil {
+		return nil, errors.Join(identityErr, windows.CloseHandle(handle))
+	}
+	if uint64(current) != expected.primary {
+		return nil, errors.Join(
+			fmt.Errorf("process %d identity changed while opening stable handle", pid),
+			windows.CloseHandle(handle),
+		)
 	}
 	return &windowsCloseWindowProcess{pid: pid, handle: handle}, nil
 }

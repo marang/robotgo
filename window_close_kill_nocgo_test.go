@@ -127,14 +127,27 @@ func (runtime *fakeCloseKillRuntime) dependencies() closeWindowKillRuntime {
 			runtime.sleepTotal += delay
 			runtime.now = runtime.now.Add(delay)
 		},
-		openProcess: func(pid int) (closeWindowProcess, error) {
+		processIdentity: func(int) (closeWindowProcessFingerprint, error) {
+			identity, err := runtime.nextIdentity()
+			if err != nil {
+				return closeWindowProcessFingerprint{}, err
+			}
+			return closeWindowProcessFingerprint{primary: uint64(identity)}, nil
+		},
+		openProcess: func(
+			pid int,
+			expected closeWindowProcessFingerprint,
+		) (closeWindowProcess, error) {
 			identity, err := runtime.nextIdentity()
 			if err != nil {
 				return nil, err
 			}
+			if expected.primary != uint64(identity) {
+				return nil, errors.New("process identity changed during binding")
+			}
 			return &fakeCloseWindowProcess{
 				pid:      pid,
-				identity: identity,
+				identity: int64(expected.primary),
 				runtime:  runtime,
 			}, nil
 		},
@@ -401,7 +414,7 @@ func TestCloseWindowKillWithFailsClosed(t *testing.T) {
 		backend := &closeKillWindowBackend{resolved: 70, pid: 42}
 		runtime := &fakeCloseKillRuntime{
 			exists:       []bool{true},
-			identityErrs: []error{nil, identityErr},
+			identityErrs: []error{nil, nil, identityErr},
 		}
 
 		err := closeWindowKillWith(
@@ -472,14 +485,17 @@ func TestCloseWindowKillDoesNotKillReusedPID(t *testing.T) {
 		false,
 		runtime.dependencies(),
 	)
-	if err != nil {
-		t.Fatalf("closeWindowKillWith() error = %v", err)
+	if err == nil {
+		t.Fatal("closeWindowKillWith() accepted reused PID during process binding")
 	}
 	if runtime.killedPID != 0 {
 		t.Fatalf("reused PID was force-killed: %d", runtime.killedPID)
 	}
 	if runtime.sleepTotal != 0 {
 		t.Fatalf("slept %v after PID identity changed", runtime.sleepTotal)
+	}
+	if got, want := backend.calls, []string{"resolve", "pid:70"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("backend calls = %v, want %v", got, want)
 	}
 }
 
@@ -515,7 +531,7 @@ func TestCloseWindowKillHandlesExitBetweenExistenceAndIdentityProbe(t *testing.T
 	processExitedErr := errors.New("process exited during identity probe")
 	runtime := &fakeCloseKillRuntime{
 		exists:       []bool{true, false},
-		identityErrs: []error{nil, processExitedErr},
+		identityErrs: []error{nil, nil, processExitedErr},
 	}
 
 	err := closeWindowKillWith(
@@ -571,7 +587,11 @@ func TestWaitForWindowProcessExitReportsKillFailure(t *testing.T) {
 	}
 
 	dependencies := runtime.dependencies()
-	process, openErr := dependencies.openProcess(42)
+	identity, identityErr := dependencies.processIdentity(42)
+	if identityErr != nil {
+		t.Fatalf("capture fake process identity: %v", identityErr)
+	}
+	process, openErr := dependencies.openProcess(42, identity)
 	if openErr != nil {
 		t.Fatalf("open fake process: %v", openErr)
 	}

@@ -13,12 +13,14 @@ const (
 	linuxPIDFDOpenFlags              = 0
 	linuxPIDFDSendSignalFlags        = 0
 	linuxPIDFDProcessExistenceSignal = unix.Signal(0)
+	linuxProcPIDPathFormat           = "/proc/%d"
 )
 
 type linuxPIDFDRuntime struct {
-	openPIDFD  func(int, int) (int, error)
-	closeFD    func(int) error
-	sendSignal func(int, unix.Signal, *unix.Siginfo, int) error
+	openPIDFD       func(int, int) (int, error)
+	closeFD         func(int) error
+	sendSignal      func(int, unix.Signal, *unix.Siginfo, int) error
+	processIdentity func(int) (closeWindowProcessFingerprint, error)
 }
 
 type linuxCloseWindowProcess struct {
@@ -27,25 +29,62 @@ type linuxCloseWindowProcess struct {
 	runtime linuxPIDFDRuntime
 }
 
-func openCloseWindowProcess(pid int) (closeWindowProcess, error) {
+func captureCloseWindowProcessIdentity(
+	pid int,
+) (closeWindowProcessFingerprint, error) {
+	if pid <= 0 {
+		return closeWindowProcessFingerprint{}, fmt.Errorf("invalid Linux process id %d", pid)
+	}
+	var status unix.Stat_t
+	if err := unix.Stat(fmt.Sprintf(linuxProcPIDPathFormat, pid), &status); err != nil {
+		return closeWindowProcessFingerprint{}, fmt.Errorf(
+			"stat Linux process %d identity: %w",
+			pid,
+			err,
+		)
+	}
+	identity := closeWindowProcessFingerprint{
+		primary:   uint64(status.Dev),
+		secondary: status.Ino,
+	}
+	if !identity.valid() {
+		return closeWindowProcessFingerprint{}, fmt.Errorf(
+			"linux process %d returned an invalid procfs identity",
+			pid,
+		)
+	}
+	return identity, nil
+}
+
+func openCloseWindowProcess(
+	pid int,
+	expected closeWindowProcessFingerprint,
+) (closeWindowProcess, error) {
 	return openCloseWindowProcessLinux(
 		pid,
+		expected,
 		linuxPIDFDRuntime{
-			openPIDFD:  unix.PidfdOpen,
-			closeFD:    unix.Close,
-			sendSignal: unix.PidfdSendSignal,
+			openPIDFD:       unix.PidfdOpen,
+			closeFD:         unix.Close,
+			sendSignal:      unix.PidfdSendSignal,
+			processIdentity: captureCloseWindowProcessIdentity,
 		},
 	)
 }
 
 func openCloseWindowProcessLinux(
 	pid int,
+	expected closeWindowProcessFingerprint,
 	runtime linuxPIDFDRuntime,
 ) (closeWindowProcess, error) {
 	if pid <= 0 {
 		return nil, fmt.Errorf("invalid Linux process id %d", pid)
 	}
-	if runtime.openPIDFD == nil || runtime.closeFD == nil || runtime.sendSignal == nil {
+	if !expected.valid() {
+		return nil, fmt.Errorf("invalid expected Linux process identity for pid %d", pid)
+	}
+	if runtime.openPIDFD == nil || runtime.closeFD == nil ||
+		runtime.sendSignal == nil || runtime.processIdentity == nil {
 		return nil, fmt.Errorf("%w: incomplete Linux pidfd runtime", ErrNotSupported)
 	}
 	pidfd, err := runtime.openPIDFD(pid, linuxPIDFDOpenFlags)
@@ -58,6 +97,19 @@ func openCloseWindowProcessLinux(
 			)
 		}
 		return nil, fmt.Errorf("open pidfd for process %d: %w", pid, err)
+	}
+	current, identityErr := runtime.processIdentity(pid)
+	if identityErr != nil {
+		return nil, errors.Join(
+			fmt.Errorf("verify pidfd process %d identity: %w", pid, identityErr),
+			runtime.closeFD(pidfd),
+		)
+	}
+	if current != expected {
+		return nil, errors.Join(
+			fmt.Errorf("process %d identity changed while opening pidfd", pid),
+			runtime.closeFD(pidfd),
+		)
 	}
 	return &linuxCloseWindowProcess{
 		pid:     pid,

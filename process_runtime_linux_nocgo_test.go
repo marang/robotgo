@@ -4,6 +4,7 @@ package robotgo
 
 import (
 	"errors"
+	"os"
 	"reflect"
 	"testing"
 
@@ -11,17 +12,22 @@ import (
 )
 
 type fakeLinuxPIDFDRuntime struct {
-	openFD     int
-	openErr    error
-	sendErrs   []error
-	closeErr   error
-	opened     bool
-	closeCalls int
-	closedFD   int
-	signals    []unix.Signal
+	openFD      int
+	openErr     error
+	identity    closeWindowProcessFingerprint
+	identityErr error
+	sendErrs    []error
+	closeErr    error
+	opened      bool
+	closeCalls  int
+	closedFD    int
+	signals     []unix.Signal
 }
 
 func (runtime *fakeLinuxPIDFDRuntime) dependencies() linuxPIDFDRuntime {
+	if !runtime.identity.valid() {
+		runtime.identity = linuxTestProcessIdentity()
+	}
 	return linuxPIDFDRuntime{
 		openPIDFD: func(int, int) (int, error) {
 			runtime.opened = true
@@ -46,13 +52,38 @@ func (runtime *fakeLinuxPIDFDRuntime) dependencies() linuxPIDFDRuntime {
 			runtime.sendErrs = runtime.sendErrs[1:]
 			return err
 		},
+		processIdentity: func(int) (closeWindowProcessFingerprint, error) {
+			return runtime.identity, runtime.identityErr
+		},
+	}
+}
+
+func linuxTestProcessIdentity() closeWindowProcessFingerprint {
+	return closeWindowProcessFingerprint{primary: 1, secondary: 2}
+}
+
+func TestCaptureCloseWindowProcessIdentityLinuxIsStable(t *testing.T) {
+	first, err := captureCloseWindowProcessIdentity(os.Getpid())
+	if err != nil {
+		t.Fatalf("first process identity: %v", err)
+	}
+	second, err := captureCloseWindowProcessIdentity(os.Getpid())
+	if err != nil {
+		t.Fatalf("second process identity: %v", err)
+	}
+	if !first.valid() || first != second {
+		t.Fatalf("Linux process identities = (%+v, %+v), want equal valid values", first, second)
 	}
 }
 
 func TestOpenCloseWindowProcessLinuxBindsBeforeUse(t *testing.T) {
 	runtime := &fakeLinuxPIDFDRuntime{openFD: 9}
 
-	reference, err := openCloseWindowProcessLinux(42, runtime.dependencies())
+	reference, err := openCloseWindowProcessLinux(
+		42,
+		linuxTestProcessIdentity(),
+		runtime.dependencies(),
+	)
 	if err != nil {
 		t.Fatalf("openCloseWindowProcessLinux() error = %v", err)
 	}
@@ -86,7 +117,11 @@ func TestCloseWindowProcessLinuxHandlesBoundProcessExit(t *testing.T) {
 		openFD:   9,
 		sendErrs: []error{unix.ESRCH, unix.ESRCH},
 	}
-	reference, err := openCloseWindowProcessLinux(42, runtime.dependencies())
+	reference, err := openCloseWindowProcessLinux(
+		42,
+		linuxTestProcessIdentity(),
+		runtime.dependencies(),
+	)
 	if err != nil {
 		t.Fatalf("openCloseWindowProcessLinux() error = %v", err)
 	}
@@ -111,7 +146,11 @@ func TestCloseWindowProcessLinuxHandlesBoundProcessExit(t *testing.T) {
 func TestOpenCloseWindowProcessLinuxReportsUnavailablePIDFD(t *testing.T) {
 	runtime := &fakeLinuxPIDFDRuntime{openErr: unix.ENOSYS}
 
-	reference, err := openCloseWindowProcessLinux(42, runtime.dependencies())
+	reference, err := openCloseWindowProcessLinux(
+		42,
+		linuxTestProcessIdentity(),
+		runtime.dependencies(),
+	)
 	if reference != nil {
 		t.Fatalf("reference = %#v, want nil", reference)
 	}
@@ -126,7 +165,11 @@ func TestOpenCloseWindowProcessLinuxReportsUnavailablePIDFD(t *testing.T) {
 func TestOpenCloseWindowProcessLinuxDoesNotTreatPreBindExitAsSuccess(t *testing.T) {
 	runtime := &fakeLinuxPIDFDRuntime{openErr: unix.ESRCH}
 
-	reference, err := openCloseWindowProcessLinux(42, runtime.dependencies())
+	reference, err := openCloseWindowProcessLinux(
+		42,
+		linuxTestProcessIdentity(),
+		runtime.dependencies(),
+	)
 	if reference != nil {
 		t.Fatalf("reference = %#v, want nil", reference)
 	}
@@ -135,10 +178,46 @@ func TestOpenCloseWindowProcessLinuxDoesNotTreatPreBindExitAsSuccess(t *testing.
 	}
 }
 
+func TestOpenCloseWindowProcessLinuxRejectsIdentityChangeAfterPIDFDOpen(t *testing.T) {
+	runtime := &fakeLinuxPIDFDRuntime{
+		openFD: 9,
+		identity: closeWindowProcessFingerprint{
+			primary:   1,
+			secondary: 3,
+		},
+	}
+
+	reference, err := openCloseWindowProcessLinux(
+		42,
+		linuxTestProcessIdentity(),
+		runtime.dependencies(),
+	)
+	if err == nil {
+		t.Fatal("openCloseWindowProcessLinux() accepted changed process identity")
+	}
+	if reference != nil {
+		t.Fatalf("reference = %#v, want nil", reference)
+	}
+	if runtime.closeCalls != 1 || runtime.closedFD != 9 {
+		t.Fatalf(
+			"rejected pidfd cleanup = calls %d, fd %d; want calls 1, fd 9",
+			runtime.closeCalls,
+			runtime.closedFD,
+		)
+	}
+	if len(runtime.signals) != 0 {
+		t.Fatalf("signals after identity change = %v, want none", runtime.signals)
+	}
+}
+
 func TestCloseWindowProcessLinuxReportsAndDoesNotRepeatCloseFailure(t *testing.T) {
 	closeErr := errors.New("close failed")
 	runtime := &fakeLinuxPIDFDRuntime{openFD: 9, closeErr: closeErr}
-	reference, err := openCloseWindowProcessLinux(42, runtime.dependencies())
+	reference, err := openCloseWindowProcessLinux(
+		42,
+		linuxTestProcessIdentity(),
+		runtime.dependencies(),
+	)
 	if err != nil {
 		t.Fatalf("openCloseWindowProcessLinux() error = %v", err)
 	}
@@ -157,7 +236,11 @@ func TestCloseWindowProcessLinuxReportsAndDoesNotRepeatCloseFailure(t *testing.T
 
 func TestCloseWindowProcessLinuxClosesFileDescriptorZero(t *testing.T) {
 	runtime := &fakeLinuxPIDFDRuntime{openFD: 0}
-	reference, err := openCloseWindowProcessLinux(42, runtime.dependencies())
+	reference, err := openCloseWindowProcessLinux(
+		42,
+		linuxTestProcessIdentity(),
+		runtime.dependencies(),
+	)
 	if err != nil {
 		t.Fatalf("openCloseWindowProcessLinux() error = %v", err)
 	}

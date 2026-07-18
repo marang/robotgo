@@ -13,12 +13,31 @@ type identityCloseWindowProcess struct {
 	identity int64
 }
 
-func openCloseWindowProcess(pid int) (closeWindowProcess, error) {
+func captureCloseWindowProcessIdentity(
+	pid int,
+) (closeWindowProcessFingerprint, error) {
 	identity, err := closeWindowProcessIdentity(pid)
+	if err != nil {
+		return closeWindowProcessFingerprint{}, err
+	}
+	return closeWindowProcessFingerprint{primary: uint64(identity)}, nil
+}
+
+func openCloseWindowProcess(
+	pid int,
+	expected closeWindowProcessFingerprint,
+) (closeWindowProcess, error) {
+	current, err := captureCloseWindowProcessIdentity(pid)
 	if err != nil {
 		return nil, err
 	}
-	return &identityCloseWindowProcess{pid: pid, identity: identity}, nil
+	if current != expected {
+		return nil, fmt.Errorf("process %d identity changed during binding", pid)
+	}
+	return &identityCloseWindowProcess{
+		pid:      pid,
+		identity: int64(expected.primary),
+	}, nil
 }
 
 func (process *identityCloseWindowProcess) Running() (bool, error) {
