@@ -58,3 +58,29 @@ func TestGetTextImgContextRemovesPrivateTemporaryFile(t *testing.T) {
 		t.Fatalf("temporary OCR image still exists or stat failed: %v", err)
 	}
 }
+
+func TestGetTextImgContextRemovesPrivateTemporaryFileAfterCancellation(t *testing.T) {
+	directory := t.TempDir()
+	tesseract := filepath.Join(directory, "tesseract")
+	marker := filepath.Join(directory, "image-path")
+	script := "#!/bin/sh\nprintf '%s' \"$1\" > \"$ROBOTGO_OCR_TEST_MARKER\"\nexec /bin/sleep 30\n"
+	if err := os.WriteFile(tesseract, []byte(script), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", directory)
+	t.Setenv("ROBOTGO_OCR_TEST_MARKER", marker)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	defer cancel()
+	_, err := GetTextImgContext(ctx, image.NewRGBA(image.Rect(0, 0, 1, 1)))
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("GetTextImgContext error = %v, want deadline", err)
+	}
+	pathBytes, err := os.ReadFile(marker)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(string(pathBytes)); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("temporary OCR image still exists after cancellation or stat failed: %v", err)
+	}
+}

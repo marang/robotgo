@@ -274,9 +274,37 @@ func decodeFileURI(rawURI string) (image.Image, error) {
 		return nil, errors.New("portal: empty screenshot path")
 	}
 
+	info, err := os.Lstat(path)
+	if err != nil {
+		return nil, fmt.Errorf("portal: inspect screenshot: %w", err)
+	}
+	if !info.Mode().IsRegular() {
+		return nil, fmt.Errorf("portal: screenshot is not a regular file: %q", path)
+	}
 	f, err := os.Open(path)
 	if err != nil {
-		return nil, fmt.Errorf("portal: open screenshot: %w", err)
+		openErr := fmt.Errorf("portal: open screenshot: %w", err)
+		if removeErr := os.Remove(path); removeErr != nil && !errors.Is(removeErr, os.ErrNotExist) {
+			return nil, errors.Join(
+				openErr,
+				fmt.Errorf("portal: remove sensitive screenshot after open failure: %w", removeErr),
+			)
+		}
+		return nil, openErr
+	}
+	// The portal artifact contains the user's desktop. Unlink it immediately
+	// after opening so it cannot remain on disk if decoding or later processing
+	// fails. Linux keeps the opened contents available through f until close.
+	if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
+		closeErr := f.Close()
+		removeErr := fmt.Errorf("portal: remove sensitive screenshot: %w", err)
+		if closeErr != nil {
+			return nil, errors.Join(
+				removeErr,
+				fmt.Errorf("portal: close screenshot after cleanup failure: %w", closeErr),
+			)
+		}
+		return nil, removeErr
 	}
 	img, decodeErr := png.Decode(f)
 	closeErr := f.Close()

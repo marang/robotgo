@@ -126,6 +126,19 @@ Minimum local validation for meaningful changes:
 Repository-default command baseline in this repo currently uses direct `go`
 commands (no required root `Makefile` workflow).
 
+Sensitive-data cleanup is mandatory:
+
+1. Default unit tests must not persist the developer's real desktop, clipboard
+   contents, input events, OCR inputs, or similar private data.
+2. Integration tests and diagnostics that intentionally exercise real private
+   data must remove every sensitive artifact on success, failure, timeout, and
+   cancellation paths.
+3. Prefer in-memory fixtures and `t.TempDir()`/`t.Cleanup()` for unavoidable
+   files. Files returned by external backends remain RobotGo's cleanup
+   responsibility.
+4. Regression tests must verify that sensitive artifacts no longer exist after
+   processing, including error paths.
+
 Common targeted suites:
 
 1. `go test -tags "portal" ./screen/portal -v`
@@ -166,6 +179,10 @@ For functions that expose dimensions or rectangles:
    Wayland-only sessions.
 
 ## 10) Documentation and Change Hygiene
+
+The operational branch, pull-request, CI, reviewer, merge, and cleanup loop is
+defined in `docs/workflow_conventions.md`. Follow it for normal repository work;
+this file remains authoritative for engineering and safety rules.
 
 Any backend behavior change should update affected docs:
 

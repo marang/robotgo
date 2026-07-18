@@ -1,24 +1,46 @@
-The pull request will be closed without any reasons if it does not satisfy any of following requirements:
+## Summary
 
-1. Make sure you are targeting the `master` branch, pull requests on release branches are only allowed for bug fixes.
-2. Add new features, please provide the reasons and test code.
-3. Please read contributing guidelines: [CONTRIBUTING](https://github.com/go-vgo/robotgo/blob/master/CONTRIBUTING.md) and sign the CLA.
-4. Describe what your pull request does and which issue you're targeting (if any and **Please use English**)
-5. ... if it is not related to any particular issues, explain why we should not reject your pull request.
-6. The Commits must **use English**, must be test and No useless submissions.
+<!-- Describe the practical behavior or user-facing result. -->
 
-**You MUST delete the content above including this line before posting, otherwise your pull request will be invalid.**
+## Why
 
-**Please provide Issues links to:**
+<!-- Link the issue when one exists and explain why this change belongs here. -->
 
-- Issues: #1
+Related issue:
 
-**Provide test code:**
+## Changes
 
-```Go
+-
 
-```
+## Platform and backend impact
 
-## Description
+<!-- Note affected OSes, display servers, build tags, fallbacks, and explicit
+unsupported behavior. Use "none" only after checking. -->
 
-...
+## Risk and cleanup
+
+<!-- Cover compatibility, resource ownership, sensitive-data handling, and
+rollback or fallback behavior. -->
+
+## Validation
+
+<!-- Keep only commands and real-runtime evidence that were actually run. -->
+
+- [ ] `go test ./...`
+- [ ] Relevant tagged suites from `TEST.md`
+- [ ] `go vet ./...`
+- [ ] Linter or static analysis
+- [ ] Cross-platform or non-CGO compilation where affected
+- [ ] No sensitive test or development artifacts remain
+
+## Review readiness
+
+- [ ] Targets `main`
+- [ ] Commits and PR text are in English
+- [ ] Tests cover normal and failure/fallback behavior
+- [ ] User-facing documentation is updated where required
+- [ ] Build tags and platform boundaries were reviewed
+- [ ] Resource and file-descriptor cleanup was reviewed
+- [ ] CI, review threads, and automated-review results or reactions, including
+      Codex when configured, will be checked against the current head before
+      merge

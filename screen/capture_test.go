@@ -23,8 +23,11 @@ func TestCaptureScreen(t *testing.T) {
 		}
 
 		t.Setenv("WAYLAND_DISPLAY", "")
-		// Force the portal fallback to avoid X_GetImage crashes on constrained servers.
+		// Exercise portal selection through the hermetic stub. Default unit tests
+		// must not persist the developer's real desktop.
 		t.Setenv("ROBOTGO_FORCE_PORTAL", "1")
+		t.Setenv("ROBOTGO_DISABLE_PORTAL", "1")
+		t.Setenv("ROBOTGO_PORTAL_STUB_GREEN", "1")
 		bitmap, err := robotgo.CaptureScreen()
 		if err != nil {
 			t.Skipf("X11 capture skipped: %v", err)
@@ -44,6 +47,9 @@ func TestCaptureScreen(t *testing.T) {
 			t.Skip("WAYLAND_DISPLAY not set")
 		}
 		t.Setenv("DISPLAY", "")
+		t.Setenv("ROBOTGO_FORCE_PORTAL", "1")
+		t.Setenv("ROBOTGO_DISABLE_PORTAL", "1")
+		t.Setenv("ROBOTGO_PORTAL_STUB_GREEN", "1")
 		bitmap, err := robotgo.CaptureScreen()
 		if err != nil {
 			if strings.Contains(err.Error(), "no display server found") {
@@ -52,6 +58,9 @@ func TestCaptureScreen(t *testing.T) {
 			return
 		}
 		t.Cleanup(func() { robotgo.FreeBitmap(bitmap) })
+		if lb := robotgo.LastBackend(); lb != robotgo.BackendPortal {
+			t.Fatalf("expected portal backend, got %v", lb)
+		}
 	})
 
 	t.Run("PortalForce", func(t *testing.T) {

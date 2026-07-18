@@ -1,6 +1,16 @@
 # Docs
 
-Documents are not necessarily updated synchronously, slower than godoc, please see examples and godoc.
+Use the following documents as the primary entry points:
+
+- [Workflow conventions](workflow_conventions.md) for branches, pull requests,
+  CI, reviewer feedback, merges, and cleanup.
+- [Test guide](../TEST.md) for validation commands and runtime prerequisites.
+- [Product roadmap](plan/product-roadmap.md) for delivery phases.
+- [Wayland status](wayland-tasks.md) for backend support and open Wayland work.
+
+API details are available through examples and Go documentation. Lasting
+backend behavior and support contracts are documented in this directory.
+
 ## Wayland Portal
 
 RobotGo capture flow on Linux:

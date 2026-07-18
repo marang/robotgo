@@ -4,6 +4,7 @@ package portal
 
 import (
 	"context"
+	"errors"
 	"image"
 	"image/color"
 	"image/png"
@@ -59,7 +60,7 @@ func (p *fakeScreenshotPortal) screenshot(_ context.Context, options map[string]
 }
 func (p *fakeScreenshotPortal) close() error { return nil }
 
-func writeTestPNG(t *testing.T) string {
+func writeTestPNG(t *testing.T) (string, string) {
 	t.Helper()
 	path := t.TempDir() + "/portal image.png"
 	f, err := os.Create(path)
@@ -75,15 +76,17 @@ func writeTestPNG(t *testing.T) string {
 	if err := f.Close(); err != nil {
 		t.Fatal(err)
 	}
-	return (&url.URL{Scheme: "file", Path: path}).String()
+	return (&url.URL{Scheme: "file", Path: path}).String(), path
 }
 
 func TestCaptureRegionImageSubscribesBeforeRequestAndCrops(t *testing.T) {
-	portal := &fakeScreenshotPortal{uri: writeTestPNG(t)}
+	uri, artifactPath := writeTestPNG(t)
+	portal := &fakeScreenshotPortal{uri: uri}
 	img, err := captureRegionImage(context.Background(), portal, 2, 1, 1, 1)
 	if err != nil {
 		t.Fatalf("captureRegionImage failed: %v", err)
 	}
+	assertSensitiveArtifactRemoved(t, artifactPath)
 	if got := img.Bounds(); got != image.Rect(2, 1, 3, 2) {
 		t.Fatalf("unexpected crop bounds: %v", got)
 	}
@@ -174,5 +177,24 @@ func TestCropImageOnlyTreatsZeroByZeroAsFullScreenshot(t *testing.T) {
 func TestDecodeFileURIRejectsNonFileScheme(t *testing.T) {
 	if _, err := decodeFileURI("https://example.com/screenshot.png"); err == nil {
 		t.Fatal("expected unsupported URI error")
+	}
+}
+
+func TestDecodeFileURIRemovesSensitiveArtifactOnDecodeFailure(t *testing.T) {
+	path := t.TempDir() + "/invalid portal image.png"
+	if err := os.WriteFile(path, []byte("sensitive but not a PNG"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	uri := (&url.URL{Scheme: "file", Path: path}).String()
+	if _, err := decodeFileURI(uri); err == nil {
+		t.Fatal("expected PNG decode error")
+	}
+	assertSensitiveArtifactRemoved(t, path)
+}
+
+func assertSensitiveArtifactRemoved(t *testing.T, path string) {
+	t.Helper()
+	if _, err := os.Lstat(path); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("sensitive portal artifact still exists at %q: %v", path, err)
 	}
 }
