@@ -3,35 +3,72 @@
 package robotgo
 
 import (
+	"errors"
 	"fmt"
 
-	"github.com/marang/robotgo/internal/windowswindow"
+	"github.com/marang/robotgo/internal/windowbackend"
 )
 
-func pureGoWindowBackend() (*windowswindow.Backend, error) {
+func pureGoWindowBackend() (windowbackend.Backend, error) {
 	backend := platformPureGoWindowBackend()
 	if backend == nil {
 		return nil, fmt.Errorf("%w: no Pure-Go window backend is active", ErrNotSupported)
 	}
-	return backend, nil
+	return publicPureGoWindowBackend{Backend: backend}, nil
+}
+
+type publicPureGoWindowBackend struct {
+	windowbackend.Backend
+}
+
+func (backend publicPureGoWindowBackend) Activate(handle windowbackend.Handle) error {
+	return translatePureGoWindowError(backend.Backend.Activate(handle))
+}
+
+func (backend publicPureGoWindowBackend) SetState(
+	handle windowbackend.Handle,
+	state windowbackend.State,
+	enabled bool,
+) error {
+	return translatePureGoWindowError(backend.Backend.SetState(handle, state, enabled))
+}
+
+func (backend publicPureGoWindowBackend) State(
+	handle windowbackend.Handle,
+	state windowbackend.State,
+) (bool, error) {
+	enabled, err := backend.Backend.State(handle, state)
+	return enabled, translatePureGoWindowError(err)
+}
+
+func (backend publicPureGoWindowBackend) TopMost(handle windowbackend.Handle) (bool, error) {
+	enabled, err := backend.Backend.TopMost(handle)
+	return enabled, translatePureGoWindowError(err)
+}
+
+func (backend publicPureGoWindowBackend) SetTopMost(
+	handle windowbackend.Handle,
+	enabled bool,
+) error {
+	return translatePureGoWindowError(backend.Backend.SetTopMost(handle, enabled))
+}
+
+func (backend publicPureGoWindowBackend) Close(handle windowbackend.Handle) error {
+	return translatePureGoWindowError(backend.Backend.Close(handle))
+}
+
+func translatePureGoWindowError(err error) error {
+	if err == nil || !errors.Is(err, windowbackend.ErrUnsupported) {
+		return err
+	}
+	return fmt.Errorf("%w: %w", ErrNotSupported, err)
 }
 
 func pureGoWindowCapability() FeatureCapability {
-	if platformPureGoWindowBackend() == nil {
-		return FeatureCapability{
-			Reason: ErrNotSupported.Error(),
-			Notes:  "no matching Pure-Go window backend is active in this build",
-		}
-	}
-	return FeatureCapability{
-		Available: true,
-		Backend:   featureBackendPureGoWindows,
-		Reason:    "Pure-Go Win32 window introspection and control are available",
-		Notes:     "PID targets prefer visible unowned top-level windows; Windows foreground-activation policy still applies",
-	}
+	return platformPureGoWindowCapability()
 }
 
-func pureGoWindowActive() (windowswindow.Handle, error) {
+func pureGoWindowActive() (windowbackend.Handle, error) {
 	backend, err := pureGoWindowBackend()
 	if err != nil {
 		return 0, err
@@ -39,7 +76,7 @@ func pureGoWindowActive() (windowswindow.Handle, error) {
 	return backend.Active()
 }
 
-func pureGoWindowResolve(target int, isHandle bool) (windowswindow.Handle, error) {
+func pureGoWindowResolve(target int, isHandle bool) (windowbackend.Handle, error) {
 	backend, err := pureGoWindowBackend()
 	if err != nil {
 		return 0, err

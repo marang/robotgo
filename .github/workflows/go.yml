@@ -238,6 +238,8 @@ jobs:
               printf "%s\n" "$listed"
               expected="$(printf "%s\n" \
                 TestPureGoX11RejectsImplicitDependencyPortalFallback \
+                TestPureGoX11WindowCapabilitySelection \
+                TestPureGoX11WindowCapabilityRejectsWaylandConflict \
                 TestPureGoX11MultiLayoutConfiguration \
                 TestPureGoX11Capabilities \
                 TestPureGoX11PointerInput \
@@ -256,7 +258,8 @@ jobs:
                 TestPureGoX11PreservesForeignInputState \
                 TestPureGoX11EventDrainDoesNotStall \
                 TestPureGoX11CloseMainDisplayReconnects \
-                TestPureGoX11SessionSwitchReleasesOwnedInput | LC_ALL=C sort)"
+                TestPureGoX11SessionSwitchReleasesOwnedInput \
+                TestPureGoX11WindowIntrospectionAndControl | LC_ALL=C sort)"
               actual="$(printf "%s\n" "$listed" | awk "/^TestPureGoX11/ { print }" | LC_ALL=C sort)"
               if [ "$actual" != "$expected" ]; then
                 echo "Pure-Go X11 test manifest mismatch" >&2
