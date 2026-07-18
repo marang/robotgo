@@ -76,7 +76,7 @@ workflow. `GetRuntimeDiagnostics` provides the stable machine-readable report;
 | Platform/session | Build | Current behavior |
 |---|---|---|
 | macOS | CGO-enabled default build | Native mouse, keyboard, capture, window, and process paths; macOS permissions still apply |
-| macOS | `CGO_ENABLED=0` | Pure-Go CoreGraphics capture, display bounds, real Retina scale, and Quartz keyboard/pointer input with exact UTF-16 text, owned holds, process targeting, cleanup, and explicit Screen Recording/Accessibility diagnostics; media keys without a stable Quartz keycode and other unavailable GUI operations return `ErrNotSupported` |
+| macOS | `CGO_ENABLED=0` | Pure-Go CoreGraphics capture, display bounds, real Retina scale, Quartz keyboard/pointer input, and Accessibility window inspection/control with explicit permission diagnostics; maximize/topmost and media keys without stable native semantics return `ErrNotSupported` |
 | Windows | CGO-enabled default build | Native mouse, keyboard, capture, window, and process paths |
 | Windows | `CGO_ENABLED=0` | Pure-Go capture/display bounds, real Win32 DPI scale and pixel-at-pointer queries, foreground-layout-aware `SendInput` keyboard/text plus clipboard paste, complete pointer input, and Win32 window title/PID/handle/geometry/state/control operations with explicit errors |
 | Linux/X11 | CGO-enabled default build | X11/XTest input, capture, window, and process paths |
@@ -95,7 +95,7 @@ compositor to expose the corresponding virtual-input protocols. See
 Persistent capture runtime evidence is tracked separately in the
 [Wayland capture compatibility matrix](docs/compatibility/wayland-capture.md).
 
-## Pure-Go macOS input
+## Pure-Go macOS input and windows
 
 With `CGO_ENABLED=0`, macOS keyboard and pointer automation use Quartz events directly
 through runtime-loaded system frameworks. `MouseReady`, `KeyboardReady`, and
@@ -117,6 +117,18 @@ drag, single/double click, owned button toggles, horizontal/vertical pixel
 scrolling, and global pointer location. Persistent holds are ownership-checked;
 `CloseMainDisplayE` releases RobotGo-owned keys and buttons before unloading
 the native frameworks.
+
+Pure-Go macOS window support uses a non-prompting Accessibility preflight and
+stable `CGWindowID` handles. It supports active/PID/handle resolution, title,
+AX frame bounds, activation, minimize/restore and minimized-state queries, plus
+graceful close through the window's Accessibility close button. macOS does not
+expose a reliable cross-application client rectangle, so `GetClient` returns the
+same AX frame as `GetBounds`. Maximized and global topmost state have no stable
+equivalent and return `ErrNotSupported` explicitly. Call `CloseMainDisplayE` to
+release both input and window framework references deterministically. The
+CGWindowID-to-Accessibility mapping uses the same runtime-resolved macOS bridge
+as the native backend; if that bridge is absent, capability probing reports the
+backend as unsupported instead of degrading silently.
 
 ```go
 if err := robotgo.KeyboardReady(); err != nil {
@@ -696,6 +708,7 @@ The checked-in examples use this fork's module path and track the current API:
 - [Pure-Go X11 window inspection and opt-in EWMH control](examples/purego_x11_window/main.go)
 - [Pure-Go Windows input readiness and opt-in demo](examples/purego_windows_input/main.go)
 - [Pure-Go Windows window inspection and opt-in control](examples/purego_windows_window/main.go)
+- [Pure-Go macOS window inspection and opt-in control](examples/purego_macos_window/main.go)
 - [Consent-aware RemoteDesktop portal input](examples/remote_desktop_input/main.go)
 - [Persistent ScreenCast/PipeWire capture](examples/screencast_capture/main.go)
 - [Bitmap-string and region color-search helpers](examples/capture_helpers/main.go)
@@ -725,6 +738,16 @@ operations require `-act` and an explicit action:
 CGO_ENABLED=0 go run ./examples/purego_x11_window
 CGO_ENABLED=0 go run ./examples/purego_x11_window -pid 1234
 CGO_ENABLED=0 go run ./examples/purego_x11_window -pid 1234 -act -maximize
+```
+
+The Pure-Go macOS window example is also inspection-only by default. It requires
+Accessibility permission; mutation requires an explicit `-action`:
+
+```bash
+CGO_ENABLED=0 go run ./examples/purego_macos_window
+CGO_ENABLED=0 go run ./examples/purego_macos_window -pid 1234
+CGO_ENABLED=0 go run ./examples/purego_macos_window -action minimize
+CGO_ENABLED=0 go run ./examples/purego_macos_window -action restore
 ```
 
 On Windows, the Pure-Go example performs readiness checks only unless `-move`,

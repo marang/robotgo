@@ -36,7 +36,7 @@ The July 2026 hardening work establishes the foundation for this roadmap:
 | Current baseline | Complete in main | Native screencopy, screenshot portal fallback, bounded waits, cleanup, live capability probes, error APIs, non-CGO contract, dedicated race/vet/sanitizer jobs, protected stable CI checks | Keep required jobs green |
 | 1. Wayland input | Implementation complete; runtime validation blocked | Native virtual keyboard/pointer, consent-aware RemoteDesktop fallback, shared ScreenCast stream mapping, absolute pointer/touch, restore tokens, diagnostics and E2E harness | Register GNOME/KDE/wlroots runners and collect green CGO/non-CGO evidence |
 | 2. Capture | Hermetic implementation complete | Reliable one-shot paths plus one consent-aware ScreenCast session, reusable PipeWire frames, logical region crop, raw pixel conversion, metadata/restore tokens, cleanup, integration harness, non-skipping geometry/transform CI, and sanitizer-backed native ownership gates | Real GNOME/KDE/wlroots evidence |
-| 3. Pure-Go | X11 complete; Windows input/window CI-evidenced; macOS capture/display and keyboard/pointer implemented; broader phase partial | Build and feature-level introspection; non-CGO macOS CoreGraphics capture/display plus Quartz keyboard/pointer input and Accessibility diagnostics; Windows capture, `SendInput` keyboard/pointer, and Win32 window control with blocking runtime probes; X11 capture, XGB/XTEST input, and X11/EWMH window introspection/control; Wayland portal capture/input; permission/error contracts; shared behavioral parity; reproducible balanced benchmark tooling; optimized guardian-path decision evidence; explicit decision to retain native CGO as the X11 default; race-testable internal X11 core; re-exec guardian with application-`SIGKILL` recovery; protected three-OS CI | Collect opt-in real macOS keyboard-injection evidence and assess further backends selectively |
+| 3. Pure-Go | X11 complete; Windows input/window CI-evidenced; macOS capture/display/input and window implementation delivered; broader phase partial | Build and feature-level introspection; non-CGO macOS CoreGraphics capture/display, Quartz input, and Accessibility window inspection/control with explicit gaps; Windows capture, `SendInput` keyboard/pointer, and Win32 window control with blocking runtime probes; X11 capture, XGB/XTEST input, and X11/EWMH window introspection/control; Wayland portal capture/input; permission/error contracts; shared behavioral parity; reproducible balanced benchmark tooling; optimized guardian-path decision evidence; explicit decision to retain native CGO as the X11 default; race-testable internal X11 core; re-exec guardian with application-`SIGKILL` recovery; protected three-OS CI | Collect opt-in real macOS input and self-owned-window evidence and assess further backends selectively |
 | 4. API/compositor gaps | Parity surface delivered; runtime support partial | Window-state error APIs, bitmap string helpers, `FindColorCS`, hook/event capability reporting, Sway/Hyprland/wlroots resolver, provider-aware Hyprland 0.55+ Lua window dispatch | Compositor-backed state operations and cross-platform/runtime matrix coverage |
 | 5. Reliability product | Partial | Capability APIs, versioned sanitized runtime diagnostics/example, compatibility matrix v1, expanded CI variants, blocking ASan/LeakSanitizer ownership gates, six-cell checksummed release-evidence pipeline | Dedicated compositor jobs and the first published release evidence asset |
 
@@ -153,6 +153,18 @@ state, PID ownership, partial-event rollback, Unicode and cleanup. An opt-in
 Accessibility-gated test posts and releases a real modifier without typing into
 another application. Media/brightness keys and F21-F24 remain explicitly
 unsupported because Quartz exposes no safe stable keycode for them.
+The Pure-Go macOS window backend uses the same non-prompting Accessibility
+contract and stable `CGWindowID` handles for active/PID/handle resolution,
+titles, AX frame bounds, activation, minimize/restore, minimized-state queries,
+and graceful close. It releases its dynamically loaded framework references
+through `CloseMainDisplayE`. Client geometry intentionally equals the AX frame;
+maximize and topmost remain explicit unsupported operations because macOS does
+not expose trustworthy cross-application equivalents. CGWindowID mapping uses
+the same runtime-resolved macOS bridge as the CGO backend and fails explicitly
+if that bridge is unavailable. Hermetic tests cover the contract and hosted
+macOS resolves the real symbols and permission preflight.
+Permission-granted mutations still require a self-owned runtime window before
+they can become blocking evidence.
 
 Windows non-CGO builds now provide a foreground-layout-aware `SendInput` keyboard and text
 backend, clipboard-assisted Unicode paste, pixel-at-pointer queries, plus exact pointer movement/location, smooth movement and drag,
