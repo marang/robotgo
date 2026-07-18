@@ -68,6 +68,12 @@ the real Quartz keyboard/pointer and Accessibility symbols and performs a
 non-prompting permission preflight without posting input. None of these runtime
 checks requires a Screen Recording or Accessibility grant.
 
+Default Linux screen tests use hermetic portal fixtures rather than persisting
+the developer's real desktop. Portal regression tests require temporary
+screenshot files to be absent after successful decoding and after decode
+failures. The production portal reader unlinks the sensitive file immediately
+after opening it.
+
 The real scale probe can be reproduced on a macOS GUI runner without granting
 Screen Recording or Accessibility access:
 

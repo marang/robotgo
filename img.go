@@ -13,6 +13,7 @@ package robotgo
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"image"
 	"image/png"
@@ -239,8 +240,8 @@ func GetTextImgContext(ctx context.Context, img image.Image, args ...string) (re
 				retErr = closeErr
 			}
 		}
-		if removeErr := os.Remove(path); retErr == nil && removeErr != nil {
-			retErr = removeErr
+		if removeErr := os.Remove(path); removeErr != nil && !errors.Is(removeErr, os.ErrNotExist) {
+			retErr = errors.Join(retErr, fmt.Errorf("remove private OCR image: %w", removeErr))
 		}
 	}()
 	if err := png.Encode(file, img); err != nil {
