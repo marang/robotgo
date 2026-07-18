@@ -388,6 +388,103 @@ func TestPureGoCaptureImgUsesHardenedWaylandPortal(t *testing.T) {
 	}
 }
 
+func TestPureGoCaptureAliasUsesWaylandPortalWithoutX11Bounds(t *testing.T) {
+	preservePureGoCaptureFakes(t)
+	t.Setenv(envWaylandDisplay, "wayland-test")
+	t.Setenv(envDisplay, ":99")
+	t.Setenv(envXDGSessionType, sessionTypeWayland)
+	t.Setenv(envDisablePortal, "")
+
+	legacyCalls := 0
+	pureGoCaptureImage = func(...int) (image.Image, error) {
+		legacyCalls++
+		return nil, errors.New("legacy screenshot backend must not be called")
+	}
+	portalCalls := 0
+	pureGoPortalCaptureImage = func(_ context.Context, x, y, width, height int) (image.Image, error) {
+		portalCalls++
+		if x != 0 || y != 0 || width != 0 || height != 0 {
+			t.Fatalf("portal full-screen rectangle = %d,%d %dx%d", x, y, width, height)
+		}
+		return image.NewRGBA(image.Rect(0, 0, 4, 3)), nil
+	}
+
+	img, err := Capture()
+	if err != nil {
+		t.Fatalf("Capture() error = %v", err)
+	}
+	if img.Bounds() != image.Rect(0, 0, 4, 3) {
+		t.Fatalf("Capture() bounds = %v, want 4x3", img.Bounds())
+	}
+	if legacyCalls != 0 || portalCalls != 1 {
+		t.Fatalf(
+			"capture calls = legacy:%d portal:%d, want legacy:0 portal:1",
+			legacyCalls,
+			portalCalls,
+		)
+	}
+}
+
+func TestPureGoCaptureAliasHonorsScreenCastOverride(t *testing.T) {
+	preservePureGoCaptureFakes(t)
+	t.Setenv(envWaylandDisplay, "wayland-test")
+	t.Setenv(envDisplay, ":99")
+	t.Setenv(envXDGSessionType, sessionTypeWayland)
+	t.Setenv(envWaylandBackend, waylandBackendScreenCast)
+	pureGoPortalCaptureImage = func(context.Context, int, int, int, int) (image.Image, error) {
+		t.Fatal("portal capture called for an unsupported ScreenCast override")
+		return nil, nil
+	}
+
+	if _, err := Capture(); !errors.Is(err, ErrNotSupported) {
+		t.Fatalf("Capture() error = %v, want ErrNotSupported", err)
+	}
+}
+
+func TestPureGoCaptureAliasRejectsXDGWaylandConflict(t *testing.T) {
+	preservePureGoCaptureFakes(t)
+	t.Setenv(envWaylandDisplay, "")
+	t.Setenv(envDisplay, ":99")
+	t.Setenv(envXDGSessionType, sessionTypeWayland)
+	pureGoCaptureImage = func(...int) (image.Image, error) {
+		t.Fatal("legacy X11 screenshot backend called for an XDG Wayland session")
+		return nil, nil
+	}
+	pureGoPortalCaptureImage = func(context.Context, int, int, int, int) (image.Image, error) {
+		t.Fatal("portal capture opened implicitly for an XDG Wayland conflict")
+		return nil, nil
+	}
+
+	if _, err := Capture(0, 0, 1, 1); !errors.Is(err, ErrNotSupported) {
+		t.Fatalf("Capture() error = %v, want ErrNotSupported", err)
+	}
+}
+
+func TestPureGoCaptureAliasForcedPortalBypassesXDGWaylandConflict(t *testing.T) {
+	preservePureGoCaptureFakes(t)
+	t.Setenv(envWaylandDisplay, "")
+	t.Setenv(envDisplay, ":99")
+	t.Setenv(envXDGSessionType, sessionTypeWayland)
+	t.Setenv(envForcePortal, "1")
+	t.Setenv(envDisablePortal, "")
+	pureGoCaptureImage = func(...int) (image.Image, error) {
+		t.Fatal("legacy X11 screenshot backend called for forced portal capture")
+		return nil, nil
+	}
+	portalCalls := 0
+	pureGoPortalCaptureImage = func(context.Context, int, int, int, int) (image.Image, error) {
+		portalCalls++
+		return image.NewRGBA(image.Rect(0, 0, 2, 2)), nil
+	}
+
+	if _, err := Capture(0, 0, 2, 2); err != nil {
+		t.Fatalf("Capture() forced portal error = %v", err)
+	}
+	if portalCalls != 1 {
+		t.Fatalf("portal capture calls = %d, want 1", portalCalls)
+	}
+}
+
 func TestPureGoCaptureImgReportsExplicitUnsupported(t *testing.T) {
 	preservePureGoCaptureFakes(t)
 	t.Setenv("WAYLAND_DISPLAY", "")

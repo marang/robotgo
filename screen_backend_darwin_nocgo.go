@@ -174,17 +174,17 @@ func platformDisplayCount() int {
 	return count
 }
 
-func platformDisplayBounds(displayIndex int) image.Rectangle {
+func platformDisplayBoundsE(displayIndex int) (image.Rectangle, error) {
 	api, err := openDarwinGraphics()
 	if err != nil {
-		return image.Rectangle{}
+		return image.Rectangle{}, err
 	}
 	defer func() { _ = api.close() }()
 	bounds, err := darwinDisplayBounds(api, displayIndex)
 	if err != nil {
-		return image.Rectangle{}
+		return image.Rectangle{}, err
 	}
-	return bounds
+	return bounds, nil
 }
 
 func platformCapture(x, y, width, height int) (*image.RGBA, error) {

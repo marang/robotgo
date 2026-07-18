@@ -290,6 +290,20 @@ func TestWaylandScreenFallbackWithoutX11(t *testing.T) {
 	if rect.X != 10 || rect.Y != 20 || rect.W != 800 || rect.H != 600 {
 		t.Fatalf("unexpected screen rect from fallback: %+v", rect)
 	}
+	rectE, err := GetScreenRectE()
+	if err != nil {
+		t.Fatalf("GetScreenRectE fallback error: %v", err)
+	}
+	if rectE != rect {
+		t.Fatalf("GetScreenRectE fallback = %+v, want %+v", rectE, rect)
+	}
+	widthE, heightE, err := GetScreenSizeE()
+	if err != nil {
+		t.Fatalf("GetScreenSizeE fallback error: %v", err)
+	}
+	if widthE != 800 || heightE != 600 {
+		t.Fatalf("GetScreenSizeE fallback = %dx%d, want 800x600", widthE, heightE)
+	}
 }
 
 func TestGetLinuxCapabilitiesWaylandFallback(t *testing.T) {

@@ -227,6 +227,10 @@ Hermetic tests never terminate a real process.
 The current upstream public-helper surface is also source-compatible without
 adopting upstream's breaking `Click` signature change. The versioned upstream
 audit records which changes are adopted, superseded, or rejected and why.
+Shared Linux capture and bounds helpers now respect the selected display
+server: CGO builds stay within the selected Wayland/X11 session path, Pure-Go
+Wayland capture uses the hardened portal, and non-prompting Pure-Go Wayland
+bounds return explicit errors instead of falling through to Xwayland.
 
 The Linux/X11 evaluation slice of Phase 3 is complete. Native CGO and Pure-Go
 X11 binaries pass one black-box public-API contract for capture, pointer,

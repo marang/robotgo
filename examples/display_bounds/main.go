@@ -7,8 +7,16 @@ import (
 )
 
 func main() {
-	desktop := robotgo.GetScreenRect()
-	width, height := robotgo.GetScreenSize()
+	desktop, err := robotgo.GetScreenRectE()
+	if err != nil {
+		fmt.Println("desktop bounds unavailable:", err)
+		return
+	}
+	width, height, err := robotgo.GetScreenSizeE()
+	if err != nil {
+		fmt.Println("screen size unavailable:", err)
+		return
+	}
 	fmt.Printf(
 		"desktop: origin=(%d,%d) size=%dx%d (GetScreenSize=%dx%d)\n",
 		desktop.X,
@@ -19,19 +27,25 @@ func main() {
 		height,
 	)
 
-	count := robotgo.DisplaysNum()
-	mainID := robotgo.GetMainId()
-	fmt.Printf("outputs: %d, primary index: %d\n", count, mainID)
+	count, err := robotgo.DisplaysNumE()
+	if err != nil {
+		fmt.Println("display enumeration unavailable:", err)
+		return
+	}
+	fmt.Printf("outputs: %d, platform main ID: %d\n", count, robotgo.GetMainId())
 	for displayID := 0; displayID < count; displayID++ {
-		rect := robotgo.GetScreenRect(displayID)
+		x, y, width, height, err := robotgo.GetDisplayBoundsE(displayID)
+		if err != nil {
+			fmt.Printf("output[%d] unavailable: %v\n", displayID, err)
+			continue
+		}
 		fmt.Printf(
-			"output[%d]: origin=(%d,%d) size=%dx%d primary=%t\n",
+			"output[%d]: origin=(%d,%d) size=%dx%d\n",
 			displayID,
-			rect.X,
-			rect.Y,
-			rect.W,
-			rect.H,
-			displayID == mainID,
+			x,
+			y,
+			width,
+			height,
 		)
 	}
 }

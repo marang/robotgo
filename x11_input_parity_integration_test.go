@@ -84,6 +84,30 @@ func TestX11BackendBehavioralParity(t *testing.T) {
 
 	t.Run("capture", func(t *testing.T) {
 		const width, height = 640, 480
+		x, y, displayWidth, displayHeight, err := robotgo.GetDisplayBoundsE(0)
+		if err != nil {
+			t.Fatalf("GetDisplayBoundsE: %v", err)
+		}
+		if x != 0 || y != 0 || displayWidth != 1280 || displayHeight != 720 {
+			t.Fatalf(
+				"GetDisplayBoundsE = %d,%d %dx%d, want 0,0 1280x720",
+				x,
+				y,
+				displayWidth,
+				displayHeight,
+			)
+		}
+		compatibilityImage, err := robotgo.Capture(0, 0, 2, 2)
+		if err != nil {
+			t.Fatalf("Capture compatibility helper: %v", err)
+		}
+		if got := compatibilityImage.Bounds(); got.Min.X != 0 || got.Min.Y != 0 ||
+			got.Dx() != 2 || got.Dy() != 2 {
+			t.Fatalf("Capture compatibility bounds = %v, want 2x2", got)
+		}
+		if got := robotgo.LastBackend(); got != robotgo.BackendX11 {
+			t.Fatalf("Capture compatibility LastBackend = %q, want %q", got, robotgo.BackendX11)
+		}
 		image, err := robotgo.CaptureImg(0, 0, width, height)
 		if err != nil {
 			t.Fatalf("CaptureImg: %v", err)

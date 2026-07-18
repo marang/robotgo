@@ -1,6 +1,5 @@
-//go:build cgo && (!linux || wayland)
-// +build cgo
-// +build !linux wayland
+//go:build cgo && !linux
+// +build cgo,!linux
 
 package robotgo
 
@@ -23,6 +22,10 @@ func nativeX11InputReadyLocked() error {
 func nativeX11CapabilityErrors() (displayErr error, inputErr error) {
 	err := nativeX11DisplayReadyLocked()
 	return err, err
+}
+
+func runtimeX11CapabilityErrors() (displayErr error, inputErr error) {
+	return nativeX11CapabilityErrors()
 }
 
 func nativeX11ProtocolVersion() (major, minor int, negotiated bool) {

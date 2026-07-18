@@ -432,6 +432,8 @@ Purpose:
   `CGO_ENABLED=0`: capture pixels/bounds/backend identity, pointer movement and
   observation, buttons/scroll, canonical modifier order, ASCII text delivery,
   and unchanged keyboard/modifier maps
+- A Wayland-enabled CGO build running against Xvfb, proving that the build tag
+  does not remove `Capture` or `CaptureImg` from a real X11 runtime
 - Native regression coverage proving unsupported Unicode, unmapped modified
   keys, and a later unmapped text character fail before any key event and never
   change the server-global keyboard map
@@ -505,6 +507,19 @@ ROBOTGO_EXPECT_X11_NO_XTEST=1 \
     unset WAYLAND_DISPLAY XDG_SESSION_TYPE
     go test -tags x11integration \
       -run "^TestX11MissingXTestReadinessContract$" \
+      -count=1 -timeout=30s -v .
+  '
+```
+
+Wayland-enabled build on an X11 runtime:
+
+```bash
+CGO_ENABLED=1 \
+  xvfb-run -a -s "-screen 0 640x480x24 -nolisten tcp -noreset" \
+  sh -eu -c '
+    unset WAYLAND_DISPLAY XDG_SESSION_TYPE
+    go test -tags "wayland x11integration" \
+      -run "^TestWaylandBuildPreservesX11Capture$" \
       -count=1 -timeout=30s -v .
   '
 ```
@@ -591,6 +606,14 @@ go test -tags "portal" ./screen/portal -v
 go test -tags "pipewire" ./screen/portal -v
 go test -tags "wayland test" ./screen -run 'TestScreencopy(BitmapStringHelper|WlShm|PortalFallback)' -v
 go test -tags "wayland integration" . ./mouse ./window -v
+```
+
+The non-CGO Wayland bounds-isolation regression is hermetic and deliberately
+sets both `WAYLAND_DISPLAY` and `DISPLAY` to prove the X11 backend is never
+contacted:
+
+```bash
+CGO_ENABLED=0 go test -run '^TestPureGoWaylandBounds|^TestPureGoCaptureAliasUsesWaylandPortal' .
 ```
 
 Run tag-gated suites as needed for the area you changed. Native or Pure-Go X11

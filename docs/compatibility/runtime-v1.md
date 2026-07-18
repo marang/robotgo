@@ -1,7 +1,7 @@
 # Runtime Compatibility Matrix v1
 
 Matrix version: **1**
-Published: **2026-07-17**
+Published: **2026-07-18**
 
 This matrix separates implemented behavior from blocking runtime evidence.
 `supported` means the applicable build and behavioral contract is blocking in
@@ -16,7 +16,7 @@ available. A pending row is not a passing row.
 | Linux/X11 | Native CGO | supported | Default Linux tests, race/vet/lint, ASan/LeakSanitizer ownership gate, Xvfb/XTEST public contract, XTEST-disabled negative contract |
 | Linux/X11 | Pure Go | supported | Non-CGO Linux tests plus non-skipping Xvfb/XTEST input, capture, bounds, cleanup, and crash-guardian contracts |
 | Linux/Wayland/wlroots | Native CGO, `wayland` | supported for advertised protocols | Weston integration plus hermetic screencopy, virtual input, bounds, scale, transform, fallback, and manifest-checked ASan/LeakSanitizer ownership tests; compositor-specific protocols remain capability-gated |
-| Linux/Wayland | Pure Go | supported for portal APIs | Non-CGO portal capture/input contracts; user consent and portal backend availability remain runtime requirements |
+| Linux/Wayland | Pure Go | supported for portal APIs | Non-CGO portal capture/input contracts; shared capture helpers refuse implicit Xwayland, while non-prompting display bounds return explicit unsupported errors; user consent and portal backend availability remain runtime requirements |
 | GNOME/Wayland | CGO and Pure Go portal paths | implemented / evidence pending | Protected GNOME runner required for RemoteDesktop and persistent ScreenCast evidence |
 | KDE Plasma/Wayland | CGO and Pure Go portal paths | implemented / evidence pending | Protected KDE runner required for RemoteDesktop and persistent ScreenCast evidence |
 | macOS | Native CGO | supported | Hosted macOS build/test; Screen Recording and Accessibility are runtime permissions |
