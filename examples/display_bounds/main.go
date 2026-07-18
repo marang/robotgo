@@ -7,6 +7,13 @@ import (
 )
 
 func main() {
+	runtime := robotgo.GetRuntimeCapabilities()
+	fmt.Printf(
+		"bounds backend: %s (available=%t)\n",
+		runtime.Bounds.Backend,
+		runtime.Bounds.Available,
+	)
+
 	desktop, err := robotgo.GetScreenRectE()
 	if err != nil {
 		fmt.Println("desktop bounds unavailable:", err)

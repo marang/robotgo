@@ -22,6 +22,9 @@ func GetScreenSizeE() (width, height int, err error) {
 	if err := pureGoWaylandBoundsError(); err != nil {
 		return 0, 0, err
 	}
+	if width, height, err, handled := pureGoWaylandScreenSizeE(); handled {
+		return width, height, err
+	}
 	width, height = GetScreenSize()
 	if width <= 0 || height <= 0 {
 		return 0, 0, fmt.Errorf("robotgo: screen size is unavailable or empty")
@@ -47,6 +50,9 @@ func GetScreenRectE(displayID ...int) (Rect, error) {
 	if err := pureGoWaylandBoundsError(); err != nil {
 		return Rect{}, err
 	}
+	if rect, err, handled := pureGoWaylandScreenRectE(displayID...); handled {
+		return rect, err
+	}
 	rect := GetScreenRect(displayID...)
 	if rect.W <= 0 || rect.H <= 0 {
 		return Rect{}, fmt.Errorf("robotgo: screen rectangle is unavailable or empty")
@@ -59,6 +65,9 @@ func GetScreenRectE(displayID ...int) (Rect, error) {
 func DisplaysNumE() (int, error) {
 	if err := pureGoWaylandBoundsError(); err != nil {
 		return 0, err
+	}
+	if count, err, handled := pureGoWaylandDisplaysNumE(); handled {
+		return count, err
 	}
 	count := DisplaysNum()
 	if count <= 0 {

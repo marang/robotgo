@@ -43,6 +43,7 @@ const (
 
 const (
 	envWaylandDisplay = "WAYLAND_DISPLAY"
+	envXDGRuntimeDir  = "XDG_RUNTIME_DIR"
 	envDisplay        = "DISPLAY"
 )
 
@@ -183,6 +184,7 @@ func GetLinuxCapabilities() LinuxCapabilities {
 				"capture APIs may prompt for consent",
 			)
 		}
+		capabilities.Bounds = pureGoWaylandBoundsCapability()
 		ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
 		portalCapability, err := remoteDesktopStatusProbe(ctx)
 		cancel()
@@ -811,11 +813,21 @@ func GetScreenSize() (int, int) {
 }
 func GetScreenRect(displayID ...int) Rect {
 	id := currentDisplayID()
-	if id < 0 {
+	if id < 0 && selectedDisplayServer() != DisplayServerWayland {
 		id = 0
 	}
 	if len(displayID) > 0 {
 		id = displayID[0]
+	}
+	if runtime.GOOS == "linux" && selectedDisplayServer() == DisplayServerWayland {
+		bounds, err := platformDisplayBoundsE(id)
+		if err != nil {
+			return Rect{}
+		}
+		return Rect{
+			Point: Point{X: bounds.Min.X, Y: bounds.Min.Y},
+			Size:  Size{W: bounds.Dx(), H: bounds.Dy()},
+		}
 	}
 	return GetDisplayRect(id)
 }

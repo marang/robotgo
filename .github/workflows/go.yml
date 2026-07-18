@@ -481,3 +481,8 @@ jobs:
           go test -tags "wayland test" ./screen -run TestScreencopy -v
           go test -tags "wayland test" . -run 'Test(DrmFindRenderNode|Wayland)' -v
           go test -tags "wayland integration" . ./mouse ./window -v
+      - name: Run Pure-Go Wayland output integration
+        run: |
+          CGO_ENABLED=0 go test -tags "waylandoutputintegration" . \
+            -run '^TestPureGoWaylandOutputEnumerationWeston$' \
+            -count=1 -timeout=30s -v
