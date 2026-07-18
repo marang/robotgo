@@ -11,10 +11,18 @@ import (
 )
 
 func platformDisplayCount() int {
-	if selectedDisplayServer() != DisplayServerX11 || pureGoX11EnvironmentConflict() {
+	switch selectedDisplayServer() {
+	case DisplayServerWayland:
+		count, _ := pureGoWaylandDisplayCount()
+		return count
+	case DisplayServerX11:
+		if pureGoX11EnvironmentConflict() {
+			return 0
+		}
+		return screenshot.NumActiveDisplays()
+	default:
 		return 0
 	}
-	return screenshot.NumActiveDisplays()
 }
 
 func platformDisplayBoundsE(displayIndex int) (image.Rectangle, error) {
@@ -24,7 +32,7 @@ func platformDisplayBoundsE(displayIndex int) (image.Rectangle, error) {
 	return dispatchLinuxDisplayBounds(
 		selectedDisplayServer(),
 		displayIndex,
-		nil,
+		pureGoWaylandDisplayBounds,
 		func(index int) (image.Rectangle, error) {
 			return screenshot.GetDisplayBounds(index), nil
 		},

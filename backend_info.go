@@ -11,17 +11,18 @@ const (
 	// RuntimeImplementationPureGo identifies a build without CGO.
 	RuntimeImplementationPureGo RuntimeImplementation = "pure-go"
 
-	featureBackendNativeCGO          = "native-cgo"
-	featureBackendPureGoPrefix       = "pure-go-"
-	featureBackendPureGoCoreGraphics = "pure-go-coregraphics"
-	featureBackendPureGoQuartzInput  = "pure-go-quartz-input"
-	featureBackendPureGoMacOSWindow  = "pure-go-macos-accessibility-window"
-	featureBackendPureGoWindows      = "pure-go-windows"
-	featureBackendPureGoX11          = "pure-go-x11"
-	featureBackendGoProcess          = "go-process"
-	featureBackendGoClipboard        = "go-clipboard"
-	featureBackendPureGoProcess      = "pure-go-process"
-	featureBackendPureGoClipboard    = "pure-go-clipboard"
+	featureBackendNativeCGO           = "native-cgo"
+	featureBackendPureGoPrefix        = "pure-go-"
+	featureBackendPureGoCoreGraphics  = "pure-go-coregraphics"
+	featureBackendPureGoQuartzInput   = "pure-go-quartz-input"
+	featureBackendPureGoMacOSWindow   = "pure-go-macos-accessibility-window"
+	featureBackendPureGoWindows       = "pure-go-windows"
+	featureBackendPureGoX11           = "pure-go-x11"
+	featureBackendPureGoWaylandOutput = "pure-go-wayland-output"
+	featureBackendGoProcess           = "go-process"
+	featureBackendGoClipboard         = "go-clipboard"
+	featureBackendPureGoProcess       = "pure-go-process"
+	featureBackendPureGoClipboard     = "pure-go-clipboard"
 )
 
 // RuntimeBackendInfo describes the implementation compiled into the current

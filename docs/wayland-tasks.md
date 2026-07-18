@@ -45,9 +45,10 @@ Current implementation baseline:
   pixel-color queries use the hardened screenshot portal on Wayland and the
   Pure-Go screenshot backend on X11/Windows; unsupported targets fail explicitly.
 - Shared `Capture` and display-bounds helpers no longer route Wayland-primary
-  sessions through X11. Error-returning bounds and display-count variants make
-  Pure-Go Wayland's unavailable non-prompting geometry explicit while legacy
-  APIs retain zero-value compatibility.
+  sessions through X11. Non-CGO builds now query logical output geometry through
+  a bounded, read-only Pure-Go `wl_output`/`xdg-output` client; error-returning
+  bounds and display-count variants preserve connection, timeout, protocol, and
+  invalid-geometry failures while legacy APIs retain zero-value compatibility.
 - Capability introspection probes the live screencopy protocol, desktop portal
   D-Bus owner, virtual pointer and virtual keyboard instead of inferring support
   solely from session environment variables.
@@ -64,6 +65,12 @@ Current implementation baseline:
   Deterministic output indices are shared with screencopy, Wayland display
   count/main-index queries avoid X11, and the `wayland-info` fallback accepts
   output records without numeric identifiers.
+- Pure-Go aggregate/per-output bounds use the same primary-first geometry
+  ordering, prefer fractional `xdg-output` logical geometry, apply integer scale
+  and all transforms in the core fallback, clamp advertised protocol versions,
+  and close every one-shot Unix connection deterministically. Hermetic wire
+  tests and a blocking single-output Weston integration cover the backend
+  without creating screenshots or persistent artifacts.
 - An explicitly started ScreenCast session provides reusable PipeWire frames
   behind the `pipewire` build tag. It preserves stream geometry/serial metadata,
   supports logical region crop with fractional scaling, converts negotiated raw

@@ -12,10 +12,7 @@ func pureGoWaylandBoundsError() error {
 		return nil
 	}
 	if selectedDisplayServer() == DisplayServerWayland {
-		return fmt.Errorf(
-			"%w: Pure-Go Wayland display bounds require a non-prompting native protocol backend",
-			ErrNotSupported,
-		)
+		return nil
 	}
 	if pureGoX11EnvironmentConflict() {
 		return fmt.Errorf(

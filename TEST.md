@@ -606,15 +606,26 @@ go test -tags "portal" ./screen/portal -v
 go test -tags "pipewire" ./screen/portal -v
 go test -tags "wayland test" ./screen -run 'TestScreencopy(BitmapStringHelper|WlShm|PortalFallback)' -v
 go test -tags "wayland integration" . ./mouse ./window -v
+CGO_ENABLED=0 go test -tags "waylandoutputintegration" . \
+  -run '^TestPureGoWaylandOutputEnumerationWeston$' -count=1 -timeout=30s -v
 ```
 
-The non-CGO Wayland bounds-isolation regression is hermetic and deliberately
-sets both `WAYLAND_DISPLAY` and `DISPLAY` to prove the X11 backend is never
-contacted:
+The non-CGO Wayland output suite is hermetic and deliberately sets both
+`WAYLAND_DISPLAY` and `DISPLAY` to prove the X11 backend is never contacted.
+Its mock compositor covers fragmented wire frames, bounded stalls and socket
+cleanup, protocol-version clamping, logical multi-output geometry, negative
+origins, scale, transforms, deterministic indices, and explicit errors:
 
 ```bash
+CGO_ENABLED=0 go test ./internal/waylandoutput -count=1 -v
 CGO_ENABLED=0 go test -run '^TestPureGoWaylandBounds|^TestPureGoCaptureAliasUsesWaylandPortal' .
 ```
+
+The tagged command above starts a single-output headless Weston instance in a
+test-owned `XDG_RUNTIME_DIR`, exercises the public error-returning bounds APIs,
+terminates and waits for Weston, and lets `t.TempDir` remove the socket and all
+runtime files. It never captures or writes desktop image data. CI runs this as
+a blocking step in `wayland-integration`.
 
 Run tag-gated suites as needed for the area you changed. Native or Pure-Go X11
 input changes must also run the required `x11integration` comparison command

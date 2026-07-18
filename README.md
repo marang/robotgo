@@ -42,8 +42,9 @@ Current technical differences include:
 - A defined non-CGO contract: Pure-Go capture is available through CoreGraphics
   on macOS, native APIs on Windows, and X11. Windows and Linux/X11 additionally
   have keyboard/pointer backends; Wayland capture uses the consent-aware
-  Screenshot portal, and unavailable GUI operations return `ErrNotSupported`
-  rather than plausible zero values.
+  Screenshot portal while read-only display geometry uses bounded native
+  `wl_output`/`xdg-output` queries. Unavailable GUI operations return
+  `ErrNotSupported` rather than plausible zero values.
 - Hermetic portal/compositor tests, tagged Wayland integration suites, and CI
   coverage for Linux, macOS, Windows, Wayland, portal, lint, and non-CGO modes.
 - Open, auditable native and Go backend code, including explicit resource
@@ -86,8 +87,8 @@ group.
 | Windows | `CGO_ENABLED=0` | Pure-Go capture/display bounds, real Win32 DPI scale and pixel-at-pointer queries, foreground-layout-aware `SendInput` keyboard/text plus clipboard paste, complete pointer input, and Win32 window title/PID/handle/geometry/state/control operations with explicit errors |
 | Linux/X11 | CGO-enabled default build | X11/XTest input, capture, window, and process paths |
 | Linux/X11 | `CGO_ENABLED=0` | Pure-Go X11 capture/bounds, XTEST input, and window title/PID/handle/geometry/state/control through X11/EWMH; horizontal scroll and window mutations without a consistent EWMH window manager are explicitly unsupported |
-| Linux/Wayland | `-tags wayland` for native protocols; add `pipewire` for persistent ScreenCast frames | Native wlroots capture/input where compositor protocols exist, one-shot Screenshot fallback, reusable ScreenCast/PipeWire capture, explicit RemoteDesktop portal sessions, capability-aware window support |
-| Other supported platforms without CGO | `CGO_ENABLED=0` | Linux/Wayland uses the Screenshot portal without implicit Xwayland capture; non-prompting bounds remain explicitly unsupported; explicit RemoteDesktop sessions provide limited Pure-Go Wayland input |
+| Linux/Wayland | CGO with `-tags wayland`; add `pipewire` for persistent ScreenCast frames | Native wlroots capture/input where compositor protocols exist, one-shot Screenshot fallback, reusable ScreenCast/PipeWire capture, explicit RemoteDesktop portal sessions, capability-aware window support |
+| Linux/Wayland | `CGO_ENABLED=0` | Screenshot portal capture without implicit Xwayland, bounded native logical output enumeration without consent UI, and explicit RemoteDesktop portal sessions for supported input |
 
 Wayland compositors intentionally restrict global automation. GNOME and KDE can
 use consent-aware Screenshot and RemoteDesktop portal paths. The explicit
@@ -466,16 +467,20 @@ pure X11 session it reports Window and Hook capabilities as unavailable;
 error-returning window operations return `ErrNotSupported`. Use the default
 Linux build for an X11 session.
 
-Wayland display bounds use logical compositor coordinates. `GetScreenRect()`
-and any negative display index return the aggregate desktop rectangle,
-including a negative origin. `GetScreenSize()` returns that aggregate width and
-height. Non-negative indices select individual outputs in deterministic order:
+Wayland display bounds use logical compositor coordinates in both native and
+Pure-Go builds. `GetScreenRect()` and `GetScreenRect(-1)` return the aggregate
+desktop rectangle, including a negative origin. `GetScreenSize()` returns the
+selected primary output size. Non-negative indices select individual outputs
+in deterministic order:
 the output containing logical `(0,0)` is index `0`, followed by top-to-bottom,
-left-to-right geometry order. `DisplaysNum()` and `GetMainId()` query Wayland
-directly and do not require Xwayland. An out-of-range index returns a zero
-rectangle; it never silently falls back to the aggregate desktop. Native
+left-to-right geometry order. `DisplaysNum()` queries Wayland directly, while
+`GetMainId()` returns the resulting primary index `0`; neither requires
+Xwayland. An out-of-range index returns a zero rectangle; it never silently
+falls back to the aggregate desktop. Native
 `xdg-output` logical geometry takes precedence, preserving fractional scale;
-the core-output fallback applies integer scale and all eight transforms.
+the core-output fallback applies integer scale and all eight transforms. The
+Pure-Go query is read-only, bounded, closes its Unix connection after every
+atomic snapshot, and never opens a portal consent dialog.
 
 Capture selection is:
 
@@ -672,9 +677,11 @@ never requests that permission implicitly.
 
 Display geometry has error-returning variants: `GetDisplayBoundsE`,
 `GetScreenSizeE`, `GetScreenRectE`, and `DisplaysNumE`.
-Use them when backend availability matters. In a Pure-Go Wayland build these
-return `ErrNotSupported` rather than querying an Xwayland `DISPLAY` or opening a
-consent dialog. Their legacy counterparts retain zero-value compatibility.
+Use them when backend availability matters. A Pure-Go Wayland build queries
+`wl_output` and prefers `xdg-output` logical geometry without consulting an
+Xwayland `DISPLAY` or opening a consent dialog. Missing protocols, invalid
+geometry, compositor stalls, and connection failures return explicit errors;
+legacy counterparts retain zero-value compatibility.
 CGO-enabled Linux keeps the legacy `Capture` helper and bounds on the selected
 session path (native protocol or its documented Wayland fallback), so a
 Wayland-primary path never falls through to X11.
