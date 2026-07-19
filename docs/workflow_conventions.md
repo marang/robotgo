@@ -86,8 +86,9 @@ When a project plan becomes an accepted direction:
 - update `AGENTS.md`, `TEST.md`, or backend documentation only when the plan
   changes their lasting contracts
 
-Do not duplicate the complete plan across these files. Linear holds the
-coordination copy; the repository plan is the durable technical source.
+Do not duplicate the complete plan across multiple repository files. Linear may
+carry a coordination copy, while the repository plan remains the durable
+technical source; keep their scope and status links synchronized.
 
 ## 3. Default workflow
 
