@@ -6,7 +6,7 @@ Linear coordination:
 
 - Team: `Lab` (`LAB`)
 - Team ID: `38f32d3c-b65c-409e-86eb-2996abd84d3e`
-- Project: [`P001 | RobotGo Agentic Desktop Automation`](https://linear.app/riotbox/project/p001-or-robotgo-agentic-desktop-automation-342ce54e76e6)
+- Project: [`RobotGo | P001 | Agentic Desktop Automation`](https://linear.app/riotbox/project/robotgo-or-p001-or-agentic-desktop-automation-342ce54e76e6)
 - Project ID: `b24081a5-dcab-44f7-803a-948bc563a03f`
 - Plan: [`RobotGo Agentic Desktop Automation — Architecture and Delivery Plan`](https://linear.app/riotbox/document/robotgo-agentic-desktop-automation-architecture-and-delivery-plan-f145b8426b88)
 - Plan document ID: `41fa02c3-706f-444a-acd0-ab1373165ee9`

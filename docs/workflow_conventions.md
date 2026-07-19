@@ -31,6 +31,9 @@ the relevant RobotGo project; team membership alone is not sufficient routing.
 Current team and project identifiers are recorded in the relevant repository
 plan rather than in runtime configuration.
 
+Name RobotGo projects `RobotGo | PNNN | Outcome` so projects group by codebase
+inside the shared team before their sequence and purpose are considered.
+
 Use Linear at three levels:
 
 1. A project owns one bounded product or architecture outcome and its delivery
