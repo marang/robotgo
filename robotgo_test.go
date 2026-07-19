@@ -19,6 +19,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/vcaesar/tt"
 )
@@ -50,31 +51,27 @@ func TestSize(t *testing.T) {
 }
 
 func TestMoveMouse(t *testing.T) {
-	Move(20, 20)
-	MilliSleep(50)
-	x, y := Location()
+	preservePointerLocation(t)
 
-	tt.Equal(t, 20, x)
-	tt.Equal(t, 20, y)
+	if err := MoveE(20, 20); err != nil {
+		t.Fatalf("MoveE: %v", err)
+	}
+	requirePointerPosition(t, pointerPosition{x: 20, y: 20})
 }
 
 func TestMoveMouseSmooth(t *testing.T) {
-	b := MoveSmooth(100, 100)
-	MilliSleep(50)
-	x, y := Location()
+	preservePointerLocation(t)
 
+	b := MoveSmooth(100, 100)
 	tt.True(t, b)
-	tt.Equal(t, 100, x)
-	tt.Equal(t, 100, y)
+	requirePointerPosition(t, pointerPosition{x: 100, y: 100})
 }
 
 func TestDragMouse(t *testing.T) {
-	DragSmooth(500, 500)
-	MilliSleep(50)
-	x, y := Location()
+	preservePointerLocation(t)
 
-	tt.Equal(t, 500, x)
-	tt.Equal(t, 500, y)
+	DragSmooth(500, 500)
+	requirePointerPosition(t, pointerPosition{x: 500, y: 500})
 }
 
 func TestScrollMouse(t *testing.T) {
@@ -89,27 +86,76 @@ func TestScrollMouse(t *testing.T) {
 }
 
 func TestMoveRelative(t *testing.T) {
-	Move(200, 200)
-	MilliSleep(50)
+	preservePointerLocation(t)
 
-	MoveRelative(10, -10)
-	MilliSleep(50)
+	if err := MoveE(200, 200); err != nil {
+		t.Fatalf("establish pointer position: %v", err)
+	}
+	requirePointerPosition(t, pointerPosition{x: 200, y: 200})
 
-	x, y := Location()
-	tt.Equal(t, 210, x)
-	tt.Equal(t, 190, y)
+	if err := MoveRelativeE(10, -10); err != nil {
+		t.Fatalf("MoveRelativeE: %v", err)
+	}
+
+	requirePointerPosition(t, pointerPosition{x: 210, y: 190})
 }
 
 func TestMoveSmoothRelative(t *testing.T) {
-	Move(200, 200)
-	MilliSleep(50)
+	preservePointerLocation(t)
+
+	if err := MoveE(200, 200); err != nil {
+		t.Fatalf("establish pointer position: %v", err)
+	}
+	requirePointerPosition(t, pointerPosition{x: 200, y: 200})
 
 	MoveSmoothRelative(10, -10)
-	MilliSleep(50)
+	requirePointerPosition(t, pointerPosition{x: 210, y: 190})
+}
 
-	x, y := Location()
-	tt.Equal(t, 210, x)
-	tt.Equal(t, 190, y)
+const (
+	pointerObservationTimeout  = 2 * time.Second
+	pointerObservationInterval = 10 * time.Millisecond
+)
+
+var livePointerPositionWaiter = pointerPositionWaiter{
+	observe: LocationE,
+	now:     time.Now,
+	sleep:   time.Sleep,
+}
+
+func preservePointerLocation(t *testing.T) {
+	t.Helper()
+
+	x, y, err := LocationE()
+	if err != nil {
+		t.Fatalf("record original pointer position: %v", err)
+	}
+	original := pointerPosition{x: x, y: y}
+	t.Cleanup(func() {
+		if err := MoveE(original.x, original.y); err != nil {
+			t.Errorf("restore original pointer position: %v", err)
+			return
+		}
+		if err := livePointerPositionWaiter.wait(
+			original,
+			pointerObservationTimeout,
+			pointerObservationInterval,
+		); err != nil {
+			t.Errorf("verify original pointer position restoration: %v", err)
+		}
+	})
+}
+
+func requirePointerPosition(t *testing.T, want pointerPosition) {
+	t.Helper()
+
+	if err := livePointerPositionWaiter.wait(
+		want,
+		pointerObservationTimeout,
+		pointerObservationInterval,
+	); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func TestMouseToggle(t *testing.T) {

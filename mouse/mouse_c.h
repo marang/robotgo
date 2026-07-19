@@ -836,5 +836,10 @@ bool smoothlyMoveMouse(MMPointInt32 endPoint, double lowSpeed, double highSpeed)
 		// microsleep(DEADBEEF_UNIFORM(1.0, 3.0));
 	}
 
+	/* The smoothing loop intentionally stops near the destination. Finish at
+	 * the exact public-API endpoint without duplicating an exact final event. */
+	if (pos.x != endPoint.x || pos.y != endPoint.y) {
+		moveMouse(endPoint);
+	}
 	return true;
 }
