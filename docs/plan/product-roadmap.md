@@ -401,6 +401,9 @@ demonstrate the difference, not merely expose more functions. The standard is:
 - `docs/wayland-tasks.md` is the operational backlog and current support matrix.
 - `docs/plan/wayland-prio-plan.md` contains the detailed Wayland architecture
   and milestone history.
+- `docs/plan/agentic-desktop-automation.md` defines the planned agent-session,
+  policy, observe-act-verify, and adapter architecture. It does not supersede
+  the current reliability delivery order until an executable slice is accepted.
 - This document defines product direction and delivery order.
 - A roadmap item is complete only when implementation, tests, examples where
   applicable, compatibility documentation, and required CI gates are complete.

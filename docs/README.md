@@ -2,10 +2,12 @@
 
 Use the following documents as the primary entry points:
 
-- [Workflow conventions](workflow_conventions.md) for branches, pull requests,
-  CI, reviewer feedback, merges, and cleanup.
+- [Workflow conventions](workflow_conventions.md) for Linear planning, branches,
+  pull requests, CI, reviewer feedback, merges, and cleanup.
 - [Test guide](../TEST.md) for validation commands and runtime prerequisites.
 - [Product roadmap](plan/product-roadmap.md) for delivery phases.
+- [Agentic desktop automation plan](plan/agentic-desktop-automation.md) for the
+  session, policy, observe-act-verify, and adapter architecture.
 - [Wayland status](wayland-tasks.md) for backend support and open Wayland work.
 - [Upstream compatibility audit](compatibility/upstream-master.md) for
   selectively adopted and intentionally rejected upstream changes.

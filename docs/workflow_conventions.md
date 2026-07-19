@@ -1,55 +1,164 @@
 # RobotGo Workflow Conventions
 
-Version: 1.0  
+Version: 1.2
 Status: Active  
 Audience: contributors, reviewers, and coding agents
 
 ## 1. Purpose and ownership
 
-This document is the canonical operational workflow for RobotGo branches,
-pull requests, CI, reviews, merges, and branch cleanup.
+This document is the canonical operational workflow for RobotGo planning,
+branches, pull requests, CI, reviews, merges, and branch cleanup.
 
 Documentation ownership is split as follows:
 
 - `AGENTS.md` defines non-negotiable engineering and safety rules.
-- `docs/workflow_conventions.md` defines the operational Git and GitHub loop.
+- `docs/workflow_conventions.md` defines Linear coordination and the operational
+  Git and GitHub loop.
 - `TEST.md` defines validation commands and runtime prerequisites.
 - `docs/plan/product-roadmap.md` and `docs/wayland-tasks.md` define product
   direction and delivery status.
 
-Repository state, tests, Git history, and GitHub are the durable record. Do not
-leave important workflow state only in chat or local memory.
+Linear is the durable planning and coordination record. Repository
+documentation is the durable technical and behavioral record. Tests, Git
+history, pull requests, and CI are the implementation and validation record.
+Do not leave important state only in chat or local memory.
 
-## 2. Default workflow
+## 2. Linear planning and project structure
+
+RobotGo work is coordinated in the shared `Lab` Linear team under key `LAB`.
+Because this team also owns non-RobotGo work, every RobotGo issue must belong to
+the relevant RobotGo project; team membership alone is not sufficient routing.
+Current team and project identifiers are recorded in the relevant repository
+plan rather than in runtime configuration.
+
+Use Linear at three levels:
+
+1. A project owns one bounded product or architecture outcome and its delivery
+   plan.
+2. Project milestones describe meaningful exit boundaries when the project is
+   large enough to need them.
+3. Issues describe executable, reviewable slices only after their scope and
+   acceptance evidence are understood.
+
+Do not create a large speculative issue backlog merely to mirror a draft plan.
+It is valid to start with only a team, one project, and one project plan. Split
+issues from that plan when a slice is ready to implement.
+
+A project plan should state:
+
+- intended outcome and why it matters
+- architectural direction and compatibility boundaries
+- explicit non-goals
+- ordered delivery slices
+- safety, privacy, and platform risks
+- validation strategy and exit criteria
+
+Source-of-truth boundaries:
+
+- Linear owns project status, sequencing, ownership, coordination decisions,
+  and actionable follow-ups.
+- Repository plans and architecture documents own lasting technical decisions,
+  public contracts, backend policy, and test strategy.
+- GitHub pull requests and CI own implementation diff, review discussion, and
+  merge evidence.
+
+Keep the records linked and synchronized:
+
+- Link the repository plan from its Linear project and the Linear project from
+  the repository plan.
+- Link an implementation issue in its branch or pull request and link the pull
+  request back to the issue.
+- Reflect lasting architectural or behavioral decisions in repository
+  documentation; do not leave them only in a Linear comment.
+- Update the issue and project after merge, including deferred evidence or
+  concrete follow-ups.
+- Do not store Linear tokens, screenshots, clipboard contents, restore tokens,
+  credentials, or other sensitive desktop artifacts in the repository or
+  Linear.
+
+### 2.1 Plan anchoring
+
+When a project plan becomes an accepted direction:
+
+- keep its technical detail under `docs/plan/`
+- link it from `docs/README.md`
+- connect it to `docs/plan/product-roadmap.md`
+- update `AGENTS.md`, `TEST.md`, or backend documentation only when the plan
+  changes their lasting contracts
+
+Do not duplicate the complete plan across these files. Linear holds the
+coordination copy; the repository plan is the durable technical source.
+
+## 3. Default workflow
 
 Normal implementation work follows this loop:
 
-`sync main -> feature branch -> implementation and tests -> local review -> commit and push -> draft PR -> CI -> ready for review -> reviewer feedback -> merge -> sync main -> branch cleanup`
+`Linear issue -> In Progress -> current main -> isolated branch/worktree -> implementation and tests -> local review -> commit and push -> draft PR -> In Review -> CI and reviewer feedback -> merge -> Done/project update -> sync main -> branch cleanup`
 
-1. Start from a clean, current local `main`.
-2. Create a narrowly named feature, fix, docs, test, or chore branch.
-3. Implement one coherent slice and update its tests and lasting documentation.
-4. Run the default and area-specific validation required by `AGENTS.md` and
+1. Create or select exactly one Linear issue for an executable implementation
+   or documentation slice and assign it to the correct RobotGo project.
+2. Move the issue to `In Progress` before creating or reusing its branch.
+3. Start from a clean, current local `main`.
+4. Create a narrowly named feature, fix, docs, test, or chore branch containing
+   the `LAB-*` issue key.
+5. Implement one coherent slice and update its tests and lasting documentation.
+6. Run the default and area-specific validation required by `AGENTS.md` and
    `TEST.md`.
-5. Review the complete branch diff, including generated files, build tags,
+7. Review the complete branch diff, including generated files, build tags,
    platform boundaries, resource ownership, and sensitive-data cleanup.
-6. Commit with an English Conventional Commit message and push the branch.
-7. Open a draft PR against `main` with behavior, risk, fallback, and validation
-   evidence.
-8. Inspect every CI job. Fix failures owned by the branch and push the fixes.
-9. Once the branch is locally complete and CI is healthy, mark the PR ready for
-   review. A draft PR is not evidence that configured reviewers have reviewed
-   it.
-10. Inspect all review surfaces, address actionable findings, and repeat CI and
+8. Commit with an English Conventional Commit message and push the branch.
+9. Open a draft PR against `main` with behavior, risk, fallback, validation
+   evidence, and the Linear issue link when applicable.
+10. Move the issue to `In Review` and add a short update covering the change,
+    verification, and bounded follow-up work.
+11. Inspect every CI job. Fix failures owned by the branch and push the fixes.
+12. Once the branch is locally complete and CI is healthy, mark the PR ready for
+    review. A draft PR is not evidence that configured reviewers have reviewed
+    it.
+13. Inspect all review surfaces, address actionable findings, and repeat CI and
     review inspection after every review-driven push.
-11. Merge only when the gate in section 5 is satisfied.
-12. Sync local `main`, verify the merge, and remove the completed feature branch
+14. Merge only when the gate in section 6 is satisfied.
+15. Move the issue to `Done` and update the project with the delivered outcome,
+    merge evidence, and remaining follow-ups.
+16. Sync local `main`, verify the merge, and remove the completed feature branch
     when it is no longer needed.
+
+The only issue-first exception is initial team/project creation and draft plan
+shaping before an executable slice exists. This exception must not carry product
+implementation. Once a slice is ready to change repository behavior, use an
+issue before its implementation branch.
 
 Do not push normal implementation work directly to `main`. Do not mix the next
 unrelated product slice into a PR that is already at the review boundary.
 
-## 3. Pull request content
+### 3.1 Parallel agents and worktrees
+
+When another agent or release branch is active, each agent must use its own Git
+worktree and feature branch. Do not edit through a shared dirty worktree.
+
+Before committing or opening a PR:
+
+1. verify the branch started from the intended current `main`
+2. inspect other active worktrees and likely overlapping files
+3. refresh against current `main` when it advanced
+4. re-review conflicts instead of overwriting another agent's changes
+
+Keep parallel PRs separate until their scopes and conflict order are understood.
+Never place tokens or other credentials in worktree configuration committed to
+the repository.
+
+### 3.2 Branch naming
+
+Preferred patterns are:
+
+- `feature/lab-123-short-slice`
+- `fix/lab-123-short-slice`
+- `docs/lab-123-short-slice`
+
+Keep one branch aligned with one main issue. Project-bootstrap planning branches
+without an issue key are permitted only under the exception above.
+
+## 4. Pull request content
 
 A PR description must state:
 
@@ -60,15 +169,16 @@ A PR description must state:
 - resource, privacy, and compatibility risks
 - local validation performed
 - intentionally omitted runtime evidence or follow-up work
+- the associated Linear issue when one exists
 
 Use English for branch names, commits, PR titles, and PR descriptions. Keep the
 description current when later commits materially change the result or risk.
 
-## 4. CI and review polling
+## 5. CI and review polling
 
 CI status and review status are separate. Both must be inspected explicitly.
 
-### 4.1 CI
+### 5.1 CI
 
 - Verify authenticated GitHub access before relying on automation.
 - Inspect check summaries first; fetch full logs only for failed, cancelled, or
@@ -78,7 +188,7 @@ CI status and review status are separate. Both must be inspected explicitly.
 - A local green test run does not replace GitHub Actions, and GitHub Actions do
   not replace relevant local or real-runtime evidence.
 
-### 4.2 GitHub reviews
+### 5.2 GitHub reviews
 
 For every open PR, inspect all of the following:
 
@@ -124,7 +234,7 @@ After a review-driven push:
 
 Never report a PR as fully reviewed merely because its CI is green.
 
-## 5. Merge gate
+## 6. Merge gate
 
 A PR is ready to merge only when all applicable conditions are true:
 
@@ -145,7 +255,7 @@ A PR is ready to merge only when all applicable conditions are true:
 After merge, verify GitHub reports the PR as merged and local `main` contains the
 merge before deleting branches.
 
-## 6. Sensitive test and development data
+## 7. Sensitive test and development data
 
 The cleanup contract in `AGENTS.md` applies throughout this workflow:
 
@@ -161,7 +271,33 @@ The cleanup contract in `AGENTS.md` applies throughout this workflow:
 When a real desktop integration test is necessary, make that opt-in and document
 its privacy impact and cleanup behavior in `TEST.md`.
 
-## 7. Practical closeout checklist
+## 8. Linear updates, backlog, and retention
+
+Use two update levels:
+
+- Issue updates record transitions to `In Review`, material changes in
+  recommendation, and the merged outcome.
+- Project updates record meaningful slices entering review or merging and
+  cross-ticket changes to architecture, roadmap, or working mode.
+
+Once implementation starts, keep an honest small horizon:
+
+- one main issue in `In Progress`
+- issues in `In Review` only while their PRs are genuinely open
+- one to five near-next backlog issues when those slices are already clear
+
+Do not fully decompose distant phases. Projects answer which product/outcome the
+work belongs to; labels answer the slice type.
+
+Linear is the active execution surface, not the only long-term archive. Because
+the workspace uses the free tier, completed issues may be removed after their
+useful context is preserved under
+`docs/archive/linear_issues/LAB-123.md`. Do not delete an issue until its PR is
+merged, it is `Done`, and the archive entry exists. Archive only durable context
+such as purpose, shipped outcome, verification, PR, merge commit, and bounded
+follow-ups; never archive sensitive desktop data or credentials.
+
+## 9. Practical closeout checklist
 
 Before declaring a PR complete:
 
@@ -176,4 +312,6 @@ Before declaring a PR complete:
 - [ ] All actionable findings were fixed or explicitly tracked.
 - [ ] Relevant checks were rerun after the last fix.
 - [ ] No sensitive test or development artifacts remain.
+- [ ] The Linear issue and project reflect the merged result and follow-ups.
+- [ ] Useful issue context was archived before any free-tier cleanup.
 - [ ] Merge state and local `main` were verified after merge.
