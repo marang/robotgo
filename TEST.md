@@ -84,6 +84,10 @@ the private image path before canceling. It then requires bounded command
 termination and verifies that the temporary OCR image no longer exists; fixed
 startup sleeps or OCR-operation retries are not used.
 
+Unix clipboard read/write cancellation tests likewise wait for a fake command's
+readiness before canceling, cover already-canceled contexts separately, and use
+only fixed fixture text without reading or changing the developer's clipboard.
+
 The default CGO macOS and Windows pointer checks preserve and verify restoration
 of the original pointer location. They use bounded observation polling instead
 of fixed post-event sleeps and do not retry an injected event to manufacture a

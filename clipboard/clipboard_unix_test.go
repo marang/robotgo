@@ -12,6 +12,109 @@ import (
 	"time"
 )
 
+const clipboardTestSynchronizationTimeout = 2 * time.Second
+
+type clipboardContextTestCall struct {
+	name string
+	run  func(context.Context) error
+}
+
+func clipboardContextTestCalls() []clipboardContextTestCall {
+	return []clipboardContextTestCall{
+		{
+			name: "read",
+			run: func(ctx context.Context) error {
+				_, err := ReadAllContext(ctx)
+				return err
+			},
+		},
+		{
+			name: "write",
+			run: func(ctx context.Context) error {
+				return WriteAllContext(ctx, "robotgo clipboard cancellation fixture")
+			},
+		},
+	}
+}
+
+func installClipboardTestCommand(t *testing.T, script string) string {
+	t.Helper()
+
+	directory := t.TempDir()
+	command := filepath.Join(directory, xclip)
+	if err := os.WriteFile(command, []byte(script), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", directory)
+	previousTool := selectedTool
+	selectedTool = unixClipboardXclip
+	t.Cleanup(func() { selectedTool = previousTool })
+	return directory
+}
+
+func startCancelableClipboardTestCall(
+	t *testing.T,
+	call func(context.Context) error,
+) (context.CancelFunc, <-chan error) {
+	t.Helper()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	result := make(chan error, 1)
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		result <- call(ctx)
+	}()
+	t.Cleanup(func() {
+		cancel()
+		timer := time.NewTimer(clipboardTestSynchronizationTimeout)
+		defer timer.Stop()
+		select {
+		case <-done:
+		case <-timer.C:
+			t.Error("canceled clipboard call did not stop during test cleanup")
+		}
+	})
+	return cancel, result
+}
+
+func requireClipboardTestPath(t *testing.T, path string) {
+	t.Helper()
+
+	timer := time.NewTimer(clipboardTestSynchronizationTimeout)
+	defer timer.Stop()
+	ticker := time.NewTicker(time.Millisecond)
+	defer ticker.Stop()
+	for {
+		if _, err := os.Stat(path); err == nil {
+			return
+		} else if !errors.Is(err, os.ErrNotExist) {
+			t.Fatalf("observe clipboard test path %q: %v", path, err)
+		}
+
+		select {
+		case <-timer.C:
+			t.Fatalf("timed out waiting for clipboard test path %q", path)
+		case <-ticker.C:
+		}
+	}
+}
+
+func requireCanceledClipboardTestCall(t *testing.T, result <-chan error) {
+	t.Helper()
+
+	timer := time.NewTimer(clipboardTestSynchronizationTimeout)
+	defer timer.Stop()
+	select {
+	case err := <-result:
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("clipboard call error = %v, want cancellation", err)
+		}
+	case <-timer.C:
+		t.Fatal("clipboard call did not return after cancellation")
+	}
+}
+
 func TestUnixClipboardCommandSelectionsAreStateless(t *testing.T) {
 	tests := []struct {
 		name      string
@@ -39,26 +142,39 @@ func TestUnixClipboardCommandSelectionsAreStateless(t *testing.T) {
 	}
 }
 
-func TestClipboardContextCancelsCommand(t *testing.T) {
-	directory := t.TempDir()
-	command := filepath.Join(directory, xclip)
-	if err := os.WriteFile(command, []byte("#!/bin/sh\nexec /bin/sleep 30\n"), 0o700); err != nil {
-		t.Fatal(err)
-	}
-	t.Setenv("PATH", directory)
-	previousTool := selectedTool
-	selectedTool = unixClipboardXclip
-	t.Cleanup(func() { selectedTool = previousTool })
+func TestClipboardContextCancelsRunningCommand(t *testing.T) {
+	for _, test := range clipboardContextTestCalls() {
+		t.Run(test.name, func(t *testing.T) {
+			script := "#!/bin/sh\nprintf ready > \"$ROBOTGO_CLIPBOARD_TEST_READY\"\nexec /bin/sleep 30\n"
+			directory := installClipboardTestCommand(t, script)
+			ready := filepath.Join(directory, "ready")
+			t.Setenv("ROBOTGO_CLIPBOARD_TEST_READY", ready)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
-	defer cancel()
-	started := time.Now()
-	_, err := ReadAllContext(ctx)
-	if !errors.Is(err, context.DeadlineExceeded) {
-		t.Fatalf("ReadAllContext error = %v, want deadline", err)
+			cancel, result := startCancelableClipboardTestCall(t, test.run)
+			requireClipboardTestPath(t, ready)
+			cancel()
+			requireCanceledClipboardTestCall(t, result)
+		})
 	}
-	if elapsed := time.Since(started); elapsed > time.Second {
-		t.Fatalf("canceled clipboard command took %v", elapsed)
+}
+
+func TestClipboardContextDoesNotStartCommandWhenAlreadyCanceled(t *testing.T) {
+	for _, test := range clipboardContextTestCalls() {
+		t.Run(test.name, func(t *testing.T) {
+			script := "#!/bin/sh\nprintf invoked > \"$ROBOTGO_CLIPBOARD_TEST_INVOKED\"\n"
+			directory := installClipboardTestCommand(t, script)
+			invoked := filepath.Join(directory, "invoked")
+			t.Setenv("ROBOTGO_CLIPBOARD_TEST_INVOKED", invoked)
+
+			ctx, cancel := context.WithCancel(context.Background())
+			cancel()
+			if err := test.run(ctx); !errors.Is(err, context.Canceled) {
+				t.Fatalf("clipboard call error = %v, want cancellation", err)
+			}
+			if _, err := os.Stat(invoked); !errors.Is(err, os.ErrNotExist) {
+				t.Fatalf("already-canceled clipboard call invoked backend or stat failed: %v", err)
+			}
+		})
 	}
 }
 
