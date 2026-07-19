@@ -79,6 +79,11 @@ screenshot files to be absent after successful decoding and after decode
 failures. The production portal reader unlinks the sensitive file immediately
 after opening it.
 
+The default CGO macOS and Windows pointer checks preserve and verify restoration
+of the original pointer location. They use bounded observation polling instead
+of fixed post-event sleeps and do not retry an injected event to manufacture a
+passing result.
+
 The real scale probe can be reproduced on a macOS GUI runner without granting
 Screen Recording or Accessibility access:
 
