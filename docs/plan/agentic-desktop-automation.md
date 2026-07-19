@@ -6,6 +6,8 @@ Linear coordination:
 
 - Team: `Lab` (`LAB`)
 - Team ID: `38f32d3c-b65c-409e-86eb-2996abd84d3e`
+- Issue label: `RobotGo`
+- Issue label ID: `5641e353-f8d9-4508-8f54-3edc087e7ef9`
 - Project: [`RobotGo | P001 | Agentic Desktop Automation`](https://linear.app/riotbox/project/robotgo-or-p001-or-agentic-desktop-automation-342ce54e76e6)
 - Project ID: `b24081a5-dcab-44f7-803a-948bc563a03f`
 - Plan: [`RobotGo Agentic Desktop Automation — Architecture and Delivery Plan`](https://linear.app/riotbox/document/robotgo-agentic-desktop-automation-architecture-and-delivery-plan-f145b8426b88)
@@ -25,9 +27,10 @@ The agent-facing layer should let a caller:
 5. verify the resulting desktop state
 6. retain a redacted audit and replay trail
 
-The initial project is an architecture and delivery container. Do not create a
-large speculative issue backlog before the first executable slice and its
-boundaries are accepted.
+The initial project is an architecture and delivery container. When executable
+issues are created, assign both this project and the `RobotGo` codebase label.
+Do not create a large speculative issue backlog before the first executable
+slice and its boundaries are accepted.
 
 ## 2. Architectural direction
 
