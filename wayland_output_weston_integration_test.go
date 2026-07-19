@@ -218,7 +218,7 @@ func startPureGoOutputWeston(
 			t.Fatalf("write Weston configuration: %v", err)
 		}
 		options.arguments = append(
-			[]string{"--config=" + westonConfigName},
+			[]string{"--config=" + configPath},
 			options.arguments...,
 		)
 	}
