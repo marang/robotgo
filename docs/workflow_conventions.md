@@ -27,13 +27,15 @@ Do not leave important state only in chat or local memory.
 
 RobotGo work is coordinated in the shared `Lab` Linear team under key `LAB`.
 Because this team also owns non-RobotGo work, every RobotGo issue must belong to
-the relevant RobotGo project and carry the `RobotGo` codebase label; team
-membership alone is not sufficient routing. Current team, label, and project
-identifiers are recorded in the relevant repository plan rather than in
-runtime configuration.
+the relevant RobotGo project and carry `Codebase` → `RobotGo`; team membership
+alone is not sufficient routing. Current team, label-group, label, and project
+identifiers are recorded in the relevant repository plan rather than in runtime
+configuration.
 
 Name RobotGo projects `RobotGo | PNNN | Outcome` so projects group by codebase
 inside the shared team before their sequence and purpose are considered.
+Use the mutually exclusive `Codebase` label group for issue routing so a ticket
+cannot silently claim multiple codebases.
 
 Use Linear at three levels:
 
@@ -102,7 +104,7 @@ Normal implementation work follows this loop:
 
 1. Create or select exactly one Linear issue for an executable implementation
    or documentation slice, assign it to the correct RobotGo project, and apply
-   the `RobotGo` codebase label.
+   `Codebase` → `RobotGo`.
 2. Move the issue to `In Progress` before creating or reusing its branch.
 3. Start from a clean, current local `main`.
 4. Create a narrowly named feature, fix, docs, test, or chore branch containing
