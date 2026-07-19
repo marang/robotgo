@@ -3,6 +3,7 @@
 package robotgo
 
 import (
+	"errors"
 	"fmt"
 	"math"
 	"os"
@@ -17,7 +18,22 @@ import (
 
 const envRequireWindowsWindowIntegration = "ROBOTGO_REQUIRE_WINDOWS_WINDOW_INTEGRATION"
 
-const windowsIntegrationFocusEditMessage = win.WM_USER + 1
+const (
+	windowsIntegrationFocusEditMessage      = win.WM_USER + 1
+	windowsIntegrationQueryStatusMessage    = win.WM_USER + 2
+	windowsIntegrationQueryFocusLossMessage = win.WM_USER + 3
+
+	windowsIntegrationConditionTimeout = 3 * time.Second
+	windowsIntegrationMessageTimeout   = 3 * time.Second
+	windowsIntegrationAbortIfHung      = 0x0002
+)
+
+var windowsIntegrationUser32 = syscall.NewLazyDLL("user32.dll")
+
+var (
+	windowsIntegrationSendMessageTimeout = windowsIntegrationUser32.NewProc("SendMessageTimeoutW")
+	windowsIntegrationUnregisterClass    = windowsIntegrationUser32.NewProc("UnregisterClassW")
+)
 
 func TestPureGoWindowsWindowRuntime(t *testing.T) {
 	if os.Getenv(envRequireWindowsWindowIntegration) != "1" {
@@ -110,24 +126,29 @@ func TestPureGoWindowsWindowRuntime(t *testing.T) {
 	}
 
 	previousClipboard, clipboardErr := ReadAll()
+	hadReadableClipboard := clipboardErr == nil
 	if clipboardErr != nil {
 		previousClipboard = ""
 	}
 	t.Cleanup(func() {
 		if err := WriteAll(previousClipboard); err != nil {
 			t.Errorf("restore text clipboard: %v", err)
+			return
+		}
+		if !hadReadableClipboard {
+			return
+		}
+		restoredClipboard, err := ReadAll()
+		if err != nil {
+			t.Errorf("verify restored text clipboard: %v", err)
+			return
+		}
+		if restoredClipboard != previousClipboard {
+			t.Error("restored text clipboard does not match its previous readable value")
 		}
 	})
-	if focused := win.SendMessage(handle, windowsIntegrationFocusEditMessage, 0, 0); focused != uintptr(editHandle) {
-		t.Fatalf("focus integration edit returned %#x, want %#x", focused, editHandle)
-	}
 	const pasteText = "RobotGo Pure-Go paste ✓"
-	if err := PasteStr(pasteText); err != nil {
-		t.Fatalf("PasteStr: %v", err)
-	}
-	waitForWindowsCondition(t, "clipboard text to reach owned edit control", func() bool {
-		return windowsWindowText(editHandle) == pasteText
-	})
+	exerciseWindowsPaste(t, handle, editHandle, pasteText)
 
 	if minimized, err := IsMinimizedE(); err != nil || minimized {
 		t.Fatalf("IsMinimizedE() = %v, %v after restore", minimized, err)
@@ -150,13 +171,16 @@ func TestPureGoWindowsWindowRuntime(t *testing.T) {
 		t.Fatalf("CloseWindowE(handle): %v", err)
 	}
 	select {
-	case <-stopped:
+	case stopErr := <-stopped:
+		if stopErr != nil {
+			t.Fatalf("stop integration window: %v", stopErr)
+		}
 	case <-time.After(5 * time.Second):
 		t.Fatal("window did not process WM_CLOSE")
 	}
 }
 
-func startWindowsIntegrationWindow(t *testing.T) (win.HWND, win.HWND, <-chan struct{}) {
+func startWindowsIntegrationWindow(t *testing.T) (win.HWND, win.HWND, <-chan error) {
 	t.Helper()
 	type createdWindows struct {
 		window win.HWND
@@ -164,12 +188,16 @@ func startWindowsIntegrationWindow(t *testing.T) (win.HWND, win.HWND, <-chan str
 	}
 	created := make(chan createdWindows, 1)
 	failed := make(chan error, 1)
-	stopped := make(chan struct{})
+	stopped := make(chan error, 1)
 
 	go func() {
 		runtime.LockOSThread()
 		defer runtime.UnlockOSThread()
-		defer close(stopped)
+		var stopErr error
+		defer func() {
+			stopped <- stopErr
+			close(stopped)
+		}()
 
 		instance := win.GetModuleHandle(nil)
 		className, err := syscall.UTF16PtrFromString(fmt.Sprintf("RobotGoPureGoWindow%d", os.Getpid()))
@@ -183,17 +211,37 @@ func startWindowsIntegrationWindow(t *testing.T) (win.HWND, win.HWND, <-chan str
 			return
 		}
 		var editHandle win.HWND
+		var focusLossEvents uintptr
 		windowProc := syscall.NewCallback(func(handle uintptr, message uint32, wParam, lParam uintptr) uintptr {
 			switch message {
 			case windowsIntegrationFocusEditMessage:
 				win.SetFocus(editHandle)
 				return uintptr(win.GetFocus())
+			case windowsIntegrationQueryStatusMessage:
+				var status uintptr
+				if win.GetForegroundWindow() == win.HWND(handle) {
+					status |= windowsIntegrationStatusForeground
+				}
+				if win.GetFocus() == editHandle {
+					status |= windowsIntegrationStatusEditFocused
+				}
+				return status
+			case windowsIntegrationQueryFocusLossMessage:
+				return focusLossEvents
+			case win.WM_ACTIVATE:
+				if win.LOWORD(uint32(wParam)) == uint16(win.WA_INACTIVE) {
+					focusLossEvents++
+				}
+			case win.WM_COMMAND:
+				if win.HWND(lParam) == editHandle &&
+					win.HIWORD(uint32(wParam)) == uint16(win.EN_KILLFOCUS) {
+					focusLossEvents++
+				}
 			case win.WM_DESTROY:
 				win.PostQuitMessage(0)
 				return 0
-			default:
-				return win.DefWindowProc(win.HWND(handle), message, wParam, lParam)
 			}
+			return win.DefWindowProc(win.HWND(handle), message, wParam, lParam)
 		})
 		class := win.WNDCLASSEX{
 			CbSize:        uint32(unsafe.Sizeof(win.WNDCLASSEX{})),
@@ -205,7 +253,12 @@ func startWindowsIntegrationWindow(t *testing.T) (win.HWND, win.HWND, <-chan str
 			failed <- errorsFromWindowsCall("RegisterClassEx")
 			return
 		}
-		defer win.UnregisterClass(className)
+		defer func() {
+			stopErr = errors.Join(
+				stopErr,
+				unregisterWindowsIntegrationClass(className, instance),
+			)
+		}()
 
 		handle := win.CreateWindowEx(
 			0, className, title, win.WS_OVERLAPPEDWINDOW,
@@ -239,7 +292,7 @@ func startWindowsIntegrationWindow(t *testing.T) (win.HWND, win.HWND, <-chan str
 				break
 			}
 			if int32(result) == -1 {
-				failed <- errorsFromWindowsCall("GetMessage")
+				stopErr = errorsFromWindowsCall("GetMessage")
 				return
 			}
 			win.TranslateMessage(&message)
@@ -252,7 +305,18 @@ func startWindowsIntegrationWindow(t *testing.T) (win.HWND, win.HWND, <-chan str
 	case windows := <-created:
 		t.Cleanup(func() {
 			if win.GetWindowThreadProcessId(windows.window, nil) != 0 {
-				win.PostMessage(windows.window, win.WM_CLOSE, 0, 0)
+				if posted := win.PostMessage(windows.window, win.WM_CLOSE, 0, 0); posted == 0 {
+					t.Errorf("post WM_CLOSE during integration window cleanup: %v", errorsFromWindowsCall("PostMessage"))
+					return
+				}
+			}
+			select {
+			case stopErr, ok := <-stopped:
+				if ok && stopErr != nil {
+					t.Errorf("stop integration window during cleanup: %v", stopErr)
+				}
+			case <-time.After(5 * time.Second):
+				t.Error("timed out stopping integration window during cleanup")
 			}
 		})
 		return windows.window, windows.edit, stopped
@@ -264,16 +328,193 @@ func startWindowsIntegrationWindow(t *testing.T) (win.HWND, win.HWND, <-chan str
 	return 0, 0, stopped
 }
 
+func unregisterWindowsIntegrationClass(className *uint16, instance win.HINSTANCE) error {
+	unregistered, _, callErr := windowsIntegrationUnregisterClass.Call(
+		uintptr(unsafe.Pointer(className)),
+		uintptr(instance),
+	)
+	runtime.KeepAlive(className)
+	if unregistered != 0 {
+		return nil
+	}
+	if callErr == nil || callErr == syscall.Errno(0) {
+		return errors.New("UnregisterClassW failed without Win32 error information")
+	}
+	return fmt.Errorf("UnregisterClassW failed: %w", callErr)
+}
+
 func waitForWindowsCondition(t *testing.T, description string, condition func() bool) {
 	t.Helper()
-	deadline := time.Now().Add(3 * time.Second)
-	for time.Now().Before(deadline) {
-		if condition() {
-			return
-		}
-		time.Sleep(20 * time.Millisecond)
+	if waitForWindowsConditionFor(windowsIntegrationConditionTimeout, condition) {
+		return
 	}
 	t.Fatal("timed out waiting for " + description)
+}
+
+func waitForWindowsConditionFor(timeout time.Duration, condition func() bool) bool {
+	deadline := time.Now().Add(timeout)
+	for {
+		if condition() {
+			return true
+		}
+		remaining := time.Until(deadline)
+		if remaining <= 0 {
+			return condition()
+		}
+		delay := 20 * time.Millisecond
+		if remaining < delay {
+			delay = remaining
+		}
+		time.Sleep(delay)
+	}
+}
+
+func exerciseWindowsPaste(t *testing.T, handle, editHandle win.HWND, text string) {
+	t.Helper()
+	first, err := runWindowsPasteAttempt(t, handle, editHandle, text)
+	if err != nil {
+		t.Fatalf("initial PasteStr attempt: %v", err)
+	}
+	if first.delivered {
+		return
+	}
+	if !first.clipboardPublished {
+		t.Fatal("PasteStr returned success but its text was not present on the clipboard")
+	}
+	if !windowsPasteFocusLossObserved(first.status, first.focusLossEvents, first.focusLossBaseline) {
+		t.Fatal("PasteStr published the clipboard text and retained foreground/edit focus, but Ctrl+V was not delivered")
+	}
+
+	t.Logf(
+		"retrying PasteStr once after observed focus loss: foreground=%t edit_focused=%t focus_loss_events=%d",
+		first.status&windowsIntegrationStatusForeground != 0,
+		first.status&windowsIntegrationStatusEditFocused != 0,
+		windowsPasteFocusLossDelta(first.focusLossEvents, first.focusLossBaseline),
+	)
+	empty, err := syscall.UTF16PtrFromString("")
+	if err != nil {
+		t.Fatalf("encode empty edit text: %v", err)
+	}
+	if err := win.SetWindowText(editHandle, empty); err != nil {
+		t.Fatalf("clear integration edit before focus-loss recovery: %v", err)
+	}
+
+	retry, err := runWindowsPasteAttempt(t, handle, editHandle, text)
+	if err != nil {
+		t.Fatalf("PasteStr after focus-loss recovery: %v", err)
+	}
+	if retry.delivered {
+		return
+	}
+
+	t.Fatalf(
+		"PasteStr delivery failed after one focus-loss recovery: clipboard_published=%t foreground=%t edit_focused=%t focus_loss_events=%d",
+		retry.clipboardPublished,
+		retry.status&windowsIntegrationStatusForeground != 0,
+		retry.status&windowsIntegrationStatusEditFocused != 0,
+		windowsPasteFocusLossDelta(retry.focusLossEvents, retry.focusLossBaseline),
+	)
+}
+
+type windowsPasteAttemptResult struct {
+	delivered          bool
+	clipboardPublished bool
+	status             uintptr
+	focusLossEvents    uintptr
+	focusLossBaseline  uintptr
+}
+
+func runWindowsPasteAttempt(
+	t *testing.T,
+	handle, editHandle win.HWND,
+	text string,
+) (windowsPasteAttemptResult, error) {
+	t.Helper()
+	result := windowsPasteAttemptResult{
+		focusLossBaseline: prepareWindowsPasteTarget(t, handle, editHandle),
+	}
+	if err := PasteStr(text); err != nil {
+		return result, err
+	}
+	result.delivered = waitForWindowsConditionFor(windowsIntegrationConditionTimeout, func() bool {
+		return windowsWindowText(editHandle) == text
+	})
+	if result.delivered {
+		return result, nil
+	}
+	var err error
+	result.clipboardPublished, err = windowsClipboardContains(text)
+	if err != nil {
+		return result, fmt.Errorf("verify clipboard publication: %w", err)
+	}
+	result.status = queryWindowsIntegrationStatus(t, handle)
+	result.focusLossEvents = queryWindowsIntegrationFocusLosses(t, handle)
+	return result, nil
+}
+
+func prepareWindowsPasteTarget(t *testing.T, handle, editHandle win.HWND) uintptr {
+	t.Helper()
+	if GetActive() != Handle(handle) {
+		if err := SetActiveE(Handle(handle)); err != nil {
+			t.Fatalf("activate integration window for paste: %v", err)
+		}
+	}
+	waitForWindowsCondition(t, "integration window to become foreground for paste", func() bool {
+		return GetActive() == Handle(handle)
+	})
+	focused := sendWindowsIntegrationMessage(t, handle, windowsIntegrationFocusEditMessage)
+	if focused != uintptr(editHandle) {
+		t.Fatalf("focus integration edit for paste returned %#x, want %#x", focused, editHandle)
+	}
+	if status := queryWindowsIntegrationStatus(t, handle); status != windowsIntegrationStatusReady {
+		t.Fatalf(
+			"integration paste target is not ready: foreground=%t edit_focused=%t",
+			status&windowsIntegrationStatusForeground != 0,
+			status&windowsIntegrationStatusEditFocused != 0,
+		)
+	}
+	return queryWindowsIntegrationFocusLosses(t, handle)
+}
+
+func queryWindowsIntegrationStatus(t *testing.T, handle win.HWND) uintptr {
+	t.Helper()
+	return sendWindowsIntegrationMessage(t, handle, windowsIntegrationQueryStatusMessage)
+}
+
+func queryWindowsIntegrationFocusLosses(t *testing.T, handle win.HWND) uintptr {
+	t.Helper()
+	return sendWindowsIntegrationMessage(t, handle, windowsIntegrationQueryFocusLossMessage)
+}
+
+func sendWindowsIntegrationMessage(t *testing.T, handle win.HWND, message uint32) uintptr {
+	t.Helper()
+	var result uintptr
+	sent, _, callErr := windowsIntegrationSendMessageTimeout.Call(
+		uintptr(handle),
+		uintptr(message),
+		0,
+		0,
+		windowsIntegrationAbortIfHung,
+		uintptr(windowsIntegrationMessageTimeout/time.Millisecond),
+		uintptr(unsafe.Pointer(&result)),
+	)
+	runtime.KeepAlive(&result)
+	if sent != 0 {
+		return result
+	}
+	if callErr == nil || callErr == syscall.Errno(0) {
+		t.Fatalf("SendMessageTimeoutW(%#x) failed or timed out without Win32 error information", message)
+	}
+	t.Fatalf("SendMessageTimeoutW(%#x) failed or timed out: %v", message, callErr)
+	return 0
+}
+
+func windowsClipboardContains(want string) (bool, error) {
+	got, err := ReadAll()
+	if err != nil {
+		return false, err
+	}
+	return got == want, nil
 }
 
 func errorsFromWindowsCall(operation string) error {
