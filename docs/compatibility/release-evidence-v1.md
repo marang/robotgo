@@ -56,6 +56,17 @@ repository code; it only verifies the already packaged SHA-256 and uploads the
 two assets. Manual runs retain the bundle as a GitHub Actions artifact for 90
 days and do not modify a release.
 
+The first published bundle is attached to
+[`v1.0.0-beta.1`](https://github.com/marang/robotgo/releases/tag/v1.0.0-beta.1):
+
+- [`robotgo-release-evidence-v1.0.0-beta.1-1bab5e173f6b.tar.gz`](https://github.com/marang/robotgo/releases/download/v1.0.0-beta.1/robotgo-release-evidence-v1.0.0-beta.1-1bab5e173f6b.tar.gz)
+- [`robotgo-release-evidence-v1.0.0-beta.1-1bab5e173f6b.tar.gz.sha256`](https://github.com/marang/robotgo/releases/download/v1.0.0-beta.1/robotgo-release-evidence-v1.0.0-beta.1-1bab5e173f6b.tar.gz.sha256)
+
+It records exact source commit
+`1bab5e173f6b96f61d349473b348f839291b9a89`; all six matrix cells and all 15
+protected checks passed. The archive digest is
+`93c45caae406d33fefb0fbbd60ec1cb9d347027b155efcde376c9685161d0207`.
+
 ## Verification
 
 After extracting a bundle at the repository root, verify each matrix cell with:
