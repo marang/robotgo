@@ -100,7 +100,7 @@ technical source; keep their scope and status links synchronized.
 
 Normal implementation work follows this loop:
 
-`Linear issue -> In Progress -> current main -> isolated branch/worktree -> implementation and tests -> local review -> commit and push -> draft PR -> In Review -> CI and reviewer feedback -> merge -> Done/project update -> sync main -> branch cleanup`
+`Linear issue -> In Progress -> current main -> isolated branch/worktree -> implementation and tests -> local review -> commit and push -> draft PR -> CI -> ready PR and In Review -> reviewer feedback -> merge -> Done/project update -> sync main -> branch cleanup`
 
 1. Create or select exactly one Linear issue for an executable implementation
    or documentation slice, assign it to the correct RobotGo project, and apply
@@ -117,12 +117,12 @@ Normal implementation work follows this loop:
 8. Commit with an English Conventional Commit message and push the branch.
 9. Open a draft PR against `main` with behavior, risk, fallback, validation
    evidence, and the Linear issue link when applicable.
-10. Move the issue to `In Review` and add a short update covering the change,
-    verification, and bounded follow-up work.
-11. Inspect every CI job. Fix failures owned by the branch and push the fixes.
-12. Once the branch is locally complete and CI is healthy, mark the PR ready for
+10. Inspect every CI job. Fix failures owned by the branch and push the fixes.
+11. Once the branch is locally complete and CI is healthy, mark the PR ready for
     review. A draft PR is not evidence that configured reviewers have reviewed
     it.
+12. Move the issue to `In Review` and add a short update covering the change,
+    verification, and bounded follow-up work.
 13. Inspect all review surfaces, address actionable findings, and repeat CI and
     review inspection after every review-driven push.
 14. Merge only when the gate in section 6 is satisfied.
