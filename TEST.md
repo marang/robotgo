@@ -82,7 +82,8 @@ after opening it.
 The default CGO macOS and Windows pointer checks preserve and verify restoration
 of the original pointer location. They use bounded observation polling instead
 of fixed post-event sleeps and do not retry an injected event to manufacture a
-passing result.
+passing result. Absolute, relative, and smooth moves must all reach their exact
+requested endpoint.
 
 The real scale probe can be reproduced on a macOS GUI runner without granting
 Screen Recording or Accessibility access:
