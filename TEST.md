@@ -51,15 +51,16 @@ ASAN_OPTIONS=detect_leaks=1:halt_on_error=1:strict_string_checks=1 \
   go test -asan -count=1 ./...
 
 ASAN_OPTIONS=detect_leaks=1:halt_on_error=1:strict_string_checks=1 \
-  go test -asan -tags "wayland test" ./screen \
-  -run '^TestScreencopy(WlShm|TimeoutIsBounded|DmabufFailureDoesNotCloseStdin)$' \
-  -count=1 -timeout=60s -v
+  scripts/run-wayland-sanitizer-tests.sh
 ```
 
 The tagged tests use hermetic Wayland protocol servers and must all pass; CI
 checks their manifest so a missing or renamed ownership test cannot silently
 reduce coverage. The gate covers allocation/free, timeout cleanup, and file
 descriptor ownership without requiring a graphical session or render node.
+The runner prints both listing and execution diagnostics before returning the
+original failing command's status, so transient sanitizer failures retain their
+actionable output.
 
 The non-CGO suite runs on Linux, macOS, and Windows in CI. It also verifies
 runtime build/feature introspection, pixel-color parity, and hermetic Pure-Go

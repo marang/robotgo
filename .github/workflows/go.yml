@@ -79,35 +79,7 @@ jobs:
       - name: Run default native suite with AddressSanitizer and LeakSanitizer
         run: go test -asan -count=1 ./...
       - name: Run hermetic Wayland ownership paths with sanitizers
-        run: |
-          set -euo pipefail
-          expected="$(printf '%s\n' \
-            TestScreencopyDmabufFailureDoesNotCloseStdin \
-            TestScreencopyTimeoutIsBounded \
-            TestScreencopyWlShm | LC_ALL=C sort)"
-          listed="$(go test -asan -tags 'wayland test' ./screen \
-            -list '^TestScreencopy(WlShm|TimeoutIsBounded|DmabufFailureDoesNotCloseStdin)$')"
-          printf '%s\n' "$listed"
-          actual="$(printf '%s\n' "$listed" | \
-            awk '/^TestScreencopy/ { print }' | LC_ALL=C sort)"
-          if [ "$actual" != "$expected" ]; then
-            echo "sanitizer test manifest mismatch" >&2
-            printf 'expected:\n%s\nactual:\n%s\n' \
-              "$expected" "${actual:-<empty>}" >&2
-            exit 1
-          fi
-          output="$(go test -asan -tags 'wayland test' ./screen \
-            -run '^TestScreencopy(WlShm|TimeoutIsBounded|DmabufFailureDoesNotCloseStdin)$' \
-            -count=1 -timeout=60s -v)"
-          printf '%s\n' "$output"
-          while IFS= read -r test_name; do
-            if ! grep -Eq "^--- PASS: ${test_name} \\(.*\\)$" <<<"$output"; then
-              echo "sanitizer test did not pass: ${test_name}" >&2
-              exit 1
-            fi
-          done <<EOF
-          $expected
-          EOF
+        run: scripts/run-wayland-sanitizer-tests.sh
   lint:
     runs-on: ubuntu-latest
     steps:
