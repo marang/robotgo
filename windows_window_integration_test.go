@@ -3,6 +3,7 @@
 package robotgo
 
 import (
+	"errors"
 	"fmt"
 	"math"
 	"os"
@@ -27,7 +28,12 @@ const (
 	windowsIntegrationAbortIfHung      = 0x0002
 )
 
-var windowsIntegrationSendMessageTimeout = syscall.NewLazyDLL("user32.dll").NewProc("SendMessageTimeoutW")
+var windowsIntegrationUser32 = syscall.NewLazyDLL("user32.dll")
+
+var (
+	windowsIntegrationSendMessageTimeout = windowsIntegrationUser32.NewProc("SendMessageTimeoutW")
+	windowsIntegrationUnregisterClass    = windowsIntegrationUser32.NewProc("UnregisterClassW")
+)
 
 func TestPureGoWindowsWindowRuntime(t *testing.T) {
 	if os.Getenv(envRequireWindowsWindowIntegration) != "1" {
@@ -165,13 +171,16 @@ func TestPureGoWindowsWindowRuntime(t *testing.T) {
 		t.Fatalf("CloseWindowE(handle): %v", err)
 	}
 	select {
-	case <-stopped:
+	case stopErr := <-stopped:
+		if stopErr != nil {
+			t.Fatalf("stop integration window: %v", stopErr)
+		}
 	case <-time.After(5 * time.Second):
 		t.Fatal("window did not process WM_CLOSE")
 	}
 }
 
-func startWindowsIntegrationWindow(t *testing.T) (win.HWND, win.HWND, <-chan struct{}) {
+func startWindowsIntegrationWindow(t *testing.T) (win.HWND, win.HWND, <-chan error) {
 	t.Helper()
 	type createdWindows struct {
 		window win.HWND
@@ -179,12 +188,16 @@ func startWindowsIntegrationWindow(t *testing.T) (win.HWND, win.HWND, <-chan str
 	}
 	created := make(chan createdWindows, 1)
 	failed := make(chan error, 1)
-	stopped := make(chan struct{})
+	stopped := make(chan error, 1)
 
 	go func() {
 		runtime.LockOSThread()
 		defer runtime.UnlockOSThread()
-		defer close(stopped)
+		var stopErr error
+		defer func() {
+			stopped <- stopErr
+			close(stopped)
+		}()
 
 		instance := win.GetModuleHandle(nil)
 		className, err := syscall.UTF16PtrFromString(fmt.Sprintf("RobotGoPureGoWindow%d", os.Getpid()))
@@ -240,7 +253,12 @@ func startWindowsIntegrationWindow(t *testing.T) (win.HWND, win.HWND, <-chan str
 			failed <- errorsFromWindowsCall("RegisterClassEx")
 			return
 		}
-		defer win.UnregisterClass(className)
+		defer func() {
+			stopErr = errors.Join(
+				stopErr,
+				unregisterWindowsIntegrationClass(className, instance),
+			)
+		}()
 
 		handle := win.CreateWindowEx(
 			0, className, title, win.WS_OVERLAPPEDWINDOW,
@@ -274,7 +292,7 @@ func startWindowsIntegrationWindow(t *testing.T) (win.HWND, win.HWND, <-chan str
 				break
 			}
 			if int32(result) == -1 {
-				failed <- errorsFromWindowsCall("GetMessage")
+				stopErr = errorsFromWindowsCall("GetMessage")
 				return
 			}
 			win.TranslateMessage(&message)
@@ -287,7 +305,18 @@ func startWindowsIntegrationWindow(t *testing.T) (win.HWND, win.HWND, <-chan str
 	case windows := <-created:
 		t.Cleanup(func() {
 			if win.GetWindowThreadProcessId(windows.window, nil) != 0 {
-				win.PostMessage(windows.window, win.WM_CLOSE, 0, 0)
+				if posted := win.PostMessage(windows.window, win.WM_CLOSE, 0, 0); posted == 0 {
+					t.Errorf("post WM_CLOSE during integration window cleanup: %v", errorsFromWindowsCall("PostMessage"))
+					return
+				}
+			}
+			select {
+			case stopErr, ok := <-stopped:
+				if ok && stopErr != nil {
+					t.Errorf("stop integration window during cleanup: %v", stopErr)
+				}
+			case <-time.After(5 * time.Second):
+				t.Error("timed out stopping integration window during cleanup")
 			}
 		})
 		return windows.window, windows.edit, stopped
@@ -297,6 +326,21 @@ func startWindowsIntegrationWindow(t *testing.T) (win.HWND, win.HWND, <-chan str
 		t.Fatal("timed out creating integration window")
 	}
 	return 0, 0, stopped
+}
+
+func unregisterWindowsIntegrationClass(className *uint16, instance win.HINSTANCE) error {
+	unregistered, _, callErr := windowsIntegrationUnregisterClass.Call(
+		uintptr(unsafe.Pointer(className)),
+		uintptr(instance),
+	)
+	runtime.KeepAlive(className)
+	if unregistered != 0 {
+		return nil
+	}
+	if callErr == nil || callErr == syscall.Errno(0) {
+		return errors.New("UnregisterClassW failed without Win32 error information")
+	}
+	return fmt.Errorf("UnregisterClassW failed: %w", callErr)
 }
 
 func waitForWindowsCondition(t *testing.T, description string, condition func() bool) {
