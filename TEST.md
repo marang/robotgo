@@ -608,6 +608,13 @@ go test -tags "wayland test" ./screen -run 'TestScreencopy(BitmapStringHelper|Wl
 go test -tags "wayland integration" . ./mouse ./window -v
 CGO_ENABLED=0 go test -tags "waylandoutputintegration" . \
   -run '^TestPureGoWaylandOutputEnumerationWeston$' -count=1 -timeout=30s -v
+
+ROBOTGO_REQUIRE_WAYLAND_OUTPUT_INTEGRATION=1 \
+  xvfb-run -a -s '-screen 0 1920x1080x24 -nolisten tcp -noreset' \
+  env CGO_ENABLED=0 \
+  go test -tags "waylandoutputintegration" . \
+    -run '^TestPureGoWayland.*EnumerationWeston$' \
+    -count=1 -timeout=30s -v
 ```
 
 The non-CGO Wayland output suite is hermetic and deliberately sets both
@@ -621,11 +628,16 @@ CGO_ENABLED=0 go test ./internal/waylandoutput -count=1 -v
 CGO_ENABLED=0 go test -run '^TestPureGoWaylandBounds|^TestPureGoCaptureAliasUsesWaylandPortal' .
 ```
 
-The tagged command above starts a single-output headless Weston instance in a
-test-owned `XDG_RUNTIME_DIR`, exercises the public error-returning bounds APIs,
-terminates and waits for Weston, and lets `t.TempDir` remove the socket and all
-runtime files. It never captures or writes desktop image data. CI runs this as
-a blocking step in `wayland-integration`.
+The first tagged command starts a single-output headless Weston instance. The
+second additionally starts Weston under Xvfb with two virtual outputs, scale
+factor 2, and a 90-degree transform. It verifies exact logical per-output and
+aggregate bounds through the public error-returning APIs. Both instances use a
+test-owned `XDG_RUNTIME_DIR`, terminate and wait for Weston, and let `t.TempDir`
+remove the socket and all runtime files. The Xvfb wrapper removes its temporary
+authorization data. Neither test captures nor writes desktop image data. CI
+requires both tests to pass by setting
+`ROBOTGO_REQUIRE_WAYLAND_OUTPUT_INTEGRATION=1`; missing Weston, Xvfb, outputs,
+or protocol data is a failure rather than a skip.
 
 Run tag-gated suites as needed for the area you changed. Native or Pure-Go X11
 input changes must also run the required `x11integration` comparison command

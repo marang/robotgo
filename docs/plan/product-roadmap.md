@@ -36,7 +36,7 @@ The July 2026 hardening work establishes the foundation for this roadmap:
 | Current baseline | Complete in main | Native screencopy, screenshot portal fallback, bounded waits, cleanup, live capability probes, error APIs, non-CGO contract, dedicated race/vet/sanitizer jobs, protected stable CI checks | Keep required jobs green |
 | 1. Wayland input | Implementation complete; runtime validation blocked | Native virtual keyboard/pointer, consent-aware RemoteDesktop fallback, shared ScreenCast stream mapping, absolute pointer/touch, restore tokens, diagnostics and E2E harness | Register GNOME/KDE/wlroots runners and collect green CGO/non-CGO evidence |
 | 2. Capture | Hermetic implementation complete | Reliable one-shot paths plus one consent-aware ScreenCast session, reusable PipeWire frames, logical region crop, raw pixel conversion, metadata/restore tokens, cleanup, integration harness, non-skipping geometry/transform CI, and sanitizer-backed native ownership gates | Real GNOME/KDE/wlroots evidence |
-| 3. Pure-Go | X11 complete; Windows input/window CI-evidenced; macOS capture/display/input and window implementation delivered; Wayland logical output enumeration delivered; broader phase partial | Build and feature-level introspection; non-CGO macOS CoreGraphics capture/display, Quartz input, and Accessibility window inspection/control with explicit gaps; Windows capture, `SendInput` keyboard/pointer, and Win32 window control with blocking runtime probes; X11 capture, XGB/XTEST input, and X11/EWMH window introspection/control; Wayland portal capture/input plus bounded native `wl_output`/`xdg-output` geometry; permission/error contracts; shared behavioral parity; reproducible balanced benchmark tooling; optimized guardian-path decision evidence; explicit decision to retain native CGO as the X11 default; race-testable internal X11 core; re-exec guardian with application-`SIGKILL` recovery; protected three-OS CI | Collect opt-in real macOS input and self-owned-window evidence, protected real-compositor multi-output Wayland evidence, and assess further backends selectively |
+| 3. Pure-Go | X11 complete; Windows input/window CI-evidenced; macOS capture/display/input and window implementation delivered; Wayland logical output enumeration and Weston multi-output evidence delivered; broader phase partial | Build and feature-level introspection; non-CGO macOS CoreGraphics capture/display, Quartz input, and Accessibility window inspection/control with explicit gaps; Windows capture, `SendInput` keyboard/pointer, and Win32 window control with blocking runtime probes; X11 capture, XGB/XTEST input, and X11/EWMH window introspection/control; Wayland portal capture/input plus bounded native `wl_output`/`xdg-output` geometry; permission/error contracts; shared behavioral parity; reproducible balanced benchmark tooling; optimized guardian-path decision evidence; explicit decision to retain native CGO as the X11 default; race-testable internal X11 core; re-exec guardian with application-`SIGKILL` recovery; protected three-OS CI | Collect opt-in real macOS input and self-owned-window evidence, protected GNOME/KDE/wlroots multi-output Wayland evidence, and assess further backends selectively |
 | 4. API/compositor gaps | Parity surface delivered; runtime support partial | Window-state error APIs, bitmap string helpers, `FindColorCS`, hook/event capability reporting, Sway/Hyprland/wlroots resolver, provider-aware Hyprland 0.55+ Lua window dispatch | Compositor-backed state operations and cross-platform/runtime matrix coverage |
 | 5. Reliability product | Partial | Capability APIs, versioned sanitized runtime diagnostics/example, compatibility matrix v1, expanded CI variants, blocking ASan/LeakSanitizer ownership gates, six-cell checksummed release-evidence pipeline | Dedicated compositor jobs and the first published release evidence asset |
 
@@ -234,7 +234,10 @@ bounds use a bounded native `wl_output`/`xdg-output` client instead of falling
 through to Xwayland. It provides primary-first per-output and aggregate logical
 geometry, fractional `xdg-output` sizes, integer core scale/transforms,
 protocol-version clamping, explicit errors, deterministic socket cleanup,
-hermetic wire tests, and blocking single-output Weston evidence.
+hermetic wire tests, and blocking single- and multi-output Weston evidence. The
+multi-output job runs RobotGo as a Wayland-only client against two virtual
+Weston outputs and verifies exact scale-2, rotated logical geometry without
+capturing pixels.
 
 The Linux/X11 evaluation slice of Phase 3 is complete. Native CGO and Pure-Go
 X11 binaries pass one black-box public-API contract for capture, pointer,
@@ -327,8 +330,9 @@ cross-platform semantics:
   maximize slice only where equally trustworthy state is exposed.
 - Add protected real-desktop capture-helper evidence beyond the delivered
   hermetic native Wayland, portal, and cross-build backend contracts.
-- Collect protected real-compositor multi-output bounds evidence beyond the
-  delivered hermetic geometry matrix and single-output Weston integration.
+- Collect protected GNOME/KDE/wlroots multi-output bounds evidence beyond the
+  delivered hermetic geometry matrix and single-/multi-output Weston
+  integration.
 
 Every addition needs unit tests, an applicable runtime integration test, and a
 runnable example unless the environment makes one technically impossible.

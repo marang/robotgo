@@ -69,8 +69,10 @@ Current implementation baseline:
   ordering, prefer fractional `xdg-output` logical geometry, apply integer scale
   and all transforms in the core fallback, clamp advertised protocol versions,
   and close every one-shot Unix connection deterministically. Hermetic wire
-  tests and a blocking single-output Weston integration cover the backend
-  without creating screenshots or persistent artifacts.
+  tests and blocking single-/multi-output Weston integration cover the backend
+  without creating screenshots or persistent artifacts. The multi-output job
+  checks two scale-2, rotated outputs and exact public aggregate geometry while
+  RobotGo remains a Wayland-only client.
 - An explicitly started ScreenCast session provides reusable PipeWire frames
   behind the `pipewire` build tag. It preserves stream geometry/serial metadata,
   supports logical region crop with fractional scaling, converts negotiated raw
@@ -194,8 +196,9 @@ backends.
     across native screencopy and PipeWire mapping.
   - Validate the same scale/transform and region-crop behavior on real wlroots,
     GNOME, and KDE sessions.
-  - Complete real-compositor multi-output selection and bounds evidence using
-    `xdg-output`.
+  - Complete protected GNOME/KDE/wlroots multi-output selection and bounds
+    evidence using `xdg-output`; Weston single-/multi-output evidence is
+    blocking.
 - Portal Path:
   - Expand troubleshooting for xdg-desktop-portal backend selection and consent prompts.
   - Validate the existing high-level RemoteDesktop input fallback on GNOME/KDE.

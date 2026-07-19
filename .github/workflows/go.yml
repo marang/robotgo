@@ -405,7 +405,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-            build-essential pkg-config weston \
+            build-essential pkg-config weston xvfb xauth \
             libx11-dev libxtst-dev libxkbcommon-dev \
             libwayland-dev wayland-protocols \
             libgbm-dev libdrm-dev libpipewire-0.3-dev
@@ -483,6 +483,37 @@ jobs:
           go test -tags "wayland integration" . ./mouse ./window -v
       - name: Run Pure-Go Wayland output integration
         run: |
-          CGO_ENABLED=0 go test -tags "waylandoutputintegration" . \
-            -run '^TestPureGoWaylandOutputEnumerationWeston$' \
-            -count=1 -timeout=30s -v
+          set -euo pipefail
+          expected="$(printf '%s\n' \
+            TestPureGoWaylandMultiOutputEnumerationWeston \
+            TestPureGoWaylandOutputEnumerationWeston | LC_ALL=C sort)"
+          listed="$(CGO_ENABLED=0 go test -tags "waylandoutputintegration" . \
+            -list '^TestPureGoWayland.*EnumerationWeston$')"
+          printf '%s\n' "$listed"
+          actual="$(printf '%s\n' "$listed" | \
+            awk '/^TestPureGoWayland/ { print }' | LC_ALL=C sort)"
+          if [ "$actual" != "$expected" ]; then
+            echo "Pure-Go Wayland output integration manifest mismatch" >&2
+            printf 'expected:\n%s\nactual:\n%s\n' \
+              "$expected" "${actual:-<empty>}" >&2
+            exit 1
+          fi
+          if ! output="$(ROBOTGO_REQUIRE_WAYLAND_OUTPUT_INTEGRATION=1 \
+              xvfb-run -a -s '-screen 0 1920x1080x24 -nolisten tcp -noreset' \
+              env CGO_ENABLED=0 \
+              go test -tags "waylandoutputintegration" . \
+                -run '^TestPureGoWayland.*EnumerationWeston$' \
+                -count=1 -timeout=30s -v 2>&1)"; then
+            printf '%s\n' "$output"
+            exit 1
+          fi
+          printf '%s\n' "$output"
+          while IFS= read -r test_name; do
+            if ! printf '%s\n' "$output" | \
+              grep -Eq "^--- PASS: ${test_name} \\(.*\\)$"; then
+              echo "Pure-Go Wayland output integration did not pass: ${test_name}" >&2
+              exit 1
+            fi
+          done <<EOF
+          $expected
+          EOF
