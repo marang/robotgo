@@ -1,6 +1,7 @@
 # RobotGo
 
 [![CI: main](https://github.com/marang/robotgo/actions/workflows/go.yml/badge.svg?branch=main)](https://github.com/marang/robotgo/actions/workflows/go.yml?query=branch%3Amain)
+[![Release](https://img.shields.io/github/v/release/marang/robotgo?include_prereleases&sort=semver)](https://github.com/marang/robotgo/releases)
 [![Go Reference](https://pkg.go.dev/badge/github.com/marang/robotgo.svg)](https://pkg.go.dev/github.com/marang/robotgo)
 
 <p align="center">

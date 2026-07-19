@@ -18,8 +18,6 @@ import (
 	"github.com/marang/robotgo/internal/windowbackend"
 )
 
-const Version = "v1.00.0.1189, MT. Baker!"
-
 var (
 	// Deprecated: use SetRuntimeConfig for runtime changes in concurrent programs.
 	MouseSleep = 0

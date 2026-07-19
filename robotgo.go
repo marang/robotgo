@@ -76,8 +76,6 @@ import (
 )
 
 const (
-	// Version get the robotgo version
-	Version                  = "v1.00.0.1189, MT. Baker!"
 	envWaylandDisplay        = "WAYLAND_DISPLAY"
 	envDisplay               = "DISPLAY"
 	envCaptureDebug          = "ROBOTGO_CAPTURE_DEBUG"

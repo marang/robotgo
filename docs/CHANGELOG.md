@@ -1,5 +1,16 @@
 # CHANGELOG
 
+## RobotGo v1.0.0-beta.1 — 2026-07-19
+
+This is the first published pre-release of the independent
+`github.com/marang/robotgo` module. It establishes the fork's Wayland-first,
+explicit-error, Pure-Go, diagnostics, and release-evidence contracts while
+retaining the existing cross-platform automation API wherever behavior can be
+implemented safely.
+
+See the [complete release notes](releases/v1.0.0-beta.1.md) for highlights,
+installation, compatibility limits, and evidence verification.
+
 <!--### RobotGo-->
 ## RobotGo v0.100.0, MT. Baker; Enhancement bitmap and image, add arm support...
 
@@ -860,4 +871,3 @@ See Commits for more details, after Nov 10.
 - Fix typesetting and MD error
 - Fix fedora dependencies #55
 - Fix doc.md and README.md
-
