@@ -215,7 +215,7 @@ jobs:
         run: >-
           go test -tags windowsintegration
           -run "^TestPureGoWindowsWindowRuntime$"
-          -count=1 -timeout=30s -v .
+          -count=3 -timeout=60s -v .
       - name: Test non-CGO OCR compatibility stubs
         if: runner.os == 'Linux'
         env:

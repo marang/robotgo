@@ -178,7 +178,9 @@ go test -tags windowsintegration -run "^TestPureGoWindowsWindowRuntime$" -count=
 
 The environment variable is an explicit local safety gate because the test
 temporarily changes the text clipboard; it restores the previous readable text
-value during cleanup. CI runs this command as a blocking Windows non-CGO check.
+value during cleanup and verifies the restoration without logging clipboard
+contents. CI repeats this test three times as a blocking Windows non-CGO check
+so focus recovery and cleanup are exercised across independent runs.
 
 Opt-in macOS runtime capture benchmark:
 
