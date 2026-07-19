@@ -79,6 +79,11 @@ screenshot files to be absent after successful decoding and after decode
 failures. The production portal reader unlinks the sensitive file immediately
 after opening it.
 
+The command-backed OCR cancellation test waits for its fake backend to publish
+the private image path before canceling. It then requires bounded command
+termination and verifies that the temporary OCR image no longer exists; fixed
+startup sleeps or OCR-operation retries are not used.
+
 The default CGO macOS and Windows pointer checks preserve and verify restoration
 of the original pointer location. They use bounded observation polling instead
 of fixed post-event sleeps and do not retry an injected event to manufacture a
