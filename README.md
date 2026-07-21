@@ -292,7 +292,11 @@ func main() {
 Legacy APIs remain available for source compatibility. Their signatures may be
 unable to report all backend failures, so new reliability-sensitive code should
 use variants such as `MoveE`, `MoveRelativeE`, `ClickE`, `ScrollE`, `LocationE`,
-`TypeStrE`, `UnicodeTypeE`, and the error-returning window APIs.
+`TypeStrE`, `UnicodeTypeE`, `AlertE`, and the error-returning window APIs.
+On Linux, `AlertE` tries `zenity`, `kdialog`, and `xmessage` before using
+`notify-send` for an OK-only informational alert. A cancel-capable alert never
+silently degrades to a non-interactive notification; missing or failed backends
+are returned explicitly. Legacy `Alert` keeps its bool-only signature.
 `KeyTap` and `KeyToggle` model keys rather than portable text entry. A selected
 backend may support a single non-ASCII rune directly (the RemoteDesktop portal
 and Pure-Go X11 do), while another native keymap can return `ErrNotSupported`.

@@ -76,27 +76,26 @@ func DisplaysNum() int {
 	return int(C.get_num_displays())
 }
 
-// Alert show a alert window
-// Displays alert with the attributes.
-// If cancel button is not given, only the default button is displayed
-//
-// Examples:
-//
-//	robotgo.Alert("hi", "window", "ok", "cancel")
+// Alert shows an alert window and preserves the legacy bool-only API.
 func Alert(title, msg string, args ...string) bool {
-	var defBtn, cancelBtn *C.char
+	accepted, _ := AlertE(title, msg, args...)
+	return accepted
+}
+
+// AlertE shows an alert window and distinguishes a backend failure from the
+// user rejecting the dialog.
+func AlertE(title, msg string, args ...string) (bool, error) {
+	defaultLabel, cancelLabel := alertArgs(args...)
 	ct := C.CString(title)
 	cm := C.CString(msg)
+	defBtn := C.CString(defaultLabel)
 	defer C.free(unsafe.Pointer(ct))
 	defer C.free(unsafe.Pointer(cm))
-	if len(args) > 0 {
-		defBtn = C.CString(args[0])
-		defer C.free(unsafe.Pointer(defBtn))
-	}
-	if len(args) > 1 {
-		cancelBtn = C.CString(args[1])
+	defer C.free(unsafe.Pointer(defBtn))
+	var cancelBtn *C.char
+	if cancelLabel != "" {
+		cancelBtn = C.CString(cancelLabel)
 		defer C.free(unsafe.Pointer(cancelBtn))
 	}
-	r := C.showAlert(ct, cm, defBtn, cancelBtn)
-	return int(r) == 0
+	return nativeAlertResult(int(C.showAlert(ct, cm, defBtn, cancelBtn)))
 }

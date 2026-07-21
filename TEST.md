@@ -88,6 +88,12 @@ Unix clipboard read/write cancellation tests likewise wait for a fake command's
 readiness before canceling, cover already-canceled contexts separately, and use
 only fixed fixture text without reading or changing the developer's clipboard.
 
+Linux alert tests replace every external dialog backend through a private test
+`PATH`. They verify fallback order, user rejection, missing/failed backends, and
+the non-interactive notification boundary without displaying real UI.
+The shared native-result tests also keep macOS and Windows backend failures
+distinct from a user rejecting the dialog.
+
 The default CGO macOS and Windows pointer checks preserve and verify restoration
 of the original pointer location. They use bounded observation polling instead
 of fixed post-event sleeps and do not retry an injected event to manufacture a

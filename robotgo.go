@@ -2511,19 +2511,14 @@ ____    __    ____  __  .__   __.  _______   ______   ____    __    ____
 */
 
 func alertArgs(args ...string) (string, string) {
-	var (
-		defaultBtn = "Ok"
-		cancelBtn  = "Cancel"
-	)
-
-	if len(args) > 0 {
+	defaultBtn := "Ok"
+	cancelBtn := ""
+	if len(args) > 0 && args[0] != "" {
 		defaultBtn = args[0]
 	}
-
 	if len(args) > 1 {
 		cancelBtn = args[1]
 	}
-
 	return defaultBtn, cancelBtn
 }
 
