@@ -679,8 +679,11 @@ Pure-Go CoreGraphics, Windows, or X11 screenshot backend where available.
 Wayland sessions use this fork's hardened screenshot portal and preserve
 `ROBOTGO_DISABLE_PORTAL`; unsupported targets return `ErrNotSupported`
 explicitly. Portal-provided temporary screenshot files are unlinked immediately
-after opening, including decode-error paths, so sensitive desktop images are
-not left behind. On macOS, capture returns `ErrPermissionDenied` with
+after an identity-verified open, including decode-error and cancellation paths,
+so sensitive desktop images are not left behind. Decoding follows the capture
+context and rejects symlinks, changed file identities, encoded or estimated
+decoded PNG data above 512 MiB, and dimensions above 32,768 pixels per axis.
+On macOS, capture returns `ErrPermissionDenied` with
 remediation when Screen Recording access is absent; capability inspection
 never requests that permission implicitly.
 

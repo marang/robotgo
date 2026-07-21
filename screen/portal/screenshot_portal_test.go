@@ -4,12 +4,15 @@ package portal
 
 import (
 	"context"
+	"encoding/binary"
 	"errors"
+	"hash/crc32"
 	"image"
 	"image/color"
 	"image/png"
 	"net/url"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -74,6 +77,23 @@ func writeTestPNG(t *testing.T) (string, string) {
 		t.Fatal(err)
 	}
 	if err := f.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return (&url.URL{Scheme: "file", Path: path}).String(), path
+}
+
+func writeTestPNGHeader(t *testing.T, width, height uint32) (string, string) {
+	t.Helper()
+	path := t.TempDir() + "/portal dimensions.png"
+	header := make([]byte, 0, portalPNGHeaderSize+4)
+	header = append(header, []byte(portalPNGSignature)...)
+	header = binary.BigEndian.AppendUint32(header, 13)
+	header = append(header, []byte("IHDR")...)
+	header = binary.BigEndian.AppendUint32(header, width)
+	header = binary.BigEndian.AppendUint32(header, height)
+	header = append(header, 8, 6, 0, 0, 0)
+	header = binary.BigEndian.AppendUint32(header, crc32.ChecksumIEEE(header[12:]))
+	if err := os.WriteFile(path, header, 0o600); err != nil {
 		t.Fatal(err)
 	}
 	return (&url.URL{Scheme: "file", Path: path}).String(), path
@@ -175,7 +195,7 @@ func TestCropImageOnlyTreatsZeroByZeroAsFullScreenshot(t *testing.T) {
 }
 
 func TestDecodeFileURIRejectsNonFileScheme(t *testing.T) {
-	if _, err := decodeFileURI("https://example.com/screenshot.png"); err == nil {
+	if _, err := decodeFileURI(context.Background(), "https://example.com/screenshot.png"); err == nil {
 		t.Fatal("expected unsupported URI error")
 	}
 }
@@ -186,10 +206,121 @@ func TestDecodeFileURIRemovesSensitiveArtifactOnDecodeFailure(t *testing.T) {
 		t.Fatal(err)
 	}
 	uri := (&url.URL{Scheme: "file", Path: path}).String()
-	if _, err := decodeFileURI(uri); err == nil {
+	if _, err := decodeFileURI(context.Background(), uri); err == nil {
 		t.Fatal("expected PNG decode error")
 	}
 	assertSensitiveArtifactRemoved(t, path)
+}
+
+func TestDecodeFileURIRemovesSensitiveArtifactWhenContextCanceled(t *testing.T) {
+	uri, path := writeTestPNG(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, err := decodeFileURI(ctx, uri); !errors.Is(err, context.Canceled) {
+		t.Fatalf("decodeFileURI error = %v, want context.Canceled", err)
+	}
+	assertSensitiveArtifactRemoved(t, path)
+}
+
+func TestDecodeFileURIRejectsOversizedArtifactBeforeDecode(t *testing.T) {
+	uri, path := writeTestPNG(t)
+	if err := os.Truncate(path, portalScreenshotMaxEncodedBytes+1); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := decodeFileURI(context.Background(), uri); err == nil ||
+		!strings.Contains(err.Error(), "file size") {
+		t.Fatalf("decodeFileURI error = %v, want file-size limit", err)
+	}
+	assertSensitiveArtifactRemoved(t, path)
+}
+
+func TestDecodeFileURIRejectsAllocationBombHeaderBeforeDecode(t *testing.T) {
+	uri, path := writeTestPNGHeader(t, uint32(portalScreenshotMaxDimension), uint32(portalScreenshotMaxDimension))
+	if _, err := decodeFileURI(context.Background(), uri); err == nil ||
+		!strings.Contains(err.Error(), "estimated screenshot decode size") {
+		t.Fatalf("decodeFileURI error = %v, want decoded-size limit", err)
+	}
+	assertSensitiveArtifactRemoved(t, path)
+}
+
+func TestDecodeFileURIRejectsSymlinkWithoutOpeningTarget(t *testing.T) {
+	_, target := writeTestPNG(t)
+	link := t.TempDir() + "/portal link.png"
+	if err := os.Symlink(target, link); err != nil {
+		t.Fatal(err)
+	}
+	uri := (&url.URL{Scheme: "file", Path: link}).String()
+	if _, err := decodeFileURI(context.Background(), uri); err == nil ||
+		!strings.Contains(err.Error(), "not a regular file") {
+		t.Fatalf("decodeFileURI error = %v, want symlink rejection", err)
+	}
+	if _, err := os.Stat(target); err != nil {
+		t.Fatalf("symlink target was changed: %v", err)
+	}
+}
+
+func TestVerifyPortalScreenshotIdentity(t *testing.T) {
+	firstPath := t.TempDir() + "/first"
+	secondPath := t.TempDir() + "/second"
+	if err := os.WriteFile(firstPath, []byte("first"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(secondPath, []byte("second"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	first, err := os.Stat(firstPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := os.Stat(secondPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := verifyPortalScreenshotIdentity(first, first); err != nil {
+		t.Fatalf("same file identity rejected: %v", err)
+	}
+	if err := verifyPortalScreenshotIdentity(first, second); err == nil {
+		t.Fatal("different file identities were accepted")
+	}
+}
+
+func TestRemoveVerifiedPortalScreenshotPreservesReplacement(t *testing.T) {
+	dir := t.TempDir()
+	path := dir + "/portal.png"
+	replacement := dir + "/replacement.png"
+	if err := os.WriteFile(path, []byte("original"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	expected, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(replacement, []byte("replacement"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Rename(replacement, path); err != nil {
+		t.Fatal(err)
+	}
+	if err := removeVerifiedPortalScreenshot(path, expected); err == nil {
+		t.Fatal("replacement identity was removed")
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("replacement was not preserved: %v", err)
+	}
+	if string(data) != "replacement" {
+		t.Fatalf("replacement content = %q", data)
+	}
+}
+
+func TestPortalContextReaderStopsBeforeRead(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	reader := &portalContextReader{ctx: ctx, reader: strings.NewReader("private pixels")}
+	buffer := make([]byte, 8)
+	if _, err := reader.Read(buffer); !errors.Is(err, context.Canceled) {
+		t.Fatalf("Read error = %v, want context.Canceled", err)
+	}
 }
 
 func assertSensitiveArtifactRemoved(t *testing.T, path string) {
