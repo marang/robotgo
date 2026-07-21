@@ -292,7 +292,11 @@ The environment variable is an explicit local safety gate because the test
 temporarily changes the text clipboard; it restores the previous readable text
 value during cleanup and verifies the restoration without logging clipboard
 contents. CI repeats this test three times as a blocking Windows non-CGO check
-so focus recovery and cleanup are exercised across independent runs.
+so focus recovery, missing EDIT-control delivery acknowledgement, and cleanup
+are exercised across independent runs. A failed paste is retried at most once,
+and only after the owned window reports either focus loss or no `EN_CHANGE`
+acknowledgement at all. Any unexpected edit mutation and every persistent
+delivery failure remain blocking.
 
 Opt-in macOS runtime capture benchmark:
 
