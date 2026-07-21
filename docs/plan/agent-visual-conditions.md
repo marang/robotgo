@@ -39,8 +39,10 @@ receiving capture metadata. Session close remains the final cleanup boundary.
 
 The catalog adds `desktop.find-color` and `desktop.wait-color` as sensitive
 reads. `desktop.find-color` also requires `desktop.observe`, because it can
-only consume an observation created inside the session. `desktop.wait-color`
-requires explicit capture/display limits and positive bounded wait settings.
+only consume an observation created inside the session. It therefore also
+requires explicit capture/display limits, and its catalog entry reports the
+capture backend needed to create that observation. `desktop.wait-color`
+requires the same capture/display limits and positive bounded wait settings.
 Both share `MaxQueries`; wait attempts additionally consume the existing
 `MaxObservations` budget.
 

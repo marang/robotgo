@@ -7,7 +7,7 @@ func buildCatalog(policy Policy, capabilities robotgo.RuntimeCapabilities) Opera
 		SchemaVersion: CatalogSchemaVersion,
 		Operations: []OperationCapability{
 			observationCapability(policy, capabilities),
-			findColorCapability(policy),
+			findColorCapability(policy, capabilities),
 			waitColorCapability(policy, capabilities),
 			operationCapability(OperationMove, policy, capabilities.Mouse),
 			operationCapability(OperationClick, policy, capabilities.Mouse),
@@ -36,17 +36,25 @@ func observationCapability(policy Policy, capabilities robotgo.RuntimeCapabiliti
 	}
 }
 
-func findColorCapability(policy Policy) OperationCapability {
+func findColorCapability(policy Policy, capabilities robotgo.RuntimeCapabilities) OperationCapability {
 	_, confirmationRequired := policy.requireConfirmation[OperationFindColor]
 	_, policyAllowed := policy.allowOperation[OperationFindColor]
+	captureAvailable, captureBackend, captureFallback, remediation := agentCaptureCapability(capabilities)
+	capturePolicyAllowed := policyAllowed && policy.MaxQueries > 0 && policy.MaxCapturePixels > 0 &&
+		len(policy.allowDisplay) > 0
 	return OperationCapability{
-		Operation: OperationFindColor, Available: true,
-		PolicyAllowed: policyAllowed && policy.MaxQueries > 0,
+		Operation: OperationFindColor, Available: captureAvailable,
+		PolicyAllowed: capturePolicyAllowed,
 		Backend:       "in-memory-observation", Risk: RiskSensitiveRead,
 		ConfirmationRequired:  confirmationRequired,
 		Cancellation:          CancellationCooperative,
 		ExclusiveAgentSession: true,
-		Reason:                "color search uses only a live capture already owned by this session",
+		Reason:                "color search uses only a live capture already owned by this session; creating one requires the reported capture backend",
+		Remediation:           remediation,
+		CaptureAvailable:      captureAvailable,
+		CapturePolicyAllowed:  capturePolicyAllowed,
+		CaptureFallback:       captureFallback,
+		CaptureBackend:        captureBackend,
 	}
 }
 

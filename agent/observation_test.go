@@ -774,7 +774,7 @@ func TestObservationOnlyPolicyNeedsNoActionBudget(t *testing.T) {
 func TestWaylandCatalogDoesNotAdvertiseImplicitPortalCapture(t *testing.T) {
 	t.Setenv(disablePortalEnv, "")
 	policy, err := preparePolicy(Policy{
-		AllowedOperations: []Operation{OperationObserve, OperationWaitColor},
+		AllowedOperations: []Operation{OperationObserve, OperationFindColor, OperationWaitColor},
 		AllowedDisplayIDs: []int{0}, MaxObservations: 1, MaxCapturePixels: 1,
 		MaxQueries: 1, WaitAttempts: 1, WaitTimeoutMillis: 1,
 	})
@@ -793,6 +793,10 @@ func TestWaylandCatalogDoesNotAdvertiseImplicitPortalCapture(t *testing.T) {
 	if waitCapability.Available || !strings.Contains(waitCapability.Remediation, "will not open portal consent implicitly") {
 		t.Fatalf("portal-only wait capability = %+v", waitCapability)
 	}
+	findCapability := buildCatalog(policy, capabilities).Operations[1]
+	if findCapability.Available || !strings.Contains(findCapability.Remediation, "will not open portal consent implicitly") {
+		t.Fatalf("portal-only find capability = %+v", findCapability)
+	}
 
 	capabilities.Capture = robotgo.FeatureCapability{
 		Available: true,
@@ -803,6 +807,9 @@ func TestWaylandCatalogDoesNotAdvertiseImplicitPortalCapture(t *testing.T) {
 	}
 	if waitCapability = buildCatalog(policy, capabilities).Operations[2]; !waitCapability.Available {
 		t.Fatalf("active ScreenCast wait capability = %+v", waitCapability)
+	}
+	if findCapability = buildCatalog(policy, capabilities).Operations[1]; !findCapability.Available {
+		t.Fatalf("active ScreenCast find capability = %+v", findCapability)
 	}
 
 	t.Setenv(disablePortalEnv, "1")
@@ -815,6 +822,9 @@ func TestWaylandCatalogDoesNotAdvertiseImplicitPortalCapture(t *testing.T) {
 	}
 	if waitCapability = buildCatalog(policy, capabilities).Operations[2]; !waitCapability.Available {
 		t.Fatalf("explicit native-only wait capability = %+v", waitCapability)
+	}
+	if findCapability = buildCatalog(policy, capabilities).Operations[1]; !findCapability.Available {
+		t.Fatalf("explicit native-only find capability = %+v", findCapability)
 	}
 }
 

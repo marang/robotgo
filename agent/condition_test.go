@@ -471,6 +471,8 @@ func TestVisualConditionPolicyMustBeBounded(t *testing.T) {
 	tests := []Policy{
 		{AllowedOperations: []Operation{OperationFindColor}, MaxQueries: 1},
 		{AllowedOperations: []Operation{OperationObserve, OperationFindColor}, MaxObservations: 1},
+		{AllowedOperations: []Operation{OperationObserve, OperationFindColor}, MaxObservations: 1, MaxQueries: 1},
+		{AllowedOperations: []Operation{OperationObserve, OperationFindColor}, MaxObservations: 1, MaxQueries: 1, MaxCapturePixels: 1},
 		{AllowedOperations: []Operation{OperationWaitColor}, AllowedDisplayIDs: []int{0}, MaxQueries: 1, MaxObservations: 1, MaxCapturePixels: 1},
 		{AllowedOperations: []Operation{OperationWaitColor}, AllowedDisplayIDs: []int{0}, MaxQueries: 1, MaxObservations: 1, MaxCapturePixels: 1, WaitAttempts: 1},
 		{AllowedOperations: []Operation{OperationWaitColor}, AllowedDisplayIDs: []int{0}, MaxQueries: 1, MaxObservations: 1, MaxCapturePixels: 1, WaitTimeoutMillis: 1},

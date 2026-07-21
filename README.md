@@ -781,7 +781,9 @@ start consent-aware ScreenCast themselves or explicitly select native-only
 capture with `ROBOTGO_DISABLE_PORTAL=1`.
 
 `Session.FindColor` searches only a live capture already owned by an explicit
-observation; it never captures the desktop implicitly. `Session.WaitColor`
+observation; it never captures the desktop implicitly. Enabling it requires
+`desktop.observe` plus bounded capture and display policy so such an observation
+can actually be created. `Session.WaitColor`
 polls one explicit `CaptureRegion` within `MaxQueries`, `MaxObservations`,
 `MaxCapturePixels`, display, attempt, interval, timeout, and confirmation
 limits. Results expose match state and global logical coordinates but never

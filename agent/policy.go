@@ -125,6 +125,9 @@ func preparePolicy(input Policy) (Policy, error) {
 		if _, observeAllowed := prepared.allowOperation[OperationObserve]; !observeAllowed {
 			return Policy{}, fmt.Errorf("agent: desktop.find-color requires desktop.observe")
 		}
+		if prepared.MaxCapturePixels == 0 || len(prepared.allowDisplay) == 0 {
+			return Policy{}, fmt.Errorf("agent: desktop.find-color requires allowed bounded captures")
+		}
 	}
 	if waitAllowed {
 		if prepared.WaitAttempts == 0 || prepared.WaitTimeoutMillis == 0 {
