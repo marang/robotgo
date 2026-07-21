@@ -147,9 +147,12 @@ enum RobotGoMouseStatus {
 
 #ifdef ROBOTGO_USE_WAYLAND
         /* Wayland support */
+	#include <errno.h>
+	#include <poll.h>
         #include <string.h>
         #include <wayland-client.h>
         #include <linux/input-event-codes.h>
+	#include "wayland_flush.h"
         #include "wlr-virtual-pointer-unstable-v1-client-protocol.h"
 	#include "wayland_absolute.h"
         #include "../window/get_bounds_wayland.h"
@@ -313,6 +316,47 @@ enum RobotGoMouseStatus {
 	                }
 	                rg_wl_inited = 1;
 	                return 1;
+	        }
+
+	        static int rg_try_flush_wayland(void *context) {
+	                return wl_display_flush((struct wl_display *)context);
+	        }
+
+	        static int rg_wait_wayland_writable(void *context, int timeout_ms) {
+	                struct pollfd writable = {
+	                        .fd = wl_display_get_fd((struct wl_display *)context),
+	                        .events = POLLOUT,
+	                        .revents = 0
+	                };
+	                int ready = poll(&writable, 1, timeout_ms);
+	                if (ready <= 0) {
+	                        return ready;
+	                }
+	                if (writable.revents & (POLLERR | POLLHUP | POLLNVAL)) {
+	                        errno = EPIPE;
+	                        return -1;
+	                }
+	                return (writable.revents & POLLOUT) ? 1 : 0;
+	        }
+
+	        static int rg_flush_wayland_mouse(void) {
+	                enum {
+	                        RG_WL_MOUSE_FLUSH_POLL_MS = 50,
+	                        RG_WL_MOUSE_FLUSH_ATTEMPTS = 3
+	                };
+	                if (rg_wl_display == NULL) {
+	                        return ROBOTGO_MOUSE_NO_DISPLAY;
+	                }
+	                int result = robotgo_wayland_flush_with_retry(
+	                        rg_wl_display, rg_try_flush_wayland,
+	                        rg_wait_wayland_writable,
+	                        RG_WL_MOUSE_FLUSH_POLL_MS,
+	                        RG_WL_MOUSE_FLUSH_ATTEMPTS);
+	                if (result == ROBOTGO_WAYLAND_FLUSH_FAILED) {
+	                        rg_cleanup_wayland();
+	                        return ROBOTGO_MOUSE_INJECTION_FAILED;
+	                }
+	                return ROBOTGO_MOUSE_OK;
 	        }
 
 	        static int robotgo_wayland_mouse_backend_enabled(void) { return 1; }
@@ -483,9 +527,9 @@ static int moveMouseInternal(MMPointInt32 point, bool refresh_bounds){
 					ROBOTGO_WAYLAND_ABSOLUTE_EXTENT,
 					ROBOTGO_WAYLAND_ABSOLUTE_EXTENT);
 				zwlr_virtual_pointer_v1_frame(rg_wl_vptr);
-				if (wl_display_flush(rg_wl_display) < 0) {
-					rg_cleanup_wayland();
-					return ROBOTGO_MOUSE_INJECTION_FAILED;
+				int flush_status = rg_flush_wayland_mouse();
+				if (flush_status != ROBOTGO_MOUSE_OK) {
+					return flush_status;
 				}
 				rg_wl_last_x = point.x;
 				rg_wl_last_y = point.y;
@@ -593,10 +637,11 @@ void moveMouseRelative(int dx, int dy) {
                         wl_fixed_t fdy = wl_fixed_from_double((double)dy);
                         zwlr_virtual_pointer_v1_motion(rg_wl_vptr, 0, fdx, fdy);
                         zwlr_virtual_pointer_v1_frame(rg_wl_vptr);
-                        wl_display_flush(rg_wl_display);
-                        rg_wl_last_x += dx;
-                        rg_wl_last_y += dy;
-                        return;
+			if (rg_flush_wayland_mouse() == ROBOTGO_MOUSE_OK) {
+				rg_wl_last_x += dx;
+				rg_wl_last_y += dy;
+			}
+			return;
                 }
         }
 #endif
@@ -647,9 +692,9 @@ int toggleMouse(bool down, MMMouseButton button) {
 				}
                                 zwlr_virtual_pointer_v1_button(rg_wl_vptr, 0, code, down ? 1 : 0);
 				zwlr_virtual_pointer_v1_frame(rg_wl_vptr);
-				if (wl_display_flush(rg_wl_display) < 0) {
-					rg_cleanup_wayland();
-					return ROBOTGO_MOUSE_INJECTION_FAILED;
+				int flush_status = rg_flush_wayland_mouse();
+				if (flush_status != ROBOTGO_MOUSE_OK) {
+					return flush_status;
 				}
 				rg_wl_owned_buttons[index] = down;
 				return ROBOTGO_MOUSE_OK;
@@ -773,7 +818,7 @@ void scrollMouseXY(int x, int y) {
 						zwlr_virtual_pointer_v1_frame(rg_wl_vptr);
 					}
 				}
-				wl_display_flush(rg_wl_display);
+				(void)rg_flush_wayland_mouse();
 			}
 #if !defined(DISPLAY_SERVER_WAYLAND)
 			else {
