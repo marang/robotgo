@@ -10,8 +10,9 @@ package clipboard
 import (
 	"context"
 	"fmt"
-	"os/exec"
 	"strings"
+
+	commandpkg "github.com/marang/robotgo/internal/command"
 )
 
 var (
@@ -29,8 +30,7 @@ func readAllContext(ctx context.Context, selection Selection) (string, error) {
 	if selection != SelectionClipboard {
 		return "", fmt.Errorf("clipboard: primary selection is unsupported on macOS")
 	}
-	pasteCmd := exec.CommandContext(ctx, pasteCmdArgs)
-	out, err := pasteCmd.Output()
+	out, err := commandpkg.Output(ctx, pasteCmdArgs)
 	if err != nil {
 		if ctxErr := ctx.Err(); ctxErr != nil {
 			return "", ctxErr
@@ -50,9 +50,7 @@ func writeAllContext(ctx context.Context, text string, selection Selection) erro
 	if selection != SelectionClipboard {
 		return fmt.Errorf("clipboard: primary selection is unsupported on macOS")
 	}
-	copyCmd := exec.CommandContext(ctx, copyCmdArgs)
-	copyCmd.Stdin = strings.NewReader(text)
-	if err := copyCmd.Run(); err != nil {
+	if err := commandpkg.Run(ctx, strings.NewReader(text), copyCmdArgs); err != nil {
 		if ctxErr := ctx.Err(); ctxErr != nil {
 			return ctxErr
 		}

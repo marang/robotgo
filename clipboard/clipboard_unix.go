@@ -12,6 +12,8 @@ import (
 	"errors"
 	"os/exec"
 	"strings"
+
+	commandpkg "github.com/marang/robotgo/internal/command"
 )
 
 const (
@@ -87,7 +89,7 @@ func readAllContext(ctx context.Context, selection Selection) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	out, err := exec.CommandContext(ctx, name, args...).Output()
+	out, err := commandpkg.Output(ctx, name, args...)
 	if err != nil {
 		if ctxErr := ctx.Err(); ctxErr != nil {
 			return "", ctxErr
@@ -112,9 +114,7 @@ func writeAllContext(ctx context.Context, text string, selection Selection) erro
 	if err != nil {
 		return err
 	}
-	cmd := exec.CommandContext(ctx, name, args...)
-	cmd.Stdin = strings.NewReader(text)
-	if err := cmd.Run(); err != nil {
+	if err := commandpkg.Run(ctx, strings.NewReader(text), name, args...); err != nil {
 		if ctxErr := ctx.Err(); ctxErr != nil {
 			return ctxErr
 		}

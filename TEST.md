@@ -88,6 +88,12 @@ Unix clipboard read/write cancellation tests likewise wait for a fake command's
 readiness before canceling, cover already-canceled contexts separately, and use
 only fixed fixture text without reading or changing the developer's clipboard.
 
+Shared external-command lifecycle tests launch only private `t.TempDir()`
+backends. They verify that descendants holding inherited stdin/stdout cannot
+extend a call beyond the named cleanup delay and that the isolated Unix process
+group is gone afterward; they do not access real OCR, clipboard, compositor, or
+desktop data.
+
 Linux alert tests replace every external dialog backend through a private test
 `PATH`. They verify fallback order, user rejection, missing/failed backends, and
 the non-interactive notification boundary without displaying real UI.
