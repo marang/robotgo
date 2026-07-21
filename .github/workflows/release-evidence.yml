@@ -207,10 +207,16 @@ jobs:
               printf '%s\n' "$row" >> "$output/rows.jsonl"
             done <<'EOF'
           lint
+          native-capture
+          native-input
+          native-output
+          native-output-multi
+          native-window
           nocgo (macOS-latest)
           nocgo (ubuntu-latest)
           nocgo (windows-latest)
           ocr
+          portal-availability
           race
           release-evidence-validation
           sanitizer
@@ -326,10 +332,12 @@ jobs:
           expected_checks="$(printf '%s\n' \
             'ci/circleci: build' \
             lint \
+            native-capture native-input native-output native-output-multi \
+            native-window \
             'nocgo (macOS-latest)' \
             'nocgo (ubuntu-latest)' \
             'nocgo (windows-latest)' \
-            ocr race release-evidence-validation sanitizer \
+            ocr portal-availability race release-evidence-validation sanitizer \
             'test (macOS-latest)' \
             'test (ubuntu-latest)' \
             'test (windows-latest)' \
@@ -345,13 +353,22 @@ jobs:
           jq -e --arg commit "$commit" '
             .schema_version == "1" and
             .commit == $commit and
-            (.checks | length) == 15 and
+            (.checks | length) == 21 and
             all(.checks[];
               .conclusion == "success" and
               (.provider | type) == "string" and
               (.provider | length) > 0 and
               (.url | type) == "string" and
-              (.url | length) > 0
+              (.url | length) > 0 and
+              (if (.name == "native-capture" or
+                   .name == "native-input" or
+                   .name == "native-output" or
+                   .name == "native-output-multi" or
+                   .name == "native-window" or
+                   .name == "portal-availability")
+               then .provider == "github-actions"
+               else true
+               end)
             )
           ' required-checks/required-checks.json >/dev/null
           test_command='go test -count=1 ./...'

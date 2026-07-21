@@ -866,7 +866,12 @@ handoff.
 The `Release evidence` workflow validates its schema on every pull request and
 `main` push. Published releases and manual dispatches additionally run the
 default suite for native CGO and Pure-Go builds on Linux, macOS, and Windows,
-then verify and package all six evidence cells.
+then verify and package all six evidence cells. Its exact-commit protected
+manifest also requires every hosted Sway cell: native input, capture, window,
+single-output geometry, multi-output geometry, and portal availability. A
+missing, pending, skipped, neutral, cancelled, timed-out, or failed Sway check
+blocks the release bundle; GNOME/KDE portal checks remain excluded until their
+protected runner and real-consent contract exists.
 
 On a clean Linux native checkout, reproduce the generator/verifier path with:
 

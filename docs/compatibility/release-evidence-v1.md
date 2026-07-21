@@ -28,8 +28,11 @@ Each cell emits `evidence.json` and `test.log`. The JSON document records:
 The bundle also contains `required-checks.json`. It records the successful
 protected status set for the exact commit: CircleCI, lint, vet, race,
 ASan/LeakSanitizer, OCR, all three default and Pure-Go platform legs, Wayland,
-X11 evidence, and the release-evidence validator. Missing, pending, cancelled,
-or failed required checks abort snapshot publication.
+X11 evidence, the release-evidence validator, and all six hosted Sway cells
+(native input, capture, window, single-/multi-output geometry, and portal
+availability). Missing, pending, skipped, neutral, cancelled, timed-out, or
+failed required checks abort snapshot publication. The current manifest has 21
+entries.
 
 The required-check manifest in the workflow and the `main` branch-protection
 contexts are one contract. Add, rename, or remove a stable check in both places
@@ -87,5 +90,6 @@ sha256sum -c robotgo-release-evidence-*.tar.gz.sha256
 
 This six-cell release bundle does not replace real-compositor evidence. GNOME
 and KDE RemoteDesktop/ScreenCast portal rows remain pending protected runners.
-The separate hosted Sway/wlroots native and explicit portal-availability rows
-must still be promoted into the release gate for the exact release commit.
+The separate hosted Sway/wlroots native, single-/multi-output, and explicit
+portal-availability rows are required by the release gate for the exact release
+commit and remain linked to their own sanitized compositor-evidence artifacts.

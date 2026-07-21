@@ -265,7 +265,8 @@ backends.
     guardian-backed application-`SIGKILL` recovery in the non-skipping Xvfb
     manifest; guardian/host/X-server loss and X11 transport stalls beyond the
     cleanup deadline remain outside that scoped guarantee.
-  - Provision the existing dedicated GNOME, KDE, and wlroots runtime workflow.
+  - Provision the existing dedicated GNOME and KDE portal workflows. The six
+    hosted wlroots/Sway checks are promoted into branch and release gates.
   - Keep the race/vet and native ASan/LeakSanitizer CI jobs green and protected.
     The sanitizer gate covers the default CGO suite plus hermetic screencopy
     allocation/free, bounded timeout cleanup, and FD ownership paths.

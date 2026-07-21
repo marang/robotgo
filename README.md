@@ -1059,9 +1059,10 @@ the reported guardian is the exact child that exits and is reaped. The
 measures the guardian path and retains native CGO as the X11 default while
 Pure-Go remains the supported CGO-disabled backend. The earlier direct-path
 sample remains linked from the performance report as historical evidence.
-The stable remote checks are required by `main` branch protection. Real GNOME
-and KDE portal jobs, plus separate Sway/wlroots native and portal-availability
-jobs, remain opt-in until matching protected runners are registered.
+The stable remote checks and the six hosted Sway/wlroots native,
+single-/multi-output, and portal-availability jobs are required by `main`
+branch protection. Real GNOME and KDE portal jobs remain opt-in until matching
+protected runners and consent Environments are registered.
 
 Wayland and portal code has additional tagged suites:
 
