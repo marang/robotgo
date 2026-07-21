@@ -80,8 +80,36 @@ Each session starts before runner registration and provides:
   unrelated application state
 
 Portal consent remains real. The workflow does not patch the backend to
-auto-approve requests and does not persist restore tokens between jobs. The
-protected Environment tells an operator when interactive approval is required.
+auto-approve requests and does not persist restore tokens between jobs.
+
+### Operator consent handoff
+
+Environment approval authorizes provisioning but does not satisfy a portal
+dialog. Before a GNOME or KDE portal cell can be promoted, the runner
+orchestrator must provide this out-of-band handoff:
+
+1. Provisioning creates a per-job graphical console in the infrastructure
+   control plane and places the job in a private operator queue. The console is
+   never exposed as a public runner port, and its access credential is never
+   passed to repository code or GitHub logs.
+2. A maintainer authenticated to the control plane with SSO and MFA opens the
+   console from that queue. The console shows only the fixed, disposable test
+   desktop; recording, clipboard synchronization, and file transfer are
+   disabled.
+3. The orchestrator signals console readiness before the harness makes the
+   portal request. The operator verifies the requested RemoteDesktop or
+   ScreenCast device type and accepts the real desktop dialog within a bounded
+   120-second consent window.
+4. Missing readiness, rejection, disconnect, or timeout fails the cell. The
+   workflow must not convert it to a skip or retry it with automatic consent.
+5. The orchestrator revokes console access immediately after the final dialog
+   or timeout and destroys the runner on every completion path. Audit records
+   contain operator identity, job identifier, timestamps, and outcome only;
+   they contain no console frames or desktop content.
+
+This handoff must be proven operational for the lane before its portal cells
+become required. GitHub Environment instructions may link to the private
+operator queue, but Environment approval is never reported as portal consent.
 
 ## Shared fail-closed preflight
 
@@ -96,7 +124,8 @@ before RobotGo reads frames or injects input:
 5. PipeWire development/runtime availability for persistent capture
 6. lane-specific native tools and capabilities used by window/input evidence
 7. declared output count and multi-output requirement for geometry cells
-8. writable runner-temporary evidence directory with cleanup registered
+8. operator-console readiness for interactive GNOME/KDE portal cells
+9. writable runner-temporary evidence directory with cleanup registered
 
 The preflight returns a non-zero status for missing or mismatched requirements.
 It distinguishes unavailable infrastructure from a RobotGo test failure, but
