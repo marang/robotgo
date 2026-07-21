@@ -147,7 +147,7 @@ backends.
   - 1. Register protected GNOME/KDE portal runners and validate the complete
     RemoteDesktop high-level matrix in hermetic CGO and non-CGO builds. Track
     Sway/wlroots native input and explicit portal availability in the delivered
-    isolated hosted lanes.
+    passing isolated hosted lanes.
     Shared ScreenCast
     mapping, absolute pointer/touch, consent, denial, cancellation, timeout,
     restore metadata, teardown, and high-level dispatch have hermetic coverage.
@@ -155,7 +155,7 @@ backends.
   - 2. Validate the reusable ScreenCast/PipeWire backend on protected real
     GNOME/KDE portal runners and promote its leak/timeout tests to release
     gates. The isolated hosted Sway native-capture and portal-availability lanes
-    are defined separately; protected multi-output proof remains open. The
+    pass separately; protected multi-output proof remains open. The
     implementation and opt-in integration harness are present.
     `[new vs robotgo-pro]`
   - 3. Continue window state/query operations beyond the delivered Hyprland

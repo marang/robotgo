@@ -9,7 +9,7 @@ pass.
 |---|---|---|---|---|---|
 | 2026-07-11 | Sway (wlroots) | Native virtual keyboard/pointer | `linux,wayland,integration` | pass | Local `go test -tags "wayland integration" . ./mouse ./window -v`; keyboard/pointer round trips and Sway capability integration passed |
 | 2026-07-11 | Sway (wlroots) | RemoteDesktop portal | CGO/default | unavailable, actionable | Local portal exposes ScreenCast v4/source mask 3 but no `org.freedesktop.portal.RemoteDesktop`; diagnostics return an explicit unavailable error |
-| pending retained run | Sway 1.9, nested headless Ubuntu 24.04 | Native virtual keyboard/pointer | `cgo,wayland,swayintegration` | hosted workflow defined | `Sway E2E / native-input`; self-owned `wev` target, no physical devices or host desktop |
+| 2026-07-21 | Sway 1.9, nested headless Ubuntu 24.04 | Native virtual keyboard/pointer | `cgo,wayland,swayintegration` | pass | [`Sway E2E` run 29857289675](https://github.com/marang/robotgo/actions/runs/29857289675), `native-input`, artifact `sway-native-input`; self-owned `wev` target, no physical devices or host desktop |
 | pending | GNOME | RemoteDesktop + ScreenCast mapping | Pure-Go portal client | no runner | Requires self-hosted runner label `gnome` |
 | pending | KDE Plasma | RemoteDesktop + ScreenCast mapping | Pure-Go portal client | no runner | Requires self-hosted runner label `kde` |
 

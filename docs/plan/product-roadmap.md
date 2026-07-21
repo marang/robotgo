@@ -47,7 +47,8 @@ project P002 is complete, while roadmap Phase 5 remains partial. The active
 [Protected Real-Compositor Evidence Plan](real-compositor-evidence.md) now
 provides the shared preflight and sanitized evidence contract; protected runner
 provisioning and promotion now remain for GNOME/KDE portal gates. The hosted
-single-output Sway/wlroots native and portal-availability matrix is defined;
+single-output Sway/wlroots native and portal-availability matrix is passing on
+Ubuntu 24.04 with retained exact-commit evidence;
 multi-output protected compositor evidence remains open across phases 1, 2, 3,
 and 5.
 The completed [Agent Adapter and Evaluation Plan](agent-adapter-evaluation.md)
