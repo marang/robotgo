@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"image"
@@ -53,6 +54,7 @@ func observeCapture(t *testing.T, session *Session) *Observation {
 
 func TestObserveOwnsPixelsAndSerializesOnlyMetadata(t *testing.T) {
 	source := syntheticCapture(2, 2, 41)
+	rawPixelEncoding := base64.StdEncoding.EncodeToString(append([]byte(nil), source.Pix...))
 	driver := &fakeDriver{captureImages: []image.Image{source}}
 	session := newTestSession(t, observationPolicy(), driver)
 
@@ -78,11 +80,57 @@ func TestObserveOwnsPixelsAndSerializesOnlyMetadata(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(string(serialized), "Pix") || strings.Contains(string(serialized), "pixels") {
+	if strings.Contains(string(serialized), "Pix") || strings.Contains(string(serialized), "pixels") ||
+		strings.Contains(string(serialized), rawPixelEncoding) {
 		t.Fatalf("serialized observation leaked a pixel field: %s", serialized)
 	}
 	if observation.Capture == nil || observation.Capture.SHA256 == "" {
 		t.Fatalf("capture metadata = %+v", observation.Capture)
+	}
+}
+
+func TestObservationErrorsNeverSerializeBackendDetails(t *testing.T) {
+	const backendDetail = "private-backend-diagnostic"
+	driver := &fakeDriver{captureErr: errors.New(backendDetail)}
+	session := newTestSession(t, observationPolicy(), driver)
+	_, observeErr := session.Observe(context.Background(), ObserveRequest{
+		Capture: &CaptureRegion{Width: 2, Height: 2, DisplayID: 0},
+	})
+	serialized, err := json.Marshal(observeErr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(serialized), backendDetail) {
+		t.Fatalf("serialized observation error leaked backend detail: %s", serialized)
+	}
+}
+
+func TestObservationPolicyDeniesBeforeDesktopIO(t *testing.T) {
+	tests := []Policy{
+		testPolicy(),
+		{
+			AllowedOperations: []Operation{OperationObserve},
+			ConfirmOperations: []Operation{OperationObserve},
+			AllowedDisplayIDs: []int{0}, MaxObservations: 1, MaxCapturePixels: 4,
+		},
+		{
+			AllowedOperations: []Operation{OperationObserve},
+			AllowedDisplayIDs: []int{0}, MaxObservations: 1,
+		},
+	}
+	for _, policy := range tests {
+		driver := &fakeDriver{}
+		session := newTestSession(t, policy, driver)
+		_, err := session.Observe(context.Background(), ObserveRequest{
+			Capture: &CaptureRegion{Width: 1, Height: 1, DisplayID: 0},
+		})
+		if !errors.Is(err, ErrPolicyDenied) {
+			t.Fatalf("Observe with policy %+v = %v", policy, err)
+		}
+		if driver.captureCount() != 0 {
+			t.Fatalf("denied observation reached capture backend %d times", driver.captureCount())
+		}
+		_ = session.Close()
 	}
 }
 
@@ -305,6 +353,28 @@ func TestSessionCloseZeroesAllOwnedCaptures(t *testing.T) {
 	}
 	if _, err := observation.Image(); !errors.Is(err, ErrObservationClosed) {
 		t.Fatalf("Image after Close = %v", err)
+	}
+	if _, err := session.Observe(context.Background(), ObserveRequest{}); !errors.Is(err, ErrSessionClosed) {
+		t.Fatalf("Observe after Close = %v", err)
+	}
+}
+
+func TestClosedObservationCannotAuthorizeMutation(t *testing.T) {
+	driver := &fakeDriver{captureImages: []image.Image{syntheticCapture(2, 2, 19)}}
+	session := newTestSession(t, observationPolicy(), driver)
+	observation := observeCapture(t, session)
+	if err := observation.Close(); err != nil {
+		t.Fatal(err)
+	}
+	result, err := session.Execute(context.Background(), ActionRequest{
+		Operation: OperationClick, Click: &ClickAction{Button: MouseButtonLeft},
+		Precondition: &ObservationPrecondition{ObservationID: observation.ObservationID},
+	})
+	if !errors.Is(err, ErrStaleTarget) || result.Error == nil || result.Error.Code != ErrorStaleTarget {
+		t.Fatalf("Execute = %+v, %v", result, err)
+	}
+	if driver.callCount() != 0 || driver.captureCount() != 1 {
+		t.Fatalf("input calls = %d, capture calls = %d", driver.callCount(), driver.captureCount())
 	}
 }
 
