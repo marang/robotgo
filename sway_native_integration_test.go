@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"testing"
@@ -31,19 +32,43 @@ const (
 	swayFixtureTitle   = "wev"
 	swayOutputWidth    = 1280
 	swayOutputHeight   = 720
+	swaySecondOutputX  = -600
+	swaySecondOutputY  = 0
+	swaySecondWidth    = 400
+	swaySecondHeight   = 600
 	swayCommandTimeout = 3 * time.Second
 	swayFixtureTimeout = 5 * time.Second
 	maxFixtureLogBytes = 256 * 1024
 )
 
 type swayOutputIdentity struct {
-	Name   string `json:"name"`
-	Active bool   `json:"active"`
-	Rect   struct {
+	Name      string  `json:"name"`
+	Active    bool    `json:"active"`
+	Scale     float64 `json:"scale"`
+	Transform string  `json:"transform"`
+	Rect      struct {
+		X      int `json:"x"`
+		Y      int `json:"y"`
 		Width  int `json:"width"`
 		Height int `json:"height"`
 	} `json:"rect"`
 }
+
+type swayOutputExpectation struct {
+	x, y, width, height int
+	scale               float64
+	transform           string
+}
+
+var (
+	swaySingleOutput = []swayOutputExpectation{
+		{0, 0, swayOutputWidth, swayOutputHeight, 1, "normal"},
+	}
+	swayMultiOutput = []swayOutputExpectation{
+		{0, 0, swayOutputWidth, swayOutputHeight, 1, "normal"},
+		{swaySecondOutputX, swaySecondOutputY, swaySecondWidth, swaySecondHeight, 2, "90"},
+	}
+)
 
 type swayInputIdentity struct {
 	Identifier string `json:"identifier"`
@@ -95,7 +120,7 @@ type swayFixture struct {
 }
 
 func TestSwayNativeInputRuntime(t *testing.T) {
-	requireIsolatedSway(t)
+	requireIsolatedSway(t, swaySingleOutput)
 	fixture := startSwayFixture(t)
 	t.Cleanup(CloseWaylandInput)
 
@@ -140,7 +165,7 @@ func TestSwayNativeInputRuntime(t *testing.T) {
 }
 
 func TestSwayNativeCaptureRuntime(t *testing.T) {
-	requireIsolatedSway(t)
+	requireIsolatedSway(t, swaySingleOutput)
 	if os.Getenv(envDisablePortal) == "" {
 		t.Fatal("native capture evidence requires portal fallback to be disabled")
 	}
@@ -178,7 +203,7 @@ func TestSwayNativeCaptureRuntime(t *testing.T) {
 }
 
 func TestSwayNativeWindowRuntime(t *testing.T) {
-	requireIsolatedSway(t)
+	requireIsolatedSway(t, swaySingleOutput)
 	fixture := startSwayFixture(t)
 	title, err := GetTitleE()
 	if err != nil {
@@ -198,7 +223,7 @@ func TestSwayNativeWindowRuntime(t *testing.T) {
 }
 
 func TestSwayNativeOutputRuntime(t *testing.T) {
-	requireIsolatedSway(t)
+	requireIsolatedSway(t, swaySingleOutput)
 	count, err := DisplaysNumE()
 	if err != nil {
 		t.Fatalf("enumerate Sway outputs: %v", err)
@@ -226,8 +251,38 @@ func TestSwayNativeOutputRuntime(t *testing.T) {
 	}
 }
 
+func TestSwayNativeOutputMultiRuntime(t *testing.T) {
+	requireIsolatedSway(t, swayMultiOutput)
+	count, err := DisplaysNumE()
+	if err != nil {
+		t.Fatalf("enumerate multi-output Sway topology: %v", err)
+	}
+	if count != len(swayMultiOutput) {
+		t.Fatalf("Sway output count = %d, want %d", count, len(swayMultiOutput))
+	}
+	assertSwayPublicBounds(t, 0, swayMultiOutput[0])
+	assertSwayPublicBounds(t, 1, swayMultiOutput[1])
+	if _, _, _, _, err := GetDisplayBoundsE(count); err == nil {
+		t.Fatalf("GetDisplayBoundsE accepted inactive output index %d", count)
+	}
+
+	wantAggregate := Rect{
+		Point: Point{X: swaySecondOutputX, Y: 0},
+		Size:  Size{W: swayOutputWidth - swaySecondOutputX, H: swayOutputHeight},
+	}
+	for _, displayID := range [][]int{nil, {-1}} {
+		got, err := GetScreenRectE(displayID...)
+		if err != nil {
+			t.Fatalf("query aggregate Sway bounds %v: %v", displayID, err)
+		}
+		if got != wantAggregate {
+			t.Fatalf("aggregate Sway bounds %v = %+v, want %+v", displayID, got, wantAggregate)
+		}
+	}
+}
+
 func TestSwayPortalAvailabilityRuntime(t *testing.T) {
-	requireIsolatedSway(t)
+	requireIsolatedSway(t, swaySingleOutput)
 	ctx, cancel := context.WithTimeout(context.Background(), swayCommandTimeout)
 	defer cancel()
 	status, err := GetRemoteDesktopInputStatus(ctx)
@@ -242,7 +297,7 @@ func TestSwayPortalAvailabilityRuntime(t *testing.T) {
 	}
 }
 
-func requireIsolatedSway(t *testing.T) {
+func requireIsolatedSway(t *testing.T, expectedOutputs []swayOutputExpectation) {
 	t.Helper()
 	checks := map[string]string{
 		envRequireSwayE2E:  "1",
@@ -272,11 +327,20 @@ func requireIsolatedSway(t *testing.T) {
 
 	var outputs []swayOutputIdentity
 	runSwayJSON(t, &outputs, "get_outputs")
-	if len(outputs) != 1 || !outputs[0].Active ||
-		!strings.HasPrefix(outputs[0].Name, "HEADLESS-") ||
-		outputs[0].Rect.Width != swayOutputWidth ||
-		outputs[0].Rect.Height != swayOutputHeight {
-		t.Fatalf("isolated Sway output identity is invalid: %+v", outputs)
+	sort.Slice(outputs, func(left, right int) bool {
+		return outputs[left].Name < outputs[right].Name
+	})
+	if len(outputs) != len(expectedOutputs) {
+		t.Fatalf("isolated Sway output count = %d, want %d", len(outputs), len(expectedOutputs))
+	}
+	for index, expected := range expectedOutputs {
+		output := outputs[index]
+		if !output.Active || !strings.HasPrefix(output.Name, "HEADLESS-") ||
+			output.Rect.X != expected.x || output.Rect.Y != expected.y ||
+			output.Rect.Width != expected.width || output.Rect.Height != expected.height ||
+			output.Scale != expected.scale || output.Transform != expected.transform {
+			t.Fatalf("isolated Sway output %d identity is invalid: %+v", index, output)
+		}
 	}
 	var inputs []swayInputIdentity
 	runSwayJSON(t, &inputs, "get_inputs")
@@ -285,6 +349,32 @@ func requireIsolatedSway(t *testing.T) {
 	}
 	if DetectDisplayServer() != DisplayServerWayland {
 		t.Fatal("isolated Sway did not select the Wayland backend")
+	}
+}
+
+func assertSwayPublicBounds(t *testing.T, displayID int, expected swayOutputExpectation) {
+	t.Helper()
+	x, y, width, height, err := GetDisplayBoundsE(displayID)
+	if err != nil {
+		t.Fatalf("GetDisplayBoundsE(%d): %v", displayID, err)
+	}
+	if x != expected.x || y != expected.y || width != expected.width || height != expected.height {
+		t.Fatalf(
+			"GetDisplayBoundsE(%d) = %d,%d %dx%d, want %d,%d %dx%d",
+			displayID, x, y, width, height,
+			expected.x, expected.y, expected.width, expected.height,
+		)
+	}
+	rect, err := GetScreenRectE(displayID)
+	if err != nil {
+		t.Fatalf("GetScreenRectE(%d): %v", displayID, err)
+	}
+	want := Rect{
+		Point: Point{X: expected.x, Y: expected.y},
+		Size:  Size{W: expected.width, H: expected.height},
+	}
+	if rect != want {
+		t.Fatalf("GetScreenRectE(%d) = %+v, want %+v", displayID, rect, want)
 	}
 }
 

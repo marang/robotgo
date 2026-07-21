@@ -250,6 +250,9 @@ func validatePreflightConfig(config PreflightConfig) error {
 	if config.OutputCount < config.MinimumOutputCount {
 		return fmt.Errorf("declared output count is below the required minimum %d", config.MinimumOutputCount)
 	}
+	if err := validateCellOutputCount(config.Cell, config.OutputCount); err != nil {
+		return err
+	}
 	if config.RequireHeadlessSway && config.Lane != LaneWlroots {
 		return errors.New("headless Sway isolation requires the wlroots lane")
 	}
@@ -752,6 +755,9 @@ func validatePreflightReport(report PreflightReport) error {
 	if report.Desktop.OutputCount <= 0 {
 		return errors.New("output count must be positive")
 	}
+	if err := validateCellOutputCount(report.Desktop.Cell, report.Desktop.OutputCount); err != nil {
+		return err
+	}
 	if report.Desktop.Cell.ConsentRequired() && !report.Desktop.OperatorReady {
 		return errors.New("interactive portal cell lacks operator readiness")
 	}
@@ -766,6 +772,13 @@ func validatePreflightReport(report PreflightReport) error {
 		report.Desktop.PipeWire.Version,
 		report.Desktop.PipeWire.Required,
 	)
+}
+
+func validateCellOutputCount(cell Cell, outputCount int) error {
+	if cell == CellNativeOutputMulti && outputCount != 2 {
+		return errors.New("native multi-output evidence requires exactly two outputs")
+	}
+	return nil
 }
 
 func validatePortal(portal Portal, cell Cell) error {

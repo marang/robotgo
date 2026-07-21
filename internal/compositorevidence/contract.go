@@ -41,24 +41,26 @@ const (
 	CellNativeCapture      Cell = "native-capture"
 	CellNativeWindow       Cell = "native-window"
 	CellNativeOutput       Cell = "native-output"
+	CellNativeOutputMulti  Cell = "native-output-multi"
 	CellPortalAvailability Cell = "portal-availability"
 )
 
 const (
-	remoteDesktopTestName = "TestRemoteDesktopPortalRuntime"
-	remoteDesktopPackage  = "github.com/marang/robotgo/input/portal"
-	remoteDesktopCommand  = "go test -count=1 -timeout=3m -tags=integration ./input/portal -run ^TestRemoteDesktopPortalRuntime$ -v"
-	screenCastTestName    = "TestPipeWireCapturePersistentSessionIntegration"
-	screenCastPackage     = "github.com/marang/robotgo/screen/portal"
-	screenCastCommand     = "go test -count=1 -timeout=3m -tags=pipewire,integration ./screen/portal -run ^TestPipeWireCapturePersistentSessionIntegration$ -v"
-	swayPackage           = "github.com/marang/robotgo"
-	swayCommandPrefix     = "go test -count=1 -timeout=2m -tags=wayland,swayintegration . -run ^"
-	swayCommandSuffix     = "$ -v"
-	swayInputTestName     = "TestSwayNativeInputRuntime"
-	swayCaptureTestName   = "TestSwayNativeCaptureRuntime"
-	swayWindowTestName    = "TestSwayNativeWindowRuntime"
-	swayOutputTestName    = "TestSwayNativeOutputRuntime"
-	swayPortalTestName    = "TestSwayPortalAvailabilityRuntime"
+	remoteDesktopTestName   = "TestRemoteDesktopPortalRuntime"
+	remoteDesktopPackage    = "github.com/marang/robotgo/input/portal"
+	remoteDesktopCommand    = "go test -count=1 -timeout=3m -tags=integration ./input/portal -run ^TestRemoteDesktopPortalRuntime$ -v"
+	screenCastTestName      = "TestPipeWireCapturePersistentSessionIntegration"
+	screenCastPackage       = "github.com/marang/robotgo/screen/portal"
+	screenCastCommand       = "go test -count=1 -timeout=3m -tags=pipewire,integration ./screen/portal -run ^TestPipeWireCapturePersistentSessionIntegration$ -v"
+	swayPackage             = "github.com/marang/robotgo"
+	swayCommandPrefix       = "go test -count=1 -timeout=2m -tags=wayland,swayintegration . -run ^"
+	swayCommandSuffix       = "$ -v"
+	swayInputTestName       = "TestSwayNativeInputRuntime"
+	swayCaptureTestName     = "TestSwayNativeCaptureRuntime"
+	swayWindowTestName      = "TestSwayNativeWindowRuntime"
+	swayOutputTestName      = "TestSwayNativeOutputRuntime"
+	swayOutputMultiTestName = "TestSwayNativeOutputMultiRuntime"
+	swayPortalTestName      = "TestSwayPortalAvailabilityRuntime"
 )
 
 var (
@@ -94,6 +96,7 @@ func ParseCell(value string) (Cell, error) {
 	switch cell {
 	case CellRemoteDesktop, CellScreenCast, CellNativeInput,
 		CellNativeCapture, CellNativeWindow, CellNativeOutput,
+		CellNativeOutputMulti,
 		CellPortalAvailability:
 		return cell, nil
 	default:
@@ -128,7 +131,8 @@ func (cell Cell) ConsentRequired() bool {
 // NativeRequired reports whether the cell proves wlroots-native behavior.
 func (cell Cell) NativeRequired() bool {
 	switch cell {
-	case CellNativeInput, CellNativeCapture, CellNativeWindow, CellNativeOutput:
+	case CellNativeInput, CellNativeCapture, CellNativeWindow, CellNativeOutput,
+		CellNativeOutputMulti:
 		return true
 	default:
 		return false
@@ -158,6 +162,8 @@ func (cell Cell) TestSpec() (TestSpec, error) {
 		return swayTestSpec(swayWindowTestName), nil
 	case CellNativeOutput:
 		return swayTestSpec(swayOutputTestName), nil
+	case CellNativeOutputMulti:
+		return swayTestSpec(swayOutputMultiTestName), nil
 	case CellPortalAvailability:
 		return swayTestSpec(swayPortalTestName), nil
 	default:
@@ -180,7 +186,7 @@ func (cell Cell) expectedWorkflow() string {
 	case CellScreenCast:
 		return "ScreenCast E2E"
 	case CellNativeInput, CellNativeCapture, CellNativeWindow,
-		CellNativeOutput, CellPortalAvailability:
+		CellNativeOutput, CellNativeOutputMulti, CellPortalAvailability:
 		return "Sway E2E"
 	default:
 		return ""
