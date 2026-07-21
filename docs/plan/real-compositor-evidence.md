@@ -8,10 +8,12 @@ Linear project:
 ## Outcome
 
 Turn RobotGo's implemented GNOME, KDE Plasma, and wlroots Wayland paths into
-reproducible, protected runtime evidence. A passing matrix cell must exercise
-the real compositor, portal backend, PipeWire service, and RobotGo integration
-harness. Missing infrastructure, skipped tests, mock services, or absent user
-consent are never runtime passes.
+reproducible, protected runtime evidence. Every passing matrix cell must
+exercise the real compositor and RobotGo integration harness. Portal cells must
+also exercise the real desktop portal backend, ScreenCast cells must exercise
+PipeWire, and wlroots-native cells must exercise their selected native
+protocols. Missing applicable infrastructure, skipped tests, mock services, or
+required but absent user consent are never runtime passes.
 
 This project closes evidence gaps shared by roadmap phases 1, 2, 3, and 5. It
 does not add new public APIs or claim compositor behavior that the runtime did
