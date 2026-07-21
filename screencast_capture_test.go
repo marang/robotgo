@@ -64,6 +64,7 @@ func prepareScreenCastCaptureTest(t *testing.T) {
 	t.Helper()
 	t.Setenv("WAYLAND_DISPLAY", "robotgo-test-wayland")
 	t.Setenv("DISPLAY", "")
+	t.Setenv(envDisablePortal, "")
 
 	oldOpen := screenCastCaptureOpen
 	oldCompiled := screenCastCaptureCompiled
@@ -362,6 +363,34 @@ func TestStartScreenCastCaptureRequiresWaylandAndPipeWireBuild(t *testing.T) {
 	screenCastCaptureCompiled = func() bool { return false }
 	if err := StartScreenCastCapture(context.Background(), ScreenCastCaptureOptions{}); !errors.Is(err, ErrNotSupported) {
 		t.Fatalf("non-PipeWire error = %v, want ErrNotSupported", err)
+	}
+}
+
+func TestDisablePortalPreventsScreenCastStartReadyAndCapture(t *testing.T) {
+	prepareScreenCastCaptureTest(t)
+	t.Setenv(envDisablePortal, "1")
+	screenCastCaptureOpen = func(context.Context, portalpkg.ScreenCastOptions, int) (screenCastFrameCapture, error) {
+		t.Fatal("disabled ScreenCast reached portal open")
+		return nil, nil
+	}
+	if err := StartScreenCastCapture(context.Background(), ScreenCastCaptureOptions{}); !errors.Is(err, ErrNotSupported) {
+		t.Fatalf("StartScreenCastCapture error = %v, want ErrNotSupported", err)
+	}
+	capture := &fakeScreenCastCapture{frame: image.NewRGBA(image.Rect(0, 0, 1, 1))}
+	screenCastCaptureState.Lock()
+	screenCastCaptureState.capture = capture
+	screenCastCaptureState.Unlock()
+	if err := ScreenCastCaptureReady(); !errors.Is(err, ErrNotSupported) {
+		t.Fatalf("ScreenCastCaptureReady error = %v, want ErrNotSupported", err)
+	}
+	if _, err := CaptureScreenCast(context.Background()); !errors.Is(err, ErrNotSupported) {
+		t.Fatalf("CaptureScreenCast error = %v, want ErrNotSupported", err)
+	}
+	if _, err := CaptureScreenCastDisplay(context.Background(), 0); !errors.Is(err, ErrNotSupported) {
+		t.Fatalf("CaptureScreenCastDisplay error = %v, want ErrNotSupported", err)
+	}
+	if capture.captureCount() != 0 {
+		t.Fatalf("disabled ScreenCast read %d frames", capture.captureCount())
 	}
 }
 

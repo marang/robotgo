@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"image"
+	"os"
 	"runtime"
 	"sync"
 
@@ -66,6 +67,9 @@ func StartScreenCastCapture(ctx context.Context, options ScreenCastCaptureOption
 	if runtime.GOOS != "linux" || DetectDisplayServer() != DisplayServerWayland {
 		return fmt.Errorf("%w: ScreenCast capture requires a Linux Wayland session", ErrNotSupported)
 	}
+	if os.Getenv(envDisablePortal) != "" {
+		return fmt.Errorf("%w: ScreenCast capture is disabled by %s", ErrNotSupported, envDisablePortal)
+	}
 	if !screenCastCaptureCompiled() {
 		return fmt.Errorf("%w: build with -tags pipewire and install libpipewire development files", ErrNotSupported)
 	}
@@ -126,6 +130,9 @@ func StartScreenCastCapture(ctx context.Context, options ScreenCastCaptureOption
 
 // ScreenCastCaptureReady reports whether a reusable PipeWire capture is active.
 func ScreenCastCaptureReady() error {
+	if os.Getenv(envDisablePortal) != "" {
+		return fmt.Errorf("%w: ScreenCast capture is disabled by %s", ErrNotSupported, envDisablePortal)
+	}
 	screenCastCaptureState.RLock()
 	capture := screenCastCaptureState.capture
 	screenCastCaptureState.RUnlock()
@@ -179,6 +186,9 @@ func CaptureScreenCast(ctx context.Context, region ...int) (image.Image, error) 
 // metadata-incomplete, mismatched, and geometrically ambiguous streams fail
 // closed before any frame is read.
 func CaptureScreenCastDisplay(ctx context.Context, displayID int, region ...int) (image.Image, error) {
+	if os.Getenv(envDisablePortal) != "" {
+		return nil, fmt.Errorf("%w: ScreenCast capture is disabled by %s", ErrNotSupported, envDisablePortal)
+	}
 	if displayID < 0 {
 		return nil, fmt.Errorf("ScreenCast capture requires a non-negative display ID")
 	}
@@ -277,6 +287,9 @@ func CloseScreenCastCapture() error {
 }
 
 func captureViaScreenCast(ctx context.Context, x, y, width, height int) (image.Image, error) {
+	if os.Getenv(envDisablePortal) != "" {
+		return nil, fmt.Errorf("%w: ScreenCast capture is disabled by %s", ErrNotSupported, envDisablePortal)
+	}
 	screenCastCaptureState.RLock()
 	capture := screenCastCaptureState.capture
 	screenCastCaptureState.RUnlock()

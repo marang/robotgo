@@ -227,10 +227,10 @@ func (robotGoDriver) Capture(ctx context.Context, region CaptureRegion) (image.I
 		return nil, err
 	}
 	if runtime.GOOS == "linux" && robotgo.DetectDisplayServer() == robotgo.DisplayServerWayland {
-		if robotgo.ScreenCastCaptureReady() == nil {
-			return robotgo.CaptureScreenCastDisplay(ctx, region.DisplayID, region.X, region.Y, region.Width, region.Height)
-		}
 		if os.Getenv(disablePortalEnv) == "" {
+			if robotgo.ScreenCastCaptureReady() == nil {
+				return robotgo.CaptureScreenCastDisplay(ctx, region.DisplayID, region.X, region.Y, region.Width, region.Height)
+			}
 			return nil, fmt.Errorf(
 				"%w: agent capture will not open portal consent implicitly; start ScreenCast explicitly or set %s=1 for native-only capture",
 				robotgo.ErrNotSupported, disablePortalEnv,

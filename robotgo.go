@@ -287,8 +287,9 @@ func GetLinuxCapabilities() LinuxCapabilities {
 		c.Compositor = detectWaylandCompositor()
 		c.RemoteDesktop = probeRemoteDesktopCapability()
 		nativeCapture := waylandCaptureAvailabilityProbe()
-		portalAvailable := portalAvailabilityProbe()
-		persistentCapture := ScreenCastCaptureReady() == nil
+		portalAllowed := os.Getenv(envDisablePortal) == ""
+		portalAvailable := portalAllowed && portalAvailabilityProbe()
+		persistentCapture := portalAllowed && ScreenCastCaptureReady() == nil
 		switch {
 		case persistentCapture:
 			c.Capture = FeatureCapability{
@@ -979,6 +980,9 @@ func captureViaPortalScreenshot(x, y, w, h C.int32_t) (CBitmap, error) {
 }
 
 func captureViaPersistentScreenCast(x, y, w, h C.int32_t) (CBitmap, error) {
+	if os.Getenv(envDisablePortal) != "" {
+		return nil, fmt.Errorf("%w: persistent ScreenCast disabled by %s", ErrPortalFailed, envDisablePortal)
+	}
 	img, err := captureViaScreenCast(context.Background(), int(x), int(y), int(w), int(h))
 	if err != nil {
 		captureDebugf("persistent ScreenCast failed: %v", err)

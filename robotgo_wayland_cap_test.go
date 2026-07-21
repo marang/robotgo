@@ -93,6 +93,12 @@ func TestGetLinuxCapabilitiesReportsActiveScreenCast(t *testing.T) {
 	if !strings.Contains(capabilities.Capture.Notes, "interface version=5") {
 		t.Fatalf("ScreenCast protocol diagnostics missing: %q", capabilities.Capture.Notes)
 	}
+
+	t.Setenv(envDisablePortal, "1")
+	capabilities = GetLinuxCapabilities()
+	if !capabilities.Capture.Available || capabilities.Capture.Backend != "wayland+screencopy" || capabilities.Capture.Fallback {
+		t.Fatalf("native-only capability = %+v", capabilities.Capture)
+	}
 }
 
 func writeWaylandInfoStub(t *testing.T, dir string) {

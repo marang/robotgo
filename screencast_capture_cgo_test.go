@@ -39,3 +39,20 @@ func TestCaptureScreenForcedScreenCastRequiresActiveSession(t *testing.T) {
 		t.Fatalf("CaptureScreen = (%v, %v), want explicit unavailable error", bitmap, err)
 	}
 }
+
+func TestCaptureScreenForcedScreenCastHonorsDisablePortal(t *testing.T) {
+	prepareScreenCastCaptureTest(t)
+	t.Setenv(envWaylandBackend, waylandBackendScreenCast)
+	t.Setenv(envDisablePortal, "1")
+	capture := &fakeScreenCastCapture{frame: image.NewRGBA(image.Rect(0, 0, 2, 2))}
+	screenCastCaptureState.Lock()
+	screenCastCaptureState.capture = capture
+	screenCastCaptureState.Unlock()
+
+	if bitmap, err := CaptureScreen(0, 0, 2, 2); bitmap != nil || err == nil {
+		t.Fatalf("CaptureScreen = (%v, %v), want disabled portal error", bitmap, err)
+	}
+	if capture.captureCount() != 0 {
+		t.Fatalf("disabled ScreenCast read %d frames", capture.captureCount())
+	}
+}
