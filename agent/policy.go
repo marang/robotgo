@@ -4,12 +4,16 @@ import "fmt"
 
 const (
 	maxAgentCapturePixels          = 16 * 1024 * 1024
+	maxAgentQueries                = 1_000_000
 	maxAgentVerificationAttempts   = 100
 	maxAgentVerificationIntervalMS = 60_000
 	maxAgentVerificationTimeoutMS  = 300_000
+	maxAgentWaitAttempts           = 100
+	maxAgentWaitIntervalMS         = 60_000
+	maxAgentWaitTimeoutMS          = 300_000
 )
 
-// Policy constrains every observation and mutation performed by a Session.
+// Policy constrains every observation, query, and mutation performed by a Session.
 // Empty allow lists deny access; callers must opt in explicitly.
 type Policy struct {
 	AllowedOperations          []Operation `json:"allowed_operations"`
@@ -20,6 +24,10 @@ type Policy struct {
 	AllowDoubleClick           bool        `json:"allow_double_click,omitempty"`
 	MaxObservations            uint64      `json:"max_observations,omitempty"`
 	MaxCapturePixels           uint64      `json:"max_capture_pixels,omitempty"`
+	MaxQueries                 uint64      `json:"max_queries,omitempty"`
+	WaitAttempts               uint32      `json:"wait_attempts,omitempty"`
+	WaitIntervalMillis         int         `json:"wait_interval_ms,omitempty"`
+	WaitTimeoutMillis          int         `json:"wait_timeout_ms,omitempty"`
 	VerificationAttempts       uint32      `json:"verification_attempts,omitempty"`
 	VerificationIntervalMillis int         `json:"verification_interval_ms,omitempty"`
 	VerificationTimeoutMillis  int         `json:"verification_timeout_ms,omitempty"`
@@ -34,6 +42,21 @@ func preparePolicy(input Policy) (Policy, error) {
 	}
 	if input.VerificationIntervalMillis < 0 {
 		return Policy{}, fmt.Errorf("agent: verification interval must be non-negative")
+	}
+	if input.MaxQueries > maxAgentQueries {
+		return Policy{}, fmt.Errorf("agent: max queries exceeds hard limit %d", maxAgentQueries)
+	}
+	if input.WaitAttempts > maxAgentWaitAttempts {
+		return Policy{}, fmt.Errorf("agent: wait attempts exceeds hard limit %d", maxAgentWaitAttempts)
+	}
+	if input.WaitIntervalMillis < 0 || input.WaitIntervalMillis > maxAgentWaitIntervalMS {
+		return Policy{}, fmt.Errorf("agent: wait interval must be between 0 and %dms", maxAgentWaitIntervalMS)
+	}
+	if input.WaitTimeoutMillis < 0 || input.WaitTimeoutMillis > maxAgentWaitTimeoutMS {
+		return Policy{}, fmt.Errorf("agent: wait timeout must be between 0 and %dms", maxAgentWaitTimeoutMS)
+	}
+	if (input.WaitAttempts == 0) != (input.WaitTimeoutMillis == 0) {
+		return Policy{}, fmt.Errorf("agent: wait attempts and timeout must both be zero or both be positive")
 	}
 	if input.MaxCapturePixels > maxAgentCapturePixels {
 		return Policy{}, fmt.Errorf("agent: max capture pixels exceeds hard limit %d", maxAgentCapturePixels)
@@ -58,6 +81,10 @@ func preparePolicy(input Policy) (Policy, error) {
 		AllowDoubleClick:           input.AllowDoubleClick,
 		MaxObservations:            input.MaxObservations,
 		MaxCapturePixels:           input.MaxCapturePixels,
+		MaxQueries:                 input.MaxQueries,
+		WaitAttempts:               input.WaitAttempts,
+		WaitIntervalMillis:         input.WaitIntervalMillis,
+		WaitTimeoutMillis:          input.WaitTimeoutMillis,
 		VerificationAttempts:       input.VerificationAttempts,
 		VerificationIntervalMillis: input.VerificationIntervalMillis,
 		VerificationTimeoutMillis:  input.VerificationTimeoutMillis,
@@ -89,6 +116,30 @@ func preparePolicy(input Policy) (Policy, error) {
 		}
 		prepared.allowDisplay[displayID] = struct{}{}
 	}
+	_, findAllowed := prepared.allowOperation[OperationFindColor]
+	_, waitAllowed := prepared.allowOperation[OperationWaitColor]
+	if (findAllowed || waitAllowed) && prepared.MaxQueries == 0 {
+		return Policy{}, fmt.Errorf("agent: max queries must be positive when a visual query is allowed")
+	}
+	if findAllowed {
+		if _, observeAllowed := prepared.allowOperation[OperationObserve]; !observeAllowed {
+			return Policy{}, fmt.Errorf("agent: desktop.find-color requires desktop.observe")
+		}
+		if prepared.MaxCapturePixels == 0 || len(prepared.allowDisplay) == 0 {
+			return Policy{}, fmt.Errorf("agent: desktop.find-color requires allowed bounded captures")
+		}
+	}
+	if waitAllowed {
+		if prepared.WaitAttempts == 0 || prepared.WaitTimeoutMillis == 0 {
+			return Policy{}, fmt.Errorf("agent: desktop.wait-color requires bounded wait attempts and timeout")
+		}
+		if prepared.MaxCapturePixels == 0 || len(prepared.allowDisplay) == 0 {
+			return Policy{}, fmt.Errorf("agent: desktop.wait-color requires allowed bounded captures")
+		}
+		if prepared.MaxObservations < uint64(prepared.WaitAttempts) {
+			return Policy{}, fmt.Errorf("agent: desktop.wait-color requires at least %d observations", prepared.WaitAttempts)
+		}
+	}
 	if prepared.VerificationAttempts > 0 {
 		if _, allowed := prepared.allowOperation[OperationObserve]; !allowed ||
 			prepared.MaxCapturePixels == 0 || len(prepared.allowDisplay) == 0 {
@@ -113,7 +164,7 @@ func allowsMutation(operations map[Operation]struct{}) bool {
 
 func knownOperation(operation Operation) bool {
 	switch operation {
-	case OperationMove, OperationClick, OperationTypeText, OperationObserve:
+	case OperationMove, OperationClick, OperationTypeText, OperationObserve, OperationFindColor, OperationWaitColor:
 		return true
 	default:
 		return false

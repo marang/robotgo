@@ -11,6 +11,8 @@ Use the following documents as the primary entry points:
 - [Agent adapter and evaluation plan](plan/agent-adapter-evaluation.md) for the
   local MCP stdio boundary, default-deny policy, privacy projection, and
   hermetic protocol evidence.
+- [Safe agent visual conditions plan](plan/agent-visual-conditions.md) for
+  explicit-observation color search, bounded region waits, quotas, and cleanup.
 - [Wayland status](wayland-tasks.md) for backend support and open Wayland work.
 - [Upstream compatibility audit](compatibility/upstream-master.md) for
   selectively adopted and intentionally rejected upstream changes.

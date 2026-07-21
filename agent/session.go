@@ -56,6 +56,7 @@ type Session struct {
 	observationMu    sync.Mutex
 	observations     map[string]observationRecord
 	usedObservations uint64
+	usedQueries      uint64
 	auditSink        AuditSink
 	auditSequence    uint64
 }
@@ -384,8 +385,13 @@ func (s *Session) authorize(request ActionRequest) error {
 }
 
 func validateRequest(request ActionRequest) error {
-	if request.Operation == OperationObserve {
+	switch request.Operation {
+	case OperationObserve:
 		return errors.New("desktop.observe must use Session.Observe")
+	case OperationFindColor:
+		return errors.New("desktop.find-color must use Session.FindColor")
+	case OperationWaitColor:
+		return errors.New("desktop.wait-color must use Session.WaitColor")
 	}
 	if request.Precondition != nil && !validObservationID(request.Precondition.ObservationID) {
 		return errors.New("precondition requires a valid RobotGo observation ID")

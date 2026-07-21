@@ -194,18 +194,28 @@ func TestCatalogIsStableAndDefensive(t *testing.T) {
 	if catalog.SchemaVersion != CatalogSchemaVersion {
 		t.Fatalf("schema = %q", catalog.SchemaVersion)
 	}
-	want := []Operation{OperationObserve, OperationMove, OperationClick, OperationTypeText}
+	want := []Operation{
+		OperationObserve, OperationFindColor, OperationWaitColor,
+		OperationMove, OperationClick, OperationTypeText,
+	}
 	for index, operation := range want {
 		got := catalog.Operations[index]
-		if got.Operation != operation || !got.Available || !got.ProcessGlobalBackend || !got.ExclusiveAgentSession {
+		if got.Operation != operation || !got.Available || !got.ExclusiveAgentSession {
 			t.Fatalf("operation[%d] = %+v", index, got)
 		}
-		if got.Cancellation != CancellationPreflightOnly {
+		wantCancellation := CancellationPreflightOnly
+		if operation == OperationFindColor || operation == OperationWaitColor {
+			wantCancellation = CancellationCooperative
+		}
+		if got.Cancellation != wantCancellation {
 			t.Fatalf("cancellation = %q", got.Cancellation)
 		}
+		if got.ProcessGlobalBackend != (operation != OperationFindColor) {
+			t.Fatalf("process-global operation[%d] = %+v", index, got)
+		}
 	}
-	catalog.Operations[1].Backend = "mutated"
-	if got := session.Catalog().Operations[1].Backend; got != "fake-mouse" {
+	catalog.Operations[3].Backend = "mutated"
+	if got := session.Catalog().Operations[3].Backend; got != "fake-mouse" {
 		t.Fatalf("catalog mutation leaked into session: %q", got)
 	}
 }
