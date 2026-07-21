@@ -1,6 +1,6 @@
 # Agentic Desktop Automation Plan
 
-Status: In progress
+Status: Initial architecture proof completed; follow-on delivery active
 
 Linear coordination:
 
@@ -145,6 +145,12 @@ orthogonal tool set:
 Add redacted record/replay, a fake driver, and hermetic evaluation tasks before
 claiming reliable autonomous behavior.
 
+The first adapter boundary is now tracked separately in the
+[Agent Adapter and Evaluation Plan](agent-adapter-evaluation.md). Its initial
+LAB-13 slice intentionally exposes only capabilities, observe, act, and close;
+`find` and `wait` remain future semantic-grounding work rather than placeholders
+in the protocol.
+
 ## 4. First executable slices
 
 Deliver the first architecture proof through two reviewable boundaries rather
@@ -187,6 +193,17 @@ or an MCP adapter. Those remain later slices built on the accepted Go contract.
 
 An MCP server is not required for this first slice. It should consume the
 accepted Go contract rather than define it.
+
+### 4.3 Local MCP adapter and evaluation
+
+Delivery status: active in LAB-13.
+
+This follow-on slice consumes the accepted Go boundary through an official-SDK
+stdio adapter. It keeps dry-run as the default, requires explicit policy and
+execute intent for mutation, projects observations without pixels or lineage
+digests, and validates the complete protocol lifecycle with in-memory fakes.
+See the [dedicated delivery plan](agent-adapter-evaluation.md) for its exact
+surface and non-goals.
 
 ## 5. Exit criteria
 

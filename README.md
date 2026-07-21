@@ -805,6 +805,59 @@ go run ./examples/agent_session -act -operation click -verify changed \
   -x 0 -y 0 -width 320 -height 200 -display 0
 ```
 
+### Local MCP adapter for agents
+
+`robotgo-mcp` exposes the policy-gated session to a local MCP client over
+stdio. It has four focused tools: `robotgo_capabilities`, `robotgo_observe`,
+`robotgo_act`, and `robotgo_close`. With no policy flag it is diagnostics-only:
+capture, display access, and desktop mutation are denied. `robotgo_act` is also
+dry-run by default, so actual input needs both an explicit policy and
+`mode: "execute"`; normal session confirmation rules still apply.
+
+Run it directly from the repository:
+
+```bash
+go run ./cmd/robotgo-mcp
+```
+
+Or install the local stdio server for an MCP host to launch:
+
+```bash
+go install ./cmd/robotgo-mcp
+robotgo-mcp
+```
+
+An MCP-host entry can then use `robotgo-mcp` as its command without a network
+URL. Stdout is reserved for MCP frames; diagnostics and startup errors go to
+stderr.
+
+To opt into more capability, pass a strict policy JSON file. This example
+allows bounded observations and pointer moves on display 0, requires explicit
+confirmation for every move, and still grants no text or capture access:
+
+```json
+{
+  "allowed_operations": ["desktop.observe", "pointer.move"],
+  "confirm_operations": ["pointer.move"],
+  "allowed_display_ids": [0],
+  "max_actions": 10,
+  "max_text_runes": 0,
+  "max_observations": 20,
+  "max_capture_pixels": 0
+}
+```
+
+```bash
+robotgo-mcp -policy /absolute/path/to/policy.json
+```
+
+Policy input is size-bounded, rejects unknown fields and trailing JSON, and is
+never read from stdin. MCP observation output includes sanitized diagnostics
+and optional geometry, but never pixels or internal capture digests. Session
+close zeroes any in-memory captures. See the
+[adapter and evaluation plan](docs/plan/agent-adapter-evaluation.md) for the
+security boundary and intentionally deferred tools.
+
 ## Examples
 
 The checked-in examples use this fork's module path and track the current API:

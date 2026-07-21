@@ -8,6 +8,9 @@ Use the following documents as the primary entry points:
 - [Product roadmap](plan/product-roadmap.md) for delivery phases.
 - [Agentic desktop automation plan](plan/agentic-desktop-automation.md) for the
   session, policy, observe-act-verify, and adapter architecture.
+- [Agent adapter and evaluation plan](plan/agent-adapter-evaluation.md) for the
+  local MCP stdio boundary, default-deny policy, privacy projection, and
+  hermetic protocol evidence.
 - [Wayland status](wayland-tasks.md) for backend support and open Wayland work.
 - [Upstream compatibility audit](compatibility/upstream-master.md) for
   selectively adopted and intentionally rejected upstream changes.

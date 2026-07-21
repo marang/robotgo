@@ -44,6 +44,9 @@ No delivery phase is complete until all of its exit criteria are blocking and
 green. Phase 1 implementation is merged; its real-compositor evidence remains
 an infrastructure blocker. The active implementation slice is Phase 5
 reliability hardening; protected real-desktop evidence remains runner-dependent.
+The adjacent [Agent Adapter and Evaluation Plan](agent-adapter-evaluation.md)
+builds a local, policy-gated MCP boundary on the completed agent-session proof;
+it does not broaden platform backend support or replace the phase exit gates.
 
 ## Delivery Order
 
