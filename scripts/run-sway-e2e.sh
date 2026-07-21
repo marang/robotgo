@@ -61,10 +61,10 @@ test_pid=''
 terminate_group() {
 	local pid="$1"
 	[[ -n "$pid" ]] || return 0
-	if kill -0 "$pid" 2>/dev/null; then
+	if kill -0 -- "-$pid" 2>/dev/null; then
 		kill -TERM -- "-$pid" 2>/dev/null || true
 		for _ in {1..50}; do
-			kill -0 "$pid" 2>/dev/null || break
+			kill -0 -- "-$pid" 2>/dev/null || break
 			sleep 0.1
 		done
 		kill -KILL -- "-$pid" 2>/dev/null || true
@@ -188,6 +188,7 @@ if wait "$test_pid"; then
 else
 	test_status=$?
 fi
+terminate_group "$test_pid"
 test_pid=''
 
 go run ./internal/cmd/compositorevidence finalize \

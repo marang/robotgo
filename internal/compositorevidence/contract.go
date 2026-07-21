@@ -207,6 +207,9 @@ func validateLaneCell(lane Lane, cell Cell) error {
 	if cell.NativeRequired() && lane != LaneWlroots {
 		return fmt.Errorf("native cell %q requires the wlroots lane", cell)
 	}
+	if cell == CellPortalAvailability && lane != LaneWlroots {
+		return errors.New("portal-availability cell requires the wlroots lane")
+	}
 	if lane == LaneWlroots && cell.ConsentRequired() {
 		return errors.New("wlroots portal behavior must use the portal-availability cell until a protected consent backend is promoted")
 	}

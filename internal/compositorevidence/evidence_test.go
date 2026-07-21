@@ -113,6 +113,18 @@ func TestSwayCellsHaveFixedEvidenceIdentity(t *testing.T) {
 	}
 }
 
+func TestPortalAvailabilityRequiresWlrootsLane(t *testing.T) {
+	t.Parallel()
+	if err := validateLaneCell(LaneWlroots, CellPortalAvailability); err != nil {
+		t.Fatalf("wlroots portal-availability rejected: %v", err)
+	}
+	for _, lane := range []Lane{LaneGNOME, LaneKDE} {
+		if err := validateLaneCell(lane, CellPortalAvailability); err == nil {
+			t.Fatalf("portal-availability accepted %s lane", lane)
+		}
+	}
+}
+
 func prepareFinalization(t *testing.T, lane Lane, cell Cell) (string, FinalizeConfig) {
 	t.Helper()
 	runnerTemp := t.TempDir()
