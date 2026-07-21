@@ -3,12 +3,21 @@ package agent
 import (
 	"context"
 	"errors"
+	"sync"
 	"time"
 )
 
 type actionLineage struct {
 	preconditionID string
 	record         observationRecord
+	releaseOnce    sync.Once
+}
+
+func (lineage *actionLineage) release() {
+	if lineage == nil {
+		return
+	}
+	lineage.releaseOnce.Do(lineage.record.capture.releaseUse)
 }
 
 func (s *Session) prepareActionLineage(ctx context.Context, request ActionRequest, dryRun bool) (*actionLineage, error) {
@@ -45,6 +54,12 @@ func (s *Session) prepareActionLineage(ctx context.Context, request ActionReques
 	defer func() { _ = current.buffer.close() }()
 	if current.metadata.SHA256 != record.digest {
 		return nil, actionLineageError(ErrorStaleTarget, "desktop target changed since the precondition observation", ErrStaleTarget)
+	}
+	// Keep the precondition capture valid until the mutation is dispatched.
+	// Observation.Close either linearizes before this acquisition and rejects
+	// the action, or waits until the authorized dispatch has completed.
+	if !record.capture.acquireUse() {
+		return nil, actionLineageError(ErrorStaleTarget, "precondition observation is unavailable or closed", ErrStaleTarget)
 	}
 	return &actionLineage{preconditionID: request.Precondition.ObservationID, record: record}, nil
 }

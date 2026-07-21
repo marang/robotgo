@@ -50,6 +50,7 @@ type Session struct {
 	cancel  context.CancelFunc
 
 	actionGate       chan struct{}
+	dispatchMu       sync.Mutex
 	used             uint64
 	closeOnce        sync.Once
 	observationMu    sync.Mutex
@@ -110,7 +111,9 @@ func (s *Session) Close() error {
 		return nil
 	}
 	s.closeOnce.Do(func() {
+		s.dispatchMu.Lock()
 		s.cancel()
+		s.dispatchMu.Unlock()
 		<-s.actionGate
 		s.closeObservations()
 		s.actionGate <- struct{}{}
@@ -224,7 +227,21 @@ func (s *Session) run(ctx context.Context, request ActionRequest, dryRun bool) (
 		result.PreconditionObservationID = preconditionID(request)
 		return s.finishFailedActionAudit(ctx, result, actionErr)
 	}
+	if lineage != nil {
+		defer lineage.release()
+	}
+	if err := ctx.Err(); err != nil {
+		result, actionErr := contextFailure(ctx, id, request.Operation, started)
+		return s.finishFailedActionAudit(ctx, result, actionErr)
+	}
+	select {
+	case <-s.ctx.Done():
+		result, actionErr := actionFailure(id, request.Operation, started, ErrorSessionClosed, "agent session is closed", ErrSessionClosed)
+		return s.finishFailedActionAudit(ctx, result, actionErr)
+	default:
+	}
 	if dryRun {
+		lineage.release()
 		result := ActionResult{
 			ActionID: id, Operation: request.Operation, Status: ActionPlanned,
 			Backend: capability.Backend, DurationMillis: time.Since(started).Milliseconds(),
@@ -232,14 +249,15 @@ func (s *Session) run(ctx context.Context, request ActionRequest, dryRun bool) (
 		}
 		return s.finishSuccessfulActionAudit(ctx, result)
 	}
-	s.used++
-	if err := s.execute(request); err != nil {
+	if err := s.executeAuthorized(ctx, request); err != nil {
+		lineage.release()
 		code, message := classifyBackendError(err)
 		result, actionErr := actionFailure(id, request.Operation, started, code, message, err)
 		result.Backend = capability.Backend
 		result.PreconditionObservationID = preconditionID(request)
 		return s.finishFailedActionAudit(ctx, result, actionErr)
 	}
+	lineage.release()
 	result := ActionResult{
 		ActionID: id, Operation: request.Operation, Status: ActionSucceeded,
 		Backend: capability.Backend, PreconditionObservationID: preconditionID(request),
@@ -432,8 +450,25 @@ func (s *Session) execute(request ActionRequest) error {
 	}
 }
 
+func (s *Session) executeAuthorized(ctx context.Context, request ActionRequest) error {
+	s.dispatchMu.Lock()
+	defer s.dispatchMu.Unlock()
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	select {
+	case <-s.ctx.Done():
+		return ErrSessionClosed
+	default:
+	}
+	s.used++
+	return s.execute(request)
+}
+
 func classifyBackendError(err error) (ErrorCode, string) {
 	switch {
+	case errors.Is(err, ErrSessionClosed):
+		return ErrorSessionClosed, "agent session is closed"
 	case errors.Is(err, robotgo.ErrNotSupported):
 		return ErrorUnsupported, "operation is unsupported by the selected backend"
 	case errors.Is(err, robotgo.ErrPermissionDenied):

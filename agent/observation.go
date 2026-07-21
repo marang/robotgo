@@ -127,6 +127,24 @@ func (capture *captureBuffer) usable() bool {
 	return !capture.closed && capture.pixels != nil
 }
 
+func (capture *captureBuffer) acquireUse() bool {
+	if capture == nil {
+		return false
+	}
+	capture.mu.Lock()
+	if capture.closed || capture.pixels == nil {
+		capture.mu.Unlock()
+		return false
+	}
+	return true
+}
+
+func (capture *captureBuffer) releaseUse() {
+	if capture != nil {
+		capture.mu.Unlock()
+	}
+}
+
 // Observation owns optional sensitive pixels and sanitized diagnostics.
 type Observation struct {
 	SchemaVersion string             `json:"schema_version"`

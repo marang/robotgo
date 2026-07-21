@@ -378,6 +378,117 @@ func TestClosedObservationCannotAuthorizeMutation(t *testing.T) {
 	}
 }
 
+func TestObservationCloseDuringLineageCapturePreventsMutation(t *testing.T) {
+	driver := &fakeDriver{captureImages: []image.Image{
+		syntheticCapture(2, 2, 20), syntheticCapture(2, 2, 20),
+	}}
+	session := newTestSession(t, observationPolicy(), driver)
+	observation := observeCapture(t, session)
+	driver.captureHit = make(chan struct{}, 1)
+	driver.captureGo = make(chan struct{})
+
+	resultCh := make(chan ActionResult, 1)
+	errCh := make(chan error, 1)
+	go func() {
+		result, err := session.Execute(context.Background(), ActionRequest{
+			Operation: OperationClick, Click: &ClickAction{Button: MouseButtonLeft},
+			Precondition: &ObservationPrecondition{ObservationID: observation.ObservationID},
+		})
+		resultCh <- result
+		errCh <- err
+	}()
+	<-driver.captureHit
+	if err := observation.Close(); err != nil {
+		t.Fatal(err)
+	}
+	close(driver.captureGo)
+
+	result, err := <-resultCh, <-errCh
+	if !errors.Is(err, ErrStaleTarget) || result.Error == nil || result.Error.Code != ErrorStaleTarget {
+		t.Fatalf("Execute = %+v, %v", result, err)
+	}
+	if driver.callCount() != 0 {
+		t.Fatalf("closed lineage reached input driver %d times", driver.callCount())
+	}
+}
+
+func TestObservationCloseWaitsForAuthorizedDispatch(t *testing.T) {
+	driver := &fakeDriver{
+		captureImages: []image.Image{
+			syntheticCapture(2, 2, 22), syntheticCapture(2, 2, 22),
+		},
+		started: make(chan struct{}, 1), release: make(chan struct{}),
+	}
+	session := newTestSession(t, observationPolicy(), driver)
+	observation := observeCapture(t, session)
+
+	resultCh := make(chan ActionResult, 1)
+	errCh := make(chan error, 1)
+	go func() {
+		result, err := session.Execute(context.Background(), ActionRequest{
+			Operation: OperationClick, Click: &ClickAction{Button: MouseButtonLeft},
+			Precondition: &ObservationPrecondition{ObservationID: observation.ObservationID},
+		})
+		resultCh <- result
+		errCh <- err
+	}()
+	<-driver.started
+	closeDone := make(chan error, 1)
+	go func() { closeDone <- observation.Close() }()
+	select {
+	case err := <-closeDone:
+		t.Fatalf("Observation.Close returned during authorized dispatch: %v", err)
+	case <-time.After(20 * time.Millisecond):
+	}
+	close(driver.release)
+
+	result, err := <-resultCh, <-errCh
+	if err != nil || result.Status != ActionSucceeded {
+		t.Fatalf("Execute = %+v, %v", result, err)
+	}
+	if err := <-closeDone; err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestSessionCloseDuringLineageCapturePreventsMutation(t *testing.T) {
+	driver := &fakeDriver{captureImages: []image.Image{
+		syntheticCapture(2, 2, 21), syntheticCapture(2, 2, 21),
+	}}
+	session := newTestSession(t, observationPolicy(), driver)
+	observation := observeCapture(t, session)
+	driver.captureHit = make(chan struct{}, 1)
+	driver.captureGo = make(chan struct{})
+
+	resultCh := make(chan ActionResult, 1)
+	errCh := make(chan error, 1)
+	go func() {
+		result, err := session.Execute(context.Background(), ActionRequest{
+			Operation: OperationClick, Click: &ClickAction{Button: MouseButtonLeft},
+			Precondition: &ObservationPrecondition{ObservationID: observation.ObservationID},
+		})
+		resultCh <- result
+		errCh <- err
+	}()
+	<-driver.captureHit
+	closeDone := make(chan struct{})
+	go func() {
+		_ = session.Close()
+		close(closeDone)
+	}()
+	<-session.ctx.Done()
+	close(driver.captureGo)
+
+	result, err := <-resultCh, <-errCh
+	if !errors.Is(err, ErrSessionClosed) || result.Error == nil || result.Error.Code != ErrorSessionClosed {
+		t.Fatalf("Execute = %+v, %v", result, err)
+	}
+	if driver.callCount() != 0 {
+		t.Fatalf("closed session reached input driver %d times", driver.callCount())
+	}
+	<-closeDone
+}
+
 type recordingAuditSink struct {
 	mu     sync.Mutex
 	events []AuditEvent
