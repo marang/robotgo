@@ -756,9 +756,10 @@ The `agent` package adds a strict Go boundary for automation agents without
 changing the legacy package-level API. One process-exclusive session exposes a
 versioned operation catalog, policy and confirmation gates, bounded observation,
 dry-run, typed move/click/text requests, stale-target protection, post-action
-verification, and sanitized structured results. Its catalog reports that the
-underlying input backend remains process-global and that cancellation is
-currently guaranteed before dispatch, not during a synchronous OS input call.
+verification, privacy-safe visual conditions, and sanitized structured results.
+Its catalog reports that the underlying input backend remains process-global
+and that cancellation is currently guaranteed before dispatch, not during a
+synchronous OS input call.
 Direct callers of legacy RobotGo APIs remain outside this exclusivity.
 For pointer moves, `AllowedDisplayIDs` fails closed: the selected display must
 be allowed and the global target coordinates must fall within its live bounds.
@@ -771,11 +772,23 @@ audit events; `Observation.Image` returns a defensive copy, while
 `Observation.Close` and `Session.Close` zero RobotGo-owned capture buffers.
 The implementation also enforces hard ceilings of 16,777,216 pixels per frame,
 100 verification attempts, 60 seconds between attempts, and five minutes per
-verification, even when a caller requests larger policy values.
+verification, plus 1,000,000 visual queries, 100 wait attempts, 60 seconds
+between wait attempts, and five minutes per wait, even when a caller requests
+larger policy values.
 On Wayland, agent capture uses an already-active ScreenCast stream when
 available. It never opens a portal consent dialog implicitly; callers must
 start consent-aware ScreenCast themselves or explicitly select native-only
 capture with `ROBOTGO_DISABLE_PORTAL=1`.
+
+`Session.FindColor` searches only a live capture already owned by an explicit
+observation; it never captures the desktop implicitly. `Session.WaitColor`
+polls one explicit `CaptureRegion` within `MaxQueries`, `MaxObservations`,
+`MaxCapturePixels`, display, attempt, interval, timeout, and confirmation
+limits. Results expose match state and global logical coordinates but never
+pixels, capture digests, or the target color. Every nonmatching or failed frame
+is zeroed immediately. A successful wait returns an observation ID for later
+conditions or action lineage; `Session.ReleaseObservation` promptly zeroes and
+removes that final sensitive buffer without exposing its capture digest.
 
 An action can reference a captured observation through
 `ObservationPrecondition`. RobotGo recaptures the same internally retained
@@ -802,6 +815,15 @@ go run ./examples/agent_session -operation move -x 100 -y 100 -display 0
 go run ./examples/agent_session -act -operation move -x 100 -y 100 -display 0
 # Explicit sensitive read plus click mutation and bounded changed-region proof.
 go run ./examples/agent_session -act -operation click -verify changed \
+  -x 0 -y 0 -width 320 -height 200 -display 0
+# Inspection-only by default; performs no capture.
+go run ./examples/agent_conditions
+# Explicit in-memory search or bounded wait; no image is written to disk.
+go run ./examples/agent_conditions -allow-capture -mode find \
+  -red 0 -green 120 -blue 255 -tolerance 0.05 \
+  -x 0 -y 0 -width 320 -height 200 -display 0
+go run ./examples/agent_conditions -allow-capture -mode wait \
+  -red 0 -green 120 -blue 255 -tolerance 0.05 \
   -x 0 -y 0 -width 320 -height 200 -display 0
 ```
 
@@ -857,6 +879,10 @@ and optional geometry, but never pixels or internal capture digests. Session
 close zeroes any in-memory captures. See the
 [adapter and evaluation plan](docs/plan/agent-adapter-evaluation.md) for the
 security boundary and intentionally deferred tools.
+The Go session catalog already reports `desktop.find-color` and
+`desktop.wait-color`, but the accepted MCP boundary intentionally does not yet
+expose `robotgo_find` or `robotgo_wait`; that protocol expansion follows after
+the Go contract's cleanup and privacy evidence is accepted.
 
 ## Examples
 
@@ -868,6 +894,7 @@ The checked-in examples use this fork's module path and track the current API:
 - [Full-screen capture with backend reporting](examples/screen_full/main.go)
 - [Cross-platform aggregate and per-output bounds](examples/display_bounds/main.go)
 - [Policy-gated agent session](examples/agent_session/main.go)
+- [Privacy-safe agent visual conditions](examples/agent_conditions/main.go)
 - [Linux capabilities](examples/linux_capabilities/main.go)
 - [Cross-platform runtime capabilities](examples/runtime_capabilities/main.go)
 - [Versioned runtime diagnostics](examples/runtime_diagnostics/main.go)

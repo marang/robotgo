@@ -592,6 +592,25 @@ func (s *Session) observation(id string) (observationRecord, bool) {
 	return record, ok
 }
 
+// ReleaseObservation idempotently removes one valid observation from the
+// session and zeroes its optional capture. It can release observations returned
+// directly by Observe or referenced by wait/verification results.
+func (s *Session) ReleaseObservation(id string) error {
+	if !validObservationID(id) {
+		return observationActionError(ErrorInvalidInput, "invalid RobotGo observation ID", nil)
+	}
+	s.observationMu.Lock()
+	record, ok := s.observations[id]
+	if ok {
+		delete(s.observations, id)
+	}
+	s.observationMu.Unlock()
+	if !ok {
+		return nil
+	}
+	return record.capture.close()
+}
+
 func (s *Session) closeObservations() {
 	s.observationMu.Lock()
 	defer s.observationMu.Unlock()

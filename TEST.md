@@ -103,9 +103,11 @@ strict request validation, policy/confirmation/display/text/action limits,
 live display-bound enforcement, dry-run, quota handling, sanitized results,
 backend errors, bounded synthetic capture, defensive pixel ownership and
 zeroing, stale-target rejection, changed/unchanged verification, timeout and
-attempt bounds, payload-free audit events, and the documented preflight-only
-cancellation boundary. No agent unit test reads or persists the developer's
-desktop, clipboard, OCR input, or other private data:
+attempt bounds, explicit-observation color search, bounded region waits, query
+and observation quotas, no-match/timeout cleanup, payload-free audit events,
+and the documented input and capture cancellation boundaries. No agent unit
+test reads or persists the developer's desktop, clipboard, OCR input, or other
+private data:
 
 ```bash
 go test -race ./agent
@@ -139,9 +141,11 @@ Run it only in a graphical session where global pointer movement is intended.
 It creates no screenshot, clipboard, OCR, or other persistent artifact.
 
 The separate opt-in capture path reads one explicit real region into memory,
-checks its dimensions, and zeroes both the returned copy and session-owned
-buffer on every test cleanup path. It never writes a screenshot to disk and,
-on Wayland, never opens portal consent implicitly:
+checks its dimensions, searches its retained observation, performs one bounded
+single-attempt region wait, and zeroes every returned copy and session-owned
+buffer on every test cleanup path. The wait uses maximum RGB tolerance so the
+test does not retain or print a real desktop color. It never writes a screenshot
+to disk and, on Wayland, never opens portal consent implicitly:
 
 ```bash
 ROBOTGO_AGENT_CAPTURE_E2E=1 \
@@ -154,6 +158,17 @@ go test -tags integration ./agent -run TestAgentSessionCaptureRuntime -v
 Start a consent-aware ScreenCast session before that command when portal
 capture is required, or explicitly set `ROBOTGO_DISABLE_PORTAL=1` to test only
 a native capture path.
+
+The visual-condition example is inspection-only unless `-allow-capture` is
+supplied. Both active modes keep pixels in memory and create no screenshot or
+template file:
+
+```bash
+go run ./examples/agent_conditions
+go run ./examples/agent_conditions -allow-capture -mode find \
+  -red 0 -green 120 -blue 255 -tolerance 0.05 \
+  -x 0 -y 0 -width 320 -height 200 -display 0
+```
 
 Real post-action changed/unchanged verification is intentionally not automated
 in this integration suite: it would require mutating and repeatedly inspecting

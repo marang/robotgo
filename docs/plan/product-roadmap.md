@@ -29,7 +29,7 @@ The July 2026 hardening work establishes the foundation for this roadmap:
 - CI covers lint, default tests on Linux/macOS/Windows, non-CGO, Wayland, portal,
   Weston integration, race, vet, and native sanitizer/leak variants.
 
-## Execution Status (2026-07-19)
+## Execution Status (2026-07-21)
 
 | Area | Status | Delivered | Exit criteria still open |
 |---|---|---|---|
@@ -44,9 +44,11 @@ No delivery phase is complete until all of its exit criteria are blocking and
 green. Phase 1 implementation is merged; its real-compositor evidence remains
 an infrastructure blocker. The active implementation slice is Phase 5
 reliability hardening; protected real-desktop evidence remains runner-dependent.
-The adjacent [Agent Adapter and Evaluation Plan](agent-adapter-evaluation.md)
-builds a local, policy-gated MCP boundary on the completed agent-session proof;
-it does not broaden platform backend support or replace the phase exit gates.
+The completed [Agent Adapter and Evaluation Plan](agent-adapter-evaluation.md)
+provides a local, policy-gated MCP boundary on the agent-session proof. The
+adjacent [Safe Agent Visual Conditions Plan](agent-visual-conditions.md) now
+builds bounded `find` and `wait` semantics in Go before protocol expansion;
+neither effort broadens platform backend support or replaces phase exit gates.
 
 ## Delivery Order
 
@@ -410,6 +412,8 @@ demonstrate the difference, not merely expose more functions. The standard is:
   policy, observe-act-verify, and later adapter architecture. Its executable
   slices remain independently reviewed and do not weaken platform reliability
   gates.
+- `docs/plan/agent-visual-conditions.md` defines privacy-safe visual search and
+  bounded wait semantics above the accepted agent session.
 - This document defines product direction and delivery order.
 - A roadmap item is complete only when implementation, tests, examples where
   applicable, compatibility documentation, and required CI gates are complete.

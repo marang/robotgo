@@ -6,7 +6,7 @@ import (
 )
 
 // AuditSchemaVersion identifies the payload-free audit event contract.
-const AuditSchemaVersion = "1"
+const AuditSchemaVersion = "2"
 
 // AuditKind identifies a sanitized session lifecycle event.
 type AuditKind string
@@ -17,6 +17,8 @@ const (
 	AuditActionStarted        AuditKind = "action.started"
 	AuditActionFinished       AuditKind = "action.finished"
 	AuditVerificationFinished AuditKind = "verification.finished"
+	AuditConditionStarted     AuditKind = "condition.started"
+	AuditConditionFinished    AuditKind = "condition.finished"
 )
 
 // AuditEvent deliberately contains no request payload, coordinates, text,
@@ -34,6 +36,9 @@ type AuditEvent struct {
 	ActionStatus              ActionStatus       `json:"action_status,omitempty"`
 	VerificationStatus        VerificationStatus `json:"verification_status,omitempty"`
 	VerificationAttempts      uint32             `json:"verification_attempts,omitempty"`
+	ConditionID               string             `json:"condition_id,omitempty"`
+	ConditionStatus           ConditionStatus    `json:"condition_status,omitempty"`
+	ConditionAttempts         uint32             `json:"condition_attempts,omitempty"`
 	ErrorCode                 ErrorCode          `json:"error_code,omitempty"`
 }
 

@@ -1,6 +1,6 @@
 # Agentic Desktop Automation Plan
 
-Status: Initial architecture proof completed; follow-on delivery active
+Status: Initial architecture proof and MCP adapter completed; visual-condition delivery active
 
 Linear coordination:
 
@@ -196,7 +196,7 @@ accepted Go contract rather than define it.
 
 ### 4.3 Local MCP adapter and evaluation
 
-Delivery status: active in LAB-13.
+Delivery status: completed by LAB-13.
 
 This follow-on slice consumes the accepted Go boundary through an official-SDK
 stdio adapter. It keeps dry-run as the default, requires explicit policy and
@@ -204,6 +204,16 @@ execute intent for mutation, projects observations without pixels or lineage
 digests, and validates the complete protocol lifecycle with in-memory fakes.
 See the [dedicated delivery plan](agent-adapter-evaluation.md) for its exact
 surface and non-goals.
+
+### 4.4 Safe visual conditions
+
+Delivery status: active in LAB-14.
+
+The next Go-first slice adds color search over an explicit retained observation
+and bounded waiting over an explicit capture region. It adds no OCR,
+accessibility, file-backed template, or MCP tool. See the
+[Safe Agent Visual Conditions Plan](agent-visual-conditions.md) for its policy,
+privacy, cleanup, and validation contract.
 
 ## 5. Exit criteria
 

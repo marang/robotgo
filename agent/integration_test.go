@@ -5,6 +5,7 @@ package agent_test
 import (
 	"context"
 	"image"
+	"image/color"
 	"os"
 	"strconv"
 	"testing"
@@ -50,10 +51,15 @@ func TestAgentSessionCaptureRuntime(t *testing.T) {
 	height := requiredPositiveBoundedInteger(t, "ROBOTGO_AGENT_CAPTURE_HEIGHT", 4096)
 	displayID := requiredCoordinate(t, "ROBOTGO_AGENT_CAPTURE_DISPLAY")
 	session, err := agent.NewSession(agent.Config{Policy: agent.Policy{
-		AllowedOperations: []agent.Operation{agent.OperationObserve},
+		AllowedOperations: []agent.Operation{
+			agent.OperationObserve, agent.OperationFindColor, agent.OperationWaitColor,
+		},
 		AllowedDisplayIDs: []int{displayID},
-		MaxObservations:   1,
+		MaxObservations:   2,
 		MaxCapturePixels:  uint64(width) * uint64(height),
+		MaxQueries:        2,
+		WaitAttempts:      1,
+		WaitTimeoutMillis: 1000,
 	}})
 	if err != nil {
 		t.Fatal(err)
@@ -74,6 +80,32 @@ func TestAgentSessionCaptureRuntime(t *testing.T) {
 	t.Cleanup(func() { clear(img.Pix) })
 	if img.Bounds() != image.Rect(0, 0, width, height) {
 		t.Fatalf("capture bounds = %v", img.Bounds())
+	}
+	pixel := img.RGBAAt(0, 0)
+	clear(img.Pix)
+	findResult, err := session.FindColor(context.Background(), agent.FindColorRequest{
+		ObservationID: observation.ObservationID,
+		Condition: agent.ColorCondition{
+			Red: pixel.R, Green: pixel.G, Blue: pixel.B,
+		},
+	})
+	pixel = color.RGBA{}
+	if err != nil || findResult.Status != agent.ConditionMatched || findResult.Match == nil ||
+		findResult.Match.X != x || findResult.Match.Y != y || findResult.Match.DisplayID != displayID {
+		t.Fatalf("FindColor = %+v, %v", findResult, err)
+	}
+	waitResult, err := session.WaitColor(context.Background(), agent.WaitColorRequest{
+		Region: agent.CaptureRegion{X: x, Y: y, Width: width, Height: height, DisplayID: displayID},
+		// Maximum normalized tolerance matches the first RGB pixel without
+		// retaining any real desktop color in test output.
+		Condition: agent.ColorCondition{Tolerance: 1},
+	})
+	if err != nil || waitResult.ObservationID == "" || waitResult.Status != agent.ConditionMatched ||
+		waitResult.Attempts != 1 || waitResult.Match == nil {
+		t.Fatalf("WaitColor = (%+v, %v)", waitResult, err)
+	}
+	if err := session.ReleaseObservation(waitResult.ObservationID); err != nil {
+		t.Fatal(err)
 	}
 }
 

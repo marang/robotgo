@@ -10,16 +10,18 @@ import (
 )
 
 // CatalogSchemaVersion identifies the operation catalog JSON contract.
-const CatalogSchemaVersion = "2"
+const CatalogSchemaVersion = "3"
 
 // Operation identifies one strict agent operation.
 type Operation string
 
 const (
-	OperationMove     Operation = "pointer.move"
-	OperationClick    Operation = "pointer.click"
-	OperationTypeText Operation = "keyboard.type-text"
-	OperationObserve  Operation = "desktop.observe"
+	OperationMove      Operation = "pointer.move"
+	OperationClick     Operation = "pointer.click"
+	OperationTypeText  Operation = "keyboard.type-text"
+	OperationObserve   Operation = "desktop.observe"
+	OperationFindColor Operation = "desktop.find-color"
+	OperationWaitColor Operation = "desktop.wait-color"
 )
 
 // RiskClass describes the policy impact of an operation.
@@ -33,7 +35,10 @@ const (
 // CancellationSupport describes where cancellation is enforceable.
 type CancellationSupport string
 
-const CancellationPreflightOnly CancellationSupport = "preflight-only"
+const (
+	CancellationPreflightOnly CancellationSupport = "preflight-only"
+	CancellationCooperative   CancellationSupport = "cooperative"
+)
 
 // OperationCapability is one stable entry in an operation catalog.
 type OperationCapability struct {
@@ -128,6 +133,7 @@ const (
 	ErrorStaleTarget      ErrorCode = "stale-target"
 	ErrorVerification     ErrorCode = "verification-failed"
 	ErrorAuditDelivery    ErrorCode = "audit-delivery-failed"
+	ErrorConditionNotMet  ErrorCode = "condition-not-met"
 )
 
 // ActionError is safe to serialize: Message never contains action payloads.
@@ -156,12 +162,13 @@ type ActionResult struct {
 }
 
 var (
-	ErrSessionBusy   = errors.New("another agent session is already active")
-	ErrSessionClosed = errors.New("agent session is closed")
-	ErrPolicyDenied  = errors.New("agent policy denied the action")
-	ErrStaleTarget   = errors.New("agent observation target is stale")
-	ErrVerification  = errors.New("agent action verification failed")
-	ErrAuditDelivery = errors.New("agent audit delivery failed")
+	ErrSessionBusy     = errors.New("another agent session is already active")
+	ErrSessionClosed   = errors.New("agent session is closed")
+	ErrPolicyDenied    = errors.New("agent policy denied the action")
+	ErrStaleTarget     = errors.New("agent observation target is stale")
+	ErrVerification    = errors.New("agent action verification failed")
+	ErrAuditDelivery   = errors.New("agent audit delivery failed")
+	ErrConditionNotMet = errors.New("agent visual condition was not met")
 )
 
 func newActionError(code ErrorCode, operation Operation, message string, cause error) *ActionError {
