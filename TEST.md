@@ -460,20 +460,22 @@ deterministic close. It intentionally does not use the high-level fallback APIs,
 so an available native Wayland backend cannot mask a broken portal path. Default
 hosted CI only compile-checks this harness because it has no real desktop consent
 session. `.github/workflows/remote-desktop-e2e.yml` runs the test without skipping
-on explicitly provisioned self-hosted GNOME, KDE, and wlroots Wayland runners,
-once per desktop. The portal client is pure Go and therefore independent of the
+on explicitly provisioned protected, ephemeral GNOME and KDE Wayland runners,
+once per desktop. wlroots native and portal-availability evidence is promoted
+through the separate P005 runner path and is not a RemoteDesktop pass. The portal
+client is pure Go and therefore independent of the
 root package's CGO setting; CGO and non-CGO high-level fallback dispatch remains
 covered by the hermetic root tests. The workflow can be triggered
 manually at any time. Set the repository variable
 `ROBOTGO_REMOTE_DESKTOP_E2E=1` after those runners are provisioned to run the
 same matrix on pull requests and pushes to `main`, where it can be configured as
 a required check for branches in this repository. Fork pull requests are
-intentionally excluded because untrusted code must never execute on persistent
+intentionally excluded because untrusted code must never execute on protected
 self-hosted desktop runners. Configure the `remote-desktop-e2e` GitHub
 Environment with required reviewers and use ephemeral, network-isolated runners.
 The workflow uses read-only permissions, does not persist checkout credentials,
-and verifies that each runner's `XDG_CURRENT_DESKTOP` matches its matrix label
-before injecting input.
+and runs the shared fail-closed desktop, D-Bus, portal, operator-readiness, and
+exact-commit preflight before injecting input.
 
 Runtime outcomes and missing infrastructure are recorded in
 `docs/compatibility/wayland-input.md`; an unavailable runner is not counted as a
@@ -513,9 +515,10 @@ ROBOTGO_SCREENCAST_E2E=1 go test -tags "pipewire integration" ./screen/portal -r
 Run it from a graphical Wayland session. It displays the portal consent UI,
 captures two frames from the same session, validates non-empty output, and
 closes the PipeWire consumer before the portal session.
-`.github/workflows/screencast-e2e.yml` runs the same harness on protected
-self-hosted GNOME, KDE, and wlroots runners when the repository variable
-`ROBOTGO_SCREENCAST_E2E=1` is enabled, or by manual dispatch.
+`.github/workflows/screencast-e2e.yml` runs the same harness on protected,
+ephemeral self-hosted GNOME and KDE runners when the repository variable
+`ROBOTGO_SCREENCAST_E2E=1` is enabled, or by manual dispatch. wlroots does not
+count as a ScreenCast pass and is promoted separately under P005.
 
 ### `waylandint` (Keyboard integration harness)
 
@@ -700,6 +703,19 @@ intentionally preserving a foreign replacement is not itself an error.
   - Overrides Linux capture backend selection (`auto|dmabuf|wl_shm|screencast|portal`).
 - `ROBOTGO_SCREENCAST_E2E=1`
   - Enables the real persistent ScreenCast/PipeWire integration test.
+- `ROBOTGO_COMPOSITOR_OUTPUT_COUNT`
+  - Protected-runner declaration of the fixed fixture output count. The shared
+    compositor preflight rejects missing, non-positive, or insufficient values.
+- `ROBOTGO_COMPOSITOR_OPERATOR_READY_FILE`
+  - Absolute path to the orchestrator-owned portal-consent readiness
+    attestation. The root-owned file and its root-owned parent directory must
+    not be writable by group or others. Its exact single-line value binds
+    `ready` to the approved commit, GitHub run ID/attempt, lane, and cell;
+    repository code must not create or refresh it.
+
+    ```text
+    ready commit=<approved-sha> run=<run-id> attempt=<attempt> lane=<gnome|kde> cell=<remote-desktop|screencast>
+    ```
 - `ROBOTGO_CAPTURE_DEBUG=1`
   - Enables backend/fallback diagnostic logs for capture flow.
 - `ROBOTGO_WLROOTS_MINMAX_E2E=1`
@@ -767,6 +783,43 @@ or protocol data is a failure rather than a skip.
 Run tag-gated suites as needed for the area you changed. Native or Pure-Go X11
 input changes must also run the required `x11integration` comparison command
 above.
+
+## Protected Real-Compositor Evidence
+
+The `RemoteDesktop E2E` and `ScreenCast E2E` workflows run only on protected,
+ephemeral GNOME and KDE fixture runners. They check out the explicitly approved
+pull-request head, run the shared fail-closed Go preflight, redirect raw runtime
+output into runner-temporary storage, and upload only a schema-v1 manifest,
+canonical allowlisted test log, and matching sanitized summary after repository
+validation. The raw log and private preflight report are deleted before upload;
+an `always()` cleanup step removes the complete owned workspace after success
+or failure. VM destruction remains the final cancellation/timeout cleanup
+boundary.
+
+The workflows require the runner to provide a live Wayland/user-bus session,
+the expected desktop and portal packages, the applicable portal interfaces,
+PipeWire/WirePlumber for ScreenCast, a fixed positive output count, and the
+out-of-band operator-console readiness attestation. Missing infrastructure,
+consent readiness, an exact-commit match, or a non-skipping test pass fails the
+cell. Raw output is never streamed through `tee` or uploaded on failure.
+
+wlroots is intentionally not treated as a RemoteDesktop/ScreenCast pass in
+these portal workflows. Its native and explicit portal-availability evidence is
+promoted separately under the
+[protected real-compositor plan](docs/plan/real-compositor-evidence.md).
+
+Run the hermetic contract locally without touching the live desktop:
+
+```bash
+go test -race ./internal/compositorevidence \
+  ./internal/cmd/compositorevidence
+```
+
+Default tests inject fixed command, desktop, portal, timeout, and filesystem
+fixtures and use `t.TempDir()`. Do not invoke the real workflow commands on a
+personal desktop: portal cells intentionally request real screen/input consent
+and belong only on the disposable fixture images with the protected operator
+handoff.
 
 ## Release Evidence
 

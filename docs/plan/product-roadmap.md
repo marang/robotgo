@@ -34,19 +34,20 @@ The July 2026 hardening work establishes the foundation for this roadmap:
 | Area | Status | Delivered | Exit criteria still open |
 |---|---|---|---|
 | Current baseline | Complete in main | Native screencopy, screenshot portal fallback, bounded waits, cleanup, live capability probes, error APIs, non-CGO contract, dedicated race/vet/sanitizer jobs, protected stable CI checks | Keep required jobs green |
-| 1. Wayland input | Implementation complete; runtime validation blocked | Native virtual keyboard/pointer, consent-aware RemoteDesktop fallback, shared ScreenCast stream mapping, absolute pointer/touch, restore tokens, diagnostics and E2E harness | Register GNOME/KDE/wlroots runners and collect green CGO/non-CGO evidence |
-| 2. Capture | Hermetic implementation complete | Reliable one-shot paths plus one consent-aware ScreenCast session, reusable PipeWire frames, logical region crop, raw pixel conversion, metadata/restore tokens, cleanup, integration harness, non-skipping geometry/transform CI, and sanitizer-backed native ownership gates | Real GNOME/KDE/wlroots evidence |
+| 1. Wayland input | Implementation complete; runtime validation blocked | Native virtual keyboard/pointer, consent-aware RemoteDesktop fallback, shared ScreenCast stream mapping, absolute pointer/touch, restore tokens, diagnostics and E2E harness | Register GNOME/KDE portal and Sway/wlroots native runners; collect green behavior or explicit-unavailability evidence |
+| 2. Capture | Hermetic implementation complete | Reliable one-shot paths plus one consent-aware ScreenCast session, reusable PipeWire frames, logical region crop, raw pixel conversion, metadata/restore tokens, cleanup, integration harness, non-skipping geometry/transform CI, and sanitizer-backed native ownership gates | Real GNOME/KDE portal plus Sway/wlroots native and portal-availability evidence |
 | 3. Pure-Go | X11 complete; Windows input/window CI-evidenced; macOS capture/display/input and window implementation delivered; Wayland logical output enumeration and Weston multi-output evidence delivered; broader phase partial | Build and feature-level introspection; non-CGO macOS CoreGraphics capture/display, Quartz input, and Accessibility window inspection/control with explicit gaps; Windows capture, `SendInput` keyboard/pointer, and Win32 window control with blocking runtime probes; X11 capture, XGB/XTEST input, and X11/EWMH window introspection/control; Wayland portal capture/input plus bounded native `wl_output`/`xdg-output` geometry; permission/error contracts; shared behavioral parity; reproducible balanced benchmark tooling; optimized guardian-path decision evidence; explicit decision to retain native CGO as the X11 default; race-testable internal X11 core; re-exec guardian with application-`SIGKILL` recovery; protected three-OS CI | Collect opt-in real macOS input and self-owned-window evidence, protected GNOME/KDE/wlroots multi-output Wayland evidence, and assess further backends selectively |
 | 4. API/compositor gaps | Parity surface delivered; runtime support partial | Window-state error APIs, bitmap string helpers, `FindColorCS`, hook/event capability reporting, Sway/Hyprland/wlroots resolver, provider-aware Hyprland 0.55+ Lua window dispatch | Compositor-backed state operations and cross-platform/runtime matrix coverage |
-| 5. Reliability product | Partial | Capability APIs, versioned sanitized runtime diagnostics/example, compatibility matrix v1, expanded CI variants, blocking ASan/LeakSanitizer ownership gates, six-cell checksummed release-evidence pipeline, and the published [`v1.0.0-beta.1`](https://github.com/marang/robotgo/releases/tag/v1.0.0-beta.1) evidence bundle | Dedicated compositor jobs |
+| 5. Reliability product | Partial | Capability APIs, versioned sanitized runtime diagnostics/example, compatibility matrix v1, expanded CI variants, blocking ASan/LeakSanitizer ownership gates, six-cell checksummed release-evidence pipeline, fail-closed real-compositor preflight/evidence contract, and the published [`v1.0.0-beta.1`](https://github.com/marang/robotgo/releases/tag/v1.0.0-beta.1) evidence bundle | Provision and promote dedicated compositor jobs |
 
 No delivery phase is complete until all of its exit criteria are blocking and
 green. Phase 1 implementation is merged; its real-compositor evidence remains
 an infrastructure blocker. The bounded cross-platform reliability-hardening
 project P002 is complete, while roadmap Phase 5 remains partial. The active
 [Protected Real-Compositor Evidence Plan](real-compositor-evidence.md) now
-addresses the shared GNOME/KDE/wlroots runner-dependent exit gates across
-phases 1, 2, 3, and 5.
+provides the shared preflight and sanitized evidence contract; protected runner
+provisioning and promotion now remain for GNOME/KDE portal gates and separate
+Sway/wlroots native and portal-availability gates across phases 1, 2, 3, and 5.
 The completed [Agent Adapter and Evaluation Plan](agent-adapter-evaluation.md)
 provides a local, policy-gated MCP boundary on the agent-session proof. The
 adjacent [Safe Agent Visual Conditions Plan](agent-visual-conditions.md) now
@@ -77,8 +78,9 @@ and expose persistence restore-token availability. Runtime capability and
 permission diagnostics, including explicit cancellation and timeout states, are
 available without opening a consent dialog. Portal-backed mouse timing is
 consistent in CGO and non-CGO builds. The
-remaining Phase 1 blocker is real GNOME/KDE/wlroots evidence; this repository
-currently has no registered self-hosted runners for that matrix.
+remaining Phase 1 blocker is real GNOME/KDE portal plus Sway/wlroots native and
+explicit portal-availability evidence; this repository currently has no
+registered self-hosted runners for those lanes.
 
 Exit criteria:
 

@@ -144,14 +144,17 @@ PID/handle-specific control remains unsupported for all listed Wayland
 backends.
 
 - Priority Backlog (1-7):
-  - 1. Register protected GNOME/KDE/wlroots runners and validate the complete
-    RemoteDesktop high-level matrix in hermetic CGO and non-CGO builds. Shared ScreenCast
+  - 1. Register protected GNOME/KDE portal runners and validate the complete
+    RemoteDesktop high-level matrix in hermetic CGO and non-CGO builds. Track
+    Sway/wlroots native input and explicit portal availability in separate lanes.
+    Shared ScreenCast
     mapping, absolute pointer/touch, consent, denial, cancellation, timeout,
     restore metadata, teardown, and high-level dispatch have hermetic coverage.
     `[new vs robotgo-pro]`
   - 2. Validate the reusable ScreenCast/PipeWire backend on protected real
-    GNOME/KDE/wlroots runners and promote its leak/timeout tests to release
-    gates. The implementation and opt-in integration harness are present.
+    GNOME/KDE portal runners and promote its leak/timeout tests to release
+    gates. Validate Sway/wlroots native capture and portal availability
+    separately. The implementation and opt-in integration harness are present.
     `[new vs robotgo-pro]`
   - 3. Continue window state/query operations beyond the delivered Hyprland
     maximize slice where a compositor exposes equally trustworthy state.
@@ -211,7 +214,9 @@ backends.
   - Expand troubleshooting for xdg-desktop-portal backend selection and consent prompts.
   - Validate the existing high-level RemoteDesktop input fallback on GNOME/KDE.
   - Validate the persistent ScreenCast/PipeWire stream path and repeated-frame
-    behavior across GNOME/KDE/wlroots portal backends.
+    behavior across GNOME/KDE portal backends. Keep Sway/wlroots native capture
+    and portal-availability evidence separate unless a compatible portal backend
+    is explicitly promoted.
 - Keyboard Input:
   - Keep the delivered native Wayland exact-Unicode keysym path covered,
     including whole-text preflight and explicit unsupported/fallback behavior

@@ -25,53 +25,102 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        desktop: [gnome, kde, wlroots]
+        desktop: [gnome, kde]
     runs-on: [self-hosted, linux, wayland, "${{ matrix.desktop }}"]
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - name: Set up Go
         uses: actions/setup-go@v7
         with:
           go-version: 1.25.x
-      - name: Verify interactive Wayland session
+      - name: Run protected runner preflight
+        env:
+          ROBOTGO_APPROVED_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
         shell: bash
         run: |
-          test -n "$WAYLAND_DISPLAY"
-          test -n "$DBUS_SESSION_BUS_ADDRESS"
-          test -n "$XDG_CURRENT_DESKTOP"
-          pkg-config --exists libpipewire-0.3
-          desktop="${XDG_CURRENT_DESKTOP,,}"
-          case "${{ matrix.desktop }}:$desktop" in
-            gnome:*gnome*|kde:*kde*|kde:*plasma*) ;;
-            wlroots:*sway*|wlroots:*hyprland*|wlroots:*wayfire*|wlroots:*river*|wlroots:*labwc*|wlroots:*dwl*|wlroots:*gamescope*) ;;
-            *) echo "runner desktop '$XDG_CURRENT_DESKTOP' does not match label '${{ matrix.desktop }}'" >&2; exit 1 ;;
-          esac
+          set -euo pipefail
+          umask 077
+          : "${ROBOTGO_COMPOSITOR_OUTPUT_COUNT:?runner must declare output count}"
+          : "${ROBOTGO_COMPOSITOR_OPERATOR_READY_FILE:?runner must provide operator readiness attestation}"
+          output="$RUNNER_TEMP/screencast-report"
+          commit="$(git rev-parse HEAD)"
+          test "$commit" = "$ROBOTGO_APPROVED_COMMIT"
+          if [ "$GITHUB_EVENT_NAME" = pull_request ]; then
+            evidence_ref="refs/heads/$GITHUB_HEAD_REF"
+          else
+            evidence_ref="$GITHUB_REF"
+          fi
+          go run ./internal/cmd/compositorevidence preflight \
+            -lane "${{ matrix.desktop }}" \
+            -cell screencast \
+            -runner-temp "$RUNNER_TEMP" \
+            -output-dir "$output" \
+            -commit "$commit" \
+            -expected-commit "$ROBOTGO_APPROVED_COMMIT" \
+            -ref "$evidence_ref" \
+            -workflow "$GITHUB_WORKFLOW" \
+            -run-id "$GITHUB_RUN_ID" \
+            -run-attempt "$GITHUB_RUN_ATTEMPT" \
+            -output-count "$ROBOTGO_COMPOSITOR_OUTPUT_COUNT" \
+            -operator-ready-file "$ROBOTGO_COMPOSITOR_OPERATOR_READY_FILE"
       - name: Run real persistent ScreenCast test
         env:
           ROBOTGO_SCREENCAST_E2E: "1"
+          ROBOTGO_APPROVED_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
         shell: bash
         run: |
-          mkdir -p "$RUNNER_TEMP/screencast-report"
-          {
-            date --iso-8601=seconds
-            go version
-            pkg-config --modversion libpipewire-0.3
-            uname -srm
-            printf 'desktop=%s\nwayland_display=%s\n' "$XDG_CURRENT_DESKTOP" "$WAYLAND_DISPLAY"
-            busctl --user get-property org.freedesktop.portal.Desktop \
-              /org/freedesktop/portal/desktop org.freedesktop.portal.ScreenCast version || true
-            busctl --user get-property org.freedesktop.portal.Desktop \
-              /org/freedesktop/portal/desktop org.freedesktop.portal.ScreenCast AvailableSourceTypes || true
-          } > "$RUNNER_TEMP/screencast-report/environment.txt"
-          go test -count=1 -tags "pipewire integration" ./screen/portal \
-            -run '^TestPipeWireCapturePersistentSessionIntegration$' -v 2>&1 | \
-            tee "$RUNNER_TEMP/screencast-report/test.log"
+          set -euo pipefail
+          umask 077
+          output="$RUNNER_TEMP/screencast-report"
+          set +e
+          go test -count=1 -timeout=3m -tags=pipewire,integration ./screen/portal \
+            -run '^TestPipeWireCapturePersistentSessionIntegration$' -v \
+            > "$output/raw-test.log" 2>&1
+          test_status=$?
+          set -e
+          go run ./internal/cmd/compositorevidence finalize \
+            -lane "${{ matrix.desktop }}" \
+            -cell screencast \
+            -runner-temp "$RUNNER_TEMP" \
+            -output-dir "$output" \
+            -expected-commit "$ROBOTGO_APPROVED_COMMIT" \
+            -workflow "$GITHUB_WORKFLOW" \
+            -run-id "$GITHUB_RUN_ID" \
+            -run-attempt "$GITHUB_RUN_ATTEMPT" \
+            -test-exit-code "$test_status"
+          go run ./internal/cmd/compositorevidence verify \
+            -lane "${{ matrix.desktop }}" \
+            -cell screencast \
+            -runner-temp "$RUNNER_TEMP" \
+            -output-dir "$output" \
+            -expected-commit "$ROBOTGO_APPROVED_COMMIT" \
+            -workflow "$GITHUB_WORKFLOW" \
+            -run-id "$GITHUB_RUN_ID" \
+            -run-attempt "$GITHUB_RUN_ATTEMPT"
+          cat "$output/summary.md" >> "$GITHUB_STEP_SUMMARY"
       - name: Upload compatibility evidence
-        if: always()
         uses: actions/upload-artifact@v7
         with:
           name: screencast-${{ matrix.desktop }}
-          path: ${{ runner.temp }}/screencast-report
+          path: |
+            ${{ runner.temp }}/screencast-report/evidence.json
+            ${{ runner.temp }}/screencast-report/test.log
+            ${{ runner.temp }}/screencast-report/summary.md
+          if-no-files-found: error
+          retention-days: 90
+      - name: Remove compositor evidence workspace
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          rm -f -- \
+            "$RUNNER_TEMP/screencast-report/raw-test.log" \
+            "$RUNNER_TEMP/screencast-report/.preflight.json" || true
+          go run ./internal/cmd/compositorevidence cleanup \
+            -runner-temp "$RUNNER_TEMP" \
+            -output-dir "$RUNNER_TEMP/screencast-report"

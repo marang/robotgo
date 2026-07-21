@@ -1,6 +1,6 @@
 # Protected Real-Compositor Evidence Plan
 
-Status: Accepted direction; runner-contract implementation is next
+Status: Delivery slice 1 implemented; protected runner provisioning is next
 
 Linear project:
 [RobotGo | P005 | Protected Compositor Evidence](https://linear.app/riotbox/project/robotgo-or-p005-or-protected-compositor-evidence-d66467e3b5ee)
@@ -224,8 +224,8 @@ green.
 
 ## Ordered delivery slices
 
-1. Implement the shared preflight, schema-v1 manifest, hermetic tests, and both
-   workflow integrations.
+1. **Implemented:** shared preflight, schema-v1 manifest, hermetic tests, and
+   both portal-workflow integrations.
 2. Provision and prove the ephemeral Sway/wlroots image and promote its native
    rows.
 3. Provision and prove GNOME RemoteDesktop and ScreenCast.
