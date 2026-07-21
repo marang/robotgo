@@ -77,7 +77,10 @@ Default Linux screen tests use hermetic portal fixtures rather than persisting
 the developer's real desktop. Portal regression tests require temporary
 screenshot files to be absent after successful decoding and after decode
 failures. The production portal reader unlinks the sensitive file immediately
-after opening it.
+after an identity-verified open. Hermetic tests also cover cancellation,
+symlink and replacement rejection, sparse oversized files, and PNG headers that
+would otherwise request excessive decoder allocation; they never capture the
+developer's desktop.
 
 The command-backed OCR cancellation test waits for its fake backend to publish
 the private image path before canceling. It then requires bounded command

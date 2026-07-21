@@ -92,7 +92,9 @@ capabilities and the capture debug trace.
 
 Current status: the one-shot native and screenshot-portal paths are hardened,
 including timeout, portal request-race, crop, DMA-BUF failure, and FD ownership
-regressions. An opt-in `pipewire` build now opens one ScreenCast consent session,
+regressions. Portal artifacts are unlinked after an identity-verified open and
+decoded with cancellation, encoded-size, dimension, and allocation bounds. An
+opt-in `pipewire` build now opens one ScreenCast consent session,
 owns its PipeWire remote and stream deterministically, returns repeated raw
 frames, converts supported RGB/BGR formats to RGBA, maps logical regions at
 fractional scale, applies all eight SPA video transforms and crop metadata,

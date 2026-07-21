@@ -4,10 +4,12 @@ package portal
 
 import (
 	"context"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"image"
 	"image/png"
+	"io"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -25,7 +27,14 @@ const (
 	portalResponse    = portalRequestIF + ".Response"
 	portalScreenshot  = "org.freedesktop.portal.Screenshot.Screenshot"
 	portalTimeout     = 10 * time.Second
+
+	portalScreenshotMaxEncodedBytes = int64(512 << 20)
+	portalScreenshotMaxDecodedBytes = int64(512 << 20)
+	portalScreenshotMaxDimension    = int64(32_768)
+	portalPNGHeaderSize             = 29
 )
+
+const portalPNGSignature = "\x89PNG\r\n\x1a\n"
 
 var portalTokenCounter atomic.Uint64
 
@@ -204,7 +213,7 @@ func captureRegionImage(ctx context.Context, portal screenshotPortal, x, y, w, h
 			if err != nil {
 				return nil, err
 			}
-			img, err := decodeFileURI(uri)
+			img, err := decodeFileURI(ctx, uri)
 			if err != nil {
 				return nil, err
 			}
@@ -257,64 +266,229 @@ func responseURI(sig *dbus.Signal) (string, error) {
 	return uri, nil
 }
 
-func decodeFileURI(rawURI string) (image.Image, error) {
+func decodeFileURI(ctx context.Context, rawURI string) (img image.Image, retErr error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	path, err := portalScreenshotPath(rawURI)
+	if err != nil {
+		return nil, err
+	}
+	f, info, err := openAndUnlinkPortalScreenshot(path)
+	if err != nil {
+		return nil, err
+	}
+	defer func() {
+		if closeErr := f.Close(); closeErr != nil {
+			retErr = errors.Join(retErr, fmt.Errorf("portal: close screenshot: %w", closeErr))
+		}
+	}()
+
+	return decodePortalScreenshot(ctx, f, info.Size())
+}
+
+func portalScreenshotPath(rawURI string) (string, error) {
 	u, err := url.Parse(rawURI)
 	if err != nil {
-		return nil, fmt.Errorf("portal: parse screenshot uri: %w", err)
+		return "", fmt.Errorf("portal: parse screenshot uri: %w", err)
 	}
 	if u.Scheme != "file" || (u.Host != "" && u.Host != "localhost") {
-		return nil, fmt.Errorf("portal: unsupported screenshot uri %q", rawURI)
+		return "", fmt.Errorf("portal: unsupported screenshot uri %q", rawURI)
 	}
 	path, err := url.PathUnescape(u.EscapedPath())
 	if err != nil {
-		return nil, fmt.Errorf("portal: decode screenshot path: %w", err)
+		return "", fmt.Errorf("portal: decode screenshot path: %w", err)
 	}
 	path = filepath.FromSlash(path)
 	if path == "" {
-		return nil, errors.New("portal: empty screenshot path")
+		return "", errors.New("portal: empty screenshot path")
 	}
+	if !filepath.IsAbs(path) {
+		return "", fmt.Errorf("portal: screenshot path is not absolute: %q", path)
+	}
+	return path, nil
+}
 
-	info, err := os.Lstat(path)
+func openAndUnlinkPortalScreenshot(path string) (f *os.File, openedInfo os.FileInfo, retErr error) {
+	expectedInfo, err := os.Lstat(path)
 	if err != nil {
-		return nil, fmt.Errorf("portal: inspect screenshot: %w", err)
+		return nil, nil, fmt.Errorf("portal: inspect screenshot: %w", err)
 	}
-	if !info.Mode().IsRegular() {
-		return nil, fmt.Errorf("portal: screenshot is not a regular file: %q", path)
+	if !expectedInfo.Mode().IsRegular() {
+		return nil, nil, fmt.Errorf("portal: screenshot is not a regular file: %q", path)
 	}
-	f, err := os.Open(path)
+	f, err = os.Open(path)
 	if err != nil {
 		openErr := fmt.Errorf("portal: open screenshot: %w", err)
-		if removeErr := os.Remove(path); removeErr != nil && !errors.Is(removeErr, os.ErrNotExist) {
-			return nil, errors.Join(
+		if removeErr := removeVerifiedPortalScreenshot(path, expectedInfo); removeErr != nil {
+			return nil, nil, errors.Join(
 				openErr,
 				fmt.Errorf("portal: remove sensitive screenshot after open failure: %w", removeErr),
 			)
 		}
-		return nil, openErr
+		return nil, nil, openErr
+	}
+	cleanupAttempted := false
+	defer func() {
+		if retErr == nil {
+			return
+		}
+		if closeErr := f.Close(); closeErr != nil {
+			retErr = errors.Join(retErr, fmt.Errorf("portal: close screenshot after setup failure: %w", closeErr))
+		}
+		if cleanupAttempted {
+			return
+		}
+		if cleanupErr := removeVerifiedPortalScreenshot(path, expectedInfo); cleanupErr != nil {
+			retErr = errors.Join(retErr, fmt.Errorf("portal: remove sensitive screenshot: %w", cleanupErr))
+		}
+	}()
+
+	openedInfo, err = f.Stat()
+	if err != nil {
+		return nil, nil, fmt.Errorf("portal: inspect opened screenshot: %w", err)
+	}
+	if err := verifyPortalScreenshotIdentity(expectedInfo, openedInfo); err != nil {
+		return nil, nil, err
 	}
 	// The portal artifact contains the user's desktop. Unlink it immediately
 	// after opening so it cannot remain on disk if decoding or later processing
 	// fails. Linux keeps the opened contents available through f until close.
-	if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
-		closeErr := f.Close()
-		removeErr := fmt.Errorf("portal: remove sensitive screenshot: %w", err)
-		if closeErr != nil {
-			return nil, errors.Join(
-				removeErr,
-				fmt.Errorf("portal: close screenshot after cleanup failure: %w", closeErr),
-			)
-		}
-		return nil, removeErr
+	cleanupAttempted = true
+	if removeErr := removeVerifiedPortalScreenshot(path, openedInfo); removeErr != nil {
+		return nil, nil, fmt.Errorf("portal: remove sensitive screenshot: %w", removeErr)
 	}
-	img, decodeErr := png.Decode(f)
-	closeErr := f.Close()
-	if decodeErr != nil {
-		return nil, fmt.Errorf("portal: decode screenshot: %w", decodeErr)
+	return f, openedInfo, nil
+}
+
+func decodePortalScreenshot(ctx context.Context, f *os.File, encodedSize int64) (image.Image, error) {
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		return nil, fmt.Errorf("portal: decode screenshot: %w", ctxErr)
 	}
-	if closeErr != nil {
-		return nil, fmt.Errorf("portal: close screenshot: %w", closeErr)
+	if encodedSize < 0 || encodedSize > portalScreenshotMaxEncodedBytes {
+		return nil, fmt.Errorf(
+			"portal: screenshot file size %d exceeds limit %d",
+			encodedSize, portalScreenshotMaxEncodedBytes,
+		)
+	}
+
+	config, err := png.DecodeConfig(&portalContextReader{
+		ctx:    ctx,
+		reader: io.LimitReader(f, portalScreenshotMaxEncodedBytes),
+	})
+	if err != nil {
+		return nil, portalScreenshotDecodeError(ctx, "inspect", err)
+	}
+	if err := validatePortalScreenshotConfig(f, config); err != nil {
+		return nil, err
+	}
+	if _, err := f.Seek(0, io.SeekStart); err != nil {
+		return nil, fmt.Errorf("portal: rewind screenshot: %w", err)
+	}
+	img, err := png.Decode(&portalContextReader{
+		ctx:    ctx,
+		reader: io.LimitReader(f, portalScreenshotMaxEncodedBytes),
+	})
+	if err != nil {
+		return nil, portalScreenshotDecodeError(ctx, "decode", err)
+	}
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		return nil, fmt.Errorf("portal: decode screenshot: %w", ctxErr)
 	}
 	return img, nil
+}
+
+type portalContextReader struct {
+	ctx    context.Context
+	reader io.Reader
+}
+
+func (r *portalContextReader) Read(p []byte) (int, error) {
+	if err := r.ctx.Err(); err != nil {
+		return 0, err
+	}
+	return r.reader.Read(p)
+}
+
+func verifyPortalScreenshotIdentity(expected, actual os.FileInfo) error {
+	if expected == nil || actual == nil || !expected.Mode().IsRegular() || !actual.Mode().IsRegular() {
+		return errors.New("portal: screenshot file identity is not regular")
+	}
+	if !os.SameFile(expected, actual) {
+		return errors.New("portal: screenshot file changed before sensitive cleanup")
+	}
+	return nil
+}
+
+func removeVerifiedPortalScreenshot(path string, expected os.FileInfo) error {
+	current, err := os.Lstat(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("re-inspect screenshot before cleanup: %w", err)
+	}
+	if err := verifyPortalScreenshotIdentity(expected, current); err != nil {
+		return err
+	}
+	if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	return nil
+}
+
+func validatePortalScreenshotConfig(f *os.File, config image.Config) error {
+	if config.Width <= 0 || config.Height <= 0 {
+		return fmt.Errorf("portal: invalid screenshot dimensions %dx%d", config.Width, config.Height)
+	}
+	width, height := int64(config.Width), int64(config.Height)
+	if width > portalScreenshotMaxDimension || height > portalScreenshotMaxDimension {
+		return fmt.Errorf(
+			"portal: screenshot dimensions %dx%d exceed per-axis limit %d",
+			config.Width, config.Height, portalScreenshotMaxDimension,
+		)
+	}
+
+	header := make([]byte, portalPNGHeaderSize)
+	if _, err := f.ReadAt(header, 0); err != nil {
+		return fmt.Errorf("portal: read screenshot PNG header: %w", err)
+	}
+	if string(header[:len(portalPNGSignature)]) != portalPNGSignature ||
+		string(header[12:16]) != "IHDR" {
+		return errors.New("portal: invalid screenshot PNG header")
+	}
+	headerWidth := int64(binary.BigEndian.Uint32(header[16:20]))
+	headerHeight := int64(binary.BigEndian.Uint32(header[20:24]))
+	if headerWidth != width || headerHeight != height {
+		return errors.New("portal: screenshot PNG header changed during validation")
+	}
+
+	bytesPerPixel := int64(4)
+	if header[24] == 16 {
+		bytesPerPixel = 8
+	} else if header[25] == 3 {
+		bytesPerPixel = 1
+	}
+	allocationFactor := bytesPerPixel
+	if header[28] != 0 {
+		// Adam7 holds the full destination and one partial pass concurrently.
+		allocationFactor *= 2
+	}
+	decodedBytes := width * height * allocationFactor
+	if decodedBytes > portalScreenshotMaxDecodedBytes {
+		return fmt.Errorf(
+			"portal: estimated screenshot decode size %d exceeds limit %d",
+			decodedBytes, portalScreenshotMaxDecodedBytes,
+		)
+	}
+	return nil
+}
+
+func portalScreenshotDecodeError(ctx context.Context, operation string, decodeErr error) error {
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		return fmt.Errorf("portal: %s screenshot: %w", operation, ctxErr)
+	}
+	return fmt.Errorf("portal: %s screenshot: %w", operation, decodeErr)
 }
 
 func cropImage(img image.Image, x, y, w, h int) (image.Image, error) {
