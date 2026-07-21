@@ -6,6 +6,9 @@ Use the following documents as the primary entry points:
   pull requests, CI, reviewer feedback, merges, and cleanup.
 - [Test guide](../TEST.md) for validation commands and runtime prerequisites.
 - [Product roadmap](plan/product-roadmap.md) for delivery phases.
+- [Protected real-compositor evidence plan](plan/real-compositor-evidence.md)
+  for ephemeral GNOME, KDE, and wlroots runner contracts, sanitized manifests,
+  real portal consent, and protected runtime gates.
 - [Agentic desktop automation plan](plan/agentic-desktop-automation.md) for the
   session, policy, observe-act-verify, and adapter architecture.
 - [Agent adapter and evaluation plan](plan/agent-adapter-evaluation.md) for the
