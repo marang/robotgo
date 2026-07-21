@@ -294,7 +294,7 @@ func GetLinuxCapabilities() LinuxCapabilities {
 			c.Capture = FeatureCapability{
 				Available: true,
 				Fallback:  nativeCapture || portalAvailable,
-				Backend:   "portal-screencast+pipewire",
+				Backend:   FeatureBackendScreenCast,
 				Reason:    "an active ScreenCast session provides reusable PipeWire frames",
 				Notes:     screenCastCapabilityNotes(),
 			}

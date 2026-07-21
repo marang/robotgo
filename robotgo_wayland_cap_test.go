@@ -84,7 +84,7 @@ func TestGetLinuxCapabilitiesReportsActiveScreenCast(t *testing.T) {
 	screenCastCaptureState.Unlock()
 
 	capabilities := GetLinuxCapabilities()
-	if !capabilities.Capture.Available || capabilities.Capture.Backend != "portal-screencast+pipewire" {
+	if !capabilities.Capture.Available || capabilities.Capture.Backend != FeatureBackendScreenCast {
 		t.Fatalf("active ScreenCast capability = %+v", capabilities.Capture)
 	}
 	if !capabilities.Capture.Fallback {

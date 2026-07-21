@@ -30,7 +30,7 @@ func observationCapability(policy Policy, capabilities robotgo.RuntimeCapabiliti
 	capturePolicyAllowed := policyAllowed && policy.MaxCapturePixels > 0 && len(policy.allowDisplay) > 0
 	if capabilities.Runtime.GOOS == goOSLinux &&
 		capabilities.Runtime.DisplayServer == robotgo.DisplayServerWayland &&
-		captureBackend != string(robotgo.BackendScreenCast) && os.Getenv(disablePortalEnv) == "" {
+		captureBackend != robotgo.FeatureBackendScreenCast && os.Getenv(disablePortalEnv) == "" {
 		captureAvailable = false
 		remediation = "agent capture will not open portal consent implicitly; start ScreenCast explicitly or set " + disablePortalEnv + "=1 for native-only capture"
 	}

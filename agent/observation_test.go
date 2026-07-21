@@ -654,6 +654,14 @@ func TestWaylandCatalogDoesNotAdvertiseImplicitPortalCapture(t *testing.T) {
 		t.Fatalf("portal-only capture capability = %+v", capability)
 	}
 
+	capabilities.Capture = robotgo.FeatureCapability{
+		Available: true,
+		Backend:   robotgo.FeatureBackendScreenCast,
+	}
+	if capability = buildCatalog(policy, capabilities).Operations[0]; !capability.CaptureAvailable {
+		t.Fatalf("active ScreenCast capability = %+v", capability)
+	}
+
 	t.Setenv(disablePortalEnv, "1")
 	capabilities.Capture = robotgo.FeatureCapability{Available: true, Backend: "native-wayland"}
 	if capability = buildCatalog(policy, capabilities).Operations[0]; !capability.CaptureAvailable {
