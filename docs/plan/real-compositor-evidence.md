@@ -56,13 +56,13 @@ platform reference is the
 
 ## Desktop image contract
 
-P005 maintains three independently versioned images or VM definitions:
+P005 maintains independently reproducible runtime definitions for three lanes:
 
 | Lane | Required session | Primary evidence |
 |---|---|---|
 | GNOME | Mutter Wayland plus `xdg-desktop-portal-gnome` | RemoteDesktop, persistent ScreenCast, output geometry |
 | KDE | KWin Wayland plus `xdg-desktop-portal-kde` | RemoteDesktop, persistent ScreenCast, output geometry |
-| wlroots | Sway first, with the matching portal backend where available | Native input/window behavior, output geometry, explicit portal availability |
+| wlroots | Nested headless Sway on pinned GitHub-hosted Ubuntu first | Native input/capture/window behavior, output geometry, explicit portal availability |
 
 Images pin the operating-system release and package source. The evidence
 manifest records exact installed versions, so an image may be rebuilt for
@@ -70,7 +70,16 @@ security updates without pretending that it is the previous runtime. Software
 rendering is acceptable when the compositor and PipeWire path behave normally;
 a mock compositor or portal backend is not.
 
-Each session starts before runner registration and provides:
+The first wlroots definition uses `ubuntu-24.04` plus distribution Sway,
+`swaybg`, and `wev` packages on an ephemeral GitHub-hosted runner. It creates a
+private nested compositor with `WLR_BACKENDS=headless`, `WLR_RENDERER=pixman`,
+`WLR_LIBINPUT_NO_DEVICES=1`, no `DISPLAY`, and exactly one 1280x720
+`HEADLESS-*` output. This is real Sway/wlroots protocol evidence without access
+to physical devices or a host desktop. It does not satisfy the still-open
+multi-output or GNOME/KDE portal evidence requirements.
+
+Each protected GNOME/KDE session starts before runner registration and
+provides:
 
 - a real Wayland socket and user D-Bus session
 - the expected compositor and `XDG_CURRENT_DESKTOP`
@@ -226,8 +235,10 @@ green.
 
 1. **Implemented:** shared preflight, schema-v1 manifest, hermetic tests, and
    both portal-workflow integrations.
-2. Provision and prove the ephemeral Sway/wlroots image and promote its native
-   rows.
+2. **Implemented for the single-output proof:** run native input, capture,
+   window, output, and portal-availability cells in isolated hosted Sway and
+   retain sanitized exact-commit evidence. Multi-output Sway proof remains a
+   later P005 slice.
 3. Provision and prove GNOME RemoteDesktop and ScreenCast.
 4. Provision and prove KDE RemoteDesktop and ScreenCast.
 5. Add promoted checks to release evidence and, when operationally reliable,

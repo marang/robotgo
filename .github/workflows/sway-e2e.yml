@@ -1,0 +1,117 @@
+name: Sway E2E
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: sway-e2e-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  native-runtime:
+    name: ${{ matrix.cell }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        cell:
+          - native-input
+          - native-capture
+          - native-window
+          - native-output
+          - portal-availability
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version: 1.25.x
+      - name: Install isolated Sway dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y \
+            build-essential \
+            dbus-user-session \
+            jq \
+            libdrm-dev \
+            libgbm-dev \
+            libwayland-dev \
+            libxkbcommon-dev \
+            pkg-config \
+            sway \
+            swaybg \
+            wev \
+            xdg-desktop-portal \
+            xdg-desktop-portal-wlr
+      - name: Verify induced-failure cleanup
+        if: matrix.cell == 'native-output'
+        env:
+          ROBOTGO_APPROVED_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          supervisor_log="$RUNNER_TEMP/sway-cleanup-supervisor.log"
+          set +e
+          ROBOTGO_SWAY_E2E_FAIL_AFTER_START=1 \
+            dbus-run-session -- ./scripts/run-sway-e2e.sh native-output \
+            >"$supervisor_log" 2>&1
+          status=$?
+          set -e
+          rm -f -- "$supervisor_log"
+          test "$status" -eq 86
+          if compgen -G "$RUNNER_TEMP/robotgo-sway-runtime.*" >/dev/null; then
+            echo 'induced failure retained an isolated Sway runtime' >&2
+            exit 1
+          fi
+      - name: Run isolated Sway evidence
+        env:
+          ROBOTGO_APPROVED_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          supervisor_log="$RUNNER_TEMP/sway-${{ matrix.cell }}-supervisor.log"
+          set +e
+          dbus-run-session -- ./scripts/run-sway-e2e.sh '${{ matrix.cell }}' \
+            >"$supervisor_log" 2>&1
+          status=$?
+          set -e
+          rm -f -- "$supervisor_log"
+          if [ "$status" -ne 0 ]; then
+            echo 'isolated Sway evidence failed; private runtime output was removed' >&2
+            exit "$status"
+          fi
+      - name: Upload compatibility evidence
+        uses: actions/upload-artifact@v7
+        with:
+          name: sway-${{ matrix.cell }}
+          path: |
+            ${{ runner.temp }}/sway-e2e-${{ matrix.cell }}/evidence.json
+            ${{ runner.temp }}/sway-e2e-${{ matrix.cell }}/test.log
+            ${{ runner.temp }}/sway-e2e-${{ matrix.cell }}/summary.md
+          if-no-files-found: error
+          retention-days: 90
+      - name: Remove Sway evidence workspace
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          rm -f -- "$RUNNER_TEMP/sway-${{ matrix.cell }}-supervisor.log"
+          rm -f -- \
+            "$RUNNER_TEMP/sway-e2e-${{ matrix.cell }}/raw-test.log" \
+            "$RUNNER_TEMP/sway-e2e-${{ matrix.cell }}/.preflight.json" || true
+          go run ./internal/cmd/compositorevidence cleanup \
+            -runner-temp "$RUNNER_TEMP" \
+            -output-dir "$RUNNER_TEMP/sway-e2e-${{ matrix.cell }}"

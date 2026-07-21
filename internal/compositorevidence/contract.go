@@ -51,6 +51,14 @@ const (
 	screenCastTestName    = "TestPipeWireCapturePersistentSessionIntegration"
 	screenCastPackage     = "github.com/marang/robotgo/screen/portal"
 	screenCastCommand     = "go test -count=1 -timeout=3m -tags=pipewire,integration ./screen/portal -run ^TestPipeWireCapturePersistentSessionIntegration$ -v"
+	swayPackage           = "github.com/marang/robotgo"
+	swayCommandPrefix     = "go test -count=1 -timeout=2m -tags=wayland,swayintegration . -run ^"
+	swayCommandSuffix     = "$ -v"
+	swayInputTestName     = "TestSwayNativeInputRuntime"
+	swayCaptureTestName   = "TestSwayNativeCaptureRuntime"
+	swayWindowTestName    = "TestSwayNativeWindowRuntime"
+	swayOutputTestName    = "TestSwayNativeOutputRuntime"
+	swayPortalTestName    = "TestSwayPortalAvailabilityRuntime"
 )
 
 var (
@@ -61,8 +69,8 @@ var (
 	digestPattern    = regexp.MustCompile(`^[0-9a-f]{64}$`)
 )
 
-// TestSpec describes the single integration test represented by a portal
-// evidence cell.
+// TestSpec describes the single integration test represented by an evidence
+// cell.
 type TestSpec struct {
 	Package string
 	Name    string
@@ -127,7 +135,7 @@ func (cell Cell) NativeRequired() bool {
 	}
 }
 
-// TestSpec returns the fixed test represented by a runnable portal cell.
+// TestSpec returns the fixed test represented by a runnable evidence cell.
 func (cell Cell) TestSpec() (TestSpec, error) {
 	switch cell {
 	case CellRemoteDesktop:
@@ -142,8 +150,26 @@ func (cell Cell) TestSpec() (TestSpec, error) {
 			Name:    screenCastTestName,
 			Command: screenCastCommand,
 		}, nil
+	case CellNativeInput:
+		return swayTestSpec(swayInputTestName), nil
+	case CellNativeCapture:
+		return swayTestSpec(swayCaptureTestName), nil
+	case CellNativeWindow:
+		return swayTestSpec(swayWindowTestName), nil
+	case CellNativeOutput:
+		return swayTestSpec(swayOutputTestName), nil
+	case CellPortalAvailability:
+		return swayTestSpec(swayPortalTestName), nil
 	default:
-		return TestSpec{}, fmt.Errorf("cell %q has no portal integration test", cell)
+		return TestSpec{}, fmt.Errorf("cell %q has no integration test", cell)
+	}
+}
+
+func swayTestSpec(name string) TestSpec {
+	return TestSpec{
+		Package: swayPackage,
+		Name:    name,
+		Command: swayCommandPrefix + name + swayCommandSuffix,
 	}
 }
 
@@ -153,6 +179,9 @@ func (cell Cell) expectedWorkflow() string {
 		return "RemoteDesktop E2E"
 	case CellScreenCast:
 		return "ScreenCast E2E"
+	case CellNativeInput, CellNativeCapture, CellNativeWindow,
+		CellNativeOutput, CellPortalAvailability:
+		return "Sway E2E"
 	default:
 		return ""
 	}

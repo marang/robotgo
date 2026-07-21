@@ -85,7 +85,7 @@ extracting it:
 sha256sum -c robotgo-release-evidence-*.tar.gz.sha256
 ```
 
-This hosted-runner evidence does not replace protected real-compositor evidence.
-GNOME and KDE RemoteDesktop/ScreenCast portal rows, plus separate Sway/wlroots
-native and explicit portal-availability rows, remain pending until the matching
-runners are provisioned.
+This six-cell release bundle does not replace real-compositor evidence. GNOME
+and KDE RemoteDesktop/ScreenCast portal rows remain pending protected runners.
+The separate hosted Sway/wlroots native and explicit portal-availability rows
+must still be promoted into the release gate for the exact release commit.

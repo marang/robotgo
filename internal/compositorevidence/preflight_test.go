@@ -59,7 +59,16 @@ func (probe *fakeProbe) output(
 	case "systemctl":
 		return []byte("active\n"), nil
 	case "swaymsg":
-		return []byte(`{"human_readable":"sway version 1.10"}`), nil
+		switch args[1] {
+		case "get_version":
+			return []byte(`{"human_readable":"sway version 1.10"}`), nil
+		case "get_outputs":
+			return []byte(`[{"name":"HEADLESS-1","active":true},{"name":"HEADLESS-2","active":true}]`), nil
+		case "get_inputs":
+			return []byte(`[]`), nil
+		default:
+			return nil, errors.New("unexpected swaymsg request")
+		}
 	default:
 		return nil, errors.New("unexpected command")
 	}
@@ -88,23 +97,27 @@ func validPreflightConfig(lane Lane, cell Cell) PreflightConfig {
 	if cell == CellScreenCast {
 		workflow = "ScreenCast E2E"
 	}
+	if lane == LaneWlroots {
+		workflow = "Sway E2E"
+	}
 	return PreflightConfig{
-		Lane:               lane,
-		Cell:               cell,
-		CheckoutCommit:     testCommit,
-		ExpectedCommit:     testCommit,
-		Ref:                testRef,
-		Workflow:           workflow,
-		RunID:              "12345",
-		RunAttempt:         2,
-		CurrentDesktop:     desktop,
-		WaylandDisplay:     "wayland-1",
-		RuntimeDir:         "/run/user/1000",
-		SessionBusAddress:  "unix:path=/run/private-bus",
-		OperatorReadyPath:  "/run/robotgo-evidence/operator-ready",
-		OutputCount:        2,
-		MinimumOutputCount: 2,
-		ProbeTimeout:       time.Second,
+		Lane:                lane,
+		Cell:                cell,
+		CheckoutCommit:      testCommit,
+		ExpectedCommit:      testCommit,
+		Ref:                 testRef,
+		Workflow:            workflow,
+		RunID:               "12345",
+		RunAttempt:          2,
+		CurrentDesktop:      desktop,
+		WaylandDisplay:      "wayland-1",
+		RuntimeDir:          "/run/user/1000",
+		SessionBusAddress:   "unix:path=/run/private-bus",
+		OperatorReadyPath:   "/run/robotgo-evidence/operator-ready",
+		OutputCount:         2,
+		MinimumOutputCount:  2,
+		RequireHeadlessSway: lane == LaneWlroots,
+		ProbeTimeout:        time.Second,
 	}
 }
 
@@ -198,8 +211,53 @@ func TestPreflightNativeSwayDoesNotRequirePortalOrPipeWire(t *testing.T) {
 		t.Fatal("native Sway capability was not probed")
 	}
 	calls := strings.Join(probe.calls, "\n")
+	for _, method := range []string{"get_version", "get_outputs", "get_inputs"} {
+		if !strings.Contains(calls, "swaymsg -t "+method+" -r") {
+			t.Fatalf("headless Sway %s was not probed: %v", method, probe.calls)
+		}
+	}
 	if strings.Contains(calls, portalBusName) || probe.called("pkg-config") || probe.called("systemctl") {
 		t.Fatalf("native cell ran portal/PipeWire probes: %v", probe.calls)
+	}
+}
+
+func TestPreflightHeadlessSwayRejectsPhysicalInputAndOutput(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name   string
+		method string
+		result []byte
+	}{
+		{
+			name:   "physical output",
+			method: "get_outputs",
+			result: []byte(`[{"name":"DP-1","active":true},{"name":"HEADLESS-2","active":true}]`),
+		},
+		{
+			name:   "physical input",
+			method: "get_inputs",
+			result: []byte(`[{"identifier":"1:2:private-device"}]`),
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			probe := &fakeProbe{}
+			dependencies := validDependencies(probe)
+			dependencies.output = func(ctx context.Context, name string, args ...string) ([]byte, error) {
+				if name == "swaymsg" && len(args) > 1 && args[1] == tc.method {
+					return tc.result, nil
+				}
+				return probe.output(ctx, name, args...)
+			}
+			_, err := preflight(
+				context.Background(),
+				validPreflightConfig(LaneWlroots, CellNativeInput),
+				dependencies,
+			)
+			if err == nil || !strings.Contains(err.Error(), "isolated Sway") {
+				t.Fatalf("preflight error = %v, want isolated Sway rejection", err)
+			}
+		})
 	}
 }
 

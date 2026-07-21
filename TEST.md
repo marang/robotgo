@@ -784,7 +784,39 @@ Run tag-gated suites as needed for the area you changed. Native or Pure-Go X11
 input changes must also run the required `x11integration` comparison command
 above.
 
-## Protected Real-Compositor Evidence
+## Real-Compositor Evidence
+
+The `Sway E2E` workflow runs a nested Sway 1.9 compositor on an ephemeral
+GitHub-hosted Ubuntu 24.04 runner. Every matrix cell receives a private
+`XDG_RUNTIME_DIR`, the headless wlroots backend, the Pixman renderer, no
+libinput devices, one fixed 1280x720 output, and no X11 display. The five cells
+exercise native input, native capture, Sway window control, output geometry,
+and explicit portal availability. Input targets only a self-owned `wev`
+surface; capture uses a fixed synthetic `swaybg` color and keeps all pixels in
+memory.
+
+The workflow runs exactly one tagged test per cell:
+
+```bash
+go test -count=1 -timeout=2m -tags=wayland,swayintegration . \
+  -run '^TestSwayNativeInputRuntime$' -v
+```
+
+Replace the test name with `TestSwayNativeCaptureRuntime`,
+`TestSwayNativeWindowRuntime`, `TestSwayNativeOutputRuntime`, or
+`TestSwayPortalAvailabilityRuntime` for the other cells. The repository-owned
+`scripts/run-sway-e2e.sh` wrapper is CI-specific: it verifies the exact commit,
+starts the isolated compositor, runs fail-closed preflight, finalizes only a
+canonical sanitized schema-v1 result, and kills both compositor and test
+process groups before deleting the private runtime directory. A separate
+induced-failure step proves that cleanup path before the output cell runs.
+
+Only `evidence.json`, `test.log`, and `summary.md` are uploaded. Supervisor
+output, raw test output, sockets, fixture logs, screen pixels, and portal
+session data remain in runner-temporary memory/storage and are deleted on
+success and failure. The hosted Sway job is safe for fork pull requests because
+it has read-only permissions, no credentials, no physical input devices, and no
+access to a developer or self-hosted desktop.
 
 The `RemoteDesktop E2E` and `ScreenCast E2E` workflows run only on protected,
 ephemeral GNOME and KDE fixture runners. They check out the explicitly approved
@@ -804,8 +836,8 @@ consent readiness, an exact-commit match, or a non-skipping test pass fails the
 cell. Raw output is never streamed through `tee` or uploaded on failure.
 
 wlroots is intentionally not treated as a RemoteDesktop/ScreenCast pass in
-these portal workflows. Its native and explicit portal-availability evidence is
-promoted separately under the
+these portal workflows. Its hosted native and explicit portal-availability
+evidence is promoted separately under the
 [protected real-compositor plan](docs/plan/real-compositor-evidence.md).
 
 Run the hermetic contract locally without touching the live desktop:

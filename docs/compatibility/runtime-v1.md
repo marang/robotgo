@@ -15,7 +15,7 @@ available. A pending row is not a passing row.
 |---|---|---|---|
 | Linux/X11 | Native CGO | supported | Default Linux tests, race/vet/lint, ASan/LeakSanitizer ownership gate, Xvfb/XTEST public contract, XTEST-disabled negative contract |
 | Linux/X11 | Pure Go | supported | Non-CGO Linux tests plus non-skipping Xvfb/XTEST input, capture, bounds, cleanup, and crash-guardian contracts |
-| Linux/Wayland/wlroots | Native CGO, `wayland` | supported for advertised protocols | Weston integration plus hermetic screencopy, virtual input, bounds, scale, transform, fallback, and manifest-checked ASan/LeakSanitizer ownership tests; compositor-specific protocols remain capability-gated |
+| Linux/Wayland/wlroots | Native CGO, `wayland` | supported for advertised protocols | Weston integration plus hermetic tests and the hosted `Sway E2E` native input/capture/window/output and portal-availability matrix; multi-output protected Sway evidence remains pending and compositor-specific protocols remain capability-gated |
 | Linux/Wayland | Pure Go | supported subset | Non-CGO portal capture/input plus bounded native `wl_output`/`xdg-output` logical bounds; shared helpers refuse implicit Xwayland; capture/input still require user consent and portal backend availability where no native path exists |
 | GNOME/Wayland | CGO and Pure Go portal paths | implemented / evidence pending | Protected GNOME runner required for RemoteDesktop and persistent ScreenCast evidence |
 | KDE Plasma/Wayland | CGO and Pure Go portal paths | implemented / evidence pending | Protected KDE runner required for RemoteDesktop and persistent ScreenCast evidence |
