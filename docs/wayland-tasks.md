@@ -120,7 +120,9 @@ Current implementation baseline:
   session for stream-aware absolute pointer and touchscreen input. Stream
     geometry, mapping ID, PipeWire serial, persistence token availability, and
     permission status (including timeout versus cancellation) are observable
-    without exposing token contents. Portal mouse delays have CGO/non-CGO parity.
+    without exposing token contents. Absolute fallback retains the caller's
+    global coordinates rather than reusing native scaled coordinates. Portal
+    mouse delays have CGO/non-CGO parity.
 - Runtime integration tests cover backend capability selection for
   `sway`/`hyprland`/`wlroots-generic` with explicit skip behavior when runtime
   preconditions are not present.

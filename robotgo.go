@@ -2029,27 +2029,50 @@ func Move(x, y int, displayId ...int) {
 	_ = MoveE(x, y, displayId...)
 }
 
+func moveAbsoluteWithFallback(
+	x, y int,
+	displayID []int,
+	server DisplayServer,
+	native func() (bool, error),
+	portal func(int, int, []int) (bool, error),
+) (usedPortal bool, err error) {
+	ready, nativeErr := native()
+	if nativeErr == nil {
+		return false, nil
+	}
+	if shouldTryRemoteDesktopAfterNative(server, ready, nativeErr) {
+		used, portalErr := portal(x, y, displayID)
+		if used {
+			return true, portalErr
+		}
+	}
+	return false, nativeErr
+}
+
 // MoveE moves the mouse to (x, y) and reports backend availability errors.
 // Prefer it over Move when the caller must know whether injection succeeded.
 func MoveE(x, y int, displayId ...int) error {
 	unlockMouse := lockLinuxMouse()
 	defer unlockMouse()
 	server := selectedDisplayServer()
-	ready, nativeErr := runNativeMouseOperation(server, func() error {
-		x, y = moveScaleLocked(x, y, displayId...)
-		return nativeMouseStatusError(
-			C.moveMouseChecked(C.MMPointInt32Make(C.int32_t(x), C.int32_t(y))),
-			"move mouse",
-		)
-	})
-	if nativeErr != nil {
-		if shouldTryRemoteDesktopAfterNative(server, ready, nativeErr) {
-			used, err := tryRemoteDesktopMoveAbsolute(x, y, displayId)
-			if used {
-				return finishRemoteDesktopMouseEvent(err, 0)
-			}
-		}
-		return nativeErr
+	usedPortal, err := moveAbsoluteWithFallback(
+		x, y, displayId, server,
+		func() (bool, error) {
+			return runNativeMouseOperation(server, func() error {
+				nativeX, nativeY := moveScaleLocked(x, y, displayId...)
+				return nativeMouseStatusError(
+					C.moveMouseChecked(C.MMPointInt32Make(C.int32_t(nativeX), C.int32_t(nativeY))),
+					"move mouse",
+				)
+			})
+		},
+		tryRemoteDesktopMoveAbsolute,
+	)
+	if usedPortal {
+		return finishRemoteDesktopMouseEvent(err, 0)
+	}
+	if err != nil {
+		return err
 	}
 
 	MilliSleep(currentMouseDelay())

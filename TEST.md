@@ -367,6 +367,8 @@ Purpose:
 - Shared RemoteDesktop/ScreenCast negotiation, stream metadata, absolute
   pointer coordinates, optional touch, and restore-token handling
 - High-level CGO and non-CGO fallback dispatch after explicit consent
+- Native-to-portal absolute fallback preserves caller global coordinates even
+  when legacy native scaling is enabled
 - CGO/non-CGO parity for mouse delays and explicit consent-timeout diagnostics
 
 Command:
