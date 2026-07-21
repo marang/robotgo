@@ -9,8 +9,8 @@ Use the following documents as the primary entry points:
 - [Agentic desktop automation plan](plan/agentic-desktop-automation.md) for the
   session, policy, observe-act-verify, and adapter architecture.
 - [Agent adapter and evaluation plan](plan/agent-adapter-evaluation.md) for the
-  local MCP stdio boundary, default-deny policy, privacy projection, and
-  hermetic protocol evidence.
+  local MCP stdio boundary, default-deny policy, visual-query projection,
+  privacy guarantees, and hermetic protocol evidence.
 - [Safe agent visual conditions plan](plan/agent-visual-conditions.md) for
   explicit-observation color search, bounded region waits, quotas, and cleanup.
 - [Wayland status](wayland-tasks.md) for backend support and open Wayland work.

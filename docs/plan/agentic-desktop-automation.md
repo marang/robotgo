@@ -1,6 +1,6 @@
 # Agentic Desktop Automation Plan
 
-Status: Initial architecture proof and MCP adapter completed; visual-condition delivery active
+Status: Initial architecture proof completed; visual-condition MCP projection active
 
 Linear coordination:
 
@@ -145,11 +145,12 @@ orthogonal tool set:
 Add redacted record/replay, a fake driver, and hermetic evaluation tasks before
 claiming reliable autonomous behavior.
 
-The first adapter boundary is now tracked separately in the
-[Agent Adapter and Evaluation Plan](agent-adapter-evaluation.md). Its initial
-LAB-13 slice intentionally exposes only capabilities, observe, act, and close;
-`find` and `wait` remain future semantic-grounding work rather than placeholders
-in the protocol.
+The adapter boundary is tracked separately in the
+[Agent Adapter and Evaluation Plan](agent-adapter-evaluation.md). LAB-13
+established capabilities, observe, act, and close. After the Go condition
+contract was accepted in LAB-14, LAB-15 adds thin find, bounded wait, and
+explicit observation-release projections without moving policy or capture
+ownership into the protocol layer.
 
 ## 4. First executable slices
 
@@ -207,11 +208,12 @@ surface and non-goals.
 
 ### 4.4 Safe visual conditions
 
-Delivery status: active in LAB-14.
+Delivery status: Go contract completed by LAB-14; MCP projection active in LAB-15.
 
-The next Go-first slice adds color search over an explicit retained observation
-and bounded waiting over an explicit capture region. It adds no OCR,
-accessibility, file-backed template, or MCP tool. See the
+The Go-first slice adds color search over an explicit retained observation and
+bounded waiting over an explicit capture region. Its follow-up exposes only a
+thin local MCP projection plus deterministic observation release. Neither
+slice adds OCR, accessibility, or file-backed templates. See the
 [Safe Agent Visual Conditions Plan](agent-visual-conditions.md) for its policy,
 privacy, cleanup, and validation contract.
 

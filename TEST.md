@@ -116,9 +116,10 @@ CGO_ENABLED=0 go test ./agent
 
 The MCP adapter suite uses the official SDK's paired in-memory transports and a
 fake session. It performs real protocol initialization, listing, typed calls,
-cancellation, concurrent close, output-redaction, and transport-cleanup checks
-without reading or changing the developer's desktop. The command tests use only
-private `t.TempDir()` policy fixtures, which test cleanup removes:
+find/wait projection, explicit observation release, cancellation, concurrent
+close, schema rejection, output-redaction, and transport-cleanup checks without
+reading or changing the developer's desktop. The command tests use only private
+`t.TempDir()` policy fixtures, which test cleanup removes:
 
 ```bash
 go test -race ./agent/mcpserver ./cmd/robotgo-mcp
@@ -126,7 +127,9 @@ CGO_ENABLED=0 go test ./agent/mcpserver ./cmd/robotgo-mcp
 ```
 
 No MCP test starts stdio, opens portal consent, captures pixels, injects input,
-or persists protocol data.
+or persists protocol data. Condition fixtures stay in memory, and serialized
+results are checked for target-color, tolerance, pixel, digest, and backend
+payload leakage.
 
 The opt-in runtime path performs one real pointer move to explicit coordinates:
 
