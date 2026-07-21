@@ -9,6 +9,7 @@ passing result.
 | 2026-07-14 | Hermetic Linux | Native screencopy geometry | `cgo,wayland,test` | pass | Negative/positive output origins, clipped and overflowing regions, fractional scaling, all eight output transforms, enclosing-edge crop semantics |
 | 2026-07-11 | Hermetic Linux | ScreenCast/PipeWire | `cgo,pipewire` | pass | Session/request cleanup, FD duplication, repeated consumer lifecycle, crop/fractional scaling, eight transforms, pixel buffer validation, race and lint gates |
 | 2026-07-21 | Sway 1.9, nested headless Ubuntu 24.04 | Native wl_shm screencopy | `cgo,wayland,swayintegration` | pass | [`Sway E2E` run 29857289675](https://github.com/marang/robotgo/actions/runs/29857289675), `native-capture`, artifact `sway-native-capture`; exact synthetic color and 1280x720 geometry remained in memory; no image artifact |
+| 2026-07-21 | Sway 1.9, nested headless Ubuntu 24.04 | Native logical output geometry | `cgo,wayland,swayintegration` | pass | [`Sway E2E` run 29861058126](https://github.com/marang/robotgo/actions/runs/29861058126), `native-output-multi`, artifact `sway-native-output-multi`; exact per-output and aggregate bounds with negative origin, scale 2, and transform 90; no pixels captured |
 | pending | GNOME | ScreenCast/PipeWire | `cgo,pipewire,integration` | no runner | Protected runner label `gnome`; workflow artifact `screencast-gnome` |
 | pending | KDE Plasma | ScreenCast/PipeWire | `cgo,pipewire,integration` | no runner | Protected runner label `kde`; workflow artifact `screencast-kde` |
 

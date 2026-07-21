@@ -789,11 +789,13 @@ above.
 The `Sway E2E` workflow runs a nested Sway 1.9 compositor on an ephemeral
 GitHub-hosted Ubuntu 24.04 runner. Every matrix cell receives a private
 `XDG_RUNTIME_DIR`, the headless wlroots backend, the Pixman renderer, no
-libinput devices, one fixed 1280x720 output, and no X11 display. The five cells
-exercise native input, native capture, Sway window control, output geometry,
-and explicit portal availability. Input targets only a self-owned `wev`
-surface; capture uses a fixed synthetic `swaybg` color and keeps all pixels in
-memory.
+libinput devices, and no X11 display. Five cells retain the fixed single-output
+1280x720 topology for native input, capture, Sway window control, output
+geometry, and explicit portal availability. A sixth `native-output-multi` cell
+adds a second headless output and proves exact public per-output and aggregate
+bounds with a negative origin, scale 2, and a 90-degree transform. Input targets
+only a self-owned `wev` surface; capture uses a fixed synthetic `swaybg` color
+and keeps all pixels in memory.
 
 The workflow runs exactly one tagged test per cell:
 
@@ -804,12 +806,18 @@ go test -count=1 -timeout=2m -tags=wayland,swayintegration . \
 
 Replace the test name with `TestSwayNativeCaptureRuntime`,
 `TestSwayNativeWindowRuntime`, `TestSwayNativeOutputRuntime`, or
-`TestSwayPortalAvailabilityRuntime` for the other cells. The repository-owned
+`TestSwayNativeOutputMultiRuntime` for the native cells, or with
+`TestSwayPortalAvailabilityRuntime` for the availability cell. The
+multi-output topology is a normal 1280x720 output at `(0,0)` plus a physical
+1200x800 output at `(-600,0)` with scale 2 and transform 90; Sway exposes the
+second output as a logical 400x600 rectangle and RobotGo must report aggregate
+bounds `(-600,0) 1880x720`. The repository-owned
 `scripts/run-sway-e2e.sh` wrapper is CI-specific: it verifies the exact commit,
 starts the isolated compositor, runs fail-closed preflight, finalizes only a
 canonical sanitized schema-v1 result, and kills both compositor and test
 process groups before deleting the private runtime directory. A separate
-induced-failure step proves that cleanup path before the output cell runs.
+induced-failure step creates the multi-output topology and proves that cleanup
+path before the multi-output cell runs.
 
 Only `evidence.json`, `test.log`, and `summary.md` are uploaded. Supervisor
 output, raw test output, sockets, fixture logs, screen pixels, and portal

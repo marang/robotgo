@@ -91,6 +91,7 @@ func TestSwayCellsHaveFixedEvidenceIdentity(t *testing.T) {
 		{CellNativeCapture, swayCaptureTestName},
 		{CellNativeWindow, swayWindowTestName},
 		{CellNativeOutput, swayOutputTestName},
+		{CellNativeOutputMulti, swayOutputMultiTestName},
 		{CellPortalAvailability, swayPortalTestName},
 	} {
 		t.Run(string(tc.cell), func(t *testing.T) {

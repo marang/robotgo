@@ -5,6 +5,12 @@ set -euo pipefail
 readonly runtime_prefix='robotgo-sway-runtime'
 readonly required_width=1280
 readonly required_height=720
+readonly secondary_mode_width=1200
+readonly secondary_mode_height=800
+readonly secondary_x=-600
+readonly secondary_y=0
+readonly secondary_scale=2
+readonly secondary_transform=90
 
 if (($# != 1)); then
 	printf 'usage: %s <evidence-cell>\n' "$0" >&2
@@ -12,11 +18,16 @@ if (($# != 1)); then
 fi
 
 readonly cell="$1"
+output_count=1
 case "$cell" in
 	native-input) test_name='TestSwayNativeInputRuntime' ;;
 	native-capture) test_name='TestSwayNativeCaptureRuntime' ;;
 	native-window) test_name='TestSwayNativeWindowRuntime' ;;
 	native-output) test_name='TestSwayNativeOutputRuntime' ;;
+	native-output-multi)
+		test_name='TestSwayNativeOutputMultiRuntime'
+		output_count=2
+		;;
 	portal-availability) test_name='TestSwayPortalAvailabilityRuntime' ;;
 	*)
 		printf 'unsupported Sway evidence cell: %s\n' "$cell" >&2
@@ -24,6 +35,7 @@ case "$cell" in
 		;;
 esac
 readonly test_name
+readonly output_count
 
 : "${RUNNER_TEMP:?RUNNER_TEMP is required}"
 : "${GITHUB_WORKFLOW:?GITHUB_WORKFLOW is required}"
@@ -126,27 +138,72 @@ if [[ -z "${WAYLAND_DISPLAY:-}" || -z "${SWAYSOCK:-}" ]]; then
 	exit 1
 fi
 
-output_name="$(
-	swaymsg -t get_outputs -r |
-		jq -er '[.[] | select(.active)] | select(length == 1) | .[0].name'
-)"
-readonly output_name
-if [[ ! "$output_name" =~ ^HEADLESS-[0-9]+$ ]]; then
-	printf 'isolated Sway exposed an unexpected output\n' >&2
-	exit 1
+if ((output_count == 2)); then
+	swaymsg create_output >/dev/null
 fi
-swaymsg output "$output_name" mode "${required_width}x${required_height}" >/dev/null
+output_names=()
 for _ in {1..50}; do
-	geometry="$(
+	mapfile -t output_names < <(
 		swaymsg -t get_outputs -r |
-			jq -er --arg name "$output_name" \
-				'.[] | select(.active and .name == $name) | "\(.rect.width)x\(.rect.height)"'
-	)"
-	[[ "$geometry" == "${required_width}x${required_height}" ]] && break
+			jq -er --argjson count "$output_count" \
+				'[.[] | select(.active)] | select(length == $count) | sort_by(.name) | .[].name'
+	)
+	((${#output_names[@]} == output_count)) && break
 	sleep 0.05
 done
-if [[ "${geometry:-}" != "${required_width}x${required_height}" ]]; then
-	printf 'isolated Sway output geometry did not become ready\n' >&2
+if ((${#output_names[@]} != output_count)); then
+	printf 'isolated Sway output count did not become ready\n' >&2
+	exit 1
+fi
+for output_name in "${output_names[@]}"; do
+	if [[ ! "$output_name" =~ ^HEADLESS-[0-9]+$ ]]; then
+		printf 'isolated Sway exposed an unexpected output\n' >&2
+		exit 1
+	fi
+done
+readonly output_names
+readonly primary_output="${output_names[0]}"
+swaymsg \
+	"output $primary_output mode ${required_width}x${required_height} pos 0 0 scale 1 transform normal" \
+	>/dev/null
+if ((output_count == 2)); then
+	readonly secondary_output="${output_names[1]}"
+	swaymsg \
+		"output $secondary_output mode ${secondary_mode_width}x${secondary_mode_height} pos $secondary_x $secondary_y scale $secondary_scale transform $secondary_transform" \
+		>/dev/null
+fi
+topology_ready=0
+for _ in {1..50}; do
+	topology="$(
+		swaymsg -t get_outputs -r |
+			jq -ec '[.[] | select(.active) | {name, rect, scale, transform}] | sort_by(.name)'
+	)"
+	if ((output_count == 1)); then
+		jq -e --arg primary "$primary_output" \
+			--argjson width "$required_width" --argjson height "$required_height" \
+			'length == 1 and .[0].name == $primary and
+			 .[0].rect == {x: 0, y: 0, width: $width, height: $height} and
+			 .[0].scale == 1 and .[0].transform == "normal"' \
+			<<<"$topology" >/dev/null && topology_ready=1
+	else
+		jq -e --arg primary "$primary_output" --arg secondary "$secondary_output" \
+			--argjson width "$required_width" --argjson height "$required_height" \
+			--argjson secondary_x "$secondary_x" --argjson secondary_y "$secondary_y" \
+			--argjson secondary_width "$((secondary_mode_height / secondary_scale))" \
+			--argjson secondary_height "$((secondary_mode_width / secondary_scale))" \
+			--argjson secondary_scale "$secondary_scale" --arg secondary_transform "$secondary_transform" \
+			'length == 2 and .[0].name == $primary and .[1].name == $secondary and
+			 .[0].rect == {x: 0, y: 0, width: $width, height: $height} and
+			 .[0].scale == 1 and .[0].transform == "normal" and
+			 .[1].rect == {x: $secondary_x, y: $secondary_y, width: $secondary_width, height: $secondary_height} and
+			 .[1].scale == $secondary_scale and .[1].transform == $secondary_transform' \
+			<<<"$topology" >/dev/null && topology_ready=1
+	fi
+	((topology_ready == 1)) && break
+	sleep 0.05
+done
+if ((topology_ready != 1)); then
+	printf 'isolated Sway output topology did not become ready\n' >&2
 	exit 1
 fi
 
@@ -177,7 +234,8 @@ go run ./internal/cmd/compositorevidence preflight \
 	-workflow "$GITHUB_WORKFLOW" \
 	-run-id "$GITHUB_RUN_ID" \
 	-run-attempt "$GITHUB_RUN_ATTEMPT" \
-	-output-count 1 \
+	-output-count "$output_count" \
+	-minimum-outputs "$output_count" \
 	-require-headless-sway
 
 setsid go test -count=1 -timeout=2m -tags=wayland,swayintegration . \

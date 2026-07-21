@@ -221,6 +221,24 @@ func TestPreflightNativeSwayDoesNotRequirePortalOrPipeWire(t *testing.T) {
 	}
 }
 
+func TestPreflightMultiOutputCellRequiresExactTopology(t *testing.T) {
+	t.Parallel()
+	config := validPreflightConfig(LaneWlroots, CellNativeOutputMulti)
+	config.OutputCount = 1
+	config.MinimumOutputCount = 1
+	_, err := preflight(context.Background(), config, validDependencies(&fakeProbe{}))
+	if err == nil || !strings.Contains(err.Error(), "exactly two outputs") {
+		t.Fatalf("preflight error = %v, want exact multi-output topology rejection", err)
+	}
+
+	report := validReport(LaneWlroots, CellNativeOutputMulti)
+	report.Desktop.OutputCount = 1
+	if err := validatePreflightReport(report); err == nil ||
+		!strings.Contains(err.Error(), "exactly two outputs") {
+		t.Fatalf("report validation error = %v, want exact multi-output topology rejection", err)
+	}
+}
+
 func TestPreflightHeadlessSwayRejectsPhysicalInputAndOutput(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct {

@@ -1,6 +1,6 @@
 # Protected Real-Compositor Evidence Plan
 
-Status: Delivery slice 1 implemented; protected runner provisioning is next
+Status: Hosted wlroots single- and multi-output proof delivered; protected portal runners are next
 
 Linear project:
 [RobotGo | P005 | Protected Compositor Evidence](https://linear.app/riotbox/project/robotgo-or-p005-or-protected-compositor-evidence-d66467e3b5ee)
@@ -237,11 +237,15 @@ green.
    both portal-workflow integrations.
 2. **Implemented for the single-output proof:** run native input, capture,
    window, output, and portal-availability cells in isolated hosted Sway and
-   retain sanitized exact-commit evidence. Multi-output Sway proof remains a
-   later P005 slice.
-3. Provision and prove GNOME RemoteDesktop and ScreenCast.
-4. Provision and prove KDE RemoteDesktop and ScreenCast.
-5. Add promoted checks to release evidence and, when operationally reliable,
+   retain sanitized exact-commit evidence.
+3. **Implemented:** run a distinct isolated hosted Sway multi-output cell with
+   negative origin, scale, transform, exact logical per-output bounds,
+   aggregate bounds, and induced-failure cleanup evidence. Retained evidence:
+   [`Sway E2E` run 29861058126](https://github.com/marang/robotgo/actions/runs/29861058126).
+4. Provision and prove GNOME RemoteDesktop and ScreenCast when protected
+   ephemeral runner ownership and operator consent are available.
+5. Provision and prove KDE RemoteDesktop and ScreenCast under the same gate.
+6. Add promoted checks to release evidence and, when operationally reliable,
    branch protection; update the versioned compatibility matrices.
 
 Create Linear issues only when the next slice has concrete runner ownership and
