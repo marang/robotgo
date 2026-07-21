@@ -832,10 +832,11 @@ go run ./examples/agent_conditions -allow-capture -mode wait \
 ### Local MCP adapter for agents
 
 `robotgo-mcp` exposes the policy-gated session to a local MCP client over
-stdio. It has four focused tools: `robotgo_capabilities`, `robotgo_observe`,
-`robotgo_act`, and `robotgo_close`. With no policy flag it is diagnostics-only:
-capture, display access, and desktop mutation are denied. `robotgo_act` is also
-dry-run by default, so actual input needs both an explicit policy and
+stdio. It has seven focused tools: `robotgo_capabilities`, `robotgo_observe`,
+`robotgo_find`, `robotgo_wait`, `robotgo_release_observation`, `robotgo_act`,
+and `robotgo_close`. With no policy flag it is diagnostics-only: capture,
+visual queries, display access, and desktop mutation are denied. `robotgo_act`
+is also dry-run by default, so actual input needs both an explicit policy and
 `mode: "execute"`; normal session confirmation rules still apply.
 
 Run it directly from the repository:
@@ -878,13 +879,68 @@ robotgo-mcp -policy /absolute/path/to/policy.json
 Policy input is size-bounded, rejects unknown fields and trailing JSON, and is
 never read from stdin. MCP observation output includes sanitized diagnostics
 and optional geometry, but never pixels or internal capture digests. Session
-close zeroes any in-memory captures. See the
-[adapter and evaluation plan](docs/plan/agent-adapter-evaluation.md) for the
-security boundary and intentionally deferred tools.
-The Go session catalog already reports `desktop.find-color` and
-`desktop.wait-color`, but the accepted MCP boundary intentionally does not yet
-expose `robotgo_find` or `robotgo_wait`; that protocol expansion follows after
-the Go contract's cleanup and privacy evidence is accepted.
+close zeroes any in-memory captures.
+
+Visual tools use the same explicit, bounded model as the Go API:
+
+1. `robotgo_observe` can create one policy-approved in-memory capture.
+2. `robotgo_find` searches only the supplied live observation ID and never
+   captures implicitly.
+3. `robotgo_wait` polls only the supplied region, with attempts, interval,
+   timeout, display, query, observation, and pixel limits fixed by policy.
+4. A matched wait retains one observation for follow-up queries. Call
+   `robotgo_release_observation` as soon as it is no longer needed; closing the
+   session remains the final cleanup boundary.
+
+For example, a policy can opt into bounded visual queries on display 0 without
+granting input control:
+
+```json
+{
+  "allowed_operations": [
+    "desktop.observe",
+    "desktop.find-color",
+    "desktop.wait-color"
+  ],
+  "allowed_display_ids": [0],
+  "max_actions": 0,
+  "max_text_runes": 0,
+  "max_observations": 20,
+  "max_capture_pixels": 76800,
+  "max_queries": 20,
+  "wait_attempts": 5,
+  "wait_interval_ms": 250,
+  "wait_timeout_ms": 5000
+}
+```
+
+Find/wait results contain match state, global coordinates, attempts, and
+observation lineage only. Target colors, tolerance, pixels, capture digests,
+and raw backend errors never cross the MCP output boundary. See the
+[adapter plan](docs/plan/agent-adapter-evaluation.md) and
+[visual-condition plan](docs/plan/agent-visual-conditions.md) for the complete
+security contract.
+
+The condition is RGB with a normalized Euclidean tolerance from `0` (exact)
+through `1` (maximum distance). Typical tool arguments are:
+
+```json
+{"observation_id":"observation-7","condition":{"red":0,"green":120,"blue":255,"tolerance":0.05}}
+```
+
+```json
+{"region":{"x":0,"y":0,"width":320,"height":240,"display_id":0},"condition":{"red":0,"green":120,"blue":255,"tolerance":0.05}}
+```
+
+Release the observation ID returned by a matched wait with:
+
+```json
+{"observation_id":"observation-8"}
+```
+
+Release is cleanup-only and requires no additional desktop permission. Tool
+listing and annotations describe the protocol surface; the immutable session
+catalog and policy remain the authorization source of truth.
 
 ## Examples
 

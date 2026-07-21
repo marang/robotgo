@@ -1,12 +1,13 @@
 # Safe Agent Visual Conditions Plan
 
-Status: Initial Go contract active in LAB-14
+Status: Go contract completed by LAB-14; MCP projection active in LAB-15
 
 Linear coordination:
 
 - Project: [`RobotGo | P004 | Safe Visual Conditions`](https://linear.app/riotbox/project/robotgo-or-p004-or-safe-visual-conditions-9eebd34245ff)
 - Project ID: `94e14e7f-81c0-4808-b932-a8211ece1b8b`
 - Issue: [`LAB-14 — Add bounded visual find and wait conditions`](https://linear.app/riotbox/issue/LAB-14/add-bounded-visual-find-and-wait-conditions)
+- Issue: [`LAB-15 — Expose safe visual find and wait through MCP`](https://linear.app/riotbox/issue/LAB-15/expose-safe-visual-find-and-wait-through-mcp)
 
 ## Outcome
 
@@ -46,10 +47,12 @@ requires the same capture/display limits and positive bounded wait settings.
 Both share `MaxQueries`; wait attempts additionally consume the existing
 `MaxObservations` budget.
 
-The local MCP adapter remains at its accepted four-tool boundary. It may report
-the new Go operations in the session catalog, but it does not yet expose
-`robotgo_find` or `robotgo_wait`. Protocol expansion is a later P004 slice
-after this API and its privacy/cleanup evidence are accepted.
+LAB-15 projects the accepted contract through `robotgo_find` and
+`robotgo_wait`; both delegate directly to these session methods. The adapter
+does not reimplement matching, capture, authorization, confirmation, quotas,
+audit, cancellation, or cleanup. `robotgo_release_observation` provides the
+explicit zero-and-remove boundary for a matched wait observation without
+requiring the client to close the whole session.
 
 ## Privacy and safety constraints
 
@@ -69,13 +72,13 @@ observations, bounded exhaustion, timeout, payload-free audit, audit failures,
 and source/retained-buffer cleanup. The opt-in agent capture integration path
 also exercises both operations without writing a desktop artifact.
 
-## Non-goals for LAB-14
+## Non-goals
 
 - OCR or accessibility-tree queries
 - bitmap/template files or caller-supplied screenshot persistence
 - implicit full-screen capture or unbounded polling
 - window/process conditions
-- MCP tool-surface expansion
+- semantic image matching or duplicated protocol-layer condition logic
 
 ## Exit criteria
 
@@ -85,3 +88,4 @@ also exercises both operations without writing a desktop artifact.
 - default, race, non-CGO, lint, vet, tagged capture, and integration compile
   gates pass
 - GitHub CI and configured review surfaces are green with no unresolved finding
+- the MCP projection exposes only sanitized results and deterministic release

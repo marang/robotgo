@@ -20,12 +20,18 @@ type fakeSession struct {
 	catalog     agent.OperationCatalog
 	observation *agent.Observation
 	observeFunc func(context.Context, agent.ObserveRequest) (*agent.Observation, error)
+	findFunc    func(context.Context, agent.FindColorRequest) (agent.FindColorResult, error)
+	waitFunc    func(context.Context, agent.WaitColorRequest) (agent.WaitColorResult, error)
+	releaseFunc func(string) error
 	dryRunFunc  func(context.Context, agent.ActionRequest) (agent.ActionResult, error)
 	executeFunc func(context.Context, agent.ActionRequest) (agent.ActionResult, error)
 	closeFunc   func() error
 
 	dryRuns  int
 	executes int
+	finds    int
+	waits    int
+	releases int
 	closes   int
 }
 
@@ -36,6 +42,36 @@ func (f *fakeSession) Observe(ctx context.Context, request agent.ObserveRequest)
 		return f.observeFunc(ctx, request)
 	}
 	return f.observation, nil
+}
+
+func (f *fakeSession) FindColor(ctx context.Context, request agent.FindColorRequest) (agent.FindColorResult, error) {
+	f.mu.Lock()
+	f.finds++
+	f.mu.Unlock()
+	if f.findFunc != nil {
+		return f.findFunc(ctx, request)
+	}
+	return agent.FindColorResult{}, errors.New("unused")
+}
+
+func (f *fakeSession) WaitColor(ctx context.Context, request agent.WaitColorRequest) (agent.WaitColorResult, error) {
+	f.mu.Lock()
+	f.waits++
+	f.mu.Unlock()
+	if f.waitFunc != nil {
+		return f.waitFunc(ctx, request)
+	}
+	return agent.WaitColorResult{}, errors.New("unused")
+}
+
+func (f *fakeSession) ReleaseObservation(id string) error {
+	f.mu.Lock()
+	f.releases++
+	f.mu.Unlock()
+	if f.releaseFunc != nil {
+		return f.releaseFunc(id)
+	}
+	return nil
 }
 
 func (f *fakeSession) DryRun(ctx context.Context, request agent.ActionRequest) (agent.ActionResult, error) {
@@ -72,6 +108,12 @@ func (f *fakeSession) counts() (dryRuns, executes, closes int) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return f.dryRuns, f.executes, f.closes
+}
+
+func (f *fakeSession) conditionCounts() (finds, waits, releases int) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.finds, f.waits, f.releases
 }
 
 type protocolClient struct {
@@ -140,7 +182,7 @@ func serializedResult(t *testing.T, result *mcp.CallToolResult) string {
 	return string(data)
 }
 
-func TestProtocolInitializesAndListsOnlyFourTools(t *testing.T) {
+func TestProtocolInitializesAndListsFocusedTools(t *testing.T) {
 	fake := &fakeSession{catalog: agent.OperationCatalog{SchemaVersion: agent.CatalogSchemaVersion}}
 	server := newProtocolServer(t, fake)
 	client := connectProtocol(t, server)
@@ -155,9 +197,23 @@ func TestProtocolInitializesAndListsOnlyFourTools(t *testing.T) {
 		if tool.InputSchema == nil || tool.OutputSchema == nil {
 			t.Errorf("tool %q has incomplete schemas", tool.Name)
 		}
+		switch tool.Name {
+		case ToolFind, ToolWait:
+			if tool.Annotations == nil || !tool.Annotations.ReadOnlyHint {
+				t.Errorf("tool %q is not marked read-only", tool.Name)
+			}
+		case ToolReleaseObservation:
+			if tool.Annotations == nil || !tool.Annotations.IdempotentHint ||
+				tool.Annotations.DestructiveHint == nil || *tool.Annotations.DestructiveHint {
+				t.Errorf("release annotations = %+v", tool.Annotations)
+			}
+		}
 	}
 	slices.Sort(names)
-	want := []string{ToolAct, ToolCapabilities, ToolClose, ToolObserve}
+	want := []string{
+		ToolAct, ToolCapabilities, ToolClose, ToolFind, ToolObserve,
+		ToolReleaseObservation, ToolWait,
+	}
 	slices.Sort(want)
 	if !slices.Equal(names, want) {
 		t.Fatalf("tools = %v, want %v", names, want)
@@ -380,9 +436,16 @@ func TestCloseIsIdempotentAndLaterCallsFailClosed(t *testing.T) {
 		}
 	}
 
-	for _, tool := range []string{ToolCapabilities, ToolObserve, ToolAct} {
+	for _, tool := range []string{ToolCapabilities, ToolObserve, ToolFind, ToolWait, ToolReleaseObservation, ToolAct} {
 		arguments := any(map[string]any{})
-		if tool == ToolAct {
+		switch tool {
+		case ToolFind:
+			arguments = agent.FindColorRequest{ObservationID: "observation-1"}
+		case ToolWait:
+			arguments = agent.WaitColorRequest{Region: agent.CaptureRegion{Width: 1, Height: 1}}
+		case ToolReleaseObservation:
+			arguments = ReleaseObservationInput{ObservationID: "observation-1"}
+		case ToolAct:
 			arguments = ActInput{}
 		}
 		result := callTool(t, client, tool, arguments)

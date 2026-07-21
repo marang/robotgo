@@ -43,6 +43,17 @@ type Session interface {
 	Close() error
 }
 
+// VisualConditionSession is the additive session extension used by the visual
+// tools. Keeping it separate preserves source compatibility for existing
+// Session implementations; implementations without the extension retain the
+// original four-tool surface. *agent.Session implements VisualConditionSession.
+type VisualConditionSession interface {
+	Session
+	FindColor(context.Context, agent.FindColorRequest) (agent.FindColorResult, error)
+	WaitColor(context.Context, agent.WaitColorRequest) (agent.WaitColorResult, error)
+	ReleaseObservation(string) error
+}
+
 // Server binds one process-exclusive agent session to one MCP connection.
 type Server struct {
 	adapter    *adapter
@@ -231,6 +242,10 @@ func (s *Server) registerTools() {
 		Description: "Return sanitized runtime diagnostics and optional bounded capture metadata. Pixels and capture digests never cross MCP.",
 		Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, OpenWorldHint: &openWorld},
 	}, s.observe)
+
+	if _, ok := s.adapter.session.(VisualConditionSession); ok {
+		s.registerConditionTools()
+	}
 
 	mcp.AddTool(s.protocol, &mcp.Tool{
 		Name:        ToolAct,

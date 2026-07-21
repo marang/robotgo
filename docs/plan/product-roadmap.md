@@ -47,8 +47,9 @@ reliability hardening; protected real-desktop evidence remains runner-dependent.
 The completed [Agent Adapter and Evaluation Plan](agent-adapter-evaluation.md)
 provides a local, policy-gated MCP boundary on the agent-session proof. The
 adjacent [Safe Agent Visual Conditions Plan](agent-visual-conditions.md) now
-builds bounded `find` and `wait` semantics in Go before protocol expansion;
-neither effort broadens platform backend support or replaces phase exit gates.
+has accepted bounded `find` and `wait` semantics in Go and is adding a thin
+privacy-preserving MCP projection; neither effort broadens platform backend
+support or replaces phase exit gates.
 
 ## Delivery Order
 
