@@ -47,8 +47,8 @@ func (probe *fakeProbe) output(
 	case "rpm":
 		return []byte("1.2.3-1\n"), nil
 	case "busctl":
-		if len(args) >= 2 && args[len(args)-2] == "list" {
-			return []byte(args[len(args)-1] + " 123 portal-user :1.42 session - -\n"), nil
+		if len(args) >= 2 && args[1] == "call" {
+			return []byte("s \":1.42\"\n"), nil
 		}
 		if args[len(args)-1] == availableSourcesProperty {
 			return []byte("u 3\n"), nil
@@ -232,10 +232,10 @@ func TestPreflightWlrootsRecordsPortalWithoutNameOwnerAsUnavailable(t *testing.T
 	probe := &fakeProbe{}
 	dependencies := validDependencies(probe)
 	dependencies.output = func(ctx context.Context, name string, args ...string) ([]byte, error) {
-		if name == "busctl" && args[len(args)-2] == "list" && args[len(args)-1] == portalBusName {
-			return nil, nil
+		if name == "busctl" && args[1] == "call" && args[len(args)-1] == portalBusName {
+			return nil, &probeError{failure: probeFailureUnavailable}
 		}
-		if name == "busctl" && args[len(args)-2] != "list" {
+		if name == "busctl" && args[1] == "get-property" {
 			return nil, &probeError{failure: probeFailureUnavailable}
 		}
 		return probe.output(ctx, name, args...)
@@ -273,7 +273,7 @@ func TestPreflightWlrootsPortalAvailabilityRejectsProbeFailure(t *testing.T) {
 	probe := &fakeProbe{}
 	dependencies := validDependencies(probe)
 	dependencies.output = func(ctx context.Context, name string, args ...string) ([]byte, error) {
-		if name == "busctl" && args[len(args)-2] != "list" {
+		if name == "busctl" && args[1] == "get-property" {
 			return nil, errors.New("probe transport failed")
 		}
 		return probe.output(ctx, name, args...)
@@ -355,7 +355,7 @@ func TestPreflightRejectsUnavailableSessionBus(t *testing.T) {
 	probe := &fakeProbe{}
 	dependencies := validDependencies(probe)
 	dependencies.output = func(ctx context.Context, name string, args ...string) ([]byte, error) {
-		if name == "busctl" && args[len(args)-1] == "org.freedesktop.DBus" {
+		if name == "busctl" && args[1] == "call" && args[len(args)-1] == "org.freedesktop.DBus" {
 			return nil, errors.New("private bus failure")
 		}
 		return probe.output(ctx, name, args...)
@@ -375,7 +375,7 @@ func TestProbePortalRejectsMalformedRequiredProperty(t *testing.T) {
 	probe := &fakeProbe{}
 	dependencies := validDependencies(probe)
 	dependencies.output = func(ctx context.Context, name string, args ...string) ([]byte, error) {
-		if name == "busctl" && args[len(args)-2] != "list" {
+		if name == "busctl" && args[1] == "get-property" {
 			return []byte("not-a-variant\n"), nil
 		}
 		return probe.output(ctx, name, args...)

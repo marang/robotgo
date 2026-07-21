@@ -541,17 +541,21 @@ func probeBusName(ctx context.Context, probe commandProbe, busName string) error
 		ctx,
 		"busctl",
 		"--user",
-		"--no-pager",
-		"--no-legend",
-		"list",
+		"call",
+		"org.freedesktop.DBus",
+		"/org/freedesktop/DBus",
+		"org.freedesktop.DBus",
+		"GetNameOwner",
+		"s",
 		busName,
 	)
 	if err != nil {
 		return err
 	}
 	fields := strings.Fields(string(output))
-	if len(fields) == 0 || fields[0] != busName {
-		return &probeError{failure: probeFailureUnavailable}
+	if len(fields) != 2 || fields[0] != "s" ||
+		len(fields[1]) < 3 || fields[1][0] != '"' || fields[1][len(fields[1])-1] != '"' {
+		return errors.New("D-Bus name owner response is malformed")
 	}
 	return nil
 }
