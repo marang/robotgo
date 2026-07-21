@@ -105,6 +105,7 @@ func TestSwayNativeInputRuntime(t *testing.T) {
 	if err := KeyboardReady(); err != nil {
 		t.Fatalf("native keyboard readiness failed: %v", err)
 	}
+	waitForFixtureEvents(t, fixture.log, []string{"wl_keyboard] enter:"})
 	if err := MoveE(swayOutputWidth/2, swayOutputHeight/2); err != nil {
 		t.Fatalf("native absolute pointer motion failed: %v", err)
 	}
@@ -333,12 +334,18 @@ func waitForNoSwayInputs(t *testing.T) {
 
 func startSwayFixture(t *testing.T) *swayFixture {
 	t.Helper()
-	if _, err := exec.LookPath("wev"); err != nil {
-		t.Fatalf("wev fixture is unavailable: %v", err)
+	for _, executable := range []string{"stdbuf", "wev"} {
+		if _, err := exec.LookPath(executable); err != nil {
+			t.Fatalf("%s fixture dependency is unavailable: %v", executable, err)
+		}
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	log := &lockedBoundedBuffer{maximum: maxFixtureLogBytes}
-	command := exec.CommandContext(ctx, "wev", "-f", "wl_pointer", "-f", "wl_keyboard")
+	command := exec.CommandContext(
+		ctx,
+		"stdbuf", "-oL", "-eL",
+		"wev", "-f", "wl_pointer", "-f", "wl_keyboard",
+	)
 	command.Stdout = log
 	command.Stderr = log
 	if err := command.Start(); err != nil {
@@ -388,21 +395,21 @@ func findSwayFixture(node swayFixtureNode) *swayFixtureNode {
 func waitForFixtureEvents(t *testing.T, log *lockedBoundedBuffer, patterns []string) {
 	t.Helper()
 	deadline := time.Now().Add(swayFixtureTimeout)
+	missing := make([]string, 0, len(patterns))
 	for time.Now().Before(deadline) {
 		output := log.String()
-		complete := true
+		missing = missing[:0]
 		for _, pattern := range patterns {
 			if !strings.Contains(output, pattern) {
-				complete = false
-				break
+				missing = append(missing, pattern)
 			}
 		}
-		if complete {
+		if len(missing) == 0 {
 			return
 		}
 		time.Sleep(25 * time.Millisecond)
 	}
-	t.Fatal("self-owned fixture did not observe every generated input class")
+	t.Fatalf("self-owned fixture is missing fixed event classes: %q", missing)
 }
 
 func (fixture *swayFixture) close(t *testing.T, alreadyClosed bool) {

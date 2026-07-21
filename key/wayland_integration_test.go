@@ -485,7 +485,7 @@ func TestWaylandKeyboardSelectsDeterministicCapableSeatAndCleansAll(t *testing.T
 	waitForMockKeyboardResourceCleanup(t, 3, 0)
 }
 
-func TestWaylandKeyboardRejectsSeatsWithoutKeyboardCapability(t *testing.T) {
+func TestWaylandKeyboardAcceptsSeatWithoutPhysicalKeyboardCapability(t *testing.T) {
 	dir := t.TempDir()
 	sock := "rg-nocap"
 	t.Setenv("XDG_RUNTIME_DIR", dir)
@@ -498,20 +498,64 @@ func TestWaylandKeyboardRejectsSeatsWithoutKeyboardCapability(t *testing.T) {
 	t.Cleanup(closeWaylandKeyboardForTest)
 	waitForMockKeyboardServerReady(t, done, time.Second)
 
+	if rc := waylandKeyboardReadyForTest(); rc != 0 {
+		stopMockKeyboardServer()
+		t.Fatalf("device-less Wayland seat readiness failed with rc=%d", rc)
+	}
+	if got := waylandKeyboardLastErrorForTest(); got != 0 {
+		stopMockKeyboardServer()
+		t.Fatalf("device-less Wayland seat last error=%d, want 0", got)
+	}
+	if rc := syncWaylandKeyboardForTest(); rc < 0 {
+		stopMockKeyboardServer()
+		t.Fatalf("device-less Wayland initial synchronization failed with rc=%d", rc)
+	}
+	if got := mockKeyboardSelectedSeat(); got != 0 {
+		stopMockKeyboardServer()
+		t.Fatalf("device-less Wayland selected seat=%d, want 0", got)
+	}
+	if rc := sendExactTextForTest("a"); rc != 0 {
+		stopMockKeyboardServer()
+		t.Fatalf("device-less Wayland input failed with rc=%d", rc)
+	}
+	if rc := syncWaylandKeyboardForTest(); rc < 0 {
+		stopMockKeyboardServer()
+		t.Fatalf("device-less Wayland synchronization failed with rc=%d", rc)
+	}
+	if got := mockKeyboardKeyEvents(); got != 2 {
+		stopMockKeyboardServer()
+		t.Fatalf("device-less Wayland key events=%d, want 2", got)
+	}
+	closeWaylandKeyboardForTest()
+	waitForMockKeyboardResourceCleanup(t, 2, 0)
+}
+
+func TestWaylandKeyboardRejectsMissingSeat(t *testing.T) {
+	dir := t.TempDir()
+	sock := "rg-no-seat"
+	t.Setenv("XDG_RUNTIME_DIR", dir)
+	t.Setenv("WAYLAND_DISPLAY", sock)
+	t.Setenv("DISPLAY", "")
+
+	done := make(chan struct{})
+	startMockKeyboardServerWithSeats(sock, 0, 3000, 0, 0, done)
+	t.Cleanup(func() { waitForMockKeyboardServerCleanup(t, done) })
+	t.Cleanup(closeWaylandKeyboardForTest)
+	waitForMockKeyboardServerReady(t, done, time.Second)
+
 	if rc := waylandKeyboardReadyForTest(); rc == 0 {
 		stopMockKeyboardServer()
-		t.Fatal("Wayland readiness accepted seats without keyboard capability")
+		t.Fatal("Wayland readiness accepted a compositor without a seat")
 	}
 	const noSeatError = 2
 	if got := waylandKeyboardLastErrorForTest(); got != noSeatError {
 		stopMockKeyboardServer()
-		t.Fatalf("Wayland last error for non-keyboard seats=%d, want %d", got, noSeatError)
+		t.Fatalf("missing-seat Wayland last error=%d, want %d", got, noSeatError)
 	}
 	if got := mockKeyboardSelectedSeat(); got != ^uint32(0) {
 		stopMockKeyboardServer()
-		t.Fatalf("virtual keyboard was created for non-keyboard seat %d", got)
+		t.Fatalf("virtual keyboard was created for missing seat %d", got)
 	}
-	waitForMockKeyboardResourceCleanup(t, 2, 0)
 }
 
 func TestWaylandKeyboardProcessesRuntimeSeatChanges(t *testing.T) {
@@ -576,17 +620,21 @@ func TestWaylandKeyboardProcessesRuntimeSeatChanges(t *testing.T) {
 	}
 
 	// Removing the remaining capable global must not leave a stale proxy. The
-	// same readiness call consumes global_remove and reports the real topology.
+	// same readiness call consumes global_remove and falls back to the live
+	// device-less seat.
 	generation = removeMockKeyboardSeatGlobal(2)
 	waitForMockKeyboardControl(t, generation)
-	if rc := waylandKeyboardReadyForTest(); rc == 0 {
+	if rc := waylandKeyboardReadyForTest(); rc != 0 {
 		stopMockKeyboardServer()
-		t.Fatal("readiness accepted a removed selected seat")
+		t.Fatalf("readiness did not fall back to a device-less seat: rc=%d", rc)
 	}
-	const noSeatError = 2
-	if got := waylandKeyboardLastErrorForTest(); got != noSeatError {
+	if rc := syncWaylandKeyboardForTest(); rc < 0 {
 		stopMockKeyboardServer()
-		t.Fatalf("last error after selected global removal=%d, want %d", got, noSeatError)
+		t.Fatalf("device-less fallback synchronization failed with rc=%d", rc)
+	}
+	if got := mockKeyboardSelectedSeat(); got != 0 {
+		stopMockKeyboardServer()
+		t.Fatalf("seat after capable global removal=%d, want device-less seat 0", got)
 	}
 
 	// A later capability change is visible to a fresh connection and restores

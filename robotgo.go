@@ -374,7 +374,7 @@ func GetLinuxCapabilities() LinuxCapabilities {
 				Available: true,
 				Fallback:  false,
 				Backend:   "wayland-virtual-keyboard",
-				Reason:    "zwp_virtual_keyboard_manager_v1 and a keyboard seat are available",
+				Reason:    "zwp_virtual_keyboard_manager_v1 and a Wayland seat are available",
 				Notes:     "keyboard injection targets the focused Wayland surface",
 			}
 		} else if portalErr := RemoteDesktopInputReady(RemoteDesktopKeyboard); portalErr == nil {
