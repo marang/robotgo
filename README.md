@@ -748,6 +748,9 @@ move/click/text requests, and sanitized structured results. Its catalog reports
 that the underlying input backend remains process-global and that cancellation
 is currently guaranteed before dispatch, not during a synchronous OS input
 call. Direct callers of legacy RobotGo APIs remain outside this exclusivity.
+For pointer moves, `AllowedDisplayIDs` fails closed: the selected display must
+be allowed and the global target coordinates must fall within its live bounds.
+If display geometry cannot be resolved, no input is injected.
 
 The example is validation-only by default and never injects input unless
 `-act` is supplied explicitly:

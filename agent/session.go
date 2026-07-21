@@ -13,6 +13,7 @@ import (
 )
 
 type inputDriver interface {
+	DisplayBounds(displayID int) (displayBounds, error)
 	Move(x, y, displayID int) error
 	Click(button MouseButton, double bool) error
 	TypeText(text string) error
@@ -20,6 +21,10 @@ type inputDriver interface {
 
 type robotGoDriver struct{}
 
+func (robotGoDriver) DisplayBounds(displayID int) (displayBounds, error) {
+	x, y, width, height, err := robotgo.GetDisplayBoundsE(displayID)
+	return displayBounds{x: x, y: y, width: width, height: height}, err
+}
 func (robotGoDriver) Move(x, y, displayID int) error { return robotgo.MoveE(x, y, displayID) }
 func (robotGoDriver) Click(button MouseButton, double bool) error {
 	return robotgo.ClickE(string(button), double)
@@ -156,6 +161,25 @@ func (s *Session) run(ctx context.Context, request ActionRequest, dryRun bool) (
 	if s.used >= s.policy.MaxActions {
 		return actionFailure(id, request.Operation, started, ErrorPolicyDenied, "agent policy action limit reached", ErrPolicyDenied)
 	}
+	if request.Move != nil {
+		if err := s.validateMoveTarget(*request.Move); err != nil {
+			if errors.Is(err, ErrPolicyDenied) {
+				return actionFailure(id, request.Operation, started, ErrorPolicyDenied, "agent policy denied the action", err)
+			}
+			code, message := classifyBackendError(err)
+			result, actionErr := actionFailure(id, request.Operation, started, code, message, err)
+			result.Backend = capability.Backend
+			return result, actionErr
+		}
+	}
+	if err := ctx.Err(); err != nil {
+		return contextFailure(ctx, id, request.Operation, started)
+	}
+	select {
+	case <-s.ctx.Done():
+		return actionFailure(id, request.Operation, started, ErrorSessionClosed, "agent session is closed", ErrSessionClosed)
+	default:
+	}
 	if dryRun {
 		return ActionResult{
 			ActionID: id, Operation: request.Operation, Status: ActionPlanned,
@@ -173,6 +197,32 @@ func (s *Session) run(ctx context.Context, request ActionRequest, dryRun bool) (
 		ActionID: id, Operation: request.Operation, Status: ActionSucceeded,
 		Backend: capability.Backend, DurationMillis: time.Since(started).Milliseconds(),
 	}, nil
+}
+
+type displayBounds struct {
+	x      int
+	y      int
+	width  int
+	height int
+}
+
+func (b displayBounds) contains(x, y int) bool {
+	return containsAxis(x, b.x, b.width) && containsAxis(y, b.y, b.height)
+}
+
+func containsAxis(value, minimum, size int) bool {
+	return size > 0 && value >= minimum && uint(value)-uint(minimum) < uint(size)
+}
+
+func (s *Session) validateMoveTarget(move MoveAction) error {
+	bounds, err := s.driver.DisplayBounds(move.DisplayID)
+	if err != nil {
+		return err
+	}
+	if !bounds.contains(move.X, move.Y) {
+		return ErrPolicyDenied
+	}
+	return nil
 }
 
 func (s *Session) capability(operation Operation) (OperationCapability, bool) {
@@ -267,6 +317,6 @@ func classifyBackendError(err error) (ErrorCode, string) {
 	case errors.Is(err, context.Canceled):
 		return ErrorCanceled, "backend action canceled"
 	default:
-		return ErrorBackendFailure, "desktop backend action failed"
+		return ErrorBackendFailure, "desktop backend operation failed"
 	}
 }

@@ -18,11 +18,43 @@ type driverCall struct {
 }
 
 type fakeDriver struct {
-	mu      sync.Mutex
-	calls   []driverCall
-	err     error
-	started chan struct{}
-	release chan struct{}
+	mu        sync.Mutex
+	calls     []driverCall
+	err       error
+	bounds    map[int]displayBounds
+	boundsErr error
+	boundsHit chan struct{}
+	boundsGo  chan struct{}
+	started   chan struct{}
+	release   chan struct{}
+}
+
+func (d *fakeDriver) DisplayBounds(displayID int) (displayBounds, error) {
+	if d.boundsHit != nil {
+		select {
+		case d.boundsHit <- struct{}{}:
+		default:
+		}
+	}
+	if d.boundsGo != nil {
+		<-d.boundsGo
+	}
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if d.boundsErr != nil {
+		return displayBounds{}, d.boundsErr
+	}
+	if bounds, ok := d.bounds[displayID]; ok {
+		return bounds, nil
+	}
+	switch displayID {
+	case 0:
+		return displayBounds{x: 0, y: 0, width: 100, height: 100}, nil
+	case 2:
+		return displayBounds{x: -100, y: 0, width: 100, height: 100}, nil
+	default:
+		return displayBounds{}, errors.New("display bounds unavailable")
+	}
 }
 
 func (d *fakeDriver) record(call driverCall) error {
@@ -162,6 +194,94 @@ func TestValidationAndPolicyRunBeforeDriver(t *testing.T) {
 	}
 	if driver.callCount() != 0 {
 		t.Fatalf("rejected requests reached driver %d times", driver.callCount())
+	}
+}
+
+func TestMoveCoordinatesMustBeWithinAllowedDisplay(t *testing.T) {
+	driver := &fakeDriver{}
+	session := newTestSession(t, testPolicy(), driver)
+
+	for _, request := range []ActionRequest{
+		{
+			Operation: OperationMove,
+			Move:      &MoveAction{X: -10, Y: 20, DisplayID: 0},
+		},
+		{
+			Operation: OperationMove,
+			Move:      &MoveAction{X: 100, Y: 20, DisplayID: 0},
+		},
+	} {
+		result, err := session.DryRun(context.Background(), request)
+		if !errors.Is(err, ErrPolicyDenied) || result.Error == nil || result.Error.Code != ErrorPolicyDenied {
+			t.Fatalf("out-of-display move = %+v, %v", result, err)
+		}
+	}
+	if driver.callCount() != 0 {
+		t.Fatalf("out-of-display moves reached driver %d times", driver.callCount())
+	}
+
+	result, err := session.Execute(context.Background(), ActionRequest{
+		Operation: OperationMove,
+		Move:      &MoveAction{X: -10, Y: 20, DisplayID: 2},
+	})
+	if err != nil || result.Status != ActionSucceeded {
+		t.Fatalf("in-display move = %+v, %v", result, err)
+	}
+	if driver.callCount() != 1 {
+		t.Fatalf("driver calls = %d", driver.callCount())
+	}
+}
+
+func TestDisplayBoundsFailureDoesNotReachInput(t *testing.T) {
+	tests := []struct {
+		name string
+		err  error
+		code ErrorCode
+	}{
+		{name: "unsupported", err: robotgo.ErrNotSupported, code: ErrorUnsupported},
+		{name: "backend", err: errors.New("bounds failed"), code: ErrorBackendFailure},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			driver := &fakeDriver{boundsErr: tc.err}
+			session := newTestSession(t, testPolicy(), driver)
+			result, err := session.Execute(context.Background(), ActionRequest{
+				Operation: OperationMove,
+				Move:      &MoveAction{X: 10, Y: 20, DisplayID: 0},
+			})
+			if !errors.Is(err, tc.err) || result.Error == nil || result.Error.Code != tc.code {
+				t.Fatalf("bounds failure = %+v, %v", result, err)
+			}
+			if driver.callCount() != 0 {
+				t.Fatalf("failed bounds lookup reached driver %d times", driver.callCount())
+			}
+		})
+	}
+}
+
+func TestMoveCancellationDuringBoundsPreflightDoesNotReachInput(t *testing.T) {
+	driver := &fakeDriver{boundsHit: make(chan struct{}, 1), boundsGo: make(chan struct{})}
+	session := newTestSession(t, testPolicy(), driver)
+	ctx, cancel := context.WithCancel(context.Background())
+	resultCh := make(chan ActionResult, 1)
+	errCh := make(chan error, 1)
+	go func() {
+		result, err := session.Execute(ctx, ActionRequest{
+			Operation: OperationMove,
+			Move:      &MoveAction{X: 10, Y: 20, DisplayID: 0},
+		})
+		resultCh <- result
+		errCh <- err
+	}()
+	<-driver.boundsHit
+	cancel()
+	close(driver.boundsGo)
+	result, err := <-resultCh, <-errCh
+	if !errors.Is(err, context.Canceled) || result.Error == nil || result.Error.Code != ErrorCanceled {
+		t.Fatalf("bounds preflight cancellation = %+v, %v", result, err)
+	}
+	if driver.callCount() != 0 {
+		t.Fatalf("canceled bounds preflight reached input %d times", driver.callCount())
 	}
 }
 

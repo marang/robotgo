@@ -62,7 +62,8 @@ const (
 	MouseButtonRight  MouseButton = "right"
 )
 
-// MoveAction moves the pointer on one explicit display.
+// MoveAction moves the pointer to global coordinates that must fall within the
+// live bounds of the explicitly selected display.
 type MoveAction struct {
 	X         int `json:"x"`
 	Y         int `json:"y"`

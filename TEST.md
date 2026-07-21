@@ -100,7 +100,8 @@ desktop data.
 Agent-session unit tests use an in-memory input driver and never contact or
 mutate the desktop. They cover process-exclusive lifecycle, concurrent close,
 strict request validation, policy/confirmation/display/text/action limits,
-dry-run, quota handling, sanitized results, backend errors, and the documented
+live display-bound enforcement, dry-run, quota handling, sanitized results,
+backend errors, and the documented
 preflight-only cancellation boundary:
 
 ```bash
