@@ -1786,7 +1786,7 @@ func nativeMouseStatusError(status C.int, operation string) error {
 	case C.ROBOTGO_MOUSE_OWNERSHIP_CONFLICT:
 		return fmt.Errorf("%w: %s", ErrInputOwnership, operation)
 	case C.ROBOTGO_MOUSE_INVALID:
-		return fmt.Errorf("robotgo: %s: invalid native mouse button", operation)
+		return fmt.Errorf("robotgo: %s: invalid native mouse input", operation)
 	default:
 		return fmt.Errorf("robotgo: %s: unknown native mouse status %d", operation, int(status))
 	}
@@ -2035,8 +2035,10 @@ func MoveE(x, y int, displayId ...int) error {
 	server := selectedDisplayServer()
 	ready, nativeErr := runNativeMouseOperation(server, func() error {
 		x, y = moveScaleLocked(x, y, displayId...)
-		C.moveMouse(C.MMPointInt32Make(C.int32_t(x), C.int32_t(y)))
-		return nil
+		return nativeMouseStatusError(
+			C.moveMouseChecked(C.MMPointInt32Make(C.int32_t(x), C.int32_t(y))),
+			"move mouse",
+		)
 	})
 	if nativeErr != nil {
 		if shouldTryRemoteDesktopAfterNative(server, ready, nativeErr) {

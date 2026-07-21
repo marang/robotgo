@@ -305,6 +305,8 @@ Purpose:
   overflow boundaries, and all eight output transforms
 - Hermetic aggregate/per-output bounds for negative origins, fractional
   `xdg-output` geometry, stable display indices, scale, and all transforms
+- Hermetic native absolute-pointer mapping for negative aggregate origins and
+  exclusive desktop edges
 - DRM helper tests
 
 Typical command:

@@ -151,6 +151,7 @@ enum RobotGoMouseStatus {
         #include <wayland-client.h>
         #include <linux/input-event-codes.h>
         #include "wlr-virtual-pointer-unstable-v1-client-protocol.h"
+	#include "wayland_absolute.h"
         #include "../window/get_bounds_wayland.h"
 
 	        static struct wl_display *rg_wl_display = NULL;
@@ -158,6 +159,8 @@ enum RobotGoMouseStatus {
         static struct wl_seat *rg_wl_seat = NULL;
         static struct zwlr_virtual_pointer_manager_v1 *rg_wl_vptr_mgr = NULL;
         static struct zwlr_virtual_pointer_v1 *rg_wl_vptr = NULL;
+	static int rg_wl_x = 0;
+	static int rg_wl_y = 0;
         static int rg_wl_width = 0;
         static int rg_wl_height = 0;
         static int rg_wl_inited = 0;
@@ -228,6 +231,24 @@ enum RobotGoMouseStatus {
                 NULL
 	        };
 
+	        static int rg_refresh_wayland_bounds(void) {
+	                int x = 0;
+	                int y = 0;
+	                int width = 0;
+	                int height = 0;
+	                if (get_screen_rect_wayland(
+	                        rg_wl_display, -1, &x, &y,
+	                        &width, &height) != 0 ||
+	                    width <= 0 || height <= 0) {
+	                        return 0;
+	                }
+	                rg_wl_x = x;
+	                rg_wl_y = y;
+	                rg_wl_width = width;
+	                rg_wl_height = height;
+	                return 1;
+	        }
+
 	        static void rg_cleanup_wayland(void) {
 	                if (rg_wl_vptr) {
 	                        zwlr_virtual_pointer_v1_destroy(rg_wl_vptr);
@@ -249,6 +270,8 @@ enum RobotGoMouseStatus {
 	                        wl_display_disconnect(rg_wl_display);
 	                        rg_wl_display = NULL;
 	                }
+	                rg_wl_x = 0;
+	                rg_wl_y = 0;
 	                rg_wl_width = 0;
 	                rg_wl_height = 0;
 	                rg_wl_inited = 0;
@@ -284,7 +307,10 @@ enum RobotGoMouseStatus {
 	                        rg_cleanup_wayland();
 	                        return 0;
 	                }
-	                get_bounds_wayland(rg_wl_display, &rg_wl_width, &rg_wl_height);
+	                if (!rg_refresh_wayland_bounds()) {
+	                        rg_cleanup_wayland();
+	                        return 0;
+	                }
 	                rg_wl_inited = 1;
 	                return 1;
 	        }
@@ -407,56 +433,97 @@ static int robotgo_x11_release_owned_buttons(void) { return ROBOTGO_MOUSE_OK; }
 	}
 #endif
 
-/* Move the mouse to a specific point. */
-void moveMouse(MMPointInt32 point){
+/* Move the mouse to a specific point and preserve backend failures. */
+static int moveMouseInternal(MMPointInt32 point, bool refresh_bounds){
+	(void)refresh_bounds;
         #if defined(IS_MACOSX)
 		CGEventSourceRef source = CGEventSourceCreate(kCGEventSourceStateHIDSystemState);
 		CGEventRef move = CGEventCreateMouseEvent(source, kCGEventMouseMoved, 
 								CGPointFromMMPointInt32(point), kCGMouseButtonLeft);
+		if (move == NULL) {
+			if (source != NULL) { CFRelease(source); }
+			return ROBOTGO_MOUSE_INJECTION_FAILED;
+		}
 
 		calculateDeltas(&move, point);
 
 		CGEventPost(kCGHIDEventTap, move);
 		CFRelease(move);
-		CFRelease(source);
+		if (source != NULL) { CFRelease(source); }
+		return ROBOTGO_MOUSE_OK;
         #elif defined(IS_LINUX)
 #ifdef ROBOTGO_USE_WAYLAND
                 if (robotgo_wayland_mouse_backend_selected()) {
                         if (!rg_init_wayland()) {
 #if !defined(DISPLAY_SERVER_WAYLAND)
                                 Display *display = XGetMainDisplay();
-                                if (display == NULL) { return; }
+				if (display == NULL) { return ROBOTGO_MOUSE_NO_DISPLAY; }
                                 XWarpPointer(display, None, DefaultRootWindow(display), 0, 0, 0, 0, point.x, point.y);
                                 XSync(display, false);
+				return ROBOTGO_MOUSE_OK;
+#else
+				return ROBOTGO_MOUSE_NO_DISPLAY;
 #endif
                         } else {
-                                if (rg_wl_width > 0 && rg_wl_height > 0) {
-                                        uint32_t sx = (uint32_t)((double)point.x * 65535.0 / rg_wl_width);
-                                        uint32_t sy = (uint32_t)((double)point.y * 65535.0 / rg_wl_height);
-                                        zwlr_virtual_pointer_v1_motion_absolute(rg_wl_vptr, 0, sx, sy, 65535, 65535);
-                                        wl_display_flush(rg_wl_display);
-                                        rg_wl_last_x = point.x;
-                                        rg_wl_last_y = point.y;
-                                }
+				if (refresh_bounds && !rg_refresh_wayland_bounds()) {
+					return ROBOTGO_MOUSE_NO_DISPLAY;
+				}
+				uint32_t sx = 0;
+				uint32_t sy = 0;
+				if (robotgo_wayland_map_absolute(
+				        point.x, point.y, rg_wl_x, rg_wl_y,
+				        rg_wl_width, rg_wl_height,
+				        ROBOTGO_WAYLAND_ABSOLUTE_EXTENT,
+				        ROBOTGO_WAYLAND_ABSOLUTE_EXTENT,
+				        &sx, &sy) != 0) {
+					return ROBOTGO_MOUSE_INVALID;
+				}
+				zwlr_virtual_pointer_v1_motion_absolute(
+					rg_wl_vptr, 0, sx, sy,
+					ROBOTGO_WAYLAND_ABSOLUTE_EXTENT,
+					ROBOTGO_WAYLAND_ABSOLUTE_EXTENT);
+				zwlr_virtual_pointer_v1_frame(rg_wl_vptr);
+				if (wl_display_flush(rg_wl_display) < 0) {
+					rg_cleanup_wayland();
+					return ROBOTGO_MOUSE_INJECTION_FAILED;
+				}
+				rg_wl_last_x = point.x;
+				rg_wl_last_y = point.y;
+				return ROBOTGO_MOUSE_OK;
                         }
                 }
 #if !defined(DISPLAY_SERVER_WAYLAND)
                 else {
                         Display *display = XGetMainDisplay();
-                        if (display == NULL) { return; }
+			if (display == NULL) { return ROBOTGO_MOUSE_NO_DISPLAY; }
                         XWarpPointer(display, None, DefaultRootWindow(display), 0, 0, 0, 0, point.x, point.y);
                         XSync(display, false);
+			return ROBOTGO_MOUSE_OK;
                 }
+#else
+		return ROBOTGO_MOUSE_UNSUPPORTED;
 #endif
 #else
                 Display *display = XGetMainDisplay();
-                if (display == NULL) { return; }
+		if (display == NULL) { return ROBOTGO_MOUSE_NO_DISPLAY; }
                 XWarpPointer(display, None, DefaultRootWindow(display), 0, 0, 0, 0, point.x, point.y);
                 XSync(display, false);
+		return ROBOTGO_MOUSE_OK;
 #endif
         #elif defined(IS_WINDOWS)
-                SetCursorPos(point.x, point.y);
+		return SetCursorPos(point.x, point.y)
+			? ROBOTGO_MOUSE_OK : ROBOTGO_MOUSE_INJECTION_FAILED;
         #endif
+	return ROBOTGO_MOUSE_UNSUPPORTED;
+}
+
+int moveMouseChecked(MMPointInt32 point){
+	return moveMouseInternal(point, true);
+}
+
+/* Legacy callers intentionally discard the checked error contract. */
+void moveMouse(MMPointInt32 point){
+	(void)moveMouseInternal(point, false);
 }
 
 void dragMouse(MMPointInt32 point, const MMMouseButton button){

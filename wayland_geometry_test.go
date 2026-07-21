@@ -171,6 +171,41 @@ func TestWaylandBoundsPreserveLogicalDesktopGeometry(t *testing.T) {
 	}
 }
 
+func TestWaylandAbsolutePointerMappingPreservesAggregateOrigin(t *testing.T) {
+	bounds := [4]int{-1024, -360, 4224, 1440}
+	tests := []struct {
+		name  string
+		point [2]int
+		ok    bool
+	}{
+		{name: "negative aggregate origin", point: [2]int{-1024, -360}, ok: true},
+		{name: "primary origin", point: [2]int{0, 0}, ok: true},
+		{name: "last aggregate pixel", point: [2]int{3199, 1079}, ok: true},
+		{name: "left of aggregate", point: [2]int{-1025, 0}},
+		{name: "above aggregate", point: [2]int{0, -361}},
+		{name: "right edge is exclusive", point: [2]int{3200, 0}},
+		{name: "bottom edge is exclusive", point: [2]int{0, 1080}},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			got, ok := mapWaylandPointerForTest(test.point, bounds)
+			if ok != test.ok {
+				t.Fatalf("mapping status = %t, want %t (mapped %v)", ok, test.ok, got)
+			}
+			if !ok {
+				return
+			}
+			want := [2]uint32{
+				uint32((int64(test.point[0]-bounds[0]) * 65535) / int64(bounds[2])),
+				uint32((int64(test.point[1]-bounds[1]) * 65535) / int64(bounds[3])),
+			}
+			if got != want {
+				t.Fatalf("mapped point = %v, want %v", got, want)
+			}
+		})
+	}
+}
+
 func TestWaylandBoundsAcceptLogicalGeometryWithoutCoreMode(t *testing.T) {
 	outputs := []waylandBoundsOutputForTest{{
 		logicalPos:  [2]int{-640, -360},

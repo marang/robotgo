@@ -4,6 +4,7 @@ package robotgo
 
 /*
 #cgo CFLAGS: -DROBOTGO_WAYLAND_TEST
+#include "mouse/wayland_absolute.h"
 void robotgo_wayland_map_logical_rect_for_test(int cap_w, int cap_h,
                                                 int logical_w, int logical_h,
                                                 int transform, int *x, int *y,
@@ -19,6 +20,16 @@ int robotgo_wayland_resolve_bounds_for_test(const int *values, int count,
 int robotgo_wayland_stable_output_name_for_test(const int *values,
                                                  int output_count,
                                                  int display_id);
+
+static int robotgo_wayland_map_pointer_for_test(
+    int global_x, int global_y, int origin_x, int origin_y,
+    int width, int height, unsigned int *mapped_x, unsigned int *mapped_y) {
+    return robotgo_wayland_map_absolute(
+        global_x, global_y, origin_x, origin_y, width, height,
+        ROBOTGO_WAYLAND_ABSOLUTE_EXTENT,
+        ROBOTGO_WAYLAND_ABSOLUTE_EXTENT,
+        mapped_x, mapped_y);
+}
 */
 import "C"
 
@@ -115,4 +126,15 @@ func stableWaylandOutputNameForTest(outputs [][5]int, displayID int) int {
 		C.int(len(outputs)),
 		C.int(displayID),
 	))
+}
+
+func mapWaylandPointerForTest(point [2]int, bounds [4]int) ([2]uint32, bool) {
+	var x, y C.uint
+	status := C.robotgo_wayland_map_pointer_for_test(
+		C.int(point[0]), C.int(point[1]),
+		C.int(bounds[0]), C.int(bounds[1]),
+		C.int(bounds[2]), C.int(bounds[3]),
+		&x, &y,
+	)
+	return [2]uint32{uint32(x), uint32(y)}, status == 0
 }

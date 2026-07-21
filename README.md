@@ -490,6 +490,9 @@ falls back to the aggregate desktop. Native
 the core-output fallback applies integer scale and all eight transforms. The
 Pure-Go query is read-only, bounded, closes its Unix connection after every
 atomic snapshot, and never opens a portal consent dialog.
+Native `zwlr_virtual_pointer_v1` absolute moves use the same aggregate logical
+origin, so displays positioned left of or above the primary output do not wrap
+negative global coordinates into the protocol's unsigned absolute frame.
 
 Capture selection is:
 

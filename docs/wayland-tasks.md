@@ -65,6 +65,9 @@ Current implementation baseline:
   Deterministic output indices are shared with screencopy, Wayland display
   count/main-index queries avoid X11, and the `wayland-info` fallback accepts
   output records without numeric identifiers.
+- Native absolute virtual-pointer moves translate the aggregate logical origin
+  into the protocol's unsigned coordinate frame and fail closed outside the
+  current aggregate, including layouts left of or above the primary output.
 - Pure-Go aggregate/per-output bounds use the same primary-first geometry
   ordering, prefer fractional `xdg-output` logical geometry, apply integer scale
   and all transforms in the core fallback, clamp advertised protocol versions,
