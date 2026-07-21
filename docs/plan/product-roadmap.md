@@ -42,8 +42,10 @@ The July 2026 hardening work establishes the foundation for this roadmap:
 
 No delivery phase is complete until all of its exit criteria are blocking and
 green. Phase 1 implementation is merged; its real-compositor evidence remains
-an infrastructure blocker. The active implementation slice is Phase 5
-reliability hardening; protected real-desktop evidence remains runner-dependent.
+an infrastructure blocker. Cross-platform reliability hardening is complete;
+the active [Protected Real-Compositor Evidence Plan](real-compositor-evidence.md)
+now addresses the shared GNOME/KDE/wlroots runner-dependent exit gates across
+phases 1, 2, 3, and 5.
 The completed [Agent Adapter and Evaluation Plan](agent-adapter-evaluation.md)
 provides a local, policy-gated MCP boundary on the agent-session proof. The
 adjacent [Safe Agent Visual Conditions Plan](agent-visual-conditions.md) now
