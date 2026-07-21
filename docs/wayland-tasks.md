@@ -155,7 +155,7 @@ backends.
   - 2. Validate the reusable ScreenCast/PipeWire backend on protected real
     GNOME/KDE portal runners and promote its leak/timeout tests to release
     gates. The isolated hosted Sway native-capture and portal-availability lanes
-    pass separately; hosted Sway multi-output proof is in progress and
+    pass separately; hosted Sway multi-output proof is delivered and
     GNOME/KDE multi-output proof remains open. The
     implementation and opt-in integration harness are present.
     `[new vs robotgo-pro]`
@@ -212,8 +212,8 @@ backends.
   - Validate the same scale/transform and region-crop behavior on real wlroots,
     GNOME, and KDE sessions.
   - Complete protected GNOME/KDE multi-output selection and bounds evidence
-    using `xdg-output`; hosted wlroots/Sway multi-output evidence is in progress
-    and Weston single-/multi-output evidence is blocking.
+    using `xdg-output`; hosted wlroots/Sway and Weston single-/multi-output
+    evidence are blocking and green.
 - Portal Path:
   - Expand troubleshooting for xdg-desktop-portal backend selection and consent prompts.
   - Validate the existing high-level RemoteDesktop input fallback on GNOME/KDE.
