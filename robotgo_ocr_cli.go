@@ -4,8 +4,9 @@ package robotgo
 
 import (
 	"context"
-	"os/exec"
 	"time"
+
+	commandpkg "github.com/marang/robotgo/internal/command"
 )
 
 const defaultOCRTimeout = 2 * time.Minute
@@ -33,7 +34,7 @@ func GetTextContext(ctx context.Context, imgPath string, args ...string) (string
 		}
 	}
 
-	body, err := exec.CommandContext(ctx, "tesseract", imgPath, "stdout", "-l", lang).Output()
+	body, err := commandpkg.Output(ctx, "tesseract", imgPath, "stdout", "-l", lang)
 	if err != nil {
 		if ctxErr := ctx.Err(); ctxErr != nil {
 			return "", ctxErr

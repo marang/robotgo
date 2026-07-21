@@ -71,6 +71,7 @@ import (
 	"unsafe"
 
 	inputportal "github.com/marang/robotgo/input/portal"
+	commandpkg "github.com/marang/robotgo/internal/command"
 	portalpkg "github.com/marang/robotgo/screen/portal"
 	"github.com/vcaesar/tt"
 )
@@ -645,7 +646,7 @@ func waylandScreenBoundsFallback() (Rect, bool) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 
-	out, err := exec.CommandContext(ctx, path).Output()
+	out, err := commandpkg.Output(ctx, path)
 	if err != nil {
 		waylandBoundsMu.Lock()
 		waylandBoundsProbed = true

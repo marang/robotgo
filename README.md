@@ -297,6 +297,10 @@ On Linux, `AlertE` tries `zenity`, `kdialog`, and `xmessage` before using
 `notify-send` for an OK-only informational alert. A cancel-capable alert never
 silently degrades to a non-interactive notification; missing or failed backends
 are returned explicitly. Legacy `Alert` keeps its bool-only signature.
+Context-backed OCR, clipboard, Wayland probe, and compositor command paths also
+bound inherited process I/O cleanup. On Unix, cancellation terminates the
+one-shot backend's process group so a descendant cannot keep an API call stuck
+indefinitely past its documented timeout.
 `KeyTap` and `KeyToggle` model keys rather than portable text entry. A selected
 backend may support a single non-ASCII rune directly (the RemoteDesktop portal
 and Pure-Go X11 do), while another native keymap can return `ErrNotSupported`.

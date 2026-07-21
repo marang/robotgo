@@ -7,10 +7,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"os/exec"
 	"runtime"
 	"strings"
 	"time"
+
+	commandpkg "github.com/marang/robotgo/internal/command"
 )
 
 const (
@@ -61,7 +62,7 @@ var (
 	errWindowOperationFailed     = errors.New("window operation failed for compositor backend")
 	errHyprlandStatusUnavailable = errors.New("hyprland status request unavailable")
 	runWindowCommand             = func(ctx context.Context, name string, args ...string) ([]byte, error) {
-		return exec.CommandContext(ctx, name, args...).Output()
+		return commandpkg.Output(ctx, name, args...)
 	}
 )
 
