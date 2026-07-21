@@ -460,20 +460,22 @@ deterministic close. It intentionally does not use the high-level fallback APIs,
 so an available native Wayland backend cannot mask a broken portal path. Default
 hosted CI only compile-checks this harness because it has no real desktop consent
 session. `.github/workflows/remote-desktop-e2e.yml` runs the test without skipping
-on explicitly provisioned self-hosted GNOME, KDE, and wlroots Wayland runners,
-once per desktop. The portal client is pure Go and therefore independent of the
+on explicitly provisioned protected, ephemeral GNOME and KDE Wayland runners,
+once per desktop. wlroots native and portal-availability evidence is promoted
+through the separate P005 runner path and is not a RemoteDesktop pass. The portal
+client is pure Go and therefore independent of the
 root package's CGO setting; CGO and non-CGO high-level fallback dispatch remains
 covered by the hermetic root tests. The workflow can be triggered
 manually at any time. Set the repository variable
 `ROBOTGO_REMOTE_DESKTOP_E2E=1` after those runners are provisioned to run the
 same matrix on pull requests and pushes to `main`, where it can be configured as
 a required check for branches in this repository. Fork pull requests are
-intentionally excluded because untrusted code must never execute on persistent
+intentionally excluded because untrusted code must never execute on protected
 self-hosted desktop runners. Configure the `remote-desktop-e2e` GitHub
 Environment with required reviewers and use ephemeral, network-isolated runners.
 The workflow uses read-only permissions, does not persist checkout credentials,
-and verifies that each runner's `XDG_CURRENT_DESKTOP` matches its matrix label
-before injecting input.
+and runs the shared fail-closed desktop, D-Bus, portal, operator-readiness, and
+exact-commit preflight before injecting input.
 
 Runtime outcomes and missing infrastructure are recorded in
 `docs/compatibility/wayland-input.md`; an unavailable runner is not counted as a
@@ -513,9 +515,10 @@ ROBOTGO_SCREENCAST_E2E=1 go test -tags "pipewire integration" ./screen/portal -r
 Run it from a graphical Wayland session. It displays the portal consent UI,
 captures two frames from the same session, validates non-empty output, and
 closes the PipeWire consumer before the portal session.
-`.github/workflows/screencast-e2e.yml` runs the same harness on protected
-self-hosted GNOME, KDE, and wlroots runners when the repository variable
-`ROBOTGO_SCREENCAST_E2E=1` is enabled, or by manual dispatch.
+`.github/workflows/screencast-e2e.yml` runs the same harness on protected,
+ephemeral self-hosted GNOME and KDE runners when the repository variable
+`ROBOTGO_SCREENCAST_E2E=1` is enabled, or by manual dispatch. wlroots does not
+count as a ScreenCast pass and is promoted separately under P005.
 
 ### `waylandint` (Keyboard integration harness)
 

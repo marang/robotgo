@@ -1053,8 +1053,9 @@ the reported guardian is the exact child that exits and is reaped. The
 measures the guardian path and retains native CGO as the X11 default while
 Pure-Go remains the supported CGO-disabled backend. The earlier direct-path
 sample remains linked from the performance report as historical evidence.
-The stable remote checks are required by `main` branch protection. Real
-GNOME/KDE/wlroots jobs remain opt-in until matching runners are registered.
+The stable remote checks are required by `main` branch protection. Real GNOME
+and KDE portal jobs, plus separate Sway/wlroots native and portal-availability
+jobs, remain opt-in until matching protected runners are registered.
 
 Wayland and portal code has additional tagged suites:
 
@@ -1090,9 +1091,9 @@ identity. Published releases receive a checksummed evidence bundle. The active
 slice is now the
 [Protected Real-Compositor Evidence Plan](docs/plan/real-compositor-evidence.md),
 whose fail-closed preflight and sanitized evidence contract are implemented.
-Protected GNOME/KDE/wlroots runner provisioning and promotion remain across
-roadmap phases 1, 2, 3, and 5; those phases remain partial until their gates are
-green.
+Protected GNOME/KDE portal runner provisioning and separate Sway/wlroots native
+and portal-availability promotion remain across roadmap phases 1, 2, 3, and 5;
+those phases remain partial until their gates are green.
 Phase 4 already exposes the parity surface; Hyprland provides trustworthy
 active-window maximize query, set, and restore with provider-aware dispatch for
 legacy `hyprlang` and 0.55+ Lua configurations, while Sway and generic wlroots
