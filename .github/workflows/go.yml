@@ -391,7 +391,8 @@ jobs:
             TestWaylandExactTextPreflightRejectsUnmappedWithoutMutation \
             TestWaylandKeyboardFlushFailureReconnects \
             TestWaylandKeyboardSelectsDeterministicCapableSeatAndCleansAll \
-            TestWaylandKeyboardRejectsSeatsWithoutKeyboardCapability \
+            TestWaylandKeyboardAcceptsSeatWithoutPhysicalKeyboardCapability \
+            TestWaylandKeyboardRejectsMissingSeat \
             TestWaylandKeyboardProcessesRuntimeSeatChanges | LC_ALL=C sort)"
           listed="$(go test -tags waylandint ./key -list '^TestWayland')"
           printf '%s\n' "$listed"
