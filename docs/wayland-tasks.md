@@ -68,8 +68,9 @@ Current implementation baseline:
 - Native absolute virtual-pointer moves translate the aggregate logical origin
   into the protocol's unsigned coordinate frame and fail closed outside the
   current aggregate, including layouts left of or above the primary output.
-  Bounded writable retries treat `EAGAIN` as queued backpressure and reserve
-  backend teardown for permanent Wayland transport failures.
+  Bounded writable retries treat `EAGAIN` as transient backpressure. Requests
+  still queued after that budget report an explicit delivery error, while
+  backend teardown remains reserved for permanent Wayland transport failures.
 - Pure-Go aggregate/per-output bounds use the same primary-first geometry
   ordering, prefer fractional `xdg-output` logical geometry, apply integer scale
   and all transforms in the core fallback, clamp advertised protocol versions,

@@ -308,7 +308,8 @@ Purpose:
 - Hermetic native absolute-pointer mapping for negative aggregate origins and
   exclusive desktop edges
 - Bounded Wayland input flush retries for transient `EAGAIN`, interrupted
-  waits, queued backpressure, and permanent transport failures
+  waits, explicit still-queued delivery errors, and permanent transport
+  failures
 - DRM helper tests
 
 Typical command:

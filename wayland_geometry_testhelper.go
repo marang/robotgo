@@ -67,7 +67,7 @@ static int robotgo_wayland_test_wait(void *context, int timeout_ms) {
 static int robotgo_wayland_flush_retry_for_test(
     const int *flush_errnos, int flush_count,
     const int *wait_results, int wait_count,
-    int attempts, int *flush_calls, int *wait_calls) {
+    int attempts, int *flush_calls, int *wait_calls, int *delivered) {
     struct robotgo_wayland_flush_test_state state = {
         .flush_errnos = flush_errnos,
         .flush_count = flush_count,
@@ -81,6 +81,7 @@ static int robotgo_wayland_flush_retry_for_test(
         1, attempts);
     *flush_calls = state.flush_index;
     *wait_calls = state.wait_index;
+    *delivered = robotgo_wayland_flush_is_delivered(result);
     return result;
 }
 */
@@ -192,7 +193,7 @@ func mapWaylandPointerForTest(point [2]int, bounds [4]int) ([2]uint32, bool) {
 	return [2]uint32{uint32(x), uint32(y)}, status == 0
 }
 
-func waylandFlushRetryForTest(flushErrnos, waitResults []int, attempts int) (result, flushCalls, waitCalls int) {
+func waylandFlushRetryForTest(flushErrnos, waitResults []int, attempts int) (result, flushCalls, waitCalls int, delivered bool) {
 	flushValues := make([]C.int, len(flushErrnos))
 	for index, value := range flushErrnos {
 		flushValues[index] = C.int(value)
@@ -208,11 +209,11 @@ func waylandFlushRetryForTest(flushErrnos, waitResults []int, attempts int) (res
 	if len(waitValues) > 0 {
 		waitPointer = &waitValues[0]
 	}
-	var cFlushCalls, cWaitCalls C.int
+	var cFlushCalls, cWaitCalls, cDelivered C.int
 	result = int(C.robotgo_wayland_flush_retry_for_test(
 		flushPointer, C.int(len(flushValues)),
 		waitPointer, C.int(len(waitValues)),
-		C.int(attempts), &cFlushCalls, &cWaitCalls,
+		C.int(attempts), &cFlushCalls, &cWaitCalls, &cDelivered,
 	))
-	return result, int(cFlushCalls), int(cWaitCalls)
+	return result, int(cFlushCalls), int(cWaitCalls), cDelivered != 0
 }

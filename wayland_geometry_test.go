@@ -218,24 +218,25 @@ func TestWaylandFlushRetriesTransientBackpressure(t *testing.T) {
 		wantResult    int
 		wantFlushes   int
 		wantWaitCalls int
+		wantDelivered bool
 	}{
-		{name: "immediate success", flushErrnos: []int{0}, attempts: 3, wantResult: 0, wantFlushes: 1},
-		{name: "retry EAGAIN", flushErrnos: []int{int(syscall.EAGAIN), 0}, waitResults: []int{1}, attempts: 3, wantResult: 0, wantFlushes: 2, wantWaitCalls: 1},
+		{name: "immediate success", flushErrnos: []int{0}, attempts: 3, wantResult: 0, wantFlushes: 1, wantDelivered: true},
+		{name: "retry EAGAIN", flushErrnos: []int{int(syscall.EAGAIN), 0}, waitResults: []int{1}, attempts: 3, wantResult: 0, wantFlushes: 2, wantWaitCalls: 1, wantDelivered: true},
 		{name: "bounded queued EAGAIN", flushErrnos: []int{int(syscall.EAGAIN)}, waitResults: []int{0, 0, 0}, attempts: 3, wantResult: 1, wantFlushes: 1, wantWaitCalls: 3},
-		{name: "EINTR then writable", flushErrnos: []int{int(syscall.EAGAIN), 0}, waitResults: []int{-int(syscall.EINTR), 1}, attempts: 3, wantResult: 0, wantFlushes: 2, wantWaitCalls: 2},
+		{name: "EINTR then writable", flushErrnos: []int{int(syscall.EAGAIN), 0}, waitResults: []int{-int(syscall.EINTR), 1}, attempts: 3, wantResult: 0, wantFlushes: 2, wantWaitCalls: 2, wantDelivered: true},
 		{name: "permanent flush failure", flushErrnos: []int{int(syscall.EPIPE)}, attempts: 3, wantResult: -1, wantFlushes: 1},
 		{name: "permanent poll failure", flushErrnos: []int{int(syscall.EAGAIN)}, waitResults: []int{-int(syscall.EPIPE)}, attempts: 3, wantResult: -1, wantFlushes: 1, wantWaitCalls: 1},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			result, flushCalls, waitCalls := waylandFlushRetryForTest(
+			result, flushCalls, waitCalls, delivered := waylandFlushRetryForTest(
 				test.flushErrnos, test.waitResults, test.attempts,
 			)
-			if result != test.wantResult || flushCalls != test.wantFlushes || waitCalls != test.wantWaitCalls {
+			if result != test.wantResult || flushCalls != test.wantFlushes || waitCalls != test.wantWaitCalls || delivered != test.wantDelivered {
 				t.Fatalf(
-					"flush retry = (result=%d flushes=%d waits=%d), want (%d,%d,%d)",
-					result, flushCalls, waitCalls,
-					test.wantResult, test.wantFlushes, test.wantWaitCalls,
+					"flush retry = (result=%d flushes=%d waits=%d delivered=%t), want (%d,%d,%d,%t)",
+					result, flushCalls, waitCalls, delivered,
+					test.wantResult, test.wantFlushes, test.wantWaitCalls, test.wantDelivered,
 				)
 			}
 		})

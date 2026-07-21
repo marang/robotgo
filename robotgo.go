@@ -1787,6 +1787,8 @@ func nativeMouseStatusError(status C.int, operation string) error {
 		return fmt.Errorf("%w: %s", ErrInputOwnership, operation)
 	case C.ROBOTGO_MOUSE_INVALID:
 		return fmt.Errorf("robotgo: %s: invalid native mouse input", operation)
+	case C.ROBOTGO_MOUSE_DELIVERY_PENDING:
+		return fmt.Errorf("robotgo: %s: native mouse input remains queued", operation)
 	default:
 		return fmt.Errorf("robotgo: %s: unknown native mouse status %d", operation, int(status))
 	}

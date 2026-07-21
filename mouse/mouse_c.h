@@ -11,7 +11,8 @@ enum RobotGoMouseStatus {
 	ROBOTGO_MOUSE_UNSUPPORTED = 2,
 	ROBOTGO_MOUSE_INJECTION_FAILED = 3,
 	ROBOTGO_MOUSE_OWNERSHIP_CONFLICT = 4,
-	ROBOTGO_MOUSE_INVALID = 5
+	ROBOTGO_MOUSE_INVALID = 5,
+	ROBOTGO_MOUSE_DELIVERY_PENDING = 6
 };
 #if defined(IS_MACOSX)
 	// #include </System/Library/Frameworks/ApplicationServices.framework/Headers/ApplicationServices.h>
@@ -355,6 +356,9 @@ enum RobotGoMouseStatus {
 	                if (result == ROBOTGO_WAYLAND_FLUSH_FAILED) {
 	                        rg_cleanup_wayland();
 	                        return ROBOTGO_MOUSE_INJECTION_FAILED;
+	                }
+	                if (!robotgo_wayland_flush_is_delivered(result)) {
+	                        return ROBOTGO_MOUSE_DELIVERY_PENDING;
 	                }
 	                return ROBOTGO_MOUSE_OK;
 	        }

@@ -12,6 +12,10 @@ enum RobotGoWaylandFlushResult {
 typedef int (*robotgo_wayland_flush_fn)(void *context);
 typedef int (*robotgo_wayland_wait_writable_fn)(void *context, int timeout_ms);
 
+static inline int robotgo_wayland_flush_is_delivered(int result) {
+    return result == ROBOTGO_WAYLAND_FLUSHED;
+}
+
 /* Retry a nonblocking Wayland flush without treating EAGAIN as disconnect.
  * Exhausting the bounded wait still leaves the request safely queued inside
  * libwayland; only permanent flush/poll errors are reported as failures. */
