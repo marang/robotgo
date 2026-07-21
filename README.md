@@ -1089,8 +1089,10 @@ support claims machine-readable and tied to exact source, test logs, and build
 identity. Published releases receive a checksummed evidence bundle. The active
 slice is now the
 [Protected Real-Compositor Evidence Plan](docs/plan/real-compositor-evidence.md),
-which closes shared GNOME/KDE/wlroots evidence gaps across roadmap phases 1, 2,
-3, and 5; those phases remain partial until their protected gates are green.
+whose fail-closed preflight and sanitized evidence contract are implemented.
+Protected GNOME/KDE/wlroots runner provisioning and promotion remain across
+roadmap phases 1, 2, 3, and 5; those phases remain partial until their gates are
+green.
 Phase 4 already exposes the parity surface; Hyprland provides trustworthy
 active-window maximize query, set, and restore with provider-aware dispatch for
 legacy `hyprlang` and 0.55+ Lua configurations, while Sway and generic wlroots

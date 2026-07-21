@@ -700,6 +700,19 @@ intentionally preserving a foreign replacement is not itself an error.
   - Overrides Linux capture backend selection (`auto|dmabuf|wl_shm|screencast|portal`).
 - `ROBOTGO_SCREENCAST_E2E=1`
   - Enables the real persistent ScreenCast/PipeWire integration test.
+- `ROBOTGO_COMPOSITOR_OUTPUT_COUNT`
+  - Protected-runner declaration of the fixed fixture output count. The shared
+    compositor preflight rejects missing, non-positive, or insufficient values.
+- `ROBOTGO_COMPOSITOR_OPERATOR_READY_FILE`
+  - Absolute path to the orchestrator-owned portal-consent readiness
+    attestation. The root-owned file and its root-owned parent directory must
+    not be writable by group or others. Its exact single-line value binds
+    `ready` to the approved commit, GitHub run ID/attempt, lane, and cell;
+    repository code must not create or refresh it.
+
+    ```text
+    ready commit=<approved-sha> run=<run-id> attempt=<attempt> lane=<gnome|kde> cell=<remote-desktop|screencast>
+    ```
 - `ROBOTGO_CAPTURE_DEBUG=1`
   - Enables backend/fallback diagnostic logs for capture flow.
 - `ROBOTGO_WLROOTS_MINMAX_E2E=1`
@@ -767,6 +780,43 @@ or protocol data is a failure rather than a skip.
 Run tag-gated suites as needed for the area you changed. Native or Pure-Go X11
 input changes must also run the required `x11integration` comparison command
 above.
+
+## Protected Real-Compositor Evidence
+
+The `RemoteDesktop E2E` and `ScreenCast E2E` workflows run only on protected,
+ephemeral GNOME and KDE fixture runners. They check out the explicitly approved
+pull-request head, run the shared fail-closed Go preflight, redirect raw runtime
+output into runner-temporary storage, and upload only a schema-v1 manifest,
+canonical allowlisted test log, and matching sanitized summary after repository
+validation. The raw log and private preflight report are deleted before upload;
+an `always()` cleanup step removes the complete owned workspace after success
+or failure. VM destruction remains the final cancellation/timeout cleanup
+boundary.
+
+The workflows require the runner to provide a live Wayland/user-bus session,
+the expected desktop and portal packages, the applicable portal interfaces,
+PipeWire/WirePlumber for ScreenCast, a fixed positive output count, and the
+out-of-band operator-console readiness attestation. Missing infrastructure,
+consent readiness, an exact-commit match, or a non-skipping test pass fails the
+cell. Raw output is never streamed through `tee` or uploaded on failure.
+
+wlroots is intentionally not treated as a RemoteDesktop/ScreenCast pass in
+these portal workflows. Its native and explicit portal-availability evidence is
+promoted separately under the
+[protected real-compositor plan](docs/plan/real-compositor-evidence.md).
+
+Run the hermetic contract locally without touching the live desktop:
+
+```bash
+go test -race ./internal/compositorevidence \
+  ./internal/cmd/compositorevidence
+```
+
+Default tests inject fixed command, desktop, portal, timeout, and filesystem
+fixtures and use `t.TempDir()`. Do not invoke the real workflow commands on a
+personal desktop: portal cells intentionally request real screen/input consent
+and belong only on the disposable fixture images with the protected operator
+handoff.
 
 ## Release Evidence
 
