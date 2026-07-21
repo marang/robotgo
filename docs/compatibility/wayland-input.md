@@ -9,6 +9,7 @@ pass.
 |---|---|---|---|---|---|
 | 2026-07-11 | Sway (wlroots) | Native virtual keyboard/pointer | `linux,wayland,integration` | pass | Local `go test -tags "wayland integration" . ./mouse ./window -v`; keyboard/pointer round trips and Sway capability integration passed |
 | 2026-07-11 | Sway (wlroots) | RemoteDesktop portal | CGO/default | unavailable, actionable | Local portal exposes ScreenCast v4/source mask 3 but no `org.freedesktop.portal.RemoteDesktop`; diagnostics return an explicit unavailable error |
+| 2026-07-21 | Sway 1.9, nested headless Ubuntu 24.04 | Native virtual keyboard/pointer | `cgo,wayland,swayintegration` | pass | [`Sway E2E` run 29857289675](https://github.com/marang/robotgo/actions/runs/29857289675), `native-input`, artifact `sway-native-input`; self-owned `wev` target, no physical devices or host desktop |
 | pending | GNOME | RemoteDesktop + ScreenCast mapping | Pure-Go portal client | no runner | Requires self-hosted runner label `gnome` |
 | pending | KDE Plasma | RemoteDesktop + ScreenCast mapping | Pure-Go portal client | no runner | Requires self-hosted runner label `kde` |
 
@@ -34,3 +35,8 @@ test log, and summary. Set the repository variable
 runners are registered. Fork pull requests are excluded from self-hosted
 execution. Sway/wlroots native input and explicit portal-unavailability evidence
 use separate P005 lanes; they are not counted as RemoteDesktop portal passes.
+
+`.github/workflows/sway-e2e.yml` independently validates the native Sway input
+path and explicit portal availability in an isolated GitHub-hosted compositor.
+It uploads only schema-v1 sanitized evidence and never grants the job access to
+real input devices or a host desktop.

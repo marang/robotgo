@@ -506,6 +506,12 @@ Capture selection is:
 4. The freedesktop Screenshot portal when native capture fails and portal use
    is allowed.
 
+Native screencopy converts ARGB/XRGB and ABGR/XBGR buffers into RobotGo's BGRA
+bitmap layout for both `wl_shm` and DMA-BUF, whose protocol format identifiers
+are intentionally handled separately. An unknown format returns
+`ErrWaylandPixelFormat`, so callers receive an explicit error and the normal
+safe fallback policy can continue instead of returning color-corrupted pixels.
+
 The portal may prompt the user. Native screencopy and virtual input are most
 useful on wlroots compositors; availability is probed at runtime rather than
 inferred from environment variables alone.

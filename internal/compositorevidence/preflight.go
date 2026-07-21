@@ -32,22 +32,23 @@ const (
 // PreflightConfig contains trusted workflow inputs and private session values.
 // Private values are validated but never copied into the report.
 type PreflightConfig struct {
-	Lane               Lane
-	Cell               Cell
-	CheckoutCommit     string
-	ExpectedCommit     string
-	Ref                string
-	Workflow           string
-	RunID              string
-	RunAttempt         int
-	CurrentDesktop     string
-	WaylandDisplay     string
-	RuntimeDir         string
-	SessionBusAddress  string
-	OperatorReadyPath  string
-	OutputCount        int
-	MinimumOutputCount int
-	ProbeTimeout       time.Duration
+	Lane                Lane
+	Cell                Cell
+	CheckoutCommit      string
+	ExpectedCommit      string
+	Ref                 string
+	Workflow            string
+	RunID               string
+	RunAttempt          int
+	CurrentDesktop      string
+	WaylandDisplay      string
+	RuntimeDir          string
+	SessionBusAddress   string
+	OperatorReadyPath   string
+	OutputCount         int
+	MinimumOutputCount  int
+	RequireHeadlessSway bool
+	ProbeTimeout        time.Duration
 }
 
 // Platform identifies a sanitized runner software platform.
@@ -173,8 +174,13 @@ func preflight(
 			Required: config.Cell.PipeWireRequired(),
 		},
 	}
-	if config.Cell.NativeRequired() {
-		if err := probeSway(ctx, probe); err != nil {
+	if config.Lane == LaneWlroots {
+		if err := probeSway(
+			ctx,
+			probe,
+			config.OutputCount,
+			config.RequireHeadlessSway,
+		); err != nil {
 			return PreflightReport{}, err
 		}
 	}
@@ -243,6 +249,9 @@ func validatePreflightConfig(config PreflightConfig) error {
 	}
 	if config.OutputCount < config.MinimumOutputCount {
 		return fmt.Errorf("declared output count is below the required minimum %d", config.MinimumOutputCount)
+	}
+	if config.RequireHeadlessSway && config.Lane != LaneWlroots {
+		return errors.New("headless Sway isolation requires the wlroots lane")
 	}
 	return nil
 }
@@ -528,10 +537,51 @@ func parseOSRelease(data []byte) (string, string, error) {
 	return values["ID"], values["VERSION_ID"], nil
 }
 
-func probeSway(ctx context.Context, probe commandProbe) error {
+func probeSway(
+	ctx context.Context,
+	probe commandProbe,
+	expectedOutputs int,
+	requireHeadless bool,
+) error {
 	output, err := probe.run(ctx, "swaymsg", "-t", "get_version", "-r")
-	if err != nil || !json.Valid(output) {
+	var version struct {
+		HumanReadable string `json:"human_readable"`
+	}
+	if err != nil || json.Unmarshal(output, &version) != nil ||
+		validateText("Sway version", version.HumanReadable) != nil {
 		return errors.New("native Sway capability check failed")
+	}
+	output, err = probe.run(ctx, "swaymsg", "-t", "get_outputs", "-r")
+	var outputs []struct {
+		Name   string `json:"name"`
+		Active bool   `json:"active"`
+	}
+	if err != nil || json.Unmarshal(output, &outputs) != nil {
+		return errors.New("native Sway output check failed")
+	}
+	active := 0
+	for _, candidate := range outputs {
+		if !candidate.Active {
+			continue
+		}
+		active++
+		if requireHeadless && !strings.HasPrefix(candidate.Name, "HEADLESS-") {
+			return errors.New("isolated Sway output check failed")
+		}
+	}
+	if active != expectedOutputs {
+		return errors.New("native Sway output count does not match the declared topology")
+	}
+	if !requireHeadless {
+		return nil
+	}
+	output, err = probe.run(ctx, "swaymsg", "-t", "get_inputs", "-r")
+	var inputs []json.RawMessage
+	if err != nil || json.Unmarshal(output, &inputs) != nil {
+		return errors.New("isolated Sway input check failed")
+	}
+	if len(inputs) != 0 {
+		return errors.New("isolated Sway session exposes an input device before the test")
 	}
 	return nil
 }

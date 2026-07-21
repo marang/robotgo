@@ -919,6 +919,25 @@ enum RobotGoKeyStatus {
 	                                        wk_selected_seat = candidate;
 	                                }
 	                        }
+	                        if (wk_selected_seat != NULL) {
+	                                return;
+	                        }
+	                        /* A virtual keyboard is associated with wl_seat but
+	                         * does not require a pre-existing physical keyboard
+	                         * capability. Headless compositors intentionally
+	                         * expose device-less seats. Prefer a keyboard-capable
+	                         * seat when present, then deterministically fall back
+	                         * to the lowest live seat. */
+	                        for (RobotGoWaylandSeat *candidate = wk_seats;
+	                             candidate != NULL; candidate = candidate->next) {
+	                                if (candidate->removed) {
+	                                        continue;
+	                                }
+	                                if (wk_selected_seat == NULL ||
+	                                    candidate->global_name < wk_selected_seat->global_name) {
+	                                        wk_selected_seat = candidate;
+	                                }
+	                        }
 	                }
 
 	        static void cleanup_wayland_keyboard(void) {
@@ -1006,7 +1025,7 @@ enum RobotGoKeyStatus {
 
 	        static int ensure_wayland_keyboard(void) {
 	                if (wk_vkeyboard && wk_keymap && wk_display && wk_selected_seat &&
-	                    wk_selected_seat->keyboard_capable) {
+	                    !wk_selected_seat->removed) {
 	                        wk_last_error = RG_WK_OK;
 	                        return 0;
 	                }
@@ -1100,6 +1119,15 @@ enum RobotGoKeyStatus {
 	                zwp_virtual_keyboard_v1_keymap(wk_vkeyboard, XKB_KEYMAP_FORMAT_TEXT_V1, fd, size);
 	                close(fd);
                 free(keymap_str);
+	                /* Process virtual-keyboard creation and keymap before the
+	                 * first key request. In a device-less seat this is the
+	                 * boundary at which the compositor can advertise keyboard
+	                 * capability and the focused client can bind wl_keyboard. */
+	                if (wl_display_roundtrip(wk_display) < 0) {
+	                        wk_last_error = RG_WK_ERR_DISPLAY;
+	                        cleanup_wayland_keyboard();
+	                        return -1;
+	                }
 	                wk_runtime_active = true;
                 wk_last_error = RG_WK_OK;
                 return 0;

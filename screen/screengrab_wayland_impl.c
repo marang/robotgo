@@ -12,6 +12,7 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <gbm.h>
+#include <drm_fourcc.h>
 #include <xf86drm.h>
 #include <limits.h>
 #include <poll.h>
@@ -47,6 +48,64 @@ static int robotgo_memfd_create(const char *name, unsigned int flags) {
 }
 
 #if defined(IS_LINUX)
+
+static inline int screencopy_pixel_to_bitmap_bgra(uint8_t *dst,
+                                                  const uint8_t *src,
+                                                  uint32_t format,
+                                                  int using_dmabuf) {
+  const uint32_t argb =
+      using_dmabuf ? DRM_FORMAT_ARGB8888 : WL_SHM_FORMAT_ARGB8888;
+  const uint32_t xrgb =
+      using_dmabuf ? DRM_FORMAT_XRGB8888 : WL_SHM_FORMAT_XRGB8888;
+  const uint32_t abgr =
+      using_dmabuf ? DRM_FORMAT_ABGR8888 : WL_SHM_FORMAT_ABGR8888;
+  const uint32_t xbgr =
+      using_dmabuf ? DRM_FORMAT_XBGR8888 : WL_SHM_FORMAT_XBGR8888;
+
+  if (format == argb) {
+    dst[0] = src[0];
+    dst[1] = src[1];
+    dst[2] = src[2];
+    dst[3] = src[3];
+    return 1;
+  }
+  if (format == xrgb) {
+    dst[0] = src[0];
+    dst[1] = src[1];
+    dst[2] = src[2];
+    dst[3] = 0xff;
+    return 1;
+  }
+  if (format == abgr) {
+    dst[0] = src[2];
+    dst[1] = src[1];
+    dst[2] = src[0];
+    dst[3] = src[3];
+    return 1;
+  }
+  if (format == xbgr) {
+    dst[0] = src[2];
+    dst[1] = src[1];
+    dst[2] = src[0];
+    dst[3] = 0xff;
+    return 1;
+  }
+  return 0;
+}
+
+#if defined(ROBOTGO_WAYLAND_TEST)
+int robotgo_wayland_pixel_to_bitmap_bgra(uint8_t *dst, const uint8_t *src,
+                                         uint32_t format, int using_dmabuf) {
+  return screencopy_pixel_to_bitmap_bgra(dst, src, format, using_dmabuf);
+}
+#endif
+
+static int screencopy_pixel_format_supported(uint32_t format,
+                                             int using_dmabuf) {
+  uint8_t src[4] = {0};
+  uint8_t dst[4];
+  return screencopy_pixel_to_bitmap_bgra(dst, src, format, using_dmabuf);
+}
 
 struct fm_entry {
   uint32_t format;
@@ -837,6 +896,12 @@ static void frame_buffer(void *data, struct zwlr_screencopy_frame_v1 *frame,
   cap->stride = (int)stride;
   cap->format = format;
 
+  if (!screencopy_pixel_format_supported(format, 0)) {
+    cap->failed = 1;
+    cap->err_code = ScreengrabErrPixelFormat;
+    return;
+  }
+
   int fd = robotgo_memfd_create("robotgo-wl", MFD_CLOEXEC);
   if (fd < 0) {
     cap->failed = 1;
@@ -906,12 +971,16 @@ static void frame_linux_dmabuf(void *data,
   cap->width = (int)width;
   cap->height = (int)height;
   cap->format = format;
+  if (!screencopy_pixel_format_supported(format, 1)) {
+    cap->failed = 1;
+    cap->err_code = ScreengrabErrPixelFormat;
+  }
 }
 
 static void frame_buffer_done(void *data,
                               struct zwlr_screencopy_frame_v1 *frame) {
   struct capture *cap = data;
-  if (!cap->using_dmabuf) {
+  if (!cap->using_dmabuf || cap->failed) {
     return;
   }
   cap->drm_fd = drm_find_render_node(cap->fb.main_dev);
@@ -1398,10 +1467,15 @@ MMBitmapRef capture_screen_wayland_impl(int32_t x, int32_t y, int32_t w,
     for (int col = 0; col < w; ++col) {
       size_t sidx = (size_t)(row + y) * cap.stride + (size_t)(col + x) * 4;
       size_t didx = (size_t)row * stride + (size_t)col * 4;
-      rgba[didx + 0] = src[sidx + 2];
-      rgba[didx + 1] = src[sidx + 1];
-      rgba[didx + 2] = src[sidx + 0];
-      rgba[didx + 3] = src[sidx + 3];
+      if (!screencopy_pixel_to_bitmap_bgra(rgba + didx, src + sidx,
+                                           cap.format, cap.using_dmabuf)) {
+        free(rgba);
+        cleanup_capture(&cap);
+        if (err) {
+          *err = ScreengrabErrPixelFormat;
+        }
+        return NULL;
+      }
     }
   }
 

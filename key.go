@@ -374,7 +374,7 @@ var (
 	errWaylandKeyboardUnavailable = errors.New("wayland virtual keyboard unavailable")
 	errWaylandKeyboardNotBuilt    = errors.New("wayland session detected but robotgo was built without wayland keyboard backend (build with -tags wayland)")
 	errWaylandKeyboardNoDisplay   = errors.New("wayland display connection failed")
-	errWaylandKeyboardNoSeat      = errors.New("wayland seat with keyboard capability not found")
+	errWaylandKeyboardNoSeat      = errors.New("wayland seat not found")
 	errWaylandKeyboardNoManager   = errors.New("zwp_virtual_keyboard_manager_v1 not available")
 	errWaylandKeyboardCreate      = errors.New("failed to create virtual keyboard")
 	errWaylandKeyboardXKB         = errors.New("failed to initialize xkb context")

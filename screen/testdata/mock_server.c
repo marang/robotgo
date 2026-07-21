@@ -19,6 +19,7 @@
 #define ZWLR_SCREENCOPY_FRAME_V1_READY 2
 #define ZWLR_SCREENCOPY_FRAME_V1_FAILED 3
 #define WL_BUFFER_RELEASE 0
+#define MOCK_DRM_FORMAT_ARGB8888 0x34325241u
 
 #define MOCK_MODE_NORMAL 0
 #define MOCK_MODE_STALL 1
@@ -71,7 +72,7 @@ static void handle_capture_output(struct wl_client *client, struct wl_resource *
         return;
     }
     if (mock_mode == MOCK_MODE_FAIL_AFTER_DMABUF) {
-        wl_resource_post_event(frame, ZWLR_SCREENCOPY_FRAME_V1_LINUX_DMABUF, WL_SHM_FORMAT_ARGB8888, 64, 64);
+        wl_resource_post_event(frame, ZWLR_SCREENCOPY_FRAME_V1_LINUX_DMABUF, MOCK_DRM_FORMAT_ARGB8888, 64, 64);
         wl_resource_post_event(frame, ZWLR_SCREENCOPY_FRAME_V1_FAILED);
         wl_display_flush_clients(mock_display);
         return;
@@ -79,7 +80,7 @@ static void handle_capture_output(struct wl_client *client, struct wl_resource *
     if (use_shm) {
         wl_resource_post_event(frame, ZWLR_SCREENCOPY_FRAME_V1_BUFFER, WL_SHM_FORMAT_ARGB8888, 64, 64, 256);
     } else {
-        wl_resource_post_event(frame, ZWLR_SCREENCOPY_FRAME_V1_LINUX_DMABUF, WL_SHM_FORMAT_ARGB8888, 64, 64);
+        wl_resource_post_event(frame, ZWLR_SCREENCOPY_FRAME_V1_LINUX_DMABUF, MOCK_DRM_FORMAT_ARGB8888, 64, 64);
     }
     wl_resource_post_event(frame, ZWLR_SCREENCOPY_FRAME_V1_BUFFER_DONE);
 }
@@ -116,7 +117,8 @@ static const struct zwp_linux_buffer_params_v1_interface params_impl = {
 };
 
 static void dmabuf_create_params(struct wl_client *client, struct wl_resource *resource, uint32_t id) {
-    struct wl_resource *params = wl_resource_create(client, &zwp_linux_buffer_params_v1_interface, 1, id);
+    uint32_t version = wl_resource_get_version(resource);
+    struct wl_resource *params = wl_resource_create(client, &zwp_linux_buffer_params_v1_interface, version, id);
     wl_resource_set_implementation(params, &params_impl, NULL, NULL);
 }
 
@@ -130,7 +132,7 @@ static void dmabuf_get_default_feedback(struct wl_client *client, struct wl_reso
         uint32_t format;
         uint32_t pad;
         uint64_t modifier;
-    } entry = {WL_SHM_FORMAT_ARGB8888, 0, mock_modifier};
+    } entry = {MOCK_DRM_FORMAT_ARGB8888, 0, mock_modifier};
     int fd = memfd_create("tbl", MFD_CLOEXEC);
     if (fd < 0 || write(fd, &entry, sizeof(entry)) != (ssize_t)sizeof(entry)) {
         if (fd >= 0) {

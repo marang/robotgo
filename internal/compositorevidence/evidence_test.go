@@ -41,6 +41,9 @@ func validReport(lane Lane, cell Cell) PreflightReport {
 	if cell == CellScreenCast {
 		workflow = "ScreenCast E2E"
 	}
+	if lane == LaneWlroots {
+		workflow = "Sway E2E"
+	}
 	return PreflightReport{
 		SchemaVersion: preflightSchemaVersion,
 		Commit:        testCommit,
@@ -76,6 +79,50 @@ func passedRawLog(spec TestSpec) []byte {
 			"PASS\n" +
 			"ok  \t" + spec.Package + "\t1.250s\n",
 	)
+}
+
+func TestSwayCellsHaveFixedEvidenceIdentity(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		cell Cell
+		name string
+	}{
+		{CellNativeInput, swayInputTestName},
+		{CellNativeCapture, swayCaptureTestName},
+		{CellNativeWindow, swayWindowTestName},
+		{CellNativeOutput, swayOutputTestName},
+		{CellPortalAvailability, swayPortalTestName},
+	} {
+		t.Run(string(tc.cell), func(t *testing.T) {
+			t.Parallel()
+			spec, err := tc.cell.TestSpec()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if spec.Package != swayPackage || spec.Name != tc.name ||
+				spec.Command != swayCommandPrefix+tc.name+swayCommandSuffix {
+				t.Fatalf("Sway test spec = %+v", spec)
+			}
+			if err := validateWorkflow(tc.cell, "Sway E2E"); err != nil {
+				t.Fatalf("Sway workflow rejected: %v", err)
+			}
+			if err := validateWorkflow(tc.cell, "RemoteDesktop E2E"); err == nil {
+				t.Fatal("Sway cell accepted a portal workflow")
+			}
+		})
+	}
+}
+
+func TestPortalAvailabilityRequiresWlrootsLane(t *testing.T) {
+	t.Parallel()
+	if err := validateLaneCell(LaneWlroots, CellPortalAvailability); err != nil {
+		t.Fatalf("wlroots portal-availability rejected: %v", err)
+	}
+	for _, lane := range []Lane{LaneGNOME, LaneKDE} {
+		if err := validateLaneCell(lane, CellPortalAvailability); err == nil {
+			t.Fatalf("portal-availability accepted %s lane", lane)
+		}
+	}
 }
 
 func prepareFinalization(t *testing.T, lane Lane, cell Cell) (string, FinalizeConfig) {

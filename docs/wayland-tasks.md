@@ -146,15 +146,17 @@ backends.
 - Priority Backlog (1-7):
   - 1. Register protected GNOME/KDE portal runners and validate the complete
     RemoteDesktop high-level matrix in hermetic CGO and non-CGO builds. Track
-    Sway/wlroots native input and explicit portal availability in separate lanes.
+    Sway/wlroots native input and explicit portal availability in the delivered
+    passing isolated hosted lanes.
     Shared ScreenCast
     mapping, absolute pointer/touch, consent, denial, cancellation, timeout,
     restore metadata, teardown, and high-level dispatch have hermetic coverage.
     `[new vs robotgo-pro]`
   - 2. Validate the reusable ScreenCast/PipeWire backend on protected real
     GNOME/KDE portal runners and promote its leak/timeout tests to release
-    gates. Validate Sway/wlroots native capture and portal availability
-    separately. The implementation and opt-in integration harness are present.
+    gates. The isolated hosted Sway native-capture and portal-availability lanes
+    pass separately; protected multi-output proof remains open. The
+    implementation and opt-in integration harness are present.
     `[new vs robotgo-pro]`
   - 3. Continue window state/query operations beyond the delivered Hyprland
     maximize slice where a compositor exposes equally trustworthy state.
@@ -190,7 +192,8 @@ backends.
     Evidence v1 binds that report and test-log digests to exact source across
     the six native/Pure-Go hosted platform cells.
   - 7. Keep race/vet and the manifest-checked native ASan/LeakSanitizer ownership
-    suites blocking. Provision the remaining dedicated GNOME/KDE/wlroots jobs.
+    suites blocking. The isolated hosted Sway single-output matrix is defined;
+    provision the remaining GNOME/KDE and protected multi-output jobs.
 
 - Recently completed parity work:
   - Window state/query APIs expose `IsTopMostE`, `IsMinimizedE`,
