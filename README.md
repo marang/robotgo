@@ -1083,11 +1083,14 @@ Real Wayland input results are tracked in the
 - [Product roadmap](docs/plan/product-roadmap.md)
 - [Wayland implementation history](docs/wayland-history.md)
 
-The active product slice is Phase 5 reliability hardening. Runtime Diagnostics
+The bounded P002 reliability-hardening project is complete: Runtime Diagnostics
 v1, native sanitizer/leak gates, and a six-cell release-evidence workflow make
 support claims machine-readable and tied to exact source, test logs, and build
-identity. Published releases receive a checksummed evidence bundle. The
-remaining infrastructure blocker is protected real GNOME/KDE/wlroots evidence.
+identity. Published releases receive a checksummed evidence bundle. The active
+slice is now the
+[Protected Real-Compositor Evidence Plan](docs/plan/real-compositor-evidence.md),
+which closes shared GNOME/KDE/wlroots evidence gaps across roadmap phases 1, 2,
+3, and 5; those phases remain partial until their protected gates are green.
 Phase 4 already exposes the parity surface; Hyprland provides trustworthy
 active-window maximize query, set, and restore with provider-aware dispatch for
 legacy `hyprlang` and 0.55+ Lua configurations, while Sway and generic wlroots
