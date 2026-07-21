@@ -10,6 +10,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	robotgo "github.com/marang/robotgo"
 )
@@ -441,6 +442,62 @@ func TestCaptureRegionValidationIsOverflowSafe(t *testing.T) {
 	}
 	if containsSpan(99, 2, 0, 100) {
 		t.Fatal("out-of-bounds span was accepted")
+	}
+}
+
+func TestInvalidCaptureRegionNeverReachesDesktopBackend(t *testing.T) {
+	driver := &fakeDriver{}
+	session := newTestSession(t, observationPolicy(), driver)
+	for _, region := range []CaptureRegion{
+		{Width: 0, Height: 1, DisplayID: 0},
+		{Width: 5, Height: 5, DisplayID: 0},
+		{X: 99, Y: 99, Width: 2, Height: 2, DisplayID: 0},
+		{Width: 1, Height: 1, DisplayID: -1},
+	} {
+		if _, err := session.Observe(context.Background(), ObserveRequest{Capture: &region}); err == nil {
+			t.Fatalf("invalid capture region was accepted: %+v", region)
+		}
+	}
+	if driver.captureCount() != 0 {
+		t.Fatalf("invalid regions reached capture backend %d times", driver.captureCount())
+	}
+}
+
+func TestObservationAndActionAreSerialized(t *testing.T) {
+	driver := &fakeDriver{
+		captureHit: make(chan struct{}, 1), captureGo: make(chan struct{}),
+		started: make(chan struct{}, 1),
+	}
+	session := newTestSession(t, observationPolicy(), driver)
+	observeErr := make(chan error, 1)
+	go func() {
+		observation, err := session.Observe(context.Background(), ObserveRequest{
+			Capture: &CaptureRegion{Width: 2, Height: 2, DisplayID: 0},
+		})
+		if observation != nil {
+			_ = observation.Close()
+		}
+		observeErr <- err
+	}()
+	<-driver.captureHit
+	actionErr := make(chan error, 1)
+	go func() {
+		_, err := session.Execute(context.Background(), ActionRequest{
+			Operation: OperationClick, Click: &ClickAction{Button: MouseButtonLeft},
+		})
+		actionErr <- err
+	}()
+	select {
+	case <-driver.started:
+		t.Fatal("action reached input while observation still owned the session gate")
+	case <-time.After(20 * time.Millisecond):
+	}
+	close(driver.captureGo)
+	if err := <-observeErr; err != nil {
+		t.Fatalf("Observe = %v", err)
+	}
+	if err := <-actionErr; err != nil {
+		t.Fatalf("Execute = %v", err)
 	}
 }
 

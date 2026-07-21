@@ -33,6 +33,7 @@ type fakeDriver struct {
 	captureErr    error
 	captureCalls  int
 	captureHit    chan struct{}
+	captureGo     chan struct{}
 	capabilities  *robotgo.RuntimeCapabilities
 	capabilityHit chan struct{}
 	capabilityGo  chan struct{}
@@ -116,6 +117,9 @@ func (d *fakeDriver) Capture(_ context.Context, region CaptureRegion) (image.Ima
 		case d.captureHit <- struct{}{}:
 		default:
 		}
+	}
+	if d.captureGo != nil {
+		<-d.captureGo
 	}
 	d.mu.Lock()
 	defer d.mu.Unlock()

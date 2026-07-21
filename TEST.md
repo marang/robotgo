@@ -141,6 +141,11 @@ Start a consent-aware ScreenCast session before that command when portal
 capture is required, or explicitly set `ROBOTGO_DISABLE_PORTAL=1` to test only
 a native capture path.
 
+Real post-action changed/unchanged verification is intentionally not automated
+in this integration suite: it would require mutating and repeatedly inspecting
+uncontrolled developer desktop content. Hermetic synthetic-driver tests cover
+the complete stale/pass/fail/timeout/cancel contract instead.
+
 Linux alert tests replace every external dialog backend through a private test
 `PATH`. They verify fallback order, user rejection, missing/failed backends, and
 the non-interactive notification boundary without displaying real UI.
