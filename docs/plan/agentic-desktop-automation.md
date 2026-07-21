@@ -145,18 +145,35 @@ orthogonal tool set:
 Add redacted record/replay, a fake driver, and hermetic evaluation tasks before
 claiming reliable autonomous behavior.
 
-## 4. First executable slice
+## 4. First executable slices
 
-The first implementation slice should prove the architecture with:
+Deliver the first architecture proof through two reviewable boundaries rather
+than coupling desktop observation and mutation in one initial change.
 
-1. session creation and deterministic close
-2. versioned operation catalog
-3. policy evaluation and dry-run
-4. desktop observation with runtime diagnostics and optional capture
-5. typed move, click, and text actions
-6. action result and structured error schema
-7. unit tests, a runnable example, and one applicable real-runtime integration
-   path
+### 4.1 Typed session and action core
+
+The first foundation slice provides:
+
+1. deterministic, process-exclusive agent session creation and close
+2. versioned operation catalog for typed move, click, and text actions
+3. explicit process-global backend and preflight-only cancellation contracts
+4. policy evaluation, confirmation, action/text/display limits, and dry-run
+5. structured action results and sanitized errors
+6. unit tests, a dry-run-first example, and an opt-in pointer integration path
+
+It intentionally does not capture or retain screenshots, clipboard contents,
+OCR text, or typed text in results. Direct callers of the legacy package-level
+RobotGo APIs remain outside agent-session exclusivity and are reported as a
+process-global limitation.
+
+### 4.2 Observation and verification proof
+
+The following slice completes the initial architecture proof with:
+
+1. bounded desktop observation using runtime diagnostics and optional capture
+2. observation lineage and stale-target preconditions
+3. bounded post-action verification
+4. privacy-safe audit/replay seams
 
 An MCP server is not required for this first slice. It should consume the
 accepted Go contract rather than define it.

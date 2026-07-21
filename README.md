@@ -739,6 +739,24 @@ go run ./examples/runtime_diagnostics
 go run -tags wayland ./examples/linux_capabilities
 ```
 
+### Policy-gated agent sessions
+
+The `agent` package adds a strict Go boundary for automation agents without
+changing the legacy package-level API. One process-exclusive session exposes a
+versioned operation catalog, policy and confirmation gates, dry-run, typed
+move/click/text requests, and sanitized structured results. Its catalog reports
+that the underlying input backend remains process-global and that cancellation
+is currently guaranteed before dispatch, not during a synchronous OS input
+call. Direct callers of legacy RobotGo APIs remain outside this exclusivity.
+
+The example is validation-only by default and never injects input unless
+`-act` is supplied explicitly:
+
+```bash
+go run ./examples/agent_session -operation move -x 100 -y 100 -display 0
+go run ./examples/agent_session -act -operation move -x 100 -y 100 -display 0
+```
+
 ## Examples
 
 The checked-in examples use this fork's module path and track the current API:
@@ -748,6 +766,7 @@ The checked-in examples use this fork's module path and track the current API:
 - [Screen capture and pixels](examples/screen/main.go)
 - [Full-screen capture with backend reporting](examples/screen_full/main.go)
 - [Cross-platform aggregate and per-output bounds](examples/display_bounds/main.go)
+- [Policy-gated agent session](examples/agent_session/main.go)
 - [Linux capabilities](examples/linux_capabilities/main.go)
 - [Cross-platform runtime capabilities](examples/runtime_capabilities/main.go)
 - [Versioned runtime diagnostics](examples/runtime_diagnostics/main.go)

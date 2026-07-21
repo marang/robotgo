@@ -97,6 +97,29 @@ extend a call beyond the named cleanup delay and that the isolated Unix process
 group is gone afterward; they do not access real OCR, clipboard, compositor, or
 desktop data.
 
+Agent-session unit tests use an in-memory input driver and never contact or
+mutate the desktop. They cover process-exclusive lifecycle, concurrent close,
+strict request validation, policy/confirmation/display/text/action limits,
+dry-run, quota handling, sanitized results, backend errors, and the documented
+preflight-only cancellation boundary:
+
+```bash
+go test -race ./agent
+CGO_ENABLED=0 go test ./agent
+```
+
+The opt-in runtime path performs one real pointer move to explicit coordinates:
+
+```bash
+ROBOTGO_AGENT_INPUT_E2E=1 \
+ROBOTGO_AGENT_INPUT_X=100 ROBOTGO_AGENT_INPUT_Y=100 \
+ROBOTGO_AGENT_INPUT_DISPLAY=0 \
+go test -tags integration ./agent -run TestAgentSessionMoveRuntime -v
+```
+
+Run it only in a graphical session where global pointer movement is intended.
+It creates no screenshot, clipboard, OCR, or other persistent artifact.
+
 Linux alert tests replace every external dialog backend through a private test
 `PATH`. They verify fallback order, user rejection, missing/failed backends, and
 the non-interactive notification boundary without displaying real UI.
