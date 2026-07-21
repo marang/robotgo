@@ -227,15 +227,14 @@ func (robotGoDriver) Capture(ctx context.Context, region CaptureRegion) (image.I
 		return nil, err
 	}
 	if runtime.GOOS == "linux" && robotgo.DetectDisplayServer() == robotgo.DisplayServerWayland {
-		if os.Getenv(disablePortalEnv) == "" {
-			if robotgo.ScreenCastCaptureReady() == nil {
-				return robotgo.CaptureScreenCastDisplay(ctx, region.DisplayID, region.X, region.Y, region.Width, region.Height)
-			}
-			return nil, fmt.Errorf(
-				"%w: agent capture will not open portal consent implicitly; start ScreenCast explicitly or set %s=1 for native-only capture",
-				robotgo.ErrNotSupported, disablePortalEnv,
-			)
-		}
+		return captureWaylandAgent(
+			ctx,
+			region,
+			os.Getenv(disablePortalEnv) != "",
+			robotgo.CaptureImgNative,
+			robotgo.ScreenCastCaptureReady,
+			robotgo.CaptureScreenCastDisplay,
+		)
 	}
 	img, err := robotgo.CaptureImg(region.X, region.Y, region.Width, region.Height, region.DisplayID)
 	if err != nil {
@@ -246,6 +245,70 @@ func (robotGoDriver) Capture(ctx context.Context, region CaptureRegion) (image.I
 		return nil, err
 	}
 	return img, nil
+}
+
+type nativeCaptureFunc func(...int) (image.Image, error)
+type screenCastReadyFunc func() error
+type screenCastDisplayCaptureFunc func(context.Context, int, ...int) (image.Image, error)
+
+func captureWaylandAgent(
+	ctx context.Context,
+	region CaptureRegion,
+	portalDisabled bool,
+	nativeCapture nativeCaptureFunc,
+	screenCastReady screenCastReadyFunc,
+	screenCastCapture screenCastDisplayCaptureFunc,
+) (image.Image, error) {
+	img, nativeErr := nativeCapture(region.X, region.Y, region.Width, region.Height, region.DisplayID)
+	if nativeErr == nil && img != nil && !img.Bounds().Empty() {
+		if err := ctx.Err(); err != nil {
+			wipeMutableImage(img)
+			return nil, err
+		}
+		return img, nil
+	}
+	if nativeErr == nil {
+		nativeErr = errors.New("native Wayland capture returned an empty image")
+	}
+	if img != nil {
+		wipeMutableImage(img)
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
+	if !portalDisabled && screenCastReady() == nil {
+		img, screenCastErr := screenCastCapture(
+			ctx,
+			region.DisplayID,
+			region.X,
+			region.Y,
+			region.Width,
+			region.Height,
+		)
+		if screenCastErr == nil && img != nil && !img.Bounds().Empty() {
+			if err := ctx.Err(); err != nil {
+				wipeMutableImage(img)
+				return nil, err
+			}
+			return img, nil
+		}
+		if screenCastErr == nil {
+			screenCastErr = errors.New("ScreenCast capture returned an empty image")
+		}
+		if img != nil {
+			wipeMutableImage(img)
+		}
+		return nil, errors.Join(nativeErr, screenCastErr)
+	}
+
+	return nil, errors.Join(
+		nativeErr,
+		fmt.Errorf(
+			"%w: native Wayland capture failed and agent capture will not open portal consent implicitly; start ScreenCast explicitly for an authorized fallback",
+			robotgo.ErrNotSupported,
+		),
+	)
 }
 
 // Observe returns a diagnostics snapshot and optional bounded capture. It is

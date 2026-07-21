@@ -388,6 +388,24 @@ func TestPureGoCaptureImgUsesHardenedWaylandPortal(t *testing.T) {
 	}
 }
 
+func TestPureGoCaptureImgNativeNeverUsesWaylandPortal(t *testing.T) {
+	preservePureGoCaptureFakes(t)
+	t.Setenv("WAYLAND_DISPLAY", "wayland-test")
+	t.Setenv("DISPLAY", "")
+	portalCalled := false
+	pureGoPortalCaptureImage = func(context.Context, int, int, int, int) (image.Image, error) {
+		portalCalled = true
+		return image.NewRGBA(image.Rect(0, 0, 1, 1)), nil
+	}
+
+	if _, err := CaptureImgNative(0, 0, 1, 1, 0); !errors.Is(err, ErrNotSupported) {
+		t.Fatalf("CaptureImgNative error = %v, want ErrNotSupported", err)
+	}
+	if portalCalled {
+		t.Fatal("CaptureImgNative opened the Wayland portal")
+	}
+}
+
 func TestPureGoCaptureAliasUsesWaylandPortalWithoutX11Bounds(t *testing.T) {
 	preservePureGoCaptureFakes(t)
 	t.Setenv(envWaylandDisplay, "wayland-test")

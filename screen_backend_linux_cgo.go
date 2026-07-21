@@ -156,15 +156,57 @@ func platformCaptureImgFallback(args ...int) (image.Image, bool, error) {
 		linuxCaptureUsesPortalBackend() {
 		return nil, false, nil
 	}
+	img, err := capturePortableX11Image(args)
+	return img, true, err
+}
+
+func platformCaptureImgNativeFallback(args ...int) (image.Image, bool, error) {
+	if nativeX11BackendCompiled() || selectedDisplayServer() != DisplayServerX11 {
+		return nil, false, nil
+	}
+	img, err := capturePortableX11Image(args)
+	return img, true, err
+}
+
+func capturePortableX11Image(args []int) (image.Image, error) {
 	if err := validateCaptureArguments(args); err != nil {
-		return nil, true, err
+		return nil, err
 	}
 	if len(args) > 5 {
-		return nil, true, fmt.Errorf(
+		return nil, fmt.Errorf(
 			"%w: process-targeted X11 capture is unavailable in a Wayland-enabled build",
 			ErrNotSupported,
 		)
 	}
-	img, err := Capture(args...)
-	return img, true, err
+	if err := linuxX11SessionConflictError("capture"); err != nil {
+		return nil, err
+	}
+
+	displayID := currentDisplayID()
+	if displayID < 0 {
+		displayID = 0
+	}
+	if len(args) > 4 {
+		displayID = args[4]
+	}
+	x, y, width, height, err := captureRegionFromArgs(args)
+	if err != nil {
+		return nil, err
+	}
+	if len(args) <= 3 {
+		bounds, boundsErr := x11DisplayBounds(displayID)
+		if boundsErr != nil {
+			return nil, boundsErr
+		}
+		x, y, width, height = bounds.Min.X, bounds.Min.Y, bounds.Dx(), bounds.Dy()
+	}
+	if err := validateCaptureRegionRequest(x, y, width, height); err != nil {
+		return nil, err
+	}
+	img, err := screenshot.Capture(x, y, width, height)
+	if err != nil {
+		return nil, fmt.Errorf("robotgo: capture X11 from a Wayland-enabled build: %w", err)
+	}
+	setLastBackend(BackendX11)
+	return img, nil
 }

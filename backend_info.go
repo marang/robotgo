@@ -13,6 +13,9 @@ const (
 	// FeatureBackendScreenCast identifies an active portal ScreenCast session
 	// whose frames are delivered through PipeWire.
 	FeatureBackendScreenCast = "portal-screencast+pipewire"
+	// FeatureBackendWaylandScreencopy identifies native Wayland capture through
+	// the compositor screencopy protocol.
+	FeatureBackendWaylandScreencopy = "wayland+screencopy"
 
 	featureBackendNativeCGO           = "native-cgo"
 	featureBackendPureGoPrefix        = "pure-go-"

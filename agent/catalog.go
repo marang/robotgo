@@ -1,10 +1,6 @@
 package agent
 
-import (
-	"os"
-
-	robotgo "github.com/marang/robotgo"
-)
+import robotgo "github.com/marang/robotgo"
 
 func buildCatalog(policy Policy, capabilities robotgo.RuntimeCapabilities) OperationCatalog {
 	return OperationCatalog{
@@ -30,9 +26,10 @@ func observationCapability(policy Policy, capabilities robotgo.RuntimeCapabiliti
 	capturePolicyAllowed := policyAllowed && policy.MaxCapturePixels > 0 && len(policy.allowDisplay) > 0
 	if capabilities.Runtime.GOOS == goOSLinux &&
 		capabilities.Runtime.DisplayServer == robotgo.DisplayServerWayland &&
-		captureBackend != robotgo.FeatureBackendScreenCast && os.Getenv(disablePortalEnv) == "" {
+		captureBackend != robotgo.FeatureBackendScreenCast &&
+		captureBackend != robotgo.FeatureBackendWaylandScreencopy {
 		captureAvailable = false
-		remediation = "agent capture will not open portal consent implicitly; start ScreenCast explicitly or set " + disablePortalEnv + "=1 for native-only capture"
+		remediation = "agent capture attempts native screencopy first and will not open portal consent implicitly; start ScreenCast explicitly for an authorized fallback"
 	}
 	return OperationCapability{
 		Operation: OperationObserve, Available: true, PolicyAllowed: policyAllowed,

@@ -356,6 +356,9 @@ target. A Wayland environment remains authoritative, so RobotGo does not route
 a Wayland-primary operation through X11 merely because Xwayland is present.
 CGO binaries compiled with `-tags wayland` retain the XGB/Xinerama `Capture`,
 `CaptureImg`, and bounds compatibility paths when run in a real X11 session.
+`CaptureImgNative` provides an explicit portal-free capture boundary: it uses
+the session's native backend and returns an error instead of opening or reusing
+a desktop portal. On Wayland it attempts compositor screencopy only.
 
 Linux/X11 also supports capture, bounds, and input without a C compiler or X11
 development headers:

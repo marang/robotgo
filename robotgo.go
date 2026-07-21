@@ -291,27 +291,29 @@ func GetLinuxCapabilities() LinuxCapabilities {
 		portalAvailable := portalAllowed && portalAvailabilityProbe()
 		persistentCapture := portalAllowed && ScreenCastCaptureReady() == nil
 		switch {
-		case persistentCapture:
-			c.Capture = FeatureCapability{
-				Available: true,
-				Fallback:  nativeCapture || portalAvailable,
-				Backend:   FeatureBackendScreenCast,
-				Reason:    "an active ScreenCast session provides reusable PipeWire frames",
-				Notes:     screenCastCapabilityNotes(),
-			}
 		case nativeCapture:
 			c.Capture = FeatureCapability{
 				Available: true,
-				Fallback:  portalAvailable,
-				Backend:   "wayland+screencopy",
+				Fallback:  persistentCapture || portalAvailable,
+				Backend:   FeatureBackendWaylandScreencopy,
 				Reason:    "screencopy manager and compatible buffer backend detected",
 				Notes:     "native screencopy path (dmabuf/wl_shm)",
 			}
-			if portalAvailable {
+			if persistentCapture {
+				c.Capture.Notes += "; active ScreenCast fallback: " + screenCastCapabilityNotes()
+			} else if portalAvailable {
 				c.Capture.Notes += "; desktop portal fallback detected"
 				if screenCastCaptureCompiled() {
 					c.Capture.Notes += "; " + screenCastCapabilityNotes()
 				}
+			}
+		case persistentCapture:
+			c.Capture = FeatureCapability{
+				Available: true,
+				Fallback:  portalAvailable,
+				Backend:   FeatureBackendScreenCast,
+				Reason:    "an active ScreenCast session provides reusable PipeWire frames",
+				Notes:     screenCastCapabilityNotes(),
 			}
 		case portalAvailable:
 			c.Capture = FeatureCapability{
@@ -1302,6 +1304,10 @@ func GetScaleSize(displayId ...int) (int, int) {
 //
 // robotgo.CaptureScreen(x, y, w, h int)
 func CaptureScreen(args ...int) (CBitmap, error) {
+	return captureScreen(true, args...)
+}
+
+func captureScreen(allowPortal bool, args ...int) (CBitmap, error) {
 	argX, argY, argW, argH, argErr := captureRegionFromArgs(args)
 	if argErr != nil {
 		return nil, argErr
@@ -1349,9 +1355,9 @@ func CaptureScreen(args ...int) (CBitmap, error) {
 		// Allow tests or environments to force the portal backend regardless
 		// of the detected display server.
 		backendOverride := strings.ToLower(strings.TrimSpace(os.Getenv(envWaylandBackend)))
-		forcePortal := os.Getenv(envForcePortal) != "" || backendOverride == waylandBackendPortalName
+		forcePortal := allowPortal && (os.Getenv(envForcePortal) != "" || backendOverride == waylandBackendPortalName)
 		if len(args) <= 3 && ds == DisplayServerX11 &&
-			(forcePortal || backendOverride == waylandBackendScreenCast) {
+			(forcePortal || allowPortal && backendOverride == waylandBackendScreenCast) {
 			// Preserve argumentless X11 crop semantics without holding the native
 			// display lease during portal or PipeWire I/O.
 			unlockDisplay := lockNativeX11Display()
@@ -1366,7 +1372,7 @@ func CaptureScreen(args ...int) (CBitmap, error) {
 			}
 			unlockDisplay()
 		}
-		if backendOverride == waylandBackendScreenCast {
+		if allowPortal && backendOverride == waylandBackendScreenCast {
 			bitmap, err := captureViaPersistentScreenCast(x, y, w, h)
 			if err != nil {
 				return nil, errors.Join(ErrPortalFailed, err)
@@ -1399,26 +1405,31 @@ func CaptureScreen(args ...int) (CBitmap, error) {
 			if bit == nil {
 				err := waylandErr(cerr)
 				captureDebugf("wayland screencopy failed: %v", err)
-				if cb, streamErr := captureViaPersistentScreenCast(x, y, w, h); streamErr == nil {
-					captureDebugf("fallback to persistent ScreenCast backend")
-					return cb, nil
-				}
-				// Try portal screenshot (real pixels) when available.
-				if cb, pErr := captureViaPortalScreenshot(x, y, w, h); pErr == nil {
-					captureDebugf("fallback to portal screenshot backend")
-					return cb, nil
-				}
-				// Optional fallback to C portal stub for tests only.
 				var sErr error
-				if portalStubEnabled() {
-					var cb CBitmap
-					cb, sErr = captureViaPortalStub(x, y, w, h, displayId, isPid)
-					if sErr == nil {
-						captureDebugf("fallback to C portal stub backend")
+				if allowPortal {
+					if cb, streamErr := captureViaPersistentScreenCast(x, y, w, h); streamErr == nil {
+						captureDebugf("fallback to persistent ScreenCast backend")
 						return cb, nil
+					}
+					// Try portal screenshot (real pixels) when available.
+					if cb, pErr := captureViaPortalScreenshot(x, y, w, h); pErr == nil {
+						captureDebugf("fallback to portal screenshot backend")
+						return cb, nil
+					}
+					// Optional fallback to C portal stub for tests only.
+					if portalStubEnabled() {
+						var cb CBitmap
+						cb, sErr = captureViaPortalStub(x, y, w, h, displayId, isPid)
+						if sErr == nil {
+							captureDebugf("fallback to C portal stub backend")
+							return cb, nil
+						}
 					}
 				}
 				if errors.Is(err, ErrNoScreencopy) {
+					if !allowPortal {
+						return nil, err
+					}
 					if sErr != nil {
 						return nil, fmt.Errorf("%w; %v", err, sErr)
 					}
@@ -1483,6 +1494,23 @@ func CaptureImg(args ...int) (image.Image, error) {
 		return img, err
 	}
 	bit, err := CaptureScreen(args...)
+	if err != nil {
+		return nil, err
+	}
+	defer FreeBitmap(bit)
+
+	return ToImage(bit), nil
+}
+
+// CaptureImgNative captures through the session's native backend without
+// opening or reusing a desktop portal. On Wayland this attempts compositor
+// screencopy only; callers may choose an already-authorized portal fallback
+// explicitly after inspecting the returned error.
+func CaptureImgNative(args ...int) (image.Image, error) {
+	if img, handled, err := platformCaptureImgNativeFallback(args...); handled {
+		return img, err
+	}
+	bit, err := captureScreen(false, args...)
 	if err != nil {
 		return nil, err
 	}

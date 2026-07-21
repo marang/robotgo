@@ -37,6 +37,24 @@ func TestCaptureStateConcurrentAccess(t *testing.T) {
 	wg.Wait()
 }
 
+func TestCaptureImgNativeIgnoresPortalOverrides(t *testing.T) {
+	t.Setenv("WAYLAND_DISPLAY", "robotgo-native-capture-test")
+	t.Setenv("DISPLAY", "")
+	t.Setenv(envForcePortal, "1")
+	t.Setenv(envWaylandBackend, waylandBackendPortalName)
+	t.Setenv(envPortalStubGreen, "1")
+	setLastBackend(BackendNone)
+	t.Cleanup(func() { setLastBackend(BackendNone) })
+
+	img, err := CaptureImgNative(0, 0, 1, 1, 0)
+	if img != nil || err == nil {
+		t.Fatalf("CaptureImgNative = (%v, %v), want native Wayland failure", img, err)
+	}
+	if LastBackend() == BackendPortal {
+		t.Fatal("CaptureImgNative used the forced portal backend")
+	}
+}
+
 func resetWaylandBoundsCacheForTest() {
 	waylandBoundsMu.Lock()
 	waylandBoundsCached = Rect{}
@@ -84,20 +102,37 @@ func TestGetLinuxCapabilitiesReportsActiveScreenCast(t *testing.T) {
 	screenCastCaptureState.Unlock()
 
 	capabilities := GetLinuxCapabilities()
-	if !capabilities.Capture.Available || capabilities.Capture.Backend != FeatureBackendScreenCast {
+	if !capabilities.Capture.Available || capabilities.Capture.Backend != FeatureBackendWaylandScreencopy {
 		t.Fatalf("active ScreenCast capability = %+v", capabilities.Capture)
 	}
 	if !capabilities.Capture.Fallback {
 		t.Fatal("active ScreenCast capability did not report available fallback paths")
 	}
-	if !strings.Contains(capabilities.Capture.Notes, "interface version=5") {
+	if !strings.Contains(capabilities.Capture.Notes, "active ScreenCast fallback") ||
+		!strings.Contains(capabilities.Capture.Notes, "interface version=5") {
 		t.Fatalf("ScreenCast protocol diagnostics missing: %q", capabilities.Capture.Notes)
 	}
 
 	t.Setenv(envDisablePortal, "1")
 	capabilities = GetLinuxCapabilities()
-	if !capabilities.Capture.Available || capabilities.Capture.Backend != "wayland+screencopy" || capabilities.Capture.Fallback {
+	if !capabilities.Capture.Available || capabilities.Capture.Backend != FeatureBackendWaylandScreencopy || capabilities.Capture.Fallback {
 		t.Fatalf("native-only capability = %+v", capabilities.Capture)
+	}
+}
+
+func TestGetLinuxCapabilitiesUsesActiveScreenCastWhenNativeUnavailable(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("linux only")
+	}
+	prepareScreenCastCaptureTest(t)
+	stubCaptureCapabilityProbes(t, false, true)
+	screenCastCaptureState.Lock()
+	screenCastCaptureState.capture = &fakeScreenCastCapture{}
+	screenCastCaptureState.Unlock()
+
+	capabilities := GetLinuxCapabilities()
+	if !capabilities.Capture.Available || capabilities.Capture.Backend != FeatureBackendScreenCast {
+		t.Fatalf("active ScreenCast capability = %+v", capabilities.Capture)
 	}
 }
 

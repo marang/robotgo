@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"image"
 	"image/color"
 	"runtime"
@@ -761,7 +762,7 @@ func TestWaylandCatalogDoesNotAdvertiseImplicitPortalCapture(t *testing.T) {
 	capabilities.Runtime.DisplayServer = robotgo.DisplayServerWayland
 	capabilities.Capture = robotgo.FeatureCapability{Available: true, Backend: string(robotgo.BackendPortal)}
 	capability := buildCatalog(policy, capabilities).Operations[0]
-	if capability.CaptureAvailable || !strings.Contains(capability.Remediation, disablePortalEnv) {
+	if capability.CaptureAvailable || !strings.Contains(capability.Remediation, "will not open portal consent implicitly") {
 		t.Fatalf("portal-only capture capability = %+v", capability)
 	}
 
@@ -774,9 +775,100 @@ func TestWaylandCatalogDoesNotAdvertiseImplicitPortalCapture(t *testing.T) {
 	}
 
 	t.Setenv(disablePortalEnv, "1")
-	capabilities.Capture = robotgo.FeatureCapability{Available: true, Backend: "native-wayland"}
+	capabilities.Capture = robotgo.FeatureCapability{
+		Available: true,
+		Backend:   robotgo.FeatureBackendWaylandScreencopy,
+	}
 	if capability = buildCatalog(policy, capabilities).Operations[0]; !capability.CaptureAvailable {
 		t.Fatalf("explicit native-only capture capability = %+v", capability)
+	}
+}
+
+func TestWaylandAgentCapturePrefersNativeBeforeActiveScreenCast(t *testing.T) {
+	want := image.NewRGBA(image.Rect(0, 0, 1, 1))
+	var calls []string
+	img, err := captureWaylandAgent(
+		context.Background(),
+		CaptureRegion{Width: 1, Height: 1, DisplayID: 0},
+		false,
+		func(...int) (image.Image, error) {
+			calls = append(calls, "native")
+			return want, nil
+		},
+		func() error {
+			calls = append(calls, "ready")
+			return nil
+		},
+		func(context.Context, int, ...int) (image.Image, error) {
+			calls = append(calls, "screencast")
+			return nil, nil
+		},
+	)
+	if err != nil || img != want {
+		t.Fatalf("captureWaylandAgent = (%v, %v)", img, err)
+	}
+	if got := strings.Join(calls, ","); got != "native" {
+		t.Fatalf("backend order = %q, want native only", got)
+	}
+}
+
+func TestWaylandAgentCaptureUsesOnlyActiveScreenCastFallback(t *testing.T) {
+	nativeErr := errors.New("native unavailable")
+	want := image.NewRGBA(image.Rect(0, 0, 1, 1))
+	var calls []string
+	img, err := captureWaylandAgent(
+		context.Background(),
+		CaptureRegion{X: -10, Y: 5, Width: 1, Height: 1, DisplayID: 2},
+		false,
+		func(args ...int) (image.Image, error) {
+			calls = append(calls, "native")
+			if got := fmt.Sprint(args); got != "[-10 5 1 1 2]" {
+				t.Fatalf("native args = %s", got)
+			}
+			return nil, nativeErr
+		},
+		func() error {
+			calls = append(calls, "ready")
+			return nil
+		},
+		func(_ context.Context, displayID int, region ...int) (image.Image, error) {
+			calls = append(calls, "screencast")
+			if displayID != 2 || fmt.Sprint(region) != "[-10 5 1 1]" {
+				t.Fatalf("ScreenCast target = display %d, region %v", displayID, region)
+			}
+			return want, nil
+		},
+	)
+	if err != nil || img != want {
+		t.Fatalf("captureWaylandAgent = (%v, %v)", img, err)
+	}
+	if got := strings.Join(calls, ","); got != "native,ready,screencast" {
+		t.Fatalf("backend order = %q", got)
+	}
+}
+
+func TestWaylandAgentCaptureDisabledPortalStopsAfterNative(t *testing.T) {
+	nativeErr := errors.New("native unavailable")
+	var fallbackCalled bool
+	img, err := captureWaylandAgent(
+		context.Background(),
+		CaptureRegion{Width: 1, Height: 1, DisplayID: 0},
+		true,
+		func(...int) (image.Image, error) { return nil, nativeErr },
+		func() error {
+			fallbackCalled = true
+			return nil
+		},
+		func(context.Context, int, ...int) (image.Image, error) {
+			fallbackCalled = true
+			return nil, nil
+		},
+	)
+	if img != nil || !errors.Is(err, nativeErr) || !errors.Is(err, robotgo.ErrNotSupported) {
+		t.Fatalf("captureWaylandAgent = (%v, %v)", img, err)
+	}
+	if fallbackCalled {
+		t.Fatal("portal fallback was consulted while disabled")
 	}
 }
 
