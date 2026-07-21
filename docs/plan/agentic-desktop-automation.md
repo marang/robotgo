@@ -170,7 +170,7 @@ process-global limitation.
 
 ### 4.2 Observation and verification proof
 
-Delivery status: in progress under LAB-12.
+Delivery status: completed by LAB-12.
 
 The following slice completes the initial architecture proof with:
 
