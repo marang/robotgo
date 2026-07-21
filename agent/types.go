@@ -10,7 +10,7 @@ import (
 )
 
 // CatalogSchemaVersion identifies the operation catalog JSON contract.
-const CatalogSchemaVersion = "1"
+const CatalogSchemaVersion = "2"
 
 // Operation identifies one strict agent operation.
 type Operation string
@@ -19,12 +19,16 @@ const (
 	OperationMove     Operation = "pointer.move"
 	OperationClick    Operation = "pointer.click"
 	OperationTypeText Operation = "keyboard.type-text"
+	OperationObserve  Operation = "desktop.observe"
 )
 
 // RiskClass describes the policy impact of an operation.
 type RiskClass string
 
-const RiskReversibleMutation RiskClass = "reversible-mutation"
+const (
+	RiskSensitiveRead      RiskClass = "sensitive-read"
+	RiskReversibleMutation RiskClass = "reversible-mutation"
+)
 
 // CancellationSupport describes where cancellation is enforceable.
 type CancellationSupport string
@@ -45,6 +49,11 @@ type OperationCapability struct {
 	ExclusiveAgentSession bool                `json:"exclusive_agent_session"`
 	Reason                string              `json:"reason,omitempty"`
 	Remediation           string              `json:"remediation,omitempty"`
+	OptionalCapture       bool                `json:"optional_capture,omitempty"`
+	CaptureAvailable      bool                `json:"capture_available,omitempty"`
+	CapturePolicyAllowed  bool                `json:"capture_policy_allowed,omitempty"`
+	CaptureFallback       bool                `json:"capture_fallback,omitempty"`
+	CaptureBackend        string              `json:"capture_backend,omitempty"`
 }
 
 // OperationCatalog is an immutable snapshot of operation availability.
@@ -84,20 +93,23 @@ type TypeTextAction struct {
 // ActionRequest is a strict JSON-serializable action union. Exactly one action
 // payload must be present and must match Operation.
 type ActionRequest struct {
-	Operation Operation       `json:"operation"`
-	Confirmed bool            `json:"confirmed,omitempty"`
-	Move      *MoveAction     `json:"move,omitempty"`
-	Click     *ClickAction    `json:"click,omitempty"`
-	TypeText  *TypeTextAction `json:"type_text,omitempty"`
+	Operation    Operation                `json:"operation"`
+	Confirmed    bool                     `json:"confirmed,omitempty"`
+	Move         *MoveAction              `json:"move,omitempty"`
+	Click        *ClickAction             `json:"click,omitempty"`
+	TypeText     *TypeTextAction          `json:"type_text,omitempty"`
+	Precondition *ObservationPrecondition `json:"precondition,omitempty"`
+	Verification *VerificationRequest     `json:"verification,omitempty"`
 }
 
 // ActionStatus identifies the outcome of an action request.
 type ActionStatus string
 
 const (
-	ActionPlanned   ActionStatus = "planned"
-	ActionSucceeded ActionStatus = "succeeded"
-	ActionFailed    ActionStatus = "failed"
+	ActionPlanned    ActionStatus = "planned"
+	ActionSucceeded  ActionStatus = "succeeded"
+	ActionFailed     ActionStatus = "failed"
+	ActionUnverified ActionStatus = "unverified"
 )
 
 // ErrorCode is a stable machine-readable action failure category.
@@ -113,6 +125,9 @@ const (
 	ErrorCanceled         ErrorCode = "canceled"
 	ErrorTimedOut         ErrorCode = "timed-out"
 	ErrorBackendFailure   ErrorCode = "backend-failure"
+	ErrorStaleTarget      ErrorCode = "stale-target"
+	ErrorVerification     ErrorCode = "verification-failed"
+	ErrorAuditDelivery    ErrorCode = "audit-delivery-failed"
 )
 
 // ActionError is safe to serialize: Message never contains action payloads.
@@ -129,22 +144,35 @@ func (e *ActionError) Unwrap() error { return e.cause }
 // ActionResult reports one planned or attempted action without retaining its
 // input payload.
 type ActionResult struct {
-	ActionID       string       `json:"action_id"`
-	Operation      Operation    `json:"operation"`
-	Status         ActionStatus `json:"status"`
-	Backend        string       `json:"backend,omitempty"`
-	DurationMillis int64        `json:"duration_ms"`
-	Error          *ActionError `json:"error,omitempty"`
+	ActionID                  string              `json:"action_id"`
+	Operation                 Operation           `json:"operation"`
+	Status                    ActionStatus        `json:"status"`
+	Backend                   string              `json:"backend,omitempty"`
+	DurationMillis            int64               `json:"duration_ms"`
+	Error                     *ActionError        `json:"error,omitempty"`
+	PreconditionObservationID string              `json:"precondition_observation_id,omitempty"`
+	PostObservationID         string              `json:"post_observation_id,omitempty"`
+	Verification              *VerificationResult `json:"verification,omitempty"`
 }
 
 var (
 	ErrSessionBusy   = errors.New("another agent session is already active")
 	ErrSessionClosed = errors.New("agent session is closed")
 	ErrPolicyDenied  = errors.New("agent policy denied the action")
+	ErrStaleTarget   = errors.New("agent observation target is stale")
+	ErrVerification  = errors.New("agent action verification failed")
+	ErrAuditDelivery = errors.New("agent audit delivery failed")
 )
 
+func newActionError(code ErrorCode, operation Operation, message string, cause error) *ActionError {
+	if code == ErrorAuditDelivery && !errors.Is(cause, ErrAuditDelivery) {
+		cause = errors.Join(ErrAuditDelivery, cause)
+	}
+	return &ActionError{Code: code, Operation: operation, Message: message, cause: cause}
+}
+
 func actionFailure(id string, operation Operation, started time.Time, code ErrorCode, message string, cause error) (ActionResult, error) {
-	actionErr := &ActionError{Code: code, Operation: operation, Message: message, cause: cause}
+	actionErr := newActionError(code, operation, message, cause)
 	return ActionResult{
 		ActionID: id, Operation: operation, Status: ActionFailed,
 		DurationMillis: time.Since(started).Milliseconds(), Error: actionErr,

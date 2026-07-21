@@ -1,15 +1,51 @@
 package agent
 
-import robotgo "github.com/marang/robotgo"
+import (
+	"os"
+
+	robotgo "github.com/marang/robotgo"
+)
 
 func buildCatalog(policy Policy, capabilities robotgo.RuntimeCapabilities) OperationCatalog {
 	return OperationCatalog{
 		SchemaVersion: CatalogSchemaVersion,
 		Operations: []OperationCapability{
+			observationCapability(policy, capabilities),
 			operationCapability(OperationMove, policy, capabilities.Mouse),
 			operationCapability(OperationClick, policy, capabilities.Mouse),
 			operationCapability(OperationTypeText, policy, capabilities.Keyboard),
 		},
+	}
+}
+
+func observationCapability(policy Policy, capabilities robotgo.RuntimeCapabilities) OperationCapability {
+	_, confirmationRequired := policy.requireConfirmation[OperationObserve]
+	_, policyAllowed := policy.allowOperation[OperationObserve]
+	remediation := capabilities.Capture.Notes
+	if remediation == "" {
+		remediation = capabilities.Capture.Reason
+	}
+	captureAvailable := capabilities.Capture.Available
+	captureBackend := capabilities.Capture.Backend
+	capturePolicyAllowed := policyAllowed && policy.MaxCapturePixels > 0 && len(policy.allowDisplay) > 0
+	if capabilities.Runtime.GOOS == goOSLinux &&
+		capabilities.Runtime.DisplayServer == robotgo.DisplayServerWayland &&
+		captureBackend != string(robotgo.BackendScreenCast) && os.Getenv(disablePortalEnv) == "" {
+		captureAvailable = false
+		remediation = "agent capture will not open portal consent implicitly; start ScreenCast explicitly or set " + disablePortalEnv + "=1 for native-only capture"
+	}
+	return OperationCapability{
+		Operation: OperationObserve, Available: true, PolicyAllowed: policyAllowed,
+		Backend: runtimeDiagnosticsBackend, Risk: RiskSensitiveRead,
+		ConfirmationRequired: confirmationRequired,
+		Cancellation:         CancellationPreflightOnly,
+		ProcessGlobalBackend: true, ExclusiveAgentSession: true,
+		Reason:      "runtime diagnostics are available without opening desktop consent",
+		Remediation: remediation, OptionalCapture: true,
+		CaptureAvailable:     captureAvailable,
+		CapturePolicyAllowed: capturePolicyAllowed,
+		CaptureFallback:      capabilities.Capture.Fallback,
+		CaptureBackend:       captureBackend,
 	}
 }
 

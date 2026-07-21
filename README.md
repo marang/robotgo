@@ -746,21 +746,55 @@ go run -tags wayland ./examples/linux_capabilities
 
 The `agent` package adds a strict Go boundary for automation agents without
 changing the legacy package-level API. One process-exclusive session exposes a
-versioned operation catalog, policy and confirmation gates, dry-run, typed
-move/click/text requests, and sanitized structured results. Its catalog reports
-that the underlying input backend remains process-global and that cancellation
-is currently guaranteed before dispatch, not during a synchronous OS input
-call. Direct callers of legacy RobotGo APIs remain outside this exclusivity.
+versioned operation catalog, policy and confirmation gates, bounded observation,
+dry-run, typed move/click/text requests, stale-target protection, post-action
+verification, and sanitized structured results. Its catalog reports that the
+underlying input backend remains process-global and that cancellation is
+currently guaranteed before dispatch, not during a synchronous OS input call.
+Direct callers of legacy RobotGo APIs remain outside this exclusivity.
 For pointer moves, `AllowedDisplayIDs` fails closed: the selected display must
 be allowed and the global target coordinates must fall within its live bounds.
 If display geometry cannot be resolved, no input is injected.
+
+`Session.Observe` always returns sanitized runtime diagnostics and can optionally
+capture one explicit in-memory region. `MaxObservations`, `MaxCapturePixels`,
+and `AllowedDisplayIDs` bound those reads. Pixels are excluded from JSON and
+audit events; `Observation.Image` returns a defensive copy, while
+`Observation.Close` and `Session.Close` zero RobotGo-owned capture buffers.
+The implementation also enforces hard ceilings of 16,777,216 pixels per frame,
+100 verification attempts, 60 seconds between attempts, and five minutes per
+verification, even when a caller requests larger policy values.
+On Wayland, agent capture uses an already-active ScreenCast stream when
+available. It never opens a portal consent dialog implicitly; callers must
+start consent-aware ScreenCast themselves or explicitly select native-only
+capture with `ROBOTGO_DISABLE_PORTAL=1`.
+
+An action can reference a captured observation through
+`ObservationPrecondition`. RobotGo recaptures the same internally retained
+region immediately before input and rejects a changed target as `stale-target`.
+Optional `capture-changed` or `capture-unchanged` verification then polls within
+the policy's fixed attempt, interval, timeout, pixel, and observation budgets.
+If input completed but proof did not, the result is `unverified` rather than a
+misleading failure that might invite an unsafe retry. `AuditSink` receives only
+payload-free lifecycle metadata; an intent-delivery failure prevents desktop
+I/O, and a completion-delivery failure is returned alongside the actual action
+outcome. Audit sinks are synchronous and must not call back into their invoking
+session. `DryRun` never injects input, but a supplied observation precondition
+still performs a real bounded recapture and consumes observation quota.
 
 The example is validation-only by default and never injects input unless
 `-act` is supplied explicitly:
 
 ```bash
+go run ./examples/agent_session -operation observe
+# Explicit sensitive read; pixels stay in memory and are zeroed on close.
+go run ./examples/agent_session -operation observe -capture \
+  -x 0 -y 0 -width 320 -height 200 -display 0
 go run ./examples/agent_session -operation move -x 100 -y 100 -display 0
 go run ./examples/agent_session -act -operation move -x 100 -y 100 -display 0
+# Explicit sensitive read plus click mutation and bounded changed-region proof.
+go run ./examples/agent_session -act -operation click -verify changed \
+  -x 0 -y 0 -width 320 -height 200 -display 0
 ```
 
 ## Examples

@@ -1,6 +1,6 @@
 # Agentic Desktop Automation Plan
 
-Status: Draft
+Status: In progress
 
 Linear coordination:
 
@@ -152,6 +152,8 @@ than coupling desktop observation and mutation in one initial change.
 
 ### 4.1 Typed session and action core
 
+Delivery status: completed by LAB-11.
+
 The first foundation slice provides:
 
 1. deterministic, process-exclusive agent session creation and close
@@ -168,12 +170,20 @@ process-global limitation.
 
 ### 4.2 Observation and verification proof
 
+Delivery status: in progress under LAB-12.
+
 The following slice completes the initial architecture proof with:
 
 1. bounded desktop observation using runtime diagnostics and optional capture
 2. observation lineage and stale-target preconditions
 3. bounded post-action verification
 4. privacy-safe audit/replay seams
+
+The accepted proof is intentionally capture-based and bounded. It uses
+diagnostics-first observation, optional in-memory pixels, SHA-256 region
+lineage, changed/unchanged verification, and payload-free audit delivery. It
+does not add OCR, accessibility, file-backed captures, implicit portal consent,
+or an MCP adapter. Those remain later slices built on the accepted Go contract.
 
 An MCP server is not required for this first slice. It should consume the
 accepted Go contract rather than define it.

@@ -101,8 +101,11 @@ Agent-session unit tests use an in-memory input driver and never contact or
 mutate the desktop. They cover process-exclusive lifecycle, concurrent close,
 strict request validation, policy/confirmation/display/text/action limits,
 live display-bound enforcement, dry-run, quota handling, sanitized results,
-backend errors, and the documented
-preflight-only cancellation boundary:
+backend errors, bounded synthetic capture, defensive pixel ownership and
+zeroing, stale-target rejection, changed/unchanged verification, timeout and
+attempt bounds, payload-free audit events, and the documented preflight-only
+cancellation boundary. No agent unit test reads or persists the developer's
+desktop, clipboard, OCR input, or other private data:
 
 ```bash
 go test -race ./agent
@@ -120,6 +123,23 @@ go test -tags integration ./agent -run TestAgentSessionMoveRuntime -v
 
 Run it only in a graphical session where global pointer movement is intended.
 It creates no screenshot, clipboard, OCR, or other persistent artifact.
+
+The separate opt-in capture path reads one explicit real region into memory,
+checks its dimensions, and zeroes both the returned copy and session-owned
+buffer on every test cleanup path. It never writes a screenshot to disk and,
+on Wayland, never opens portal consent implicitly:
+
+```bash
+ROBOTGO_AGENT_CAPTURE_E2E=1 \
+ROBOTGO_AGENT_CAPTURE_X=0 ROBOTGO_AGENT_CAPTURE_Y=0 \
+ROBOTGO_AGENT_CAPTURE_WIDTH=320 ROBOTGO_AGENT_CAPTURE_HEIGHT=200 \
+ROBOTGO_AGENT_CAPTURE_DISPLAY=0 \
+go test -tags integration ./agent -run TestAgentSessionCaptureRuntime -v
+```
+
+Start a consent-aware ScreenCast session before that command when portal
+capture is required, or explicitly set `ROBOTGO_DISABLE_PORTAL=1` to test only
+a native capture path.
 
 Linux alert tests replace every external dialog backend through a private test
 `PATH`. They verify fallback order, user rejection, missing/failed backends, and
