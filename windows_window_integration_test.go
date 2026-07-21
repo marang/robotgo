@@ -19,9 +19,10 @@ import (
 const envRequireWindowsWindowIntegration = "ROBOTGO_REQUIRE_WINDOWS_WINDOW_INTEGRATION"
 
 const (
-	windowsIntegrationFocusEditMessage      = win.WM_USER + 1
-	windowsIntegrationQueryStatusMessage    = win.WM_USER + 2
-	windowsIntegrationQueryFocusLossMessage = win.WM_USER + 3
+	windowsIntegrationFocusEditMessage       = win.WM_USER + 1
+	windowsIntegrationQueryStatusMessage     = win.WM_USER + 2
+	windowsIntegrationQueryFocusLossMessage  = win.WM_USER + 3
+	windowsIntegrationQueryEditChangeMessage = win.WM_USER + 4
 
 	windowsIntegrationConditionTimeout = 3 * time.Second
 	windowsIntegrationMessageTimeout   = 3 * time.Second
@@ -212,6 +213,7 @@ func startWindowsIntegrationWindow(t *testing.T) (win.HWND, win.HWND, <-chan err
 		}
 		var editHandle win.HWND
 		var focusLossEvents uintptr
+		var editChangeEvents uintptr
 		windowProc := syscall.NewCallback(func(handle uintptr, message uint32, wParam, lParam uintptr) uintptr {
 			switch message {
 			case windowsIntegrationFocusEditMessage:
@@ -228,14 +230,20 @@ func startWindowsIntegrationWindow(t *testing.T) (win.HWND, win.HWND, <-chan err
 				return status
 			case windowsIntegrationQueryFocusLossMessage:
 				return focusLossEvents
+			case windowsIntegrationQueryEditChangeMessage:
+				return editChangeEvents
 			case win.WM_ACTIVATE:
 				if win.LOWORD(uint32(wParam)) == uint16(win.WA_INACTIVE) {
 					focusLossEvents++
 				}
 			case win.WM_COMMAND:
-				if win.HWND(lParam) == editHandle &&
-					win.HIWORD(uint32(wParam)) == uint16(win.EN_KILLFOCUS) {
-					focusLossEvents++
+				if win.HWND(lParam) == editHandle {
+					switch win.HIWORD(uint32(wParam)) {
+					case uint16(win.EN_KILLFOCUS):
+						focusLossEvents++
+					case uint16(win.EN_CHANGE):
+						editChangeEvents++
+					}
 				}
 			case win.WM_DESTROY:
 				win.PostQuitMessage(0)
@@ -381,15 +389,30 @@ func exerciseWindowsPaste(t *testing.T, handle, editHandle win.HWND, text string
 	if !first.clipboardPublished {
 		t.Fatal("PasteStr returned success but its text was not present on the clipboard")
 	}
-	if !windowsPasteFocusLossObserved(first.status, first.focusLossEvents, first.focusLossBaseline) {
-		t.Fatal("PasteStr published the clipboard text and retained foreground/edit focus, but Ctrl+V was not delivered")
+	recovery := windowsPasteRecoveryFor(
+		first.status,
+		first.focusLossEvents,
+		first.focusLossBaseline,
+		first.editChangeEvents,
+		first.editChangeBaseline,
+	)
+	if recovery == windowsPasteRecoveryNone {
+		t.Fatalf(
+			"PasteStr changed the owned edit without delivering the expected fixture; refusing recovery: foreground=%t edit_focused=%t focus_loss_events=%d edit_change_events=%d",
+			first.status&windowsIntegrationStatusForeground != 0,
+			first.status&windowsIntegrationStatusEditFocused != 0,
+			windowsPasteFocusLossDelta(first.focusLossEvents, first.focusLossBaseline),
+			windowsPasteEditChangeDelta(first.editChangeEvents, first.editChangeBaseline),
+		)
 	}
 
 	t.Logf(
-		"retrying PasteStr once after observed focus loss: foreground=%t edit_focused=%t focus_loss_events=%d",
+		"retrying PasteStr once after observed transient: reason=%s foreground=%t edit_focused=%t focus_loss_events=%d edit_change_events=%d",
+		recovery,
 		first.status&windowsIntegrationStatusForeground != 0,
 		first.status&windowsIntegrationStatusEditFocused != 0,
 		windowsPasteFocusLossDelta(first.focusLossEvents, first.focusLossBaseline),
+		windowsPasteEditChangeDelta(first.editChangeEvents, first.editChangeBaseline),
 	)
 	empty, err := syscall.UTF16PtrFromString("")
 	if err != nil {
@@ -408,11 +431,12 @@ func exerciseWindowsPaste(t *testing.T, handle, editHandle win.HWND, text string
 	}
 
 	t.Fatalf(
-		"PasteStr delivery failed after one focus-loss recovery: clipboard_published=%t foreground=%t edit_focused=%t focus_loss_events=%d",
+		"PasteStr delivery failed after one bounded recovery: clipboard_published=%t foreground=%t edit_focused=%t focus_loss_events=%d edit_change_events=%d",
 		retry.clipboardPublished,
 		retry.status&windowsIntegrationStatusForeground != 0,
 		retry.status&windowsIntegrationStatusEditFocused != 0,
 		windowsPasteFocusLossDelta(retry.focusLossEvents, retry.focusLossBaseline),
+		windowsPasteEditChangeDelta(retry.editChangeEvents, retry.editChangeBaseline),
 	)
 }
 
@@ -422,6 +446,8 @@ type windowsPasteAttemptResult struct {
 	status             uintptr
 	focusLossEvents    uintptr
 	focusLossBaseline  uintptr
+	editChangeEvents   uintptr
+	editChangeBaseline uintptr
 }
 
 func runWindowsPasteAttempt(
@@ -433,6 +459,7 @@ func runWindowsPasteAttempt(
 	result := windowsPasteAttemptResult{
 		focusLossBaseline: prepareWindowsPasteTarget(t, handle, editHandle),
 	}
+	result.editChangeBaseline = queryWindowsIntegrationEditChanges(t, handle)
 	if err := PasteStr(text); err != nil {
 		return result, err
 	}
@@ -449,6 +476,7 @@ func runWindowsPasteAttempt(
 	}
 	result.status = queryWindowsIntegrationStatus(t, handle)
 	result.focusLossEvents = queryWindowsIntegrationFocusLosses(t, handle)
+	result.editChangeEvents = queryWindowsIntegrationEditChanges(t, handle)
 	return result, nil
 }
 
@@ -484,6 +512,11 @@ func queryWindowsIntegrationStatus(t *testing.T, handle win.HWND) uintptr {
 func queryWindowsIntegrationFocusLosses(t *testing.T, handle win.HWND) uintptr {
 	t.Helper()
 	return sendWindowsIntegrationMessage(t, handle, windowsIntegrationQueryFocusLossMessage)
+}
+
+func queryWindowsIntegrationEditChanges(t *testing.T, handle win.HWND) uintptr {
+	t.Helper()
+	return sendWindowsIntegrationMessage(t, handle, windowsIntegrationQueryEditChangeMessage)
 }
 
 func sendWindowsIntegrationMessage(t *testing.T, handle win.HWND, message uint32) uintptr {
