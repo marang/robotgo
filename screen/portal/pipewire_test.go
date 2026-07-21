@@ -114,7 +114,8 @@ func TestPipeWireCaptureMapsLogicalFractionalScaleRegion(t *testing.T) {
 	if got := img.Bounds(); got != image.Rect(0, 0, 75, 50) {
 		t.Fatalf("scaled crop bounds = %v, want 75x50", got)
 	}
-	if capture.RestoreToken() != "restore-next" || len(capture.Streams()) != 1 {
+	if capture.RestoreToken() != "restore-next" || len(capture.Streams()) != 1 ||
+		!reflect.DeepEqual(capture.SelectedStream(), stream) {
 		t.Fatal("capture session metadata was not retained")
 	}
 	if err := capture.Close(); err != nil {

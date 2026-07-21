@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"image"
+	"image/color"
 	"strings"
 	"sync"
 	"testing"
@@ -18,15 +20,23 @@ type driverCall struct {
 }
 
 type fakeDriver struct {
-	mu        sync.Mutex
-	calls     []driverCall
-	err       error
-	bounds    map[int]displayBounds
-	boundsErr error
-	boundsHit chan struct{}
-	boundsGo  chan struct{}
-	started   chan struct{}
-	release   chan struct{}
+	mu            sync.Mutex
+	calls         []driverCall
+	err           error
+	bounds        map[int]displayBounds
+	boundsErr     error
+	boundsHit     chan struct{}
+	boundsGo      chan struct{}
+	started       chan struct{}
+	release       chan struct{}
+	captureImages []image.Image
+	captureErr    error
+	captureCalls  int
+	captureHit    chan struct{}
+	captureGo     chan struct{}
+	capabilities  *robotgo.RuntimeCapabilities
+	capabilityHit chan struct{}
+	capabilityGo  chan struct{}
 }
 
 func (d *fakeDriver) DisplayBounds(displayID int) (displayBounds, error) {
@@ -85,6 +95,62 @@ func (d *fakeDriver) TypeText(text string) error {
 	return d.record(driverCall{operation: OperationTypeText, text: text})
 }
 
+func (d *fakeDriver) RuntimeCapabilities() robotgo.RuntimeCapabilities {
+	if d.capabilityHit != nil {
+		select {
+		case d.capabilityHit <- struct{}{}:
+		default:
+		}
+	}
+	if d.capabilityGo != nil {
+		<-d.capabilityGo
+	}
+	if d.capabilities != nil {
+		return *d.capabilities
+	}
+	return availableCapabilities()
+}
+
+func (d *fakeDriver) Capture(_ context.Context, region CaptureRegion) (image.Image, error) {
+	if d.captureHit != nil {
+		select {
+		case d.captureHit <- struct{}{}:
+		default:
+		}
+	}
+	if d.captureGo != nil {
+		<-d.captureGo
+	}
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	call := d.captureCalls
+	d.captureCalls++
+	if d.captureErr != nil {
+		if call < len(d.captureImages) {
+			return d.captureImages[call], d.captureErr
+		}
+		return nil, d.captureErr
+	}
+	if len(d.captureImages) != 0 {
+		if call >= len(d.captureImages) {
+			call = len(d.captureImages) - 1
+		}
+		return d.captureImages[call], nil
+	}
+	if d.err != nil {
+		return nil, d.err
+	}
+	img := image.NewRGBA(image.Rect(0, 0, region.Width, region.Height))
+	img.SetRGBA(0, 0, color.RGBA{R: 1, G: 2, B: 3, A: 255})
+	return img, nil
+}
+
+func (d *fakeDriver) captureCount() int {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return d.captureCalls
+}
+
 func (d *fakeDriver) callCount() int {
 	d.mu.Lock()
 	defer d.mu.Unlock()
@@ -93,6 +159,8 @@ func (d *fakeDriver) callCount() int {
 
 func availableCapabilities() robotgo.RuntimeCapabilities {
 	return robotgo.RuntimeCapabilities{
+		Capture:  robotgo.FeatureCapability{Available: true, Backend: "fake-capture"},
+		Bounds:   robotgo.FeatureCapability{Available: true, Backend: "fake-bounds"},
 		Mouse:    robotgo.FeatureCapability{Available: true, Backend: "fake-mouse"},
 		Keyboard: robotgo.FeatureCapability{Available: true, Backend: "fake-keyboard"},
 	}
@@ -126,7 +194,7 @@ func TestCatalogIsStableAndDefensive(t *testing.T) {
 	if catalog.SchemaVersion != CatalogSchemaVersion {
 		t.Fatalf("schema = %q", catalog.SchemaVersion)
 	}
-	want := []Operation{OperationMove, OperationClick, OperationTypeText}
+	want := []Operation{OperationObserve, OperationMove, OperationClick, OperationTypeText}
 	for index, operation := range want {
 		got := catalog.Operations[index]
 		if got.Operation != operation || !got.Available || !got.ProcessGlobalBackend || !got.ExclusiveAgentSession {
@@ -136,8 +204,8 @@ func TestCatalogIsStableAndDefensive(t *testing.T) {
 			t.Fatalf("cancellation = %q", got.Cancellation)
 		}
 	}
-	catalog.Operations[0].Backend = "mutated"
-	if got := session.Catalog().Operations[0].Backend; got != "fake-mouse" {
+	catalog.Operations[1].Backend = "mutated"
+	if got := session.Catalog().Operations[1].Backend; got != "fake-mouse" {
 		t.Fatalf("catalog mutation leaked into session: %q", got)
 	}
 }

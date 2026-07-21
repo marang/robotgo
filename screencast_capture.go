@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"image"
+	"os"
 	"runtime"
 	"sync"
 
@@ -35,6 +36,7 @@ type screenCastFrameCapture interface {
 	Ready() error
 	Capture(context.Context, int, int, int, int) (image.Image, error)
 	Streams() []portalpkg.ScreenCastStream
+	SelectedStream() portalpkg.ScreenCastStream
 	RestoreToken() string
 	Close() error
 }
@@ -44,6 +46,8 @@ var (
 		return portalpkg.OpenPipeWireCapture(ctx, options, streamIndex)
 	}
 	screenCastCaptureCompiled  = portalpkg.PipeWireCaptureCompiled
+	screenCastDisplayBounds    = GetDisplayBoundsE
+	screenCastDisplaysNum      = DisplaysNumE
 	screenCastCaptureOperation sync.Mutex
 	screenCastCapturePending   struct {
 		sync.Mutex
@@ -62,6 +66,9 @@ var (
 func StartScreenCastCapture(ctx context.Context, options ScreenCastCaptureOptions, streamIndex ...int) error {
 	if runtime.GOOS != "linux" || DetectDisplayServer() != DisplayServerWayland {
 		return fmt.Errorf("%w: ScreenCast capture requires a Linux Wayland session", ErrNotSupported)
+	}
+	if os.Getenv(envDisablePortal) != "" {
+		return fmt.Errorf("%w: ScreenCast capture is disabled by %s", ErrNotSupported, envDisablePortal)
 	}
 	if !screenCastCaptureCompiled() {
 		return fmt.Errorf("%w: build with -tags pipewire and install libpipewire development files", ErrNotSupported)
@@ -123,6 +130,9 @@ func StartScreenCastCapture(ctx context.Context, options ScreenCastCaptureOption
 
 // ScreenCastCaptureReady reports whether a reusable PipeWire capture is active.
 func ScreenCastCaptureReady() error {
+	if os.Getenv(envDisablePortal) != "" {
+		return fmt.Errorf("%w: ScreenCast capture is disabled by %s", ErrNotSupported, envDisablePortal)
+	}
 	screenCastCaptureState.RLock()
 	capture := screenCastCaptureState.capture
 	screenCastCaptureState.RUnlock()
@@ -171,6 +181,85 @@ func CaptureScreenCast(ctx context.Context, region ...int) (image.Image, error) 
 	return captureViaScreenCast(ctx, region[0], region[1], region[2], region[3])
 }
 
+// CaptureScreenCastDisplay returns a region only when the active selected
+// stream is an unambiguous monitor match for displayID. Window, virtual,
+// metadata-incomplete, mismatched, and geometrically ambiguous streams fail
+// closed before any frame is read.
+func CaptureScreenCastDisplay(ctx context.Context, displayID int, region ...int) (image.Image, error) {
+	if os.Getenv(envDisablePortal) != "" {
+		return nil, fmt.Errorf("%w: ScreenCast capture is disabled by %s", ErrNotSupported, envDisablePortal)
+	}
+	if displayID < 0 {
+		return nil, fmt.Errorf("ScreenCast capture requires a non-negative display ID")
+	}
+	if len(region) != 0 && len(region) != 4 {
+		return nil, errors.New("ScreenCast capture region must be empty or x, y, width, height")
+	}
+	if len(region) == 4 && (region[2] <= 0 || region[3] <= 0) {
+		return nil, fmt.Errorf("ScreenCast capture region has invalid size %dx%d", region[2], region[3])
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	screenCastCaptureState.RLock()
+	capture := screenCastCaptureState.capture
+	screenCastCaptureState.RUnlock()
+	if capture == nil {
+		return nil, fmt.Errorf("%w: no active ScreenCast capture", ErrNotSupported)
+	}
+	if err := validateScreenCastDisplay(capture.SelectedStream(), displayID); err != nil {
+		return nil, err
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	if len(region) == 0 {
+		return capture.Capture(ctx, 0, 0, 0, 0)
+	}
+	return capture.Capture(ctx, region[0], region[1], region[2], region[3])
+}
+
+func validateScreenCastDisplay(stream portalpkg.ScreenCastStream, displayID int) error {
+	if stream.SourceType != portalpkg.ScreenCastSourceMonitor {
+		return fmt.Errorf("%w: selected ScreenCast stream is not a monitor", ErrNotSupported)
+	}
+	if !stream.HasPosition || !stream.HasSize || stream.Size.Width <= 0 || stream.Size.Height <= 0 {
+		return fmt.Errorf("%w: selected ScreenCast monitor lacks complete logical geometry", ErrNotSupported)
+	}
+	x, y, width, height, err := screenCastDisplayBounds(displayID)
+	if err != nil {
+		return err
+	}
+	if !screenCastGeometryMatches(stream, x, y, width, height) {
+		return fmt.Errorf("%w: selected ScreenCast monitor does not match display %d", ErrNotSupported, displayID)
+	}
+	displays, err := screenCastDisplaysNum()
+	if err != nil {
+		return err
+	}
+	for candidate := 0; candidate < displays; candidate++ {
+		if candidate == displayID {
+			continue
+		}
+		otherX, otherY, otherWidth, otherHeight, boundsErr := screenCastDisplayBounds(candidate)
+		if boundsErr != nil {
+			return boundsErr
+		}
+		if screenCastGeometryMatches(stream, otherX, otherY, otherWidth, otherHeight) {
+			return fmt.Errorf("%w: selected ScreenCast monitor geometry matches multiple displays", ErrNotSupported)
+		}
+	}
+	return nil
+}
+
+func screenCastGeometryMatches(stream portalpkg.ScreenCastStream, x, y, width, height int) bool {
+	return int64(stream.Position.X) == int64(x) && int64(stream.Position.Y) == int64(y) &&
+		int64(stream.Size.Width) == int64(width) && int64(stream.Size.Height) == int64(height)
+}
+
 // CloseScreenCastCapture stops PipeWire and closes the portal session.
 func CloseScreenCastCapture() error {
 	screenCastCapturePending.Lock()
@@ -198,6 +287,9 @@ func CloseScreenCastCapture() error {
 }
 
 func captureViaScreenCast(ctx context.Context, x, y, width, height int) (image.Image, error) {
+	if os.Getenv(envDisablePortal) != "" {
+		return nil, fmt.Errorf("%w: ScreenCast capture is disabled by %s", ErrNotSupported, envDisablePortal)
+	}
 	screenCastCaptureState.RLock()
 	capture := screenCastCaptureState.capture
 	screenCastCaptureState.RUnlock()

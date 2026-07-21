@@ -20,7 +20,7 @@ const (
 	backendWaylandVirtualKeyboard  = "wayland-virtual-keyboard"
 	backendWaylandVirtualPointer   = "wayland-virtual-pointer"
 	backendPortalRemoteDesktop     = "portal-remote-desktop"
-	backendPortalScreenCast        = "portal-screencast+pipewire"
+	backendPortalScreenCast        = FeatureBackendScreenCast
 )
 
 var (

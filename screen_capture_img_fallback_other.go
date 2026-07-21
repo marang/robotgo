@@ -7,3 +7,7 @@ import "image"
 func platformCaptureImgFallback(...int) (image.Image, bool, error) {
 	return nil, false, nil
 }
+
+func platformCaptureImgNativeFallback(...int) (image.Image, bool, error) {
+	return nil, false, nil
+}

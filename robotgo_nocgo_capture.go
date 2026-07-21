@@ -86,6 +86,33 @@ func CaptureImg(args ...int) (image.Image, error) {
 			return nil, fmt.Errorf("%w: no supported Linux display server detected", ErrNotSupported)
 		}
 	}
+	return capturePureGoNative(args)
+}
+
+// CaptureImgNative captures through a Pure-Go native backend without opening
+// or reusing a desktop portal. Pure-Go Wayland screencopy is not available, so
+// Wayland callers receive ErrNotSupported explicitly.
+func CaptureImgNative(args ...int) (image.Image, error) {
+	if err := validateCaptureArguments(args); err != nil {
+		return nil, err
+	}
+	if runtime.GOOS == "linux" {
+		switch DetectDisplayServer() {
+		case DisplayServerWayland:
+			return nil, fmt.Errorf(
+				"%w: native Wayland screencopy requires a CGO Wayland build",
+				ErrNotSupported,
+			)
+		case DisplayServerX11:
+			// Continue with the Pure-Go X11 backend below.
+		default:
+			return nil, fmt.Errorf("%w: no supported Linux display server detected", ErrNotSupported)
+		}
+	}
+	return capturePureGoNative(args)
+}
+
+func capturePureGoNative(args []int) (image.Image, error) {
 	if !pureGoScreenshotSupported(runtime.GOOS, runtime.GOARCH) {
 		return nil, fmt.Errorf("%w: Pure-Go capture is unavailable on %s/%s", ErrNotSupported, runtime.GOOS, runtime.GOARCH)
 	}

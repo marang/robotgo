@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"image"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -17,6 +18,8 @@ type inputDriver interface {
 	Move(x, y, displayID int) error
 	Click(button MouseButton, double bool) error
 	TypeText(text string) error
+	RuntimeCapabilities() robotgo.RuntimeCapabilities
+	Capture(context.Context, CaptureRegion) (image.Image, error)
 }
 
 type robotGoDriver struct{}
@@ -33,7 +36,8 @@ func (robotGoDriver) TypeText(text string) error { return robotgo.TypeStrE(text)
 
 // Config defines immutable session policy.
 type Config struct {
-	Policy Policy `json:"policy"`
+	Policy    Policy    `json:"policy"`
+	AuditSink AuditSink `json:"-"`
 }
 
 // Session serializes policy-gated desktop mutations. The underlying RobotGo
@@ -45,9 +49,15 @@ type Session struct {
 	ctx     context.Context
 	cancel  context.CancelFunc
 
-	actionGate chan struct{}
-	used       uint64
-	closeOnce  sync.Once
+	actionGate       chan struct{}
+	dispatchMu       sync.Mutex
+	used             uint64
+	closeOnce        sync.Once
+	observationMu    sync.Mutex
+	observations     map[string]observationRecord
+	usedObservations uint64
+	auditSink        AuditSink
+	auditSequence    uint64
 }
 
 var (
@@ -64,14 +74,19 @@ func NewSession(config Config) (*Session, error) {
 		return nil, err
 	}
 	capabilities := robotgo.GetRuntimeCapabilities()
-	return newSession(policy, robotGoDriver{}, capabilities)
+	return newSessionWithAudit(policy, robotGoDriver{}, capabilities, config.AuditSink)
 }
 
 func newSession(policy Policy, driver inputDriver, capabilities robotgo.RuntimeCapabilities) (*Session, error) {
+	return newSessionWithAudit(policy, driver, capabilities, nil)
+}
+
+func newSessionWithAudit(policy Policy, driver inputDriver, capabilities robotgo.RuntimeCapabilities, auditSink AuditSink) (*Session, error) {
 	ctx, cancel := context.WithCancel(context.Background())
 	s := &Session{
 		policy: policy, driver: driver, catalog: buildCatalog(policy, capabilities),
 		ctx: ctx, cancel: cancel, actionGate: make(chan struct{}, 1),
+		observations: make(map[string]observationRecord), auditSink: auditSink,
 	}
 	s.actionGate <- struct{}{}
 	ownerMu.Lock()
@@ -96,8 +111,11 @@ func (s *Session) Close() error {
 		return nil
 	}
 	s.closeOnce.Do(func() {
+		s.dispatchMu.Lock()
 		s.cancel()
+		s.dispatchMu.Unlock()
 		<-s.actionGate
+		s.closeObservations()
 		s.actionGate <- struct{}{}
 		ownerMu.Lock()
 		if activeOwner == s {
@@ -109,7 +127,9 @@ func (s *Session) Close() error {
 }
 
 // DryRun performs the same shape, policy, quota, capability, and cancellation
-// preflight as Execute without injecting input or consuming action quota.
+// preflight as Execute without injecting input or consuming action quota. A
+// supplied observation precondition is recaptured and consumes observation
+// quota because stale-target validation is a real sensitive read.
 func (s *Session) DryRun(ctx context.Context, request ActionRequest) (ActionResult, error) {
 	return s.run(ctx, request, true)
 }
@@ -161,42 +181,150 @@ func (s *Session) run(ctx context.Context, request ActionRequest, dryRun bool) (
 	if s.used >= s.policy.MaxActions {
 		return actionFailure(id, request.Operation, started, ErrorPolicyDenied, "agent policy action limit reached", ErrPolicyDenied)
 	}
+	if err := s.emitAudit(ctx, AuditEvent{
+		Kind: AuditActionStarted, Operation: request.Operation, ActionID: id,
+		PreconditionObservationID: preconditionID(request),
+	}); err != nil {
+		return actionFailure(id, request.Operation, started, ErrorAuditDelivery, "audit sink rejected action intent", err)
+	}
+	if err := ctx.Err(); err != nil {
+		result, actionErr := contextFailure(ctx, id, request.Operation, started)
+		return s.finishFailedActionAudit(ctx, result, actionErr)
+	}
+	select {
+	case <-s.ctx.Done():
+		result, actionErr := actionFailure(id, request.Operation, started, ErrorSessionClosed, "agent session is closed", ErrSessionClosed)
+		return s.finishFailedActionAudit(ctx, result, actionErr)
+	default:
+	}
 	if request.Move != nil {
 		if err := s.validateMoveTarget(*request.Move); err != nil {
 			if errors.Is(err, ErrPolicyDenied) {
-				return actionFailure(id, request.Operation, started, ErrorPolicyDenied, "agent policy denied the action", err)
+				result, actionErr := actionFailure(id, request.Operation, started, ErrorPolicyDenied, "agent policy denied the action", err)
+				return s.finishFailedActionAudit(ctx, result, actionErr)
 			}
 			code, message := classifyBackendError(err)
 			result, actionErr := actionFailure(id, request.Operation, started, code, message, err)
 			result.Backend = capability.Backend
-			return result, actionErr
+			return s.finishFailedActionAudit(ctx, result, actionErr)
 		}
 	}
 	if err := ctx.Err(); err != nil {
-		return contextFailure(ctx, id, request.Operation, started)
+		result, actionErr := contextFailure(ctx, id, request.Operation, started)
+		return s.finishFailedActionAudit(ctx, result, actionErr)
 	}
 	select {
 	case <-s.ctx.Done():
-		return actionFailure(id, request.Operation, started, ErrorSessionClosed, "agent session is closed", ErrSessionClosed)
+		result, actionErr := actionFailure(id, request.Operation, started, ErrorSessionClosed, "agent session is closed", ErrSessionClosed)
+		return s.finishFailedActionAudit(ctx, result, actionErr)
+	default:
+	}
+	lineage, err := s.prepareActionLineage(ctx, request, dryRun)
+	if err != nil {
+		code, message := classifyLineageError(err)
+		result, actionErr := actionFailure(id, request.Operation, started, code, message, err)
+		result.Backend = capability.Backend
+		result.PreconditionObservationID = preconditionID(request)
+		return s.finishFailedActionAudit(ctx, result, actionErr)
+	}
+	if lineage != nil {
+		defer lineage.release()
+	}
+	if err := ctx.Err(); err != nil {
+		result, actionErr := contextFailure(ctx, id, request.Operation, started)
+		return s.finishFailedActionAudit(ctx, result, actionErr)
+	}
+	select {
+	case <-s.ctx.Done():
+		result, actionErr := actionFailure(id, request.Operation, started, ErrorSessionClosed, "agent session is closed", ErrSessionClosed)
+		return s.finishFailedActionAudit(ctx, result, actionErr)
 	default:
 	}
 	if dryRun {
-		return ActionResult{
+		lineage.release()
+		result := ActionResult{
 			ActionID: id, Operation: request.Operation, Status: ActionPlanned,
 			Backend: capability.Backend, DurationMillis: time.Since(started).Milliseconds(),
-		}, nil
+			PreconditionObservationID: preconditionID(request),
+		}
+		return s.finishSuccessfulActionAudit(ctx, result)
 	}
-	s.used++
-	if err := s.execute(request); err != nil {
+	if err := s.executeAuthorized(ctx, request); err != nil {
+		lineage.release()
 		code, message := classifyBackendError(err)
 		result, actionErr := actionFailure(id, request.Operation, started, code, message, err)
 		result.Backend = capability.Backend
-		return result, actionErr
+		result.PreconditionObservationID = preconditionID(request)
+		return s.finishFailedActionAudit(ctx, result, actionErr)
 	}
-	return ActionResult{
+	lineage.release()
+	result := ActionResult{
 		ActionID: id, Operation: request.Operation, Status: ActionSucceeded,
-		Backend: capability.Backend, DurationMillis: time.Since(started).Milliseconds(),
-	}, nil
+		Backend: capability.Backend, PreconditionObservationID: preconditionID(request),
+	}
+	if request.Verification != nil {
+		post, verification, verifyErr := s.verifyAction(ctx, id, request, lineage)
+		result.Verification = &verification
+		if post != nil {
+			result.PostObservationID = post.ObservationID
+		}
+		if verifyErr != nil {
+			code, message := classifyLineageError(verifyErr)
+			actionErr := newActionError(code, request.Operation, message, verifyErr)
+			if code == ErrorAuditDelivery && verification.Status == VerificationPassed {
+				result.DurationMillis = time.Since(started).Milliseconds()
+				finished, finishErr := s.finishSuccessfulActionAudit(ctx, result)
+				if finishErr != nil {
+					return finished, errors.Join(actionErr, finishErr)
+				}
+				return finished, actionErr
+			}
+			result.Status = ActionUnverified
+			result.Error = actionErr
+			result.DurationMillis = time.Since(started).Milliseconds()
+			return s.finishFailedActionAudit(ctx, result, actionErr)
+		}
+	}
+	result.DurationMillis = time.Since(started).Milliseconds()
+	return s.finishSuccessfulActionAudit(ctx, result)
+}
+
+func (s *Session) finishSuccessfulActionAudit(ctx context.Context, result ActionResult) (ActionResult, error) {
+	if err := s.emitAudit(ctx, actionFinishedEvent(result)); err != nil {
+		return result, newActionError(ErrorAuditDelivery, result.Operation, "action completed but audit delivery failed", err)
+	}
+	return result, nil
+}
+
+func (s *Session) finishFailedActionAudit(ctx context.Context, result ActionResult, actionErr error) (ActionResult, error) {
+	if err := s.emitAudit(ctx, actionFinishedEvent(result)); err != nil {
+		return result, errors.Join(actionErr,
+			newActionError(ErrorAuditDelivery, result.Operation, "action completed but audit delivery failed", err))
+	}
+	return result, actionErr
+}
+
+func actionFinishedEvent(result ActionResult) AuditEvent {
+	event := AuditEvent{
+		Kind: AuditActionFinished, Operation: result.Operation, ActionID: result.ActionID,
+		PreconditionObservationID: result.PreconditionObservationID,
+		PostObservationID:         result.PostObservationID, ActionStatus: result.Status,
+	}
+	if result.Error != nil {
+		event.ErrorCode = result.Error.Code
+	}
+	if result.Verification != nil {
+		event.VerificationStatus = result.Verification.Status
+		event.VerificationAttempts = result.Verification.Attempts
+	}
+	return event
+}
+
+func preconditionID(request ActionRequest) string {
+	if request.Precondition == nil {
+		return ""
+	}
+	return request.Precondition.ObservationID
 }
 
 type displayBounds struct {
@@ -256,6 +384,22 @@ func (s *Session) authorize(request ActionRequest) error {
 }
 
 func validateRequest(request ActionRequest) error {
+	if request.Operation == OperationObserve {
+		return errors.New("desktop.observe must use Session.Observe")
+	}
+	if request.Precondition != nil && !validObservationID(request.Precondition.ObservationID) {
+		return errors.New("precondition requires a valid RobotGo observation ID")
+	}
+	if request.Verification != nil {
+		if request.Precondition == nil {
+			return errors.New("verification requires an observation precondition")
+		}
+		switch request.Verification.Condition {
+		case VerificationCaptureChanged, VerificationCaptureUnchanged:
+		default:
+			return errors.New("unsupported verification condition")
+		}
+	}
 	payloads := 0
 	if request.Move != nil {
 		payloads++
@@ -306,8 +450,25 @@ func (s *Session) execute(request ActionRequest) error {
 	}
 }
 
+func (s *Session) executeAuthorized(ctx context.Context, request ActionRequest) error {
+	s.dispatchMu.Lock()
+	defer s.dispatchMu.Unlock()
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	select {
+	case <-s.ctx.Done():
+		return ErrSessionClosed
+	default:
+	}
+	s.used++
+	return s.execute(request)
+}
+
 func classifyBackendError(err error) (ErrorCode, string) {
 	switch {
+	case errors.Is(err, ErrSessionClosed):
+		return ErrorSessionClosed, "agent session is closed"
 	case errors.Is(err, robotgo.ErrNotSupported):
 		return ErrorUnsupported, "operation is unsupported by the selected backend"
 	case errors.Is(err, robotgo.ErrPermissionDenied):
