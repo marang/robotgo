@@ -89,6 +89,15 @@ func (c *PipeWireCapture) Streams() []ScreenCastStream {
 	return c.session.Streams()
 }
 
+// SelectedStream returns the immutable metadata for the stream consumed by
+// this capture, rather than all streams selected in the portal session.
+func (c *PipeWireCapture) SelectedStream() ScreenCastStream {
+	if c == nil {
+		return ScreenCastStream{}
+	}
+	return c.stream
+}
+
 // RestoreToken returns the latest single-use ScreenCast restore token.
 func (c *PipeWireCapture) RestoreToken() string {
 	if c == nil || c.session == nil {

@@ -228,7 +228,7 @@ func (robotGoDriver) Capture(ctx context.Context, region CaptureRegion) (image.I
 	}
 	if runtime.GOOS == "linux" && robotgo.DetectDisplayServer() == robotgo.DisplayServerWayland {
 		if robotgo.ScreenCastCaptureReady() == nil {
-			return robotgo.CaptureScreenCast(ctx, region.X, region.Y, region.Width, region.Height)
+			return robotgo.CaptureScreenCastDisplay(ctx, region.DisplayID, region.X, region.Y, region.Width, region.Height)
 		}
 		if os.Getenv(disablePortalEnv) == "" {
 			return nil, fmt.Errorf(

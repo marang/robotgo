@@ -528,6 +528,11 @@ frame, err := robotgo.CaptureScreenCast(ctx) // image.Image
 
 `CaptureScreenCast(ctx, x, y, width, height)` crops in logical compositor
 coordinates and maps fractional stream scaling to physical pixels.
+`CaptureScreenCastDisplay(ctx, displayID, x, y, width, height)` additionally
+requires the active selected stream to be an unambiguous monitor geometry match
+for that display and fails closed before reading a frame otherwise. Agent
+capture uses this display-bound variant so an allow-listed display cannot expose
+pixels from a different monitor, window, or virtual stream.
 `ScreenCastCaptureStreams` exposes selected stream geometry and PipeWire
 metadata; `ScreenCastCaptureRestoreToken` returns the newest single-use restore
 token. Keep restore tokens private and replace the stored token after every

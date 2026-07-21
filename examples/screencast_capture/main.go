@@ -6,6 +6,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"image"
 	"image/png"
 	"os"
 	"os/signal"
@@ -18,6 +19,7 @@ import (
 func main() {
 	output := flag.String("output", "screencast.png", "PNG output path")
 	stream := flag.Int("stream", 0, "selected portal stream index")
+	display := flag.Int("display", -1, "require the selected monitor to match this display ID")
 	flag.Parse()
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -38,7 +40,15 @@ func main() {
 	}()
 
 	frameCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
-	frame, err := robotgo.CaptureScreenCast(frameCtx)
+	var (
+		frame image.Image
+		err   error
+	)
+	if *display >= 0 {
+		frame, err = robotgo.CaptureScreenCastDisplay(frameCtx, *display)
+	} else {
+		frame, err = robotgo.CaptureScreenCast(frameCtx)
+	}
 	cancel()
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "capture frame:", err)
