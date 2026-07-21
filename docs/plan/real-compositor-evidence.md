@@ -245,8 +245,9 @@ green.
 4. Provision and prove GNOME RemoteDesktop and ScreenCast when protected
    ephemeral runner ownership and operator consent are available.
 5. Provision and prove KDE RemoteDesktop and ScreenCast under the same gate.
-6. Add promoted checks to release evidence and, when operationally reliable,
-   branch protection; update the versioned compatibility matrices.
+6. **Implemented for hosted wlroots:** require all six stable Sway checks for
+   the exact release commit and in branch protection. Extend the same promotion
+   to GNOME/KDE only after their protected runner and consent paths are proven.
 
 Create Linear issues only when the next slice has concrete runner ownership and
 acceptance evidence. Do not create speculative implementation tickets for
