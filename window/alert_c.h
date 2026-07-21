@@ -3,6 +3,12 @@
 	#include <CoreFoundation/CoreFoundation.h>
 #endif
 
+enum robotgo_alert_status {
+	ROBOTGO_ALERT_FAILED = -1,
+	ROBOTGO_ALERT_ACCEPTED = 0,
+	ROBOTGO_ALERT_REJECTED = 1
+};
+
 #if defined(IS_MACOSX)
 // Use a static inline helper to avoid duplicate symbol definitions when this
 // header is included by multiple translation units.
@@ -30,14 +36,16 @@ static inline int showAlert(const char *title, const char *msg,
 		if (defaultButtonTitle != NULL) CFRelease(defaultButtonTitle);
 		if (cancelButtonTitle != NULL) CFRelease(cancelButtonTitle);
 
-		if (err != 0) { return -1; }
-		return (responseFlags == kCFUserNotificationDefaultResponse) ? 0 : 1;
+		if (err != 0) { return ROBOTGO_ALERT_FAILED; }
+		return (responseFlags == kCFUserNotificationDefaultResponse) ?
+			ROBOTGO_ALERT_ACCEPTED : ROBOTGO_ALERT_REJECTED;
 	#elif defined(IS_LINUX)
-		return 0;
+		return ROBOTGO_ALERT_ACCEPTED;
 	#else
 		/* TODO: Display custom buttons instead of the pre-defined "OK" and "Cancel". */
 		int response = MessageBox(NULL, msg, title,
 								(cancelButton == NULL) ? MB_OK : MB_OKCANCEL );
-		return (response == IDOK) ? 0 : 1;
+		if (response == 0) { return ROBOTGO_ALERT_FAILED; }
+		return (response == IDOK) ? ROBOTGO_ALERT_ACCEPTED : ROBOTGO_ALERT_REJECTED;
 	#endif
 }

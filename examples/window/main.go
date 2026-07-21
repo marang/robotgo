@@ -19,12 +19,18 @@ import (
 )
 
 func alert() {
-	// show Alert Window
-	abool := robotgo.Alert("hello", "robotgo")
-	if abool {
-		fmt.Println("ok@@@", "ok")
+	accepted, err := robotgo.AlertE("hello", "robotgo")
+	if err != nil {
+		fmt.Println("alert backend:", err)
+	} else {
+		fmt.Println("alert accepted:", accepted)
 	}
-	robotgo.Alert("hello", "robotgo", "Ok", "Cancel")
+	accepted, err = robotgo.AlertE("hello", "robotgo", "Ok", "Cancel")
+	if err != nil {
+		fmt.Println("interactive alert backend:", err)
+	} else {
+		fmt.Println("interactive alert accepted:", accepted)
+	}
 }
 
 func get() {
