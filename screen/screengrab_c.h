@@ -16,6 +16,7 @@ typedef enum {
   ScreengrabErrDmabufModifiers,
   ScreengrabErrDmabufImport,
   ScreengrabErrDmabufMap,
+  ScreengrabErrPixelFormat,
   ScreengrabErrPortal,
   ScreengrabErrFailed,
 } ScreengrabError;
@@ -57,6 +58,7 @@ typedef enum {
   ScreengrabErrDmabufModifiers,
   ScreengrabErrDmabufImport,
   ScreengrabErrDmabufMap,
+  ScreengrabErrPixelFormat,
   ScreengrabErrPortal,
   ScreengrabErrFailed,
 } ScreengrabError;
@@ -100,6 +102,7 @@ typedef enum {
   ScreengrabErrDmabufModifiers,
   ScreengrabErrDmabufImport,
   ScreengrabErrDmabufMap,
+  ScreengrabErrPixelFormat,
   ScreengrabErrPortal,
   ScreengrabErrFailed,
 } ScreengrabError;
