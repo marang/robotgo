@@ -4,6 +4,8 @@ package robotgo
 
 /*
 #cgo CFLAGS: -DROBOTGO_WAYLAND_TEST
+#include "mouse/wayland_absolute.h"
+#include "mouse/wayland_flush.h"
 void robotgo_wayland_map_logical_rect_for_test(int cap_w, int cap_h,
                                                 int logical_w, int logical_h,
                                                 int transform, int *x, int *y,
@@ -19,6 +21,69 @@ int robotgo_wayland_resolve_bounds_for_test(const int *values, int count,
 int robotgo_wayland_stable_output_name_for_test(const int *values,
                                                  int output_count,
                                                  int display_id);
+
+static int robotgo_wayland_map_pointer_for_test(
+    int global_x, int global_y, int origin_x, int origin_y,
+    int width, int height, unsigned int *mapped_x, unsigned int *mapped_y) {
+    return robotgo_wayland_map_absolute(
+        global_x, global_y, origin_x, origin_y, width, height,
+        ROBOTGO_WAYLAND_ABSOLUTE_EXTENT,
+        ROBOTGO_WAYLAND_ABSOLUTE_EXTENT,
+        mapped_x, mapped_y);
+}
+
+struct robotgo_wayland_flush_test_state {
+    const int *flush_errnos;
+    int flush_count;
+    int flush_index;
+    const int *wait_results;
+    int wait_count;
+    int wait_index;
+};
+
+static int robotgo_wayland_test_flush(void *context) {
+    struct robotgo_wayland_flush_test_state *state = context;
+    int index = state->flush_index++;
+    int error = index < state->flush_count ? state->flush_errnos[index] : 0;
+    if (error == 0) {
+        return 0;
+    }
+    errno = error;
+    return -1;
+}
+
+static int robotgo_wayland_test_wait(void *context, int timeout_ms) {
+    (void)timeout_ms;
+    struct robotgo_wayland_flush_test_state *state = context;
+    int index = state->wait_index++;
+    int result = index < state->wait_count ? state->wait_results[index] : 0;
+    if (result < 0) {
+        errno = -result;
+        return -1;
+    }
+    return result;
+}
+
+static int robotgo_wayland_flush_retry_for_test(
+    const int *flush_errnos, int flush_count,
+    const int *wait_results, int wait_count,
+    int attempts, int *flush_calls, int *wait_calls, int *delivered) {
+    struct robotgo_wayland_flush_test_state state = {
+        .flush_errnos = flush_errnos,
+        .flush_count = flush_count,
+        .flush_index = 0,
+        .wait_results = wait_results,
+        .wait_count = wait_count,
+        .wait_index = 0
+    };
+    int result = robotgo_wayland_flush_with_retry(
+        &state, robotgo_wayland_test_flush, robotgo_wayland_test_wait,
+        1, attempts);
+    *flush_calls = state.flush_index;
+    *wait_calls = state.wait_index;
+    *delivered = robotgo_wayland_flush_is_delivered(result);
+    return result;
+}
 */
 import "C"
 
@@ -115,4 +180,40 @@ func stableWaylandOutputNameForTest(outputs [][5]int, displayID int) int {
 		C.int(len(outputs)),
 		C.int(displayID),
 	))
+}
+
+func mapWaylandPointerForTest(point [2]int, bounds [4]int) ([2]uint32, bool) {
+	var x, y C.uint
+	status := C.robotgo_wayland_map_pointer_for_test(
+		C.int(point[0]), C.int(point[1]),
+		C.int(bounds[0]), C.int(bounds[1]),
+		C.int(bounds[2]), C.int(bounds[3]),
+		&x, &y,
+	)
+	return [2]uint32{uint32(x), uint32(y)}, status == 0
+}
+
+func waylandFlushRetryForTest(flushErrnos, waitResults []int, attempts int) (result, flushCalls, waitCalls int, delivered bool) {
+	flushValues := make([]C.int, len(flushErrnos))
+	for index, value := range flushErrnos {
+		flushValues[index] = C.int(value)
+	}
+	waitValues := make([]C.int, len(waitResults))
+	for index, value := range waitResults {
+		waitValues[index] = C.int(value)
+	}
+	var flushPointer, waitPointer *C.int
+	if len(flushValues) > 0 {
+		flushPointer = &flushValues[0]
+	}
+	if len(waitValues) > 0 {
+		waitPointer = &waitValues[0]
+	}
+	var cFlushCalls, cWaitCalls, cDelivered C.int
+	result = int(C.robotgo_wayland_flush_retry_for_test(
+		flushPointer, C.int(len(flushValues)),
+		waitPointer, C.int(len(waitValues)),
+		C.int(attempts), &cFlushCalls, &cWaitCalls, &cDelivered,
+	))
+	return result, int(cFlushCalls), int(cWaitCalls), cDelivered != 0
 }

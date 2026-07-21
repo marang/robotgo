@@ -97,6 +97,30 @@ extend a call beyond the named cleanup delay and that the isolated Unix process
 group is gone afterward; they do not access real OCR, clipboard, compositor, or
 desktop data.
 
+Agent-session unit tests use an in-memory input driver and never contact or
+mutate the desktop. They cover process-exclusive lifecycle, concurrent close,
+strict request validation, policy/confirmation/display/text/action limits,
+live display-bound enforcement, dry-run, quota handling, sanitized results,
+backend errors, and the documented
+preflight-only cancellation boundary:
+
+```bash
+go test -race ./agent
+CGO_ENABLED=0 go test ./agent
+```
+
+The opt-in runtime path performs one real pointer move to explicit coordinates:
+
+```bash
+ROBOTGO_AGENT_INPUT_E2E=1 \
+ROBOTGO_AGENT_INPUT_X=100 ROBOTGO_AGENT_INPUT_Y=100 \
+ROBOTGO_AGENT_INPUT_DISPLAY=0 \
+go test -tags integration ./agent -run TestAgentSessionMoveRuntime -v
+```
+
+Run it only in a graphical session where global pointer movement is intended.
+It creates no screenshot, clipboard, OCR, or other persistent artifact.
+
 Linux alert tests replace every external dialog backend through a private test
 `PATH`. They verify fallback order, user rejection, missing/failed backends, and
 the non-interactive notification boundary without displaying real UI.
@@ -281,6 +305,11 @@ Purpose:
   overflow boundaries, and all eight output transforms
 - Hermetic aggregate/per-output bounds for negative origins, fractional
   `xdg-output` geometry, stable display indices, scale, and all transforms
+- Hermetic native absolute-pointer mapping for negative aggregate origins and
+  exclusive desktop edges
+- Bounded Wayland input flush retries for transient `EAGAIN`, interrupted
+  waits, explicit still-queued delivery errors, and permanent transport
+  failures
 - DRM helper tests
 
 Typical command:
@@ -338,6 +367,8 @@ Purpose:
 - Shared RemoteDesktop/ScreenCast negotiation, stream metadata, absolute
   pointer coordinates, optional touch, and restore-token handling
 - High-level CGO and non-CGO fallback dispatch after explicit consent
+- Native-to-portal absolute fallback preserves caller global coordinates even
+  when legacy native scaling is enabled
 - CGO/non-CGO parity for mouse delays and explicit consent-timeout diagnostics
 
 Command:

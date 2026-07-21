@@ -162,6 +162,78 @@ func TestRemoteDesktopFallbackRequiresZeroNativeMutation(t *testing.T) {
 	}
 }
 
+func TestAbsolutePortalFallbackPreservesRequestedCoordinates(t *testing.T) {
+	const requestX, requestY = -1900, 100
+	nativeX, nativeY := requestX, requestY
+	var portalX, portalY int
+
+	usedPortal, err := moveAbsoluteWithFallback(
+		requestX, requestY, []int{1}, DisplayServerWayland,
+		func() (bool, error) {
+			// Model legacy native scaling before a zero-mutation backend error.
+			nativeX, nativeY = requestX/2, requestY/2
+			return true, ErrNotSupported
+		},
+		func(x, y int, displayID []int) (bool, error) {
+			portalX, portalY = x, y
+			if !reflect.DeepEqual(displayID, []int{1}) {
+				t.Fatalf("portal display IDs = %v, want [1]", displayID)
+			}
+			return true, nil
+		},
+	)
+	if err != nil || !usedPortal {
+		t.Fatalf("fallback = (used=%t err=%v), want portal success", usedPortal, err)
+	}
+	if nativeX != -950 || nativeY != 50 {
+		t.Fatalf("native coordinates = (%d,%d), want modeled scale", nativeX, nativeY)
+	}
+	if portalX != requestX || portalY != requestY {
+		t.Fatalf("portal coordinates = (%d,%d), want request (%d,%d)", portalX, portalY, requestX, requestY)
+	}
+}
+
+func TestAbsoluteMoveFallbackDecision(t *testing.T) {
+	nativeFailure := errors.New("native failure")
+	portalFailure := errors.New("portal failure")
+	tests := []struct {
+		name            string
+		ready           bool
+		nativeErr       error
+		portalUsed      bool
+		portalErr       error
+		wantUsedPortal  bool
+		wantErr         error
+		wantPortalCalls int
+	}{
+		{name: "native success", ready: true},
+		{name: "post-mutation native failure", ready: true, nativeErr: nativeFailure, wantErr: nativeFailure},
+		{name: "portal unavailable", nativeErr: nativeFailure, wantErr: nativeFailure, wantPortalCalls: 1},
+		{name: "portal success", nativeErr: nativeFailure, portalUsed: true, wantUsedPortal: true, wantPortalCalls: 1},
+		{name: "portal failure", nativeErr: nativeFailure, portalUsed: true, portalErr: portalFailure, wantUsedPortal: true, wantErr: portalFailure, wantPortalCalls: 1},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			portalCalls := 0
+			usedPortal, err := moveAbsoluteWithFallback(
+				10, 20, nil, DisplayServerWayland,
+				func() (bool, error) { return test.ready, test.nativeErr },
+				func(int, int, []int) (bool, error) {
+					portalCalls++
+					return test.portalUsed, test.portalErr
+				},
+			)
+			if usedPortal != test.wantUsedPortal || !errors.Is(err, test.wantErr) || portalCalls != test.wantPortalCalls {
+				t.Fatalf(
+					"fallback = (used=%t err=%v portalCalls=%d), want (%t,%v,%d)",
+					usedPortal, err, portalCalls,
+					test.wantUsedPortal, test.wantErr, test.wantPortalCalls,
+				)
+			}
+		})
+	}
+}
+
 type blockingHighLevelInputSession struct {
 	*fakeHighLevelPortalSession
 	once    sync.Once

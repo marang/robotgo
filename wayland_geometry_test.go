@@ -2,7 +2,10 @@
 
 package robotgo
 
-import "testing"
+import (
+	"syscall"
+	"testing"
+)
 
 func TestWaylandLogicalCropTransformMatrix(t *testing.T) {
 	tests := []struct {
@@ -168,6 +171,75 @@ func TestWaylandBoundsPreserveLogicalDesktopGeometry(t *testing.T) {
 	}
 	if _, ok := resolveWaylandBoundsForTest(outputs, len(outputs)); ok {
 		t.Fatal("out-of-range display index unexpectedly resolved")
+	}
+}
+
+func TestWaylandAbsolutePointerMappingPreservesAggregateOrigin(t *testing.T) {
+	bounds := [4]int{-1024, -360, 4224, 1440}
+	tests := []struct {
+		name  string
+		point [2]int
+		ok    bool
+	}{
+		{name: "negative aggregate origin", point: [2]int{-1024, -360}, ok: true},
+		{name: "primary origin", point: [2]int{0, 0}, ok: true},
+		{name: "last aggregate pixel", point: [2]int{3199, 1079}, ok: true},
+		{name: "left of aggregate", point: [2]int{-1025, 0}},
+		{name: "above aggregate", point: [2]int{0, -361}},
+		{name: "right edge is exclusive", point: [2]int{3200, 0}},
+		{name: "bottom edge is exclusive", point: [2]int{0, 1080}},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			got, ok := mapWaylandPointerForTest(test.point, bounds)
+			if ok != test.ok {
+				t.Fatalf("mapping status = %t, want %t (mapped %v)", ok, test.ok, got)
+			}
+			if !ok {
+				return
+			}
+			want := [2]uint32{
+				uint32((int64(test.point[0]-bounds[0]) * 65535) / int64(bounds[2])),
+				uint32((int64(test.point[1]-bounds[1]) * 65535) / int64(bounds[3])),
+			}
+			if got != want {
+				t.Fatalf("mapped point = %v, want %v", got, want)
+			}
+		})
+	}
+}
+
+func TestWaylandFlushRetriesTransientBackpressure(t *testing.T) {
+	tests := []struct {
+		name          string
+		flushErrnos   []int
+		waitResults   []int
+		attempts      int
+		wantResult    int
+		wantFlushes   int
+		wantWaitCalls int
+		wantDelivered bool
+	}{
+		{name: "immediate success", flushErrnos: []int{0}, attempts: 3, wantResult: 0, wantFlushes: 1, wantDelivered: true},
+		{name: "retry EAGAIN", flushErrnos: []int{int(syscall.EAGAIN), 0}, waitResults: []int{1}, attempts: 3, wantResult: 0, wantFlushes: 2, wantWaitCalls: 1, wantDelivered: true},
+		{name: "bounded queued EAGAIN", flushErrnos: []int{int(syscall.EAGAIN)}, waitResults: []int{0, 0, 0}, attempts: 3, wantResult: 1, wantFlushes: 1, wantWaitCalls: 3},
+		{name: "EINTR then writable", flushErrnos: []int{int(syscall.EAGAIN), 0}, waitResults: []int{-int(syscall.EINTR), 1}, attempts: 3, wantResult: 0, wantFlushes: 2, wantWaitCalls: 2, wantDelivered: true},
+		{name: "permanent flush failure", flushErrnos: []int{int(syscall.EPIPE)}, attempts: 3, wantResult: -1, wantFlushes: 1},
+		{name: "permanent poll failure", flushErrnos: []int{int(syscall.EAGAIN)}, waitResults: []int{-int(syscall.EPIPE)}, attempts: 3, wantResult: -1, wantFlushes: 1, wantWaitCalls: 1},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			result, flushCalls, waitCalls, delivered := waylandFlushRetryForTest(
+				test.flushErrnos, test.waitResults, test.attempts,
+			)
+			if result != test.wantResult || flushCalls != test.wantFlushes || waitCalls != test.wantWaitCalls || delivered != test.wantDelivered {
+				t.Fatalf(
+					"flush retry = (result=%d flushes=%d waits=%d delivered=%t), want (%d,%d,%d,%t)",
+					result, flushCalls, waitCalls, delivered,
+					test.wantResult, test.wantFlushes, test.wantWaitCalls, test.wantDelivered,
+				)
+			}
+		})
 	}
 }
 

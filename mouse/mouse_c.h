@@ -11,7 +11,8 @@ enum RobotGoMouseStatus {
 	ROBOTGO_MOUSE_UNSUPPORTED = 2,
 	ROBOTGO_MOUSE_INJECTION_FAILED = 3,
 	ROBOTGO_MOUSE_OWNERSHIP_CONFLICT = 4,
-	ROBOTGO_MOUSE_INVALID = 5
+	ROBOTGO_MOUSE_INVALID = 5,
+	ROBOTGO_MOUSE_DELIVERY_PENDING = 6
 };
 #if defined(IS_MACOSX)
 	// #include </System/Library/Frameworks/ApplicationServices.framework/Headers/ApplicationServices.h>
@@ -147,10 +148,14 @@ enum RobotGoMouseStatus {
 
 #ifdef ROBOTGO_USE_WAYLAND
         /* Wayland support */
+	#include <errno.h>
+	#include <poll.h>
         #include <string.h>
         #include <wayland-client.h>
         #include <linux/input-event-codes.h>
+	#include "wayland_flush.h"
         #include "wlr-virtual-pointer-unstable-v1-client-protocol.h"
+	#include "wayland_absolute.h"
         #include "../window/get_bounds_wayland.h"
 
 	        static struct wl_display *rg_wl_display = NULL;
@@ -158,6 +163,8 @@ enum RobotGoMouseStatus {
         static struct wl_seat *rg_wl_seat = NULL;
         static struct zwlr_virtual_pointer_manager_v1 *rg_wl_vptr_mgr = NULL;
         static struct zwlr_virtual_pointer_v1 *rg_wl_vptr = NULL;
+	static int rg_wl_x = 0;
+	static int rg_wl_y = 0;
         static int rg_wl_width = 0;
         static int rg_wl_height = 0;
         static int rg_wl_inited = 0;
@@ -228,6 +235,24 @@ enum RobotGoMouseStatus {
                 NULL
 	        };
 
+	        static int rg_refresh_wayland_bounds(void) {
+	                int x = 0;
+	                int y = 0;
+	                int width = 0;
+	                int height = 0;
+	                if (get_screen_rect_wayland(
+	                        rg_wl_display, -1, &x, &y,
+	                        &width, &height) != 0 ||
+	                    width <= 0 || height <= 0) {
+	                        return 0;
+	                }
+	                rg_wl_x = x;
+	                rg_wl_y = y;
+	                rg_wl_width = width;
+	                rg_wl_height = height;
+	                return 1;
+	        }
+
 	        static void rg_cleanup_wayland(void) {
 	                if (rg_wl_vptr) {
 	                        zwlr_virtual_pointer_v1_destroy(rg_wl_vptr);
@@ -249,6 +274,8 @@ enum RobotGoMouseStatus {
 	                        wl_display_disconnect(rg_wl_display);
 	                        rg_wl_display = NULL;
 	                }
+	                rg_wl_x = 0;
+	                rg_wl_y = 0;
 	                rg_wl_width = 0;
 	                rg_wl_height = 0;
 	                rg_wl_inited = 0;
@@ -284,9 +311,56 @@ enum RobotGoMouseStatus {
 	                        rg_cleanup_wayland();
 	                        return 0;
 	                }
-	                get_bounds_wayland(rg_wl_display, &rg_wl_width, &rg_wl_height);
+	                if (!rg_refresh_wayland_bounds()) {
+	                        rg_cleanup_wayland();
+	                        return 0;
+	                }
 	                rg_wl_inited = 1;
 	                return 1;
+	        }
+
+	        static int rg_try_flush_wayland(void *context) {
+	                return wl_display_flush((struct wl_display *)context);
+	        }
+
+	        static int rg_wait_wayland_writable(void *context, int timeout_ms) {
+	                struct pollfd writable = {
+	                        .fd = wl_display_get_fd((struct wl_display *)context),
+	                        .events = POLLOUT,
+	                        .revents = 0
+	                };
+	                int ready = poll(&writable, 1, timeout_ms);
+	                if (ready <= 0) {
+	                        return ready;
+	                }
+	                if (writable.revents & (POLLERR | POLLHUP | POLLNVAL)) {
+	                        errno = EPIPE;
+	                        return -1;
+	                }
+	                return (writable.revents & POLLOUT) ? 1 : 0;
+	        }
+
+	        static int rg_flush_wayland_mouse(void) {
+	                enum {
+	                        RG_WL_MOUSE_FLUSH_POLL_MS = 50,
+	                        RG_WL_MOUSE_FLUSH_ATTEMPTS = 3
+	                };
+	                if (rg_wl_display == NULL) {
+	                        return ROBOTGO_MOUSE_NO_DISPLAY;
+	                }
+	                int result = robotgo_wayland_flush_with_retry(
+	                        rg_wl_display, rg_try_flush_wayland,
+	                        rg_wait_wayland_writable,
+	                        RG_WL_MOUSE_FLUSH_POLL_MS,
+	                        RG_WL_MOUSE_FLUSH_ATTEMPTS);
+	                if (result == ROBOTGO_WAYLAND_FLUSH_FAILED) {
+	                        rg_cleanup_wayland();
+	                        return ROBOTGO_MOUSE_INJECTION_FAILED;
+	                }
+	                if (!robotgo_wayland_flush_is_delivered(result)) {
+	                        return ROBOTGO_MOUSE_DELIVERY_PENDING;
+	                }
+	                return ROBOTGO_MOUSE_OK;
 	        }
 
 	        static int robotgo_wayland_mouse_backend_enabled(void) { return 1; }
@@ -407,56 +481,97 @@ static int robotgo_x11_release_owned_buttons(void) { return ROBOTGO_MOUSE_OK; }
 	}
 #endif
 
-/* Move the mouse to a specific point. */
-void moveMouse(MMPointInt32 point){
+/* Move the mouse to a specific point and preserve backend failures. */
+static int moveMouseInternal(MMPointInt32 point, bool refresh_bounds){
+	(void)refresh_bounds;
         #if defined(IS_MACOSX)
 		CGEventSourceRef source = CGEventSourceCreate(kCGEventSourceStateHIDSystemState);
 		CGEventRef move = CGEventCreateMouseEvent(source, kCGEventMouseMoved, 
 								CGPointFromMMPointInt32(point), kCGMouseButtonLeft);
+		if (move == NULL) {
+			if (source != NULL) { CFRelease(source); }
+			return ROBOTGO_MOUSE_INJECTION_FAILED;
+		}
 
 		calculateDeltas(&move, point);
 
 		CGEventPost(kCGHIDEventTap, move);
 		CFRelease(move);
-		CFRelease(source);
+		if (source != NULL) { CFRelease(source); }
+		return ROBOTGO_MOUSE_OK;
         #elif defined(IS_LINUX)
 #ifdef ROBOTGO_USE_WAYLAND
                 if (robotgo_wayland_mouse_backend_selected()) {
                         if (!rg_init_wayland()) {
 #if !defined(DISPLAY_SERVER_WAYLAND)
                                 Display *display = XGetMainDisplay();
-                                if (display == NULL) { return; }
+				if (display == NULL) { return ROBOTGO_MOUSE_NO_DISPLAY; }
                                 XWarpPointer(display, None, DefaultRootWindow(display), 0, 0, 0, 0, point.x, point.y);
                                 XSync(display, false);
+				return ROBOTGO_MOUSE_OK;
+#else
+				return ROBOTGO_MOUSE_NO_DISPLAY;
 #endif
                         } else {
-                                if (rg_wl_width > 0 && rg_wl_height > 0) {
-                                        uint32_t sx = (uint32_t)((double)point.x * 65535.0 / rg_wl_width);
-                                        uint32_t sy = (uint32_t)((double)point.y * 65535.0 / rg_wl_height);
-                                        zwlr_virtual_pointer_v1_motion_absolute(rg_wl_vptr, 0, sx, sy, 65535, 65535);
-                                        wl_display_flush(rg_wl_display);
-                                        rg_wl_last_x = point.x;
-                                        rg_wl_last_y = point.y;
-                                }
+				if (refresh_bounds && !rg_refresh_wayland_bounds()) {
+					return ROBOTGO_MOUSE_NO_DISPLAY;
+				}
+				uint32_t sx = 0;
+				uint32_t sy = 0;
+				if (robotgo_wayland_map_absolute(
+				        point.x, point.y, rg_wl_x, rg_wl_y,
+				        rg_wl_width, rg_wl_height,
+				        ROBOTGO_WAYLAND_ABSOLUTE_EXTENT,
+				        ROBOTGO_WAYLAND_ABSOLUTE_EXTENT,
+				        &sx, &sy) != 0) {
+					return ROBOTGO_MOUSE_INVALID;
+				}
+				zwlr_virtual_pointer_v1_motion_absolute(
+					rg_wl_vptr, 0, sx, sy,
+					ROBOTGO_WAYLAND_ABSOLUTE_EXTENT,
+					ROBOTGO_WAYLAND_ABSOLUTE_EXTENT);
+				zwlr_virtual_pointer_v1_frame(rg_wl_vptr);
+				int flush_status = rg_flush_wayland_mouse();
+				if (flush_status != ROBOTGO_MOUSE_OK) {
+					return flush_status;
+				}
+				rg_wl_last_x = point.x;
+				rg_wl_last_y = point.y;
+				return ROBOTGO_MOUSE_OK;
                         }
                 }
 #if !defined(DISPLAY_SERVER_WAYLAND)
                 else {
                         Display *display = XGetMainDisplay();
-                        if (display == NULL) { return; }
+			if (display == NULL) { return ROBOTGO_MOUSE_NO_DISPLAY; }
                         XWarpPointer(display, None, DefaultRootWindow(display), 0, 0, 0, 0, point.x, point.y);
                         XSync(display, false);
+			return ROBOTGO_MOUSE_OK;
                 }
+#else
+		return ROBOTGO_MOUSE_UNSUPPORTED;
 #endif
 #else
                 Display *display = XGetMainDisplay();
-                if (display == NULL) { return; }
+		if (display == NULL) { return ROBOTGO_MOUSE_NO_DISPLAY; }
                 XWarpPointer(display, None, DefaultRootWindow(display), 0, 0, 0, 0, point.x, point.y);
                 XSync(display, false);
+		return ROBOTGO_MOUSE_OK;
 #endif
         #elif defined(IS_WINDOWS)
-                SetCursorPos(point.x, point.y);
+		return SetCursorPos(point.x, point.y)
+			? ROBOTGO_MOUSE_OK : ROBOTGO_MOUSE_INJECTION_FAILED;
         #endif
+	return ROBOTGO_MOUSE_UNSUPPORTED;
+}
+
+int moveMouseChecked(MMPointInt32 point){
+	return moveMouseInternal(point, true);
+}
+
+/* Legacy callers intentionally discard the checked error contract. */
+void moveMouse(MMPointInt32 point){
+	(void)moveMouseInternal(point, false);
 }
 
 void dragMouse(MMPointInt32 point, const MMMouseButton button){
@@ -526,10 +641,11 @@ void moveMouseRelative(int dx, int dy) {
                         wl_fixed_t fdy = wl_fixed_from_double((double)dy);
                         zwlr_virtual_pointer_v1_motion(rg_wl_vptr, 0, fdx, fdy);
                         zwlr_virtual_pointer_v1_frame(rg_wl_vptr);
-                        wl_display_flush(rg_wl_display);
-                        rg_wl_last_x += dx;
-                        rg_wl_last_y += dy;
-                        return;
+			if (rg_flush_wayland_mouse() == ROBOTGO_MOUSE_OK) {
+				rg_wl_last_x += dx;
+				rg_wl_last_y += dy;
+			}
+			return;
                 }
         }
 #endif
@@ -580,9 +696,9 @@ int toggleMouse(bool down, MMMouseButton button) {
 				}
                                 zwlr_virtual_pointer_v1_button(rg_wl_vptr, 0, code, down ? 1 : 0);
 				zwlr_virtual_pointer_v1_frame(rg_wl_vptr);
-				if (wl_display_flush(rg_wl_display) < 0) {
-					rg_cleanup_wayland();
-					return ROBOTGO_MOUSE_INJECTION_FAILED;
+				int flush_status = rg_flush_wayland_mouse();
+				if (flush_status != ROBOTGO_MOUSE_OK) {
+					return flush_status;
 				}
 				rg_wl_owned_buttons[index] = down;
 				return ROBOTGO_MOUSE_OK;
@@ -706,7 +822,7 @@ void scrollMouseXY(int x, int y) {
 						zwlr_virtual_pointer_v1_frame(rg_wl_vptr);
 					}
 				}
-				wl_display_flush(rg_wl_display);
+				(void)rg_flush_wayland_mouse();
 			}
 #if !defined(DISPLAY_SERVER_WAYLAND)
 			else {

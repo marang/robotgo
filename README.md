@@ -490,6 +490,9 @@ falls back to the aggregate desktop. Native
 the core-output fallback applies integer scale and all eight transforms. The
 Pure-Go query is read-only, bounded, closes its Unix connection after every
 atomic snapshot, and never opens a portal consent dialog.
+Native `zwlr_virtual_pointer_v1` absolute moves use the same aggregate logical
+origin, so displays positioned left of or above the primary output do not wrap
+negative global coordinates into the protocol's unsigned absolute frame.
 
 Capture selection is:
 
@@ -739,6 +742,27 @@ go run ./examples/runtime_diagnostics
 go run -tags wayland ./examples/linux_capabilities
 ```
 
+### Policy-gated agent sessions
+
+The `agent` package adds a strict Go boundary for automation agents without
+changing the legacy package-level API. One process-exclusive session exposes a
+versioned operation catalog, policy and confirmation gates, dry-run, typed
+move/click/text requests, and sanitized structured results. Its catalog reports
+that the underlying input backend remains process-global and that cancellation
+is currently guaranteed before dispatch, not during a synchronous OS input
+call. Direct callers of legacy RobotGo APIs remain outside this exclusivity.
+For pointer moves, `AllowedDisplayIDs` fails closed: the selected display must
+be allowed and the global target coordinates must fall within its live bounds.
+If display geometry cannot be resolved, no input is injected.
+
+The example is validation-only by default and never injects input unless
+`-act` is supplied explicitly:
+
+```bash
+go run ./examples/agent_session -operation move -x 100 -y 100 -display 0
+go run ./examples/agent_session -act -operation move -x 100 -y 100 -display 0
+```
+
 ## Examples
 
 The checked-in examples use this fork's module path and track the current API:
@@ -748,6 +772,7 @@ The checked-in examples use this fork's module path and track the current API:
 - [Screen capture and pixels](examples/screen/main.go)
 - [Full-screen capture with backend reporting](examples/screen_full/main.go)
 - [Cross-platform aggregate and per-output bounds](examples/display_bounds/main.go)
+- [Policy-gated agent session](examples/agent_session/main.go)
 - [Linux capabilities](examples/linux_capabilities/main.go)
 - [Cross-platform runtime capabilities](examples/runtime_capabilities/main.go)
 - [Versioned runtime diagnostics](examples/runtime_diagnostics/main.go)

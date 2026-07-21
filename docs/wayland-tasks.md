@@ -65,6 +65,12 @@ Current implementation baseline:
   Deterministic output indices are shared with screencopy, Wayland display
   count/main-index queries avoid X11, and the `wayland-info` fallback accepts
   output records without numeric identifiers.
+- Native absolute virtual-pointer moves translate the aggregate logical origin
+  into the protocol's unsigned coordinate frame and fail closed outside the
+  current aggregate, including layouts left of or above the primary output.
+  Bounded writable retries treat `EAGAIN` as transient backpressure. Requests
+  still queued after that budget report an explicit delivery error, while
+  backend teardown remains reserved for permanent Wayland transport failures.
 - Pure-Go aggregate/per-output bounds use the same primary-first geometry
   ordering, prefer fractional `xdg-output` logical geometry, apply integer scale
   and all transforms in the core fallback, clamp advertised protocol versions,
@@ -114,7 +120,9 @@ Current implementation baseline:
   session for stream-aware absolute pointer and touchscreen input. Stream
     geometry, mapping ID, PipeWire serial, persistence token availability, and
     permission status (including timeout versus cancellation) are observable
-    without exposing token contents. Portal mouse delays have CGO/non-CGO parity.
+    without exposing token contents. Absolute fallback retains the caller's
+    global coordinates rather than reusing native scaled coordinates. Portal
+    mouse delays have CGO/non-CGO parity.
 - Runtime integration tests cover backend capability selection for
   `sway`/`hyprland`/`wlroots-generic` with explicit skip behavior when runtime
   preconditions are not present.
