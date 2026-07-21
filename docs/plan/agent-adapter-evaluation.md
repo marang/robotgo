@@ -1,6 +1,6 @@
 # Agent Adapter and Evaluation Plan
 
-Status: Base completed by LAB-13; visual-condition extension active in LAB-15
+Status: Base completed by LAB-13; visual-condition extension completed by LAB-15
 
 Linear coordination:
 

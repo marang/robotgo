@@ -1,6 +1,6 @@
 # Agentic Desktop Automation Plan
 
-Status: Initial architecture proof completed; visual-condition MCP projection active
+Status: Initial architecture proof and visual-condition MCP projection completed
 
 Linear coordination:
 
@@ -208,7 +208,7 @@ surface and non-goals.
 
 ### 4.4 Safe visual conditions
 
-Delivery status: Go contract completed by LAB-14; MCP projection active in LAB-15.
+Delivery status: completed by LAB-14 and LAB-15.
 
 The Go-first slice adds color search over an explicit retained observation and
 bounded waiting over an explicit capture region. Its follow-up exposes only a
