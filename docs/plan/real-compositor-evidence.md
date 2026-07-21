@@ -19,12 +19,14 @@ not actually demonstrate.
 
 ## Trust and runner model
 
-Each matrix job uses a clean, ephemeral Linux runner that accepts one job and
-is destroyed afterward. Persistent personal desktop sessions are not eligible.
-Runner groups and labels are restricted to this repository, and runner
-registration credentials remain outside the repository and workflow logs.
+The P005 target design requires every matrix job to use a clean, ephemeral
+Linux runner that accepts one job and is destroyed afterward. Persistent
+personal desktop sessions are not eligible. Runner groups and labels must be
+restricted to this repository, and runner registration credentials must remain
+outside the repository and workflow logs.
 
-The protected workflows retain these boundaries:
+Before the protected workflows are enabled, their implementation must enforce
+these boundaries:
 
 - trusted repository refs only; fork pull requests never run on these runners,
   and same-repository pull requests require explicit maintainer/Environment
@@ -40,9 +42,9 @@ The protected workflows retain these boundaries:
 - complete VM/session destruction after success, failure, timeout, or
   cancellation
 
-The workflows never use `pull_request_target` to check out and execute pull
-request code. Approval makes the reviewed commit eligible for an isolated
-runner; repository origin alone is not a trust decision.
+The implemented workflows must never use `pull_request_target` to check out and
+execute pull request code. Approval makes the reviewed commit eligible for an
+isolated runner; repository origin alone is not a trust decision.
 
 GitHub recommends ephemeral runners for autoscaling because one job is assigned
 before automatic deregistration. Runner logs must be retained externally, and
