@@ -12,6 +12,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -30,6 +31,11 @@ const (
 	envSwayRuntimeDir  = "XDG_RUNTIME_DIR"
 	swayFixtureAppID   = "wev"
 	swayFixtureTitle   = "wev"
+	swayFixtureX       = 120
+	swayFixtureY       = 80
+	swayFixtureWidth   = 480
+	swayFixtureHeight  = 320
+	swayConfigureEvent = "xdg_surface] configure:"
 	swayOutputWidth    = 1280
 	swayOutputHeight   = 720
 	swaySecondOutputX  = -600
@@ -77,9 +83,20 @@ type swayInputIdentity struct {
 type swayFixtureNode struct {
 	AppID         string            `json:"app_id"`
 	Name          string            `json:"name"`
+	Type          string            `json:"type"`
 	Focused       bool              `json:"focused"`
+	Rect          swayFixtureRect   `json:"rect"`
+	WindowRect    swayFixtureRect   `json:"window_rect"`
+	Geometry      swayFixtureRect   `json:"geometry"`
 	Nodes         []swayFixtureNode `json:"nodes"`
 	FloatingNodes []swayFixtureNode `json:"floating_nodes"`
+}
+
+type swayFixtureRect struct {
+	X      int `json:"x"`
+	Y      int `json:"y"`
+	Width  int `json:"width"`
+	Height int `json:"height"`
 }
 
 type lockedBoundedBuffer struct {
@@ -205,6 +222,8 @@ func TestSwayNativeCaptureRuntime(t *testing.T) {
 func TestSwayNativeWindowRuntime(t *testing.T) {
 	requireIsolatedSway(t, swaySingleOutput)
 	fixture := startSwayFixture(t)
+	configureSwayFixtureGeometry(t, fixture.log)
+	waitForSwayFixtureGeometry(t)
 	title, err := GetTitleE()
 	if err != nil {
 		t.Fatalf("query Sway fixture title: %v", err)
@@ -216,10 +235,187 @@ func TestSwayNativeWindowRuntime(t *testing.T) {
 	if !capability.Available || capability.Backend != windowBackendSway {
 		t.Fatalf("Sway window capability = %+v", capability)
 	}
+	if _, _, _, _, err := GetBoundsE(os.Getpid()); !errors.Is(err, ErrNotSupported) {
+		t.Fatalf("pid-specific Sway bounds error = %v, want ErrNotSupported", err)
+	}
+	if _, _, _, _, err := GetClientE(1, 1); !errors.Is(err, ErrNotSupported) {
+		t.Fatalf("handle-specific Sway client error = %v, want ErrNotSupported", err)
+	}
 	if err := CloseWindowE(); err != nil {
 		t.Fatalf("close self-owned Sway fixture: %v", err)
 	}
 	fixture.close(t, true)
+}
+
+func configureSwayFixtureGeometry(t *testing.T, log *lockedBoundedBuffer) {
+	t.Helper()
+	criterion := `[app_id="` + swayFixtureAppID + `"]`
+	configureCount := waitForSwayConfigureSettled(t, log, 0)
+	runSwayFixtureCommand(t, criterion, "border", "none")
+	configureCount = waitForSwayConfigureSettled(t, log, configureCount)
+	runSwayFixtureCommand(t, criterion, "floating", "enable")
+	configureCount = waitForSwayConfigureSettled(t, log, configureCount)
+	waitForSwayFixtureState(t, "confirmed floating mode", func(node swayFixtureNode) bool {
+		return node.Type == swayNodeTypeFloatingContainer &&
+			node.Geometry.Width > 0 &&
+			node.Geometry.Height > 0 &&
+			node.Rect.Width == node.Geometry.Width &&
+			node.Rect.Height == node.Geometry.Height &&
+			node.WindowRect.Width == node.Geometry.Width &&
+			node.WindowRect.Height == node.Geometry.Height
+	})
+	runSwayFixtureCommand(
+		t,
+		criterion,
+		"resize", "set",
+		"width", strconv.Itoa(swayFixtureWidth), "px",
+		"height", strconv.Itoa(swayFixtureHeight), "px",
+	)
+	_ = waitForSwayConfigureSettled(t, log, configureCount)
+	waitForSwayFixtureState(t, "confirmed size", func(node swayFixtureNode) bool {
+		return node.Rect.Width == swayFixtureWidth &&
+			node.Rect.Height == swayFixtureHeight &&
+			node.WindowRect.Width == swayFixtureWidth &&
+			node.WindowRect.Height == swayFixtureHeight
+	})
+	runSwayFixtureCommand(
+		t,
+		criterion,
+		"move", "position",
+		strconv.Itoa(swayFixtureX), "px",
+		strconv.Itoa(swayFixtureY), "px",
+	)
+}
+
+func waitForSwayConfigureSettled(
+	t *testing.T,
+	log *lockedBoundedBuffer,
+	previous int,
+) int {
+	t.Helper()
+	deadline := time.Now().Add(swayFixtureTimeout)
+	last := previous
+	stable := 0
+	for time.Now().Before(deadline) {
+		count := strings.Count(log.String(), swayConfigureEvent)
+		if count > previous && count == last {
+			stable++
+			if stable >= 3 {
+				return count
+			}
+		} else {
+			stable = 0
+		}
+		last = count
+		time.Sleep(25 * time.Millisecond)
+	}
+	t.Fatalf(
+		"self-owned Sway fixture configure count did not advance past %d (last %d)",
+		previous,
+		last,
+	)
+	return 0
+}
+
+func runSwayFixtureCommand(t *testing.T, args ...string) {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), swayCommandTimeout)
+	output, err := exec.CommandContext(ctx, cmdSwayMsg, args...).CombinedOutput()
+	cancel()
+	if err != nil {
+		t.Fatalf("configure self-owned Sway fixture geometry: %v: %s", err, output)
+	}
+}
+
+func waitForSwayFixtureState(
+	t *testing.T,
+	description string,
+	ready func(swayFixtureNode) bool,
+) {
+	t.Helper()
+	deadline := time.Now().Add(swayFixtureTimeout)
+	var last *swayFixtureNode
+	for time.Now().Before(deadline) {
+		var tree swayFixtureNode
+		runSwayJSON(t, &tree, "get_tree")
+		if node := findSwayFixture(tree); node != nil {
+			snapshot := *node
+			last = &snapshot
+			if ready(snapshot) {
+				return
+			}
+		}
+		time.Sleep(25 * time.Millisecond)
+	}
+	if last == nil {
+		t.Fatalf("self-owned Sway fixture disappeared before reaching %s", description)
+	}
+	t.Fatalf(
+		"self-owned Sway fixture did not reach %s: type=%q rect=%+v window_rect=%+v geometry=%+v",
+		description,
+		last.Type,
+		last.Rect,
+		last.WindowRect,
+		last.Geometry,
+	)
+}
+
+func waitForSwayFixtureGeometry(t *testing.T) {
+	t.Helper()
+	assertGeometry := func(name string, client bool) bool {
+		t.Helper()
+		var x, y, width, height int
+		var err error
+		if client {
+			x, y, width, height, err = GetClientE(0)
+		} else {
+			x, y, width, height, err = GetBoundsE(0)
+		}
+		if err != nil {
+			return false
+		}
+		if x != swayFixtureX || y != swayFixtureY ||
+			width != swayFixtureWidth || height != swayFixtureHeight {
+			return false
+		}
+		var legacyX, legacyY, legacyWidth, legacyHeight int
+		if client {
+			legacyX, legacyY, legacyWidth, legacyHeight = GetClient(0)
+		} else {
+			legacyX, legacyY, legacyWidth, legacyHeight = GetBounds(0)
+		}
+		if legacyX != x || legacyY != y ||
+			legacyWidth != width || legacyHeight != height {
+			t.Fatalf(
+				"legacy %s geometry = %d,%d %dx%d, error API = %d,%d %dx%d",
+				name,
+				legacyX,
+				legacyY,
+				legacyWidth,
+				legacyHeight,
+				x,
+				y,
+				width,
+				height,
+			)
+		}
+		return true
+	}
+
+	deadline := time.Now().Add(swayFixtureTimeout)
+	for time.Now().Before(deadline) {
+		if assertGeometry("outer", false) && assertGeometry("client", true) {
+			return
+		}
+		time.Sleep(25 * time.Millisecond)
+	}
+	t.Fatalf(
+		"self-owned Sway fixture did not reach exact geometry %d,%d %dx%d",
+		swayFixtureX,
+		swayFixtureY,
+		swayFixtureWidth,
+		swayFixtureHeight,
+	)
 }
 
 func TestSwayNativeOutputRuntime(t *testing.T) {
@@ -434,7 +630,10 @@ func startSwayFixture(t *testing.T) *swayFixture {
 	command := exec.CommandContext(
 		ctx,
 		"stdbuf", "-oL", "-eL",
-		"wev", "-f", "wl_pointer", "-f", "wl_keyboard",
+		"wev",
+		"-f", "wl_pointer",
+		"-f", "wl_keyboard",
+		"-f", "xdg_surface",
 	)
 	command.Stdout = log
 	command.Stderr = log

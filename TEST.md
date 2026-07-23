@@ -722,6 +722,10 @@ intentionally preserving a foreign replacement is not itself an error.
   - Opt-in for wlroots active-window minimize/maximize E2E integration (`MinWindowE(0)`, `MaxWindowE(0)`).
 - `ROBOTGO_SWAY_TITLE_E2E=1`
   - Opt-in for sway active-window title E2E integration (`GetTitleE`).
+    The protected hosted-Sway `native-window` cell additionally proves exact
+    `GetBoundsE`/`GetClientE` node/client geometry against a self-owned,
+    borderless fixture
+    and removes the fixture and private compositor runtime on every exit path.
 - `ROBOTGO_HYPRLAND_TITLE_E2E=1`
   - Opt-in for hyprland active-window title E2E integration (`GetTitleE`).
 - `ROBOTGO_HYPRLAND_MAXIMIZE_E2E=1`

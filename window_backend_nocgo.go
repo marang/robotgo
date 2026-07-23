@@ -147,18 +147,26 @@ func pureGoWindowTitle(args ...int) (string, error) {
 	return backend.Title(handle)
 }
 
-func pureGoWindowBounds(target int, isHandle, client bool) (int, int, int, int) {
+func pureGoWindowBoundsE(target int, isHandle, client bool) (int, int, int, int, error) {
 	backend, err := pureGoWindowBackend()
 	if err != nil {
-		return 0, 0, 0, 0
+		return 0, 0, 0, 0, err
 	}
 	handle, err := backend.Resolve(target, isHandle)
 	if err != nil {
-		return 0, 0, 0, 0
+		return 0, 0, 0, 0, err
 	}
 	rect, err := backend.Bounds(handle, client)
 	if err != nil {
-		return 0, 0, 0, 0
+		return 0, 0, 0, 0, err
 	}
-	return rect.X, rect.Y, rect.Width, rect.Height
+	if rect.Width <= 0 || rect.Height <= 0 {
+		return 0, 0, 0, 0, fmt.Errorf(
+			"%w: Pure-Go window backend returned invalid size %dx%d",
+			windowbackend.ErrInvalidWindow,
+			rect.Width,
+			rect.Height,
+		)
+	}
+	return rect.X, rect.Y, rect.Width, rect.Height, nil
 }

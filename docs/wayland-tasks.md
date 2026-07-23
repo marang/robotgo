@@ -87,7 +87,13 @@ Current implementation baseline:
 - Window-control APIs now expose explicit Wayland NotSupported errors via
   error-returning variants (`SetActiveE`, `MinWindowE`, `MaxWindowE`,
   `CloseWindowE`, `GetTitleE`, `IsTopMostE`, `IsMinimizedE`,
-  `IsMaximizedE`, `SetTopMostE`).
+  `IsMaximizedE`, `SetTopMostE`, `GetBoundsE`, `GetClientE`).
+- Window and display geometry no longer share a misleading fallback:
+  `GetScreenRectE`/`GetDisplayBoundsE` report outputs, while
+  `GetBoundsE`/`GetClientE` report only trustworthy window geometry. Sway
+  exposes active node/client geometry, Hyprland exposes active
+  compositor-reported geometry, and unsupported target/compositor modes fail explicitly; legacy wrappers
+  return zero geometry on those failures.
 - Wayland window backend resolver is layered:
   - compositor-specific (`sway`, `hyprland`)
   - wlroots family generic backend (`wlroots-generic`)
@@ -230,8 +236,10 @@ backends.
 - Window APIs:
   - Extend compositor-backed move/resize/activate/topmost/minimize/title
     behavior while preserving explicit `ErrNotSupported` elsewhere.
-  - Validate the delivered `GetBounds`/`GetClient` `xdg-output` multi-output
-    and fractional-scale contract on protected wlroots/GNOME/KDE runners.
+  - Validate display/output geometry (`GetScreenRectE`/`GetDisplayBoundsE`)
+    independently from window geometry on protected wlroots/GNOME/KDE runners.
+    The hosted Sway window cell proves exact active node/client geometry;
+    Hyprland protected geometry evidence remains open.
   - Add resource‑leak checks for Wayland window helpers.
 - API Parity Follow-up:
   - Extend compositor-backed implementations for existing topmost/min/max

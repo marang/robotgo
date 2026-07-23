@@ -47,3 +47,35 @@ func TestNonCGOPortableAPIContract(t *testing.T) {
 		t.Fatalf("MinWindowE invalid argument error = %v, want validation error", err)
 	}
 }
+
+func TestNonCGOWindowGeometryErrorContract(t *testing.T) {
+	operations := []struct {
+		name string
+		call func(int, ...int) (int, int, int, int, error)
+	}{
+		{name: "GetBoundsE", call: GetBoundsE},
+		{name: "GetClientE", call: GetClientE},
+	}
+	for _, operation := range operations {
+		x, y, width, height, err := operation.call(0)
+		if err == nil {
+			t.Fatalf("%s accepted zero window target", operation.name)
+		}
+		if x != 0 || y != 0 || width != 0 || height != 0 {
+			t.Fatalf(
+				"%s failure returned geometry %d,%d %dx%d",
+				operation.name,
+				x,
+				y,
+				width,
+				height,
+			)
+		}
+	}
+	if x, y, width, height := GetBounds(0); x != 0 || y != 0 || width != 0 || height != 0 {
+		t.Fatalf("legacy GetBounds failure = %d,%d %dx%d, want zero geometry", x, y, width, height)
+	}
+	if x, y, width, height := GetClient(0); x != 0 || y != 0 || width != 0 || height != 0 {
+		t.Fatalf("legacy GetClient failure = %d,%d %dx%d, want zero geometry", x, y, width, height)
+	}
+}

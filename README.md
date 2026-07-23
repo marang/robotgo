@@ -497,6 +497,25 @@ Native `zwlr_virtual_pointer_v1` absolute moves use the same aggregate logical
 origin, so displays positioned left of or above the primary output do not wrap
 negative global coordinates into the protocol's unsigned absolute frame.
 
+Display geometry and window geometry are separate contracts. Use
+`GetScreenRectE`/`GetDisplayBoundsE` for outputs and the desktop. Use
+`GetBoundsE`/`GetClientE` for a window:
+
+```go
+x, y, width, height, err := robotgo.GetBoundsE(0) // active Wayland window
+```
+
+Sway exposes active-window compositor-node and client geometry. Hyprland exposes
+the active compositor-reported window box, but not a trustworthy client/frame
+distinction.
+PID/handle-specific Wayland geometry, generic wlroots, GNOME/KDE, and Wayland
+core return explicit `ErrNotSupported` until a selected compositor backend can
+prove the requested semantics. The legacy `GetBounds` and `GetClient` wrappers
+return zero geometry on those errors; they never substitute aggregate desktop
+bounds. Native and Pure-Go X11, macOS, and Windows callers can pass `-pid` or
+`-handle` to the read-only
+[`window_geometry`](examples/window_geometry/main.go) example.
+
 Capture selection is:
 
 1. Native `wlr-screencopy` using DMA-BUF when supported.
@@ -1101,11 +1120,16 @@ whose fail-closed preflight and sanitized evidence contract are implemented.
 Protected GNOME/KDE portal runner provisioning and separate Sway/wlroots native
 and portal-availability promotion remain across roadmap phases 1, 2, 3, and 5;
 those phases remain partial until their gates are green.
-Phase 4 already exposes the parity surface; Hyprland provides trustworthy
-active-window maximize query, set, and restore with provider-aware dispatch for
-legacy `hyprlang` and 0.55+ Lua configurations, while Sway and generic wlroots
-retain explicit unsupported query results where their available IPC lacks an
-equivalent state. The preceding Linux/X11 evaluation is complete: shared
+Phase 4 exposes the parity surface and now has a dedicated
+[P006 window-geometry project](https://linear.app/riotbox/project/robotgo-or-p006-or-explicit-window-geometry-4af461c427fb).
+`GetBoundsE`/`GetClientE` distinguish real window geometry from display
+geometry; Sway provides active node/client bounds and Hyprland provides its
+active compositor-reported window box, while unsupported compositor and target modes fail
+explicitly. Hyprland also provides trustworthy active-window maximize query,
+set, and restore with provider-aware dispatch for legacy `hyprlang` and 0.55+
+Lua configurations, while Sway and generic wlroots retain explicit unsupported
+query results where their available IPC lacks an equivalent state. The
+preceding Linux/X11 evaluation is complete: shared
 behavior is blocking CI, current guardian-path decision evidence is versioned,
 and native CGO remains the default while Pure-Go supports CGO-disabled builds.
 Pure-Go X11 now covers capture, input, and window introspection/control; its
