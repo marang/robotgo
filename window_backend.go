@@ -22,8 +22,8 @@ const (
 	reasonWaylandGlobalUnsupported = "global foreign-window operations are not universally available in Wayland core protocols"
 	notesWlrootsBackend            = "wlroots generic backend selected; operation support to be implemented via wlroots-compatible paths"
 	reasonCompositorSpecific       = "compositor-specific backend selected with partial operation support"
-	notesSwayPartialSupport        = "supports active-window title retrieval and close; active minimize/maximize available when wlrctl is present"
-	notesHyprPartialSupport        = "supports active-window title, close, and reliable maximize query/set/restore across Hyprland hyprlang/Lua config providers; active minimize requires wlrctl"
+	notesSwayPartialSupport        = "supports active-window title, compositor-node/client geometry, and close; active minimize/maximize available when wlrctl is present"
+	notesHyprPartialSupport        = "supports active-window title, compositor-reported window geometry, close, and reliable maximize query/set/restore across Hyprland hyprlang/Lua config providers; active minimize requires wlrctl"
 	cmdSwayMsg                     = "swaymsg"
 	cmdHyprCtl                     = "hyprctl"
 	cmdWlrCtl                      = "wlrctl"
@@ -58,6 +58,7 @@ const (
 
 var (
 	errWindowTitleUnavailable    = errors.New("window title unavailable from compositor backend")
+	errWindowGeometryUnavailable = errors.New("window geometry unavailable from compositor backend")
 	errWindowStateUnavailable    = errors.New("window state unavailable from compositor backend")
 	errWindowOperationFailed     = errors.New("window operation failed for compositor backend")
 	errHyprlandStatusUnavailable = errors.New("hyprland status request unavailable")
@@ -73,6 +74,7 @@ type windowBackend interface {
 	Minimize(pid int, state bool, isPid bool) error
 	Maximize(pid int, state bool, isPid bool) error
 	Maximized() (bool, error)
+	Bounds(target int, isHandle, client bool) (Rect, error)
 	Close(args ...int) error
 	Title(args ...int) (string, error)
 }
@@ -178,6 +180,14 @@ func (nativeWindowBackend) Maximized() (bool, error) {
 	return false, linuxWindowStateNotSupported("query maximized state")
 }
 
+func (nativeWindowBackend) Bounds(target int, isHandle, client bool) (Rect, error) {
+	_, _, _ = target, isHandle, client
+	return Rect{}, fmt.Errorf(
+		"%w: native window geometry is dispatched by the platform API",
+		ErrNotSupported,
+	)
+}
+
 func (nativeWindowBackend) Close(args ...int) error {
 	if err := nativeX11WindowReady(); err != nil {
 		return err
@@ -271,6 +281,11 @@ func (b waylandCoreWindowBackend) Maximized() (bool, error) {
 	return false, b.unsupported("query maximized state")
 }
 
+func (b waylandCoreWindowBackend) Bounds(target int, isHandle, client bool) (Rect, error) {
+	_, _, _ = target, isHandle, client
+	return Rect{}, b.unsupported("get window geometry")
+}
+
 func (b waylandCoreWindowBackend) Close(args ...int) error {
 	_ = args
 	return b.unsupported("close window")
@@ -336,6 +351,35 @@ func (swayWindowBackend) Maximize(pid int, state bool, isPid bool) error {
 }
 func (swayWindowBackend) Maximized() (bool, error) {
 	return false, waylandWindowNotSupported("query maximized state")
+}
+func (swayWindowBackend) Bounds(target int, isHandle, client bool) (Rect, error) {
+	if target != 0 || isHandle {
+		return Rect{}, waylandWindowNotSupported("get window geometry by pid/handle")
+	}
+	node, err := getSwayActiveWindow()
+	if err != nil {
+		return Rect{}, fmt.Errorf("%w: %w", errWindowGeometryUnavailable, err)
+	}
+	nodeRect := node.Rect.publicRect()
+	if !client {
+		return validateWindowRect("sway active-window bounds", nodeRect)
+	}
+	windowRect := node.WindowRect.publicRect()
+	if _, err := validateWindowRect("sway active-window client metadata", windowRect); err != nil {
+		return Rect{}, err
+	}
+	x, err := checkedWindowCoordinate(nodeRect.X, windowRect.X)
+	if err != nil {
+		return Rect{}, fmt.Errorf("%w: sway client x coordinate: %w", errWindowGeometryUnavailable, err)
+	}
+	y, err := checkedWindowCoordinate(nodeRect.Y, windowRect.Y)
+	if err != nil {
+		return Rect{}, fmt.Errorf("%w: sway client y coordinate: %w", errWindowGeometryUnavailable, err)
+	}
+	return validateWindowRect("sway active-window client bounds", Rect{
+		Point: Point{X: x, Y: y},
+		Size:  Size{W: windowRect.W, H: windowRect.H},
+	})
 }
 func (swayWindowBackend) Close(args ...int) error {
 	if len(args) > 0 {
@@ -472,6 +516,33 @@ func (hyprlandWindowBackend) Maximized() (bool, error) {
 	}
 	return hyprlandFullscreenModeIsMaximized(*info.Fullscreen), nil
 }
+func (hyprlandWindowBackend) Bounds(target int, isHandle, client bool) (Rect, error) {
+	if target != 0 || isHandle {
+		return Rect{}, waylandWindowNotSupported("get window geometry by pid/handle")
+	}
+	if client {
+		return Rect{}, waylandWindowNotSupported(
+			"get client geometry (hyprland does not expose a trustworthy client/frame distinction)",
+		)
+	}
+	if !hasCommand(cmdHyprCtl) {
+		return Rect{}, waylandWindowNotSupported("get window geometry (hyprctl unavailable)")
+	}
+	info, err := getHyprlandActiveWindow()
+	if err != nil {
+		return Rect{}, fmt.Errorf("%w: %w", errWindowGeometryUnavailable, err)
+	}
+	if len(info.At) != 2 || len(info.Size) != 2 {
+		return Rect{}, fmt.Errorf(
+			"%w: hyprland response omitted active-window position or size",
+			errWindowGeometryUnavailable,
+		)
+	}
+	return validateWindowRect("hyprland active-window bounds", Rect{
+		Point: Point{X: info.At[0], Y: info.At[1]},
+		Size:  Size{W: info.Size[0], H: info.Size[1]},
+	})
+}
 func (hyprlandWindowBackend) Close(args ...int) error {
 	if len(args) > 0 {
 		return waylandWindowNotSupported("close window by pid/handle")
@@ -549,6 +620,11 @@ func (wlrootsGenericWindowBackend) Maximized() (bool, error) {
 	return false, waylandWindowNotSupported("query maximized state")
 }
 
+func (wlrootsGenericWindowBackend) Bounds(target int, isHandle, client bool) (Rect, error) {
+	_, _, _ = target, isHandle, client
+	return Rect{}, waylandWindowNotSupported("get window geometry")
+}
+
 func runWlrctlActiveWindowAction(op, action string) error {
 	if !hasCommand(cmdWlrCtl) {
 		return waylandWindowNotSupported(op + " (wlrctl unavailable)")
@@ -569,54 +645,6 @@ func (wlrootsGenericWindowBackend) Close(args ...int) error {
 func (wlrootsGenericWindowBackend) Title(args ...int) (string, error) {
 	_ = args
 	return "", waylandWindowNotSupported("get window title")
-}
-
-type swayTreeNode struct {
-	Name          string         `json:"name"`
-	Focused       bool           `json:"focused"`
-	Nodes         []swayTreeNode `json:"nodes"`
-	FloatingNodes []swayTreeNode `json:"floating_nodes"`
-}
-
-func findFocusedSwayTitle(n swayTreeNode) (string, bool) {
-	if n.Focused && n.Name != "" {
-		return n.Name, true
-	}
-	for _, c := range n.Nodes {
-		if title, ok := findFocusedSwayTitle(c); ok {
-			return title, true
-		}
-	}
-	for _, c := range n.FloatingNodes {
-		if title, ok := findFocusedSwayTitle(c); ok {
-			return title, true
-		}
-	}
-	return "", false
-}
-
-func getSwayActiveWindowTitle() (string, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), windowCommandTimeout)
-	defer cancel()
-	out, err := runWindowCommand(ctx, cmdSwayMsg, argType, argGetTree, argRawJSON)
-	if err != nil {
-		return "", fmt.Errorf("%w: %v", errWindowTitleUnavailable, err)
-	}
-	var root swayTreeNode
-	if err := json.Unmarshal(out, &root); err != nil {
-		return "", fmt.Errorf("%w: invalid sway tree json: %v", errWindowTitleUnavailable, err)
-	}
-	title, ok := findFocusedSwayTitle(root)
-	if !ok || strings.TrimSpace(title) == "" {
-		return "", errWindowTitleUnavailable
-	}
-	return title, nil
-}
-
-type hyprlandActiveWindow struct {
-	Title            string `json:"title"`
-	Fullscreen       *int   `json:"fullscreen"`
-	FullscreenClient *int   `json:"fullscreenClient"`
 }
 
 type hyprlandStatus struct {

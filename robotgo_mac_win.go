@@ -24,22 +24,47 @@ import "unsafe"
 
 // GetBounds get the window bounds
 func GetBounds(pid int, args ...int) (int, int, int, int) {
+	x, y, width, height, _ := GetBoundsE(pid, args...)
+	return x, y, width, height
+}
+
+// GetBoundsE returns the target window bounds or an explicit backend error.
+func GetBoundsE(pid int, args ...int) (int, int, int, int, error) {
 	var isPid int
 	if len(args) > 0 || currentTreatAsHandle() {
 		isPid = 1
 	}
 
-	return internalGetBounds(pid, isPid)
+	x, y, width, height := internalGetBounds(pid, isPid)
+	return checkedPlatformWindowGeometry(x, y, width, height)
 }
 
 // GetClient get the window client bounds
 func GetClient(pid int, args ...int) (int, int, int, int) {
+	x, y, width, height, _ := GetClientE(pid, args...)
+	return x, y, width, height
+}
+
+// GetClientE returns the target window client bounds or an explicit backend error.
+func GetClientE(pid int, args ...int) (int, int, int, int, error) {
 	var isPid int
 	if len(args) > 0 || currentTreatAsHandle() {
 		isPid = 1
 	}
 
-	return internalGetClient(pid, isPid)
+	x, y, width, height := internalGetClient(pid, isPid)
+	return checkedPlatformWindowGeometry(x, y, width, height)
+}
+
+func checkedPlatformWindowGeometry(x, y, width, height int) (int, int, int, int, error) {
+	rect, err := validateWindowRect("native window geometry", Rect{
+		Point: Point{X: x, Y: y},
+		Size:  Size{W: width, H: height},
+	})
+	if err != nil {
+		return 0, 0, 0, 0, err
+	}
+	return rect.X, rect.Y, rect.W, rect.H, nil
 }
 
 // internalGetTitle get the window title

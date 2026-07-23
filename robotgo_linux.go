@@ -38,53 +38,92 @@ import (
 // GetBounds returns the window bounds and dispatches to the appropriate
 // Wayland or X11 implementation based on DetectDisplayServer.
 func GetBounds(pid int, args ...int) (int, int, int, int) {
+	x, y, width, height, _ := GetBoundsE(pid, args...)
+	return x, y, width, height
+}
+
+// GetBoundsE returns the target window bounds or an explicit backend error.
+func GetBoundsE(pid int, args ...int) (int, int, int, int, error) {
 	if base.DetectDisplayServer() == base.Wayland {
-		rect := GetScreenRect(-1)
-		return rect.X, rect.Y, rect.W, rect.H
+		return waylandWindowGeometryE(pid, len(args) > 0 || currentTreatAsHandle(), false)
 	}
-	if !nativeX11BackendCompiled() {
-		return 0, 0, 0, 0
-	}
-
-	var isPid int
-	if len(args) > 0 || currentTreatAsHandle() {
-		isPid = 1
-		return internalGetBounds(pid, isPid)
-	}
-
-	xid, err := GetXid(nil, pid)
-	if err != nil {
-		log.Println("Get Xid from Pid errors is: ", err)
-		return 0, 0, 0, 0
-	}
-
-	return internalGetBounds(int(xid), isPid)
+	return nativeX11WindowGeometryE(pid, len(args) > 0 || currentTreatAsHandle(), false)
 }
 
 // GetClient returns the client bounds of the window and dispatches to the
 // Wayland or X11 implementation based on DetectDisplayServer.
 func GetClient(pid int, args ...int) (int, int, int, int) {
+	x, y, width, height, _ := GetClientE(pid, args...)
+	return x, y, width, height
+}
+
+// GetClientE returns the target window client bounds or an explicit backend error.
+func GetClientE(pid int, args ...int) (int, int, int, int, error) {
 	if base.DetectDisplayServer() == base.Wayland {
-		rect := GetScreenRect(-1)
-		return rect.X, rect.Y, rect.W, rect.H
+		return waylandWindowGeometryE(pid, len(args) > 0 || currentTreatAsHandle(), true)
 	}
-	if !nativeX11BackendCompiled() {
-		return 0, 0, 0, 0
-	}
+	return nativeX11WindowGeometryE(pid, len(args) > 0 || currentTreatAsHandle(), true)
+}
 
-	var isPid int
-	if len(args) > 0 || currentTreatAsHandle() {
-		isPid = 1
-		return internalGetClient(pid, isPid)
-	}
-
-	xid, err := GetXid(nil, pid)
+func waylandWindowGeometryE(
+	target int,
+	isHandle bool,
+	client bool,
+) (int, int, int, int, error) {
+	rect, err := resolveWindowBackend().Bounds(target, isHandle, client)
 	if err != nil {
-		log.Println("Get Xid from Pid errors is: ", err)
-		return 0, 0, 0, 0
+		return 0, 0, 0, 0, err
 	}
+	return rect.X, rect.Y, rect.W, rect.H, nil
+}
 
-	return internalGetClient(int(xid), isPid)
+func nativeX11WindowGeometryE(
+	target int,
+	isHandle bool,
+	client bool,
+) (int, int, int, int, error) {
+	if !nativeX11BackendCompiled() {
+		return 0, 0, 0, 0, fmt.Errorf(
+			"%w: native X11 window backend is not compiled",
+			ErrNotSupported,
+		)
+	}
+	if target <= 0 {
+		return 0, 0, 0, 0, fmt.Errorf(
+			"%w: invalid window target %d",
+			errWindowGeometryUnavailable,
+			target,
+		)
+	}
+	resolved := target
+	flag := 0
+	if isHandle {
+		flag = 1
+	} else {
+		xid, err := GetXid(nil, target)
+		if err != nil {
+			return 0, 0, 0, 0, fmt.Errorf(
+				"%w: resolve X11 window: %w",
+				errWindowGeometryUnavailable,
+				err,
+			)
+		}
+		resolved = int(xid)
+	}
+	var x, y, width, height int
+	if client {
+		x, y, width, height = internalGetClient(resolved, flag)
+	} else {
+		x, y, width, height = internalGetBounds(resolved, flag)
+	}
+	rect, err := validateWindowRect("native X11 window geometry", Rect{
+		Point: Point{X: x, Y: y},
+		Size:  Size{W: width, H: height},
+	})
+	if err != nil {
+		return 0, 0, 0, 0, err
+	}
+	return rect.X, rect.Y, rect.W, rect.H, nil
 }
 
 // internalGetTitle get the window title

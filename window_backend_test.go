@@ -265,7 +265,7 @@ func TestSwayWindowBackendTitle(t *testing.T) {
 		if name != cmdSwayMsg {
 			t.Fatalf("expected %q, got %q", cmdSwayMsg, name)
 		}
-		return []byte(`{"focused":false,"name":"","nodes":[{"focused":true,"name":"Terminal","nodes":[],"floating_nodes":[]}],"floating_nodes":[]}`), nil
+		return []byte(`{"focused":false,"name":"","nodes":[{"type":"con","focused":true,"name":"Terminal","nodes":[],"floating_nodes":[]}],"floating_nodes":[]}`), nil
 	}
 
 	b := newSwayWindowBackend()

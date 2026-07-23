@@ -35,48 +35,85 @@ func configuredX11DisplayName() string {
 
 // GetBounds returns the window bounds using X11.
 func GetBounds(pid int, args ...int) (int, int, int, int) {
-	var isPid int
-	if len(args) > 0 || currentTreatAsHandle() {
-		isPid = 1
-		return internalGetBounds(pid, isPid)
-	}
-	unlock := lockNativeX11Display()
-	defer unlock()
-	xu, err := newX11XUtilForDisplay(getXDisplayNameLocked())
-	if err != nil {
-		log.Println("Open configured X11 target errors is: ", err)
-		return 0, 0, 0, 0
-	}
-	defer xu.Conn().Close()
-	xid, err := GetXidFromPid(xu, pid)
-	if err != nil {
-		log.Println("Get Xid from Pid errors is: ", err)
-		return 0, 0, 0, 0
-	}
-	return internalGetBoundsLocked(int(xid), isPid)
+	x, y, width, height, _ := GetBoundsE(pid, args...)
+	return x, y, width, height
+}
+
+// GetBoundsE returns the target window bounds or an explicit backend error.
+func GetBoundsE(pid int, args ...int) (int, int, int, int, error) {
+	return nativeX11WindowGeometryE(pid, len(args) > 0 || currentTreatAsHandle(), false)
 }
 
 // GetClient returns the client bounds using X11.
 func GetClient(pid int, args ...int) (int, int, int, int) {
-	var isPid int
-	if len(args) > 0 || currentTreatAsHandle() {
-		isPid = 1
-		return internalGetClient(pid, isPid)
+	x, y, width, height, _ := GetClientE(pid, args...)
+	return x, y, width, height
+}
+
+// GetClientE returns the target window client bounds or an explicit backend error.
+func GetClientE(pid int, args ...int) (int, int, int, int, error) {
+	return nativeX11WindowGeometryE(pid, len(args) > 0 || currentTreatAsHandle(), true)
+}
+
+func nativeX11WindowGeometryE(
+	target int,
+	isHandle bool,
+	client bool,
+) (int, int, int, int, error) {
+	if target <= 0 {
+		return 0, 0, 0, 0, fmt.Errorf(
+			"%w: invalid window target %d",
+			errWindowGeometryUnavailable,
+			target,
+		)
 	}
+	if isHandle {
+		var x, y, width, height int
+		if client {
+			x, y, width, height = internalGetClient(target, 1)
+		} else {
+			x, y, width, height = internalGetBounds(target, 1)
+		}
+		return checkedNativeWindowGeometry(x, y, width, height)
+	}
+
 	unlock := lockNativeX11Display()
 	defer unlock()
 	xu, err := newX11XUtilForDisplay(getXDisplayNameLocked())
 	if err != nil {
-		log.Println("Open configured X11 target errors is: ", err)
-		return 0, 0, 0, 0
+		return 0, 0, 0, 0, fmt.Errorf(
+			"%w: open configured X11 target: %w",
+			errWindowGeometryUnavailable,
+			err,
+		)
 	}
 	defer xu.Conn().Close()
-	xid, err := GetXidFromPid(xu, pid)
+	xid, err := GetXidFromPid(xu, target)
 	if err != nil {
-		log.Println("Get Xid from Pid errors is: ", err)
-		return 0, 0, 0, 0
+		return 0, 0, 0, 0, fmt.Errorf(
+			"%w: resolve X11 window: %w",
+			errWindowGeometryUnavailable,
+			err,
+		)
 	}
-	return internalGetClientLocked(int(xid), isPid)
+	var x, y, width, height int
+	if client {
+		x, y, width, height = internalGetClientLocked(int(xid), 0)
+	} else {
+		x, y, width, height = internalGetBoundsLocked(int(xid), 0)
+	}
+	return checkedNativeWindowGeometry(x, y, width, height)
+}
+
+func checkedNativeWindowGeometry(x, y, width, height int) (int, int, int, int, error) {
+	rect, err := validateWindowRect("native X11 window geometry", Rect{
+		Point: Point{X: x, Y: y},
+		Size:  Size{W: width, H: height},
+	})
+	if err != nil {
+		return 0, 0, 0, 0, err
+	}
+	return rect.X, rect.Y, rect.W, rect.H, nil
 }
 
 // internalGetTitle gets the window title using X11.

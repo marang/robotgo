@@ -3,6 +3,7 @@
 package window
 
 import (
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -35,11 +36,18 @@ func startHeadlessWeston(t *testing.T) func() {
 
 	// Wait for socket file to appear indicating compositor is ready.
 	sockPath := filepath.Join(runtimeDir, socket)
+	ready := false
 	for i := 0; i < 50; i++ {
 		if _, err := os.Stat(sockPath); err == nil {
+			ready = true
 			break
 		}
 		time.Sleep(100 * time.Millisecond)
+	}
+	if !ready {
+		_ = cmd.Process.Kill()
+		_ = cmd.Wait()
+		t.Fatal("headless Weston did not create its Wayland socket before timeout")
 	}
 	// Allow compositor time to finish startup.
 	time.Sleep(200 * time.Millisecond)
@@ -47,6 +55,12 @@ func startHeadlessWeston(t *testing.T) func() {
 	t.Setenv("XDG_RUNTIME_DIR", runtimeDir)
 	t.Setenv("WAYLAND_DISPLAY", socket)
 	t.Setenv("DISPLAY", "")
+	t.Setenv("XDG_CURRENT_DESKTOP", "")
+	t.Setenv("XDG_SESSION_DESKTOP", "")
+	t.Setenv("DESKTOP_SESSION", "")
+	t.Setenv("XDG_SESSION_TYPE", "wayland")
+	t.Setenv("SWAYSOCK", "")
+	t.Setenv("HYPRLAND_INSTANCE_SIGNATURE", "")
 
 	return func() {
 		_ = cmd.Process.Kill()
@@ -54,8 +68,7 @@ func startHeadlessWeston(t *testing.T) func() {
 	}
 }
 
-func TestGetBoundsWayland(t *testing.T) {
-	requireDisplay(t)
+func TestWindowBoundsDoNotMasqueradeAsWaylandDesktopBounds(t *testing.T) {
 	cleanup := startHeadlessWeston(t)
 	defer cleanup()
 
@@ -65,23 +78,19 @@ func TestGetBoundsWayland(t *testing.T) {
 
 	rect := robotgo.GetScreenRect()
 	if rect.W == 0 || rect.H == 0 {
-		t.Skip("wayland compositor did not provide bounds")
+		t.Fatal("headless Weston did not provide display bounds")
 	}
-	x, y, w, h := robotgo.GetBounds(0)
-	if x != rect.X || y != rect.Y || w != rect.W || h != rect.H {
-		t.Fatalf("GetBounds = (%d,%d %dx%d), screen rect = %+v", x, y, w, h, rect)
+	if _, _, _, _, err := robotgo.GetBoundsE(0); !errors.Is(err, robotgo.ErrNotSupported) {
+		t.Fatalf("GetBoundsE error = %v, want ErrNotSupported", err)
 	}
-	clientX, clientY, clientW, clientH := robotgo.GetClient(0)
-	if clientX != rect.X || clientY != rect.Y ||
-		clientW != rect.W || clientH != rect.H {
-		t.Fatalf(
-			"GetClient = (%d,%d %dx%d), screen rect = %+v",
-			clientX,
-			clientY,
-			clientW,
-			clientH,
-			rect,
-		)
+	if x, y, w, h := robotgo.GetBounds(0); x != 0 || y != 0 || w != 0 || h != 0 {
+		t.Fatalf("legacy GetBounds = (%d,%d %dx%d), want zero geometry", x, y, w, h)
+	}
+	if _, _, _, _, err := robotgo.GetClientE(0); !errors.Is(err, robotgo.ErrNotSupported) {
+		t.Fatalf("GetClientE error = %v, want ErrNotSupported", err)
+	}
+	if x, y, w, h := robotgo.GetClient(0); x != 0 || y != 0 || w != 0 || h != 0 {
+		t.Fatalf("legacy GetClient = (%d,%d %dx%d), want zero geometry", x, y, w, h)
 	}
 	if count := robotgo.DisplaysNum(); count != 1 {
 		t.Fatalf("DisplaysNum = %d, want 1", count)
@@ -107,7 +116,6 @@ func countFDs(t *testing.T) int {
 }
 
 func TestWaylandBoundsResourceRelease(t *testing.T) {
-	requireDisplay(t)
 	cleanup := startHeadlessWeston(t)
 	defer cleanup()
 
@@ -117,13 +125,11 @@ func TestWaylandBoundsResourceRelease(t *testing.T) {
 
 	before := countFDs(t)
 	for i := 0; i < 5; i++ {
-		_, _, w, h := robotgo.GetBounds(0)
-		if w == 0 || h == 0 {
-			t.Skip("wayland compositor did not provide bounds")
+		if _, _, _, _, err := robotgo.GetBoundsE(0); !errors.Is(err, robotgo.ErrNotSupported) {
+			t.Fatalf("GetBoundsE error = %v, want ErrNotSupported", err)
 		}
-		_, _, w, h = robotgo.GetClient(0)
-		if w == 0 || h == 0 {
-			t.Skip("wayland compositor did not provide client bounds")
+		if _, _, _, _, err := robotgo.GetClientE(0); !errors.Is(err, robotgo.ErrNotSupported) {
+			t.Fatalf("GetClientE error = %v, want ErrNotSupported", err)
 		}
 		if count := robotgo.DisplaysNum(); count != 1 {
 			t.Fatalf("DisplaysNum = %d, want 1", count)

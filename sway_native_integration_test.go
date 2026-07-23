@@ -12,6 +12,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -30,6 +31,10 @@ const (
 	envSwayRuntimeDir  = "XDG_RUNTIME_DIR"
 	swayFixtureAppID   = "wev"
 	swayFixtureTitle   = "wev"
+	swayFixtureX       = 120
+	swayFixtureY       = 80
+	swayFixtureWidth   = 480
+	swayFixtureHeight  = 320
 	swayOutputWidth    = 1280
 	swayOutputHeight   = 720
 	swaySecondOutputX  = -600
@@ -205,6 +210,8 @@ func TestSwayNativeCaptureRuntime(t *testing.T) {
 func TestSwayNativeWindowRuntime(t *testing.T) {
 	requireIsolatedSway(t, swaySingleOutput)
 	fixture := startSwayFixture(t)
+	configureSwayFixtureGeometry(t)
+	waitForSwayFixtureGeometry(t)
 	title, err := GetTitleE()
 	if err != nil {
 		t.Fatalf("query Sway fixture title: %v", err)
@@ -216,10 +223,103 @@ func TestSwayNativeWindowRuntime(t *testing.T) {
 	if !capability.Available || capability.Backend != windowBackendSway {
 		t.Fatalf("Sway window capability = %+v", capability)
 	}
+	if _, _, _, _, err := GetBoundsE(os.Getpid()); !errors.Is(err, ErrNotSupported) {
+		t.Fatalf("pid-specific Sway bounds error = %v, want ErrNotSupported", err)
+	}
+	if _, _, _, _, err := GetClientE(1, 1); !errors.Is(err, ErrNotSupported) {
+		t.Fatalf("handle-specific Sway client error = %v, want ErrNotSupported", err)
+	}
 	if err := CloseWindowE(); err != nil {
 		t.Fatalf("close self-owned Sway fixture: %v", err)
 	}
 	fixture.close(t, true)
+}
+
+func configureSwayFixtureGeometry(t *testing.T) {
+	t.Helper()
+	criterion := `[app_id="` + swayFixtureAppID + `"]`
+	commands := [][]string{
+		{criterion, "border", "none"},
+		{criterion, "floating", "enable"},
+		{
+			criterion,
+			"resize", "set",
+			"width", strconv.Itoa(swayFixtureWidth), "px",
+			"height", strconv.Itoa(swayFixtureHeight), "px",
+		},
+		{
+			criterion,
+			"move", "position",
+			strconv.Itoa(swayFixtureX), "px",
+			strconv.Itoa(swayFixtureY), "px",
+		},
+	}
+	for _, args := range commands {
+		ctx, cancel := context.WithTimeout(context.Background(), swayCommandTimeout)
+		output, err := exec.CommandContext(ctx, cmdSwayMsg, args...).CombinedOutput()
+		cancel()
+		if err != nil {
+			t.Fatalf("configure self-owned Sway fixture geometry: %v: %s", err, output)
+		}
+	}
+}
+
+func waitForSwayFixtureGeometry(t *testing.T) {
+	t.Helper()
+	assertGeometry := func(name string, client bool) bool {
+		t.Helper()
+		var x, y, width, height int
+		var err error
+		if client {
+			x, y, width, height, err = GetClientE(0)
+		} else {
+			x, y, width, height, err = GetBoundsE(0)
+		}
+		if err != nil {
+			return false
+		}
+		if x != swayFixtureX || y != swayFixtureY ||
+			width != swayFixtureWidth || height != swayFixtureHeight {
+			return false
+		}
+		var legacyX, legacyY, legacyWidth, legacyHeight int
+		if client {
+			legacyX, legacyY, legacyWidth, legacyHeight = GetClient(0)
+		} else {
+			legacyX, legacyY, legacyWidth, legacyHeight = GetBounds(0)
+		}
+		if legacyX != x || legacyY != y ||
+			legacyWidth != width || legacyHeight != height {
+			t.Fatalf(
+				"legacy %s geometry = %d,%d %dx%d, error API = %d,%d %dx%d",
+				name,
+				legacyX,
+				legacyY,
+				legacyWidth,
+				legacyHeight,
+				x,
+				y,
+				width,
+				height,
+			)
+		}
+		return true
+	}
+
+	deadline := time.Now().Add(swayFixtureTimeout)
+	for time.Now().Before(deadline) {
+		if assertGeometry("outer", false) && assertGeometry("client", true) {
+			return
+		}
+		time.Sleep(25 * time.Millisecond)
+	}
+	t.Fatalf(
+		"self-owned Sway fixture did not reach exact geometry %d,%d %dx%d",
+		swayFixtureX,
+		swayFixtureY,
+		swayFixtureWidth,
+		swayFixtureHeight,
+	)
 }
 
 func TestSwayNativeOutputRuntime(t *testing.T) {

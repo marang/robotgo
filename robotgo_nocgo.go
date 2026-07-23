@@ -360,10 +360,31 @@ func pureGoSysScale(
 }
 
 func GetBounds(target int, args ...int) (int, int, int, int) {
-	return pureGoWindowBounds(target, len(args) > 0 || currentTreatAsHandle(), false)
+	x, y, width, height, _ := GetBoundsE(target, args...)
+	return x, y, width, height
 }
+
+// GetBoundsE returns the target window bounds or an explicit backend error.
+func GetBoundsE(target int, args ...int) (int, int, int, int, error) {
+	return pureGoWindowBoundsE(
+		target,
+		len(args) > 0 || currentTreatAsHandle(),
+		false,
+	)
+}
+
 func GetClient(target int, args ...int) (int, int, int, int) {
-	return pureGoWindowBounds(target, len(args) > 0 || currentTreatAsHandle(), true)
+	x, y, width, height, _ := GetClientE(target, args...)
+	return x, y, width, height
+}
+
+// GetClientE returns the target window client bounds or an explicit backend error.
+func GetClientE(target int, args ...int) (int, int, int, int, error) {
+	return pureGoWindowBoundsE(
+		target,
+		len(args) > 0 || currentTreatAsHandle(),
+		true,
+	)
 }
 func GetTitle(args ...int) string {
 	title, _ := GetTitleE(args...)
