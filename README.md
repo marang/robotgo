@@ -652,6 +652,15 @@ older Hyprland versions without the status request keep the legacy path.
 Transport failures and successful but malformed/unknown provider responses
 fail before mutation.
 
+Use `GetActiveE` and `GetPidE` when active-window identity matters. The legacy
+`GetActive` and `GetPid` wrappers remain source-compatible but return zero when
+identity is unavailable. On Sway and Hyprland, `GetPidE` validates the positive
+PID reported by the compositor. `GetActiveE` remains explicitly unsupported on
+Wayland because these compositors do not expose a stable, portable foreign
+window handle; RobotGo does not invent one. Wayland core and generic wlroots
+also return `ErrNotSupported` for active PID lookup without a trustworthy
+identity source.
+
 Pure-Go Windows builds provide window introspection and control through Win32:
 active handle/PID, title, outer/client bounds, activation, minimize/maximize,
 topmost state, and graceful close. PID lookup prefers a visible, unowned
@@ -990,6 +999,8 @@ The checked-in examples use this fork's module path and track the current API:
 - [Persistent ScreenCast/PipeWire capture](examples/screencast_capture/main.go)
 - [Bitmap-string and region color-search helpers](examples/capture_helpers/main.go)
 - [Hyprland active-window maximize state](examples/wayland_window_state/main.go)
+- [Explicit active-window handle and PID inspection](examples/window_identity/main.go)
+- [Explicit window and client geometry](examples/window_geometry/main.go)
 - [Window and process helpers](examples/window/main.go)
 - [Display scaling](examples/scale/main.go)
 

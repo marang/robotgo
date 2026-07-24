@@ -2734,16 +2734,27 @@ func nativeGetInternalTitle(pid int, isPid int) string {
 
 // GetActive get the active window
 func GetActive() Handle {
-	return Handle(GetActiveC())
+	handle, _ := GetActiveE()
+	return handle
+}
+
+// GetActiveE gets the active window or returns an explicit backend error.
+// Wayland backends return ErrNotSupported unless the compositor exposes a
+// stable foreign-window handle contract.
+func GetActiveE() (Handle, error) {
+	return resolveWindowBackend().Active()
 }
 
 // GetActiveC get the active window
 func GetActiveC() C.MData {
+	handle, _ := GetActiveE()
+	return C.MData(handle)
+}
+
+func nativeGetActiveC() C.MData {
 	unlock := lockNativeX11Display()
 	defer unlock()
-	mdata := C.get_active()
-	// fmt.Println("active----", mdata)
-	return mdata
+	return C.get_active()
 }
 
 // MinWindow set the window min
@@ -2972,10 +2983,20 @@ func GetTitleE(args ...int) (string, error) {
 
 // GetPid get the process id return int32
 func GetPid() int {
+	pid, _ := GetPidE()
+	return pid
+}
+
+// GetPidE gets the active window process ID or returns an explicit backend
+// error.
+func GetPidE() (int, error) {
+	return resolveWindowBackend().PID()
+}
+
+func nativeGetActivePID() int {
 	unlock := lockNativeX11Display()
 	defer unlock()
-	pid := C.get_PID()
-	return int(pid)
+	return int(C.get_PID())
 }
 
 // internalGetBounds get the window bounds

@@ -278,6 +278,77 @@ func TestSwayWindowBackendTitle(t *testing.T) {
 	}
 }
 
+func TestSwayWindowBackendPID(t *testing.T) {
+	tmp := t.TempDir()
+	writeStubCommand(t, tmp, cmdSwayMsg)
+	t.Setenv(envPath, tmp)
+
+	old := runWindowCommand
+	t.Cleanup(func() { runWindowCommand = old })
+
+	runWindowCommand = func(ctx context.Context, name string, args ...string) ([]byte, error) {
+		_ = ctx
+		if name != cmdSwayMsg {
+			t.Fatalf("expected %q, got %q", cmdSwayMsg, name)
+		}
+		return []byte(`{"nodes":[{"type":"con","focused":true,"pid":4242}]}`), nil
+	}
+
+	pid, err := newSwayWindowBackend().PID()
+	if err != nil {
+		t.Fatalf("PID() error = %v", err)
+	}
+	if pid != 4242 {
+		t.Fatalf("PID() = %d, want 4242", pid)
+	}
+}
+
+func TestSwayWindowBackendPIDRejectsUnreliableIdentity(t *testing.T) {
+	tmp := t.TempDir()
+	writeStubCommand(t, tmp, cmdSwayMsg)
+	t.Setenv(envPath, tmp)
+
+	old := runWindowCommand
+	t.Cleanup(func() { runWindowCommand = old })
+
+	tests := []struct {
+		name       string
+		response   string
+		commandErr error
+	}{
+		{name: "missing pid", response: `{"nodes":[{"type":"con","focused":true}]}`},
+		{name: "zero pid", response: `{"nodes":[{"type":"con","focused":true,"pid":0}]}`},
+		{name: "negative pid", response: `{"nodes":[{"type":"con","focused":true,"pid":-1}]}`},
+		{name: "malformed response", response: `{"nodes":`},
+		{name: "transport failure", commandErr: errors.New("sway transport failed")},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			runWindowCommand = func(context.Context, string, ...string) ([]byte, error) {
+				return []byte(test.response), test.commandErr
+			}
+			pid, err := newSwayWindowBackend().PID()
+			if pid != 0 || !errors.Is(err, errWindowIdentityUnavailable) {
+				t.Fatalf(
+					"PID() = %d, %v; want zero and errWindowIdentityUnavailable",
+					pid,
+					err,
+				)
+			}
+		})
+	}
+}
+
+func TestSwayWindowBackendPIDRequiresSwaymsg(t *testing.T) {
+	t.Setenv(envPath, t.TempDir())
+
+	pid, err := newSwayWindowBackend().PID()
+	if pid != 0 || !errors.Is(err, ErrNotSupported) {
+		t.Fatalf("PID() = %d, %v; want zero and ErrNotSupported", pid, err)
+	}
+}
+
 func TestHyprlandWindowBackendTitle(t *testing.T) {
 	old := runWindowCommand
 	t.Cleanup(func() { runWindowCommand = old })
@@ -297,6 +368,100 @@ func TestHyprlandWindowBackendTitle(t *testing.T) {
 	}
 	if title != "Editor" {
 		t.Fatalf("unexpected title: %q", title)
+	}
+}
+
+func TestHyprlandWindowBackendPID(t *testing.T) {
+	tmp := t.TempDir()
+	writeStubCommand(t, tmp, cmdHyprCtl)
+	t.Setenv(envPath, tmp)
+
+	old := runWindowCommand
+	t.Cleanup(func() { runWindowCommand = old })
+	runWindowCommand = func(ctx context.Context, name string, args ...string) ([]byte, error) {
+		_ = ctx
+		if name != cmdHyprCtl {
+			t.Fatalf("expected %q, got %q", cmdHyprCtl, name)
+		}
+		if len(args) != 2 || args[0] != argActiveWindow || args[1] != argJSON {
+			t.Fatalf("unexpected args: %#v", args)
+		}
+		return []byte(`{"pid":5252}`), nil
+	}
+
+	pid, err := newHyprlandWindowBackend().PID()
+	if err != nil {
+		t.Fatalf("PID() error = %v", err)
+	}
+	if pid != 5252 {
+		t.Fatalf("PID() = %d, want 5252", pid)
+	}
+}
+
+func TestHyprlandWindowBackendPIDRejectsUnreliableIdentity(t *testing.T) {
+	tmp := t.TempDir()
+	writeStubCommand(t, tmp, cmdHyprCtl)
+	t.Setenv(envPath, tmp)
+
+	old := runWindowCommand
+	t.Cleanup(func() { runWindowCommand = old })
+
+	tests := []struct {
+		name       string
+		response   string
+		commandErr error
+	}{
+		{name: "missing pid", response: `{"title":"Editor"}`},
+		{name: "zero pid", response: `{"pid":0}`},
+		{name: "negative pid", response: `{"pid":-1}`},
+		{name: "malformed response", response: `{"pid":`},
+		{name: "transport failure", commandErr: errors.New("hyprland transport failed")},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			runWindowCommand = func(context.Context, string, ...string) ([]byte, error) {
+				return []byte(test.response), test.commandErr
+			}
+			pid, err := newHyprlandWindowBackend().PID()
+			if pid != 0 || !errors.Is(err, errWindowIdentityUnavailable) {
+				t.Fatalf(
+					"PID() = %d, %v; want zero and errWindowIdentityUnavailable",
+					pid,
+					err,
+				)
+			}
+		})
+	}
+}
+
+func TestHyprlandWindowBackendPIDRequiresHyprctl(t *testing.T) {
+	t.Setenv(envPath, t.TempDir())
+
+	pid, err := newHyprlandWindowBackend().PID()
+	if pid != 0 || !errors.Is(err, ErrNotSupported) {
+		t.Fatalf("PID() = %d, %v; want zero and ErrNotSupported", pid, err)
+	}
+}
+
+func TestWaylandBackendsDoNotInventActiveHandles(t *testing.T) {
+	backends := []windowBackend{
+		waylandCoreWindowBackend{},
+		newSwayWindowBackend(),
+		newHyprlandWindowBackend(),
+		newWlrootsGenericWindowBackend(),
+	}
+	for _, backend := range backends {
+		handle, err := backend.Active()
+		var zero Handle
+		if handle != zero || !errors.Is(err, ErrNotSupported) {
+			t.Errorf(
+				"%s Active() = %#v, %v; want zero and ErrNotSupported",
+				backend.Name(),
+				handle,
+				err,
+			)
+		}
 	}
 }
 

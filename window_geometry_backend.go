@@ -34,6 +34,7 @@ type swayTreeNode struct {
 	Name          string               `json:"name"`
 	Type          string               `json:"type"`
 	Focused       bool                 `json:"focused"`
+	PID           *int                 `json:"pid"`
 	Rect          compositorWindowRect `json:"rect"`
 	WindowRect    compositorWindowRect `json:"window_rect"`
 	Nodes         []swayTreeNode       `json:"nodes"`
@@ -90,6 +91,7 @@ func getSwayActiveWindowTitle() (string, error) {
 
 type hyprlandActiveWindow struct {
 	Title            string `json:"title"`
+	PID              *int   `json:"pid"`
 	At               []int  `json:"at"`
 	Size             []int  `json:"size"`
 	Fullscreen       *int   `json:"fullscreen"`

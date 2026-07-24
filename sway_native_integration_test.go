@@ -231,6 +231,26 @@ func TestSwayNativeWindowRuntime(t *testing.T) {
 	if title != swayFixtureTitle {
 		t.Fatalf("active Sway title = %q, want %q", title, swayFixtureTitle)
 	}
+	pid, err := GetPidE()
+	if err != nil {
+		t.Fatalf("query Sway fixture pid: %v", err)
+	}
+	if pid != fixture.command.Process.Pid {
+		t.Fatalf(
+			"active Sway pid = %d, want fixture pid %d",
+			pid,
+			fixture.command.Process.Pid,
+		)
+	}
+	var zero Handle
+	if handle, activeErr := GetActiveE(); handle != zero ||
+		!errors.Is(activeErr, ErrNotSupported) {
+		t.Fatalf(
+			"active Sway handle = %#v, %v; want zero and ErrNotSupported",
+			handle,
+			activeErr,
+		)
+	}
 	capability := GetLinuxCapabilities().Window
 	if !capability.Available || capability.Backend != windowBackendSway {
 		t.Fatalf("Sway window capability = %+v", capability)

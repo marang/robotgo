@@ -79,3 +79,26 @@ func TestPublicPureGoWindowBackendTranslatesPermissionForEveryOperation(t *testi
 	assertPermission("SetTopMost", backend.SetTopMost(1, true))
 	assertPermission("Close", backend.Close(1))
 }
+
+func TestGetActiveERejectsBackendZeroHandle(t *testing.T) {
+	handle, err := validatePureGoActiveWindow(0, nil)
+	if handle != 0 || err == nil {
+		t.Fatalf(
+			"validatePureGoActiveWindow() = %d, %v; want zero and explicit error",
+			handle,
+			err,
+		)
+	}
+}
+
+func TestGetActiveEPreservesBackendFailure(t *testing.T) {
+	permission := errors.New("active window denied")
+	handle, err := validatePureGoActiveWindow(42, permission)
+	if handle != 0 || !errors.Is(err, permission) {
+		t.Fatalf(
+			"validatePureGoActiveWindow() = %d, %v; want zero and backend error",
+			handle,
+			err,
+		)
+	}
+}

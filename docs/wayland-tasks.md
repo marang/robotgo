@@ -55,6 +55,10 @@ Current implementation baseline:
 - Error-returning mouse and typing variants are available (`MoveE`,
   `MoveRelativeE`, `ClickE`, `ScrollE`, `LocationE`, `TypeStrE`,
   `UnicodeTypeE`) while legacy APIs remain source-compatible.
+- Error-returning active-window identity variants (`GetActiveE`, `GetPidE`)
+  keep CGO Wayland sessions out of X11 helpers. Sway and Hyprland return only
+  validated compositor-reported active PIDs; stable Wayland handles and generic
+  identity without a trustworthy source remain explicitly unsupported.
 - Native screencopy has bounded event dispatch, deterministic FD/resource
   cleanup and hermetic regression coverage for compositor stalls and DMABUF failures.
 - Fallback output bounds use short success/failure TTLs and can be refreshed
@@ -236,6 +240,8 @@ backends.
 - Window APIs:
   - Extend compositor-backed move/resize/activate/topmost/minimize/title
     behavior while preserving explicit `ErrNotSupported` elsewhere.
+  - Keep the delivered active-identity contract covered: Sway/Hyprland may
+    report active PIDs, while Wayland backends must not invent portable handles.
   - Validate display/output geometry (`GetScreenRectE`/`GetDisplayBoundsE`)
     independently from window geometry on protected wlroots/GNOME/KDE runners.
     The hosted Sway window cell proves exact active node/client geometry;

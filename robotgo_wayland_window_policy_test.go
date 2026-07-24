@@ -42,6 +42,22 @@ func TestWaylandWindowOpsReturnNotSupported(t *testing.T) {
 	if _, err := GetTitleE(1234); !errors.Is(err, ErrNotSupported) {
 		t.Fatalf("GetTitleE expected ErrNotSupported, got: %v", err)
 	}
+	var zero Handle
+	if handle, err := GetActiveE(); handle != zero || !errors.Is(err, ErrNotSupported) {
+		t.Fatalf("GetActiveE = %#v, %v; want zero and ErrNotSupported", handle, err)
+	}
+	if handle := GetActive(); handle != zero {
+		t.Fatalf("GetActive = %#v, want zero unsupported result", handle)
+	}
+	if handle := Handle(GetActiveC()); handle != zero {
+		t.Fatalf("GetActiveC = %#v, want zero unsupported result", handle)
+	}
+	if pid, err := GetPidE(); pid != 0 || !errors.Is(err, ErrNotSupported) {
+		t.Fatalf("GetPidE = %d, %v; want zero and ErrNotSupported", pid, err)
+	}
+	if pid := GetPid(); pid != 0 {
+		t.Fatalf("GetPid = %d, want zero unsupported result", pid)
+	}
 }
 
 func TestWaylandWlrootsMinMaxWindowSupportedForActiveWindow(t *testing.T) {

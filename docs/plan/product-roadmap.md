@@ -37,7 +37,7 @@ The July 2026 hardening work establishes the foundation for this roadmap:
 | 1. Wayland input | Implementation complete; runtime validation partial | Native virtual keyboard/pointer, consent-aware RemoteDesktop fallback, shared ScreenCast stream mapping, absolute pointer/touch, restore tokens, diagnostics, protected portal harness, and isolated hosted Sway native/availability plus multi-output matrix | Register GNOME/KDE portal runners and collect their multi-output evidence |
 | 2. Capture | Hermetic implementation complete; runtime validation partial | Reliable one-shot paths plus one consent-aware ScreenCast session, reusable PipeWire frames, logical region crop, raw pixel conversion, metadata/restore tokens, cleanup, integration harness, non-skipping geometry/transform CI, sanitizer-backed native ownership gates, and isolated hosted Sway native/multi-output evidence | Real GNOME/KDE portal and multi-output evidence |
 | 3. Pure-Go | X11 complete; Windows input/window CI-evidenced; macOS capture/display/input and window implementation delivered; Wayland logical output enumeration plus Weston and hosted Sway multi-output evidence delivered; broader phase partial | Build and feature-level introspection; non-CGO macOS CoreGraphics capture/display, Quartz input, and Accessibility window inspection/control with explicit gaps; Windows capture, `SendInput` keyboard/pointer, and Win32 window control with blocking runtime probes; X11 capture, XGB/XTEST input, and X11/EWMH window introspection/control; Wayland portal capture/input plus bounded native `wl_output`/`xdg-output` geometry; permission/error contracts; shared behavioral parity; reproducible balanced benchmark tooling; optimized guardian-path decision evidence; explicit decision to retain native CGO as the X11 default; race-testable internal X11 core; re-exec guardian with application-`SIGKILL` recovery; protected three-OS CI | Collect opt-in real macOS input and self-owned-window evidence, protected GNOME/KDE multi-output Wayland evidence, and assess further backends selectively |
-| 4. API/compositor gaps | Parity surface delivered; runtime support partial | Window-state and window-geometry error APIs, bitmap string helpers, `FindColorCS`, hook/event capability reporting, Sway/Hyprland/wlroots resolver, Sway active node/client geometry, Hyprland active compositor-reported geometry, provider-aware Hyprland 0.55+ Lua window dispatch | Further trustworthy compositor-backed state/geometry operations and cross-platform/runtime matrix coverage |
+| 4. API/compositor gaps | Parity surface delivered; runtime support partial | Window-state, geometry, and active-identity error APIs, bitmap string helpers, `FindColorCS`, hook/event capability reporting, Sway/Hyprland/wlroots resolver, Sway active node/client geometry and PID, Hyprland active compositor-reported geometry/PID, provider-aware Hyprland 0.55+ Lua window dispatch | Further trustworthy compositor-backed state/geometry operations and cross-platform/runtime matrix coverage |
 | 5. Reliability product | Partial | Capability APIs, versioned sanitized runtime diagnostics/example, compatibility matrix v1, expanded CI variants, blocking ASan/LeakSanitizer ownership gates, six-cell checksummed release-evidence pipeline, fail-closed real-compositor preflight/evidence contract, promoted six-cell hosted Sway release/branch gate, and the published [`v1.0.0-beta.1`](https://github.com/marang/robotgo/releases/tag/v1.0.0-beta.1) evidence bundle | Provision and promote dedicated GNOME/KDE portal jobs |
 
 No delivery phase is complete until all of its exit criteria are blocking and
@@ -317,6 +317,8 @@ Exit criteria:
 
 Linear delivery project:
 [`RobotGo | P006 | Explicit Window Geometry`](https://linear.app/riotbox/project/robotgo-or-p006-or-explicit-window-geometry-4af461c427fb).
+The adjacent active-identity contract is tracked by
+[`RobotGo | P007 | Explicit Window Identity`](https://linear.app/riotbox/project/robotgo-or-p007-or-explicit-window-identity-78b4d2482f79).
 
 The compatibility surface now includes:
 
@@ -328,6 +330,12 @@ The compatibility surface now includes:
   client/frame distinctions or PID/handle modes remain explicit
   `ErrNotSupported`. Legacy wrappers return zero geometry on failure rather
   than substituting aggregate Wayland desktop bounds.
+- Error-returning active-window identity APIs (`GetActiveE`, `GetPidE`) across
+  CGO and non-CGO builds. CGO Wayland identity uses the selected compositor
+  backend instead of X11 helpers. Sway and Hyprland expose only a validated
+  positive active PID; Wayland active handles and identity without a stable
+  compositor source remain explicitly unsupported. Legacy wrappers return
+  zero on failure.
 - Hyprland active-window maximize query, set, and restore backed by its
   compositor-reported state. Fullscreen remains distinct from maximized;
   Sway/generic wlroots queries stay explicitly unsupported rather than

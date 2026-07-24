@@ -17,6 +17,9 @@ Use the following documents as the primary entry points:
   privacy guarantees, and hermetic protocol evidence.
 - [Safe agent visual conditions plan](plan/agent-visual-conditions.md) for
   explicit-observation color search, bounded region waits, quotas, and cleanup.
+- [Explicit window identity plan](plan/explicit-window-identity.md) for
+  error-returning active handle/PID queries and compositor-aware Wayland
+  semantics.
 - [Wayland status](wayland-tasks.md) for backend support and open Wayland work.
 - [Upstream compatibility audit](compatibility/upstream-master.md) for
   selectively adopted and intentionally rejected upstream changes.

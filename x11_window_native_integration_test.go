@@ -116,6 +116,14 @@ func TestNativeX11ConfiguredTargetAppliesToWindowAndScale(t *testing.T) {
 	if err != nil || title != "robotgo-x11-target" {
 		t.Fatalf("GetTitleE on configured X11 target = %q, %v", title, err)
 	}
+	active, err := robotgo.GetActiveE()
+	if err != nil || active == (robotgo.Handle{}) {
+		t.Fatalf("GetActiveE on configured X11 target = %#v, %v", active, err)
+	}
+	pid, err := robotgo.GetPidE()
+	if err != nil || pid != os.Getpid() {
+		t.Fatalf("GetPidE on configured X11 target = %d, %v; want %d, nil", pid, err, os.Getpid())
+	}
 
 	// DetectDisplayServer intentionally remains environment-only, while backend
 	// selection must continue to honor an explicit SetXDisplayName target.

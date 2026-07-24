@@ -347,8 +347,17 @@ func TestPureGoX11WindowIntrospectionAndControl(t *testing.T) {
 	if err := ewmh.ActiveWindowSet(manager.xu, harness.window); err != nil {
 		t.Fatalf("restore EWMH active window: %v", err)
 	}
-	if pid := robotgo.GetPid(); pid != os.Getpid() {
-		t.Fatalf("GetPid() = %d, want %d", pid, os.Getpid())
+	if handle, err := robotgo.GetActiveE(); err != nil ||
+		handle != robotgo.Handle(harness.window) {
+		t.Fatalf(
+			"GetActiveE() = %#x, %v; want %#x, nil",
+			handle,
+			err,
+			harness.window,
+		)
+	}
+	if pid, err := robotgo.GetPidE(); err != nil || pid != os.Getpid() {
+		t.Fatalf("GetPidE() = %d, %v; want %d, nil", pid, err, os.Getpid())
 	}
 	if handle := robotgo.GetHWNDByPid(os.Getpid()); handle != int(harness.window) {
 		t.Fatalf("GetHWNDByPid() = %#x, want %#x", handle, harness.window)

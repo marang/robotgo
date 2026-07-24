@@ -122,8 +122,11 @@ func TestPureGoWindowsWindowRuntime(t *testing.T) {
 	waitForWindowsCondition(t, "window to become foreground", func() bool {
 		return GetActive() == Handle(handle)
 	})
-	if got := GetPid(); got != pid {
-		t.Fatalf("GetPid() = %d, want %d", got, pid)
+	if got, err := GetActiveE(); err != nil || got != Handle(handle) {
+		t.Fatalf("GetActiveE() = %#x, %v; want %#x, nil", got, err, handle)
+	}
+	if got, err := GetPidE(); err != nil || got != pid {
+		t.Fatalf("GetPidE() = %d, %v; want %d, nil", got, err, pid)
 	}
 
 	previousClipboard, clipboardErr := ReadAll()
