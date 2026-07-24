@@ -235,8 +235,12 @@ func TestSwayNativeWindowRuntime(t *testing.T) {
 	if err != nil {
 		t.Fatalf("query Sway fixture pid: %v", err)
 	}
-	if pid != fixture.cmd.Process.Pid {
-		t.Fatalf("active Sway pid = %d, want fixture pid %d", pid, fixture.cmd.Process.Pid)
+	if pid != fixture.command.Process.Pid {
+		t.Fatalf(
+			"active Sway pid = %d, want fixture pid %d",
+			pid,
+			fixture.command.Process.Pid,
+		)
 	}
 	var zero Handle
 	if handle, activeErr := GetActiveE(); handle != zero ||
