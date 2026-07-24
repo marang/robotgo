@@ -971,21 +971,60 @@ func U8ToHex(rgb *uint8) uint32 {
 	)
 }
 func GetActive() Handle {
-	handle, _ := pureGoWindowActive()
-	return Handle(handle)
+	handle, _ := GetActiveE()
+	return handle
 }
 func GetHandle() int { return int(GetActive()) }
 func GetPid() int {
+	pid, _ := GetPidE()
+	return pid
+}
+
+// GetActiveE gets the active window or returns an explicit backend error.
+func GetActiveE() (Handle, error) {
+	handle, err := pureGoWindowActive()
+	return validatePureGoActiveWindow(handle, err)
+}
+
+func validatePureGoActiveWindow(
+	handle windowbackend.Handle,
+	err error,
+) (Handle, error) {
+	if err != nil {
+		return 0, err
+	}
+	if handle == 0 {
+		return 0, fmt.Errorf(
+			"%w: Pure-Go window backend returned an invalid active-window handle",
+			windowbackend.ErrInvalidWindow,
+		)
+	}
+	return Handle(handle), nil
+}
+
+// GetPidE gets the active window process ID or returns an explicit backend
+// error.
+func GetPidE() (int, error) {
 	backend, err := pureGoWindowBackend()
 	if err != nil {
-		return 0
+		return 0, err
 	}
 	handle, err := backend.Active()
 	if err != nil {
-		return 0
+		return 0, err
 	}
-	pid, _ := backend.PID(handle)
-	return pid
+	pid, err := backend.PID(handle)
+	if err != nil {
+		return 0, err
+	}
+	if pid <= 0 {
+		return 0, fmt.Errorf(
+			"%w: Pure-Go window backend returned invalid active-window pid %d",
+			windowbackend.ErrInvalidWindow,
+			pid,
+		)
+	}
+	return pid, nil
 }
 func MinWindow(target int, args ...interface{}) { _ = MinWindowE(target, args...) }
 func MaxWindow(target int, args ...interface{}) { _ = MaxWindowE(target, args...) }

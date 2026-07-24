@@ -147,6 +147,13 @@ func TestSwayTitleE2EOptIn(t *testing.T) {
 	if title == "" {
 		t.Fatalf("GetTitleE returned empty title in sway e2e mode")
 	}
+	pid, err := GetPidE()
+	if err != nil {
+		t.Fatalf("GetPidE failed in sway e2e mode: %v", err)
+	}
+	if pid <= 0 {
+		t.Fatalf("GetPidE returned invalid pid %d in sway e2e mode", pid)
+	}
 }
 
 func TestHyprlandTitleE2EOptIn(t *testing.T) {
@@ -174,6 +181,13 @@ func TestHyprlandTitleE2EOptIn(t *testing.T) {
 	}
 	if title == "" {
 		t.Fatalf("GetTitleE returned empty title in hyprland e2e mode")
+	}
+	pid, err := GetPidE()
+	if err != nil {
+		t.Fatalf("GetPidE failed in hyprland e2e mode: %v", err)
+	}
+	if pid <= 0 {
+		t.Fatalf("GetPidE returned invalid pid %d in hyprland e2e mode", pid)
 	}
 }
 

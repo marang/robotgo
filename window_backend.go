@@ -22,8 +22,8 @@ const (
 	reasonWaylandGlobalUnsupported = "global foreign-window operations are not universally available in Wayland core protocols"
 	notesWlrootsBackend            = "wlroots generic backend selected; operation support to be implemented via wlroots-compatible paths"
 	reasonCompositorSpecific       = "compositor-specific backend selected with partial operation support"
-	notesSwayPartialSupport        = "supports active-window title, compositor-node/client geometry, and close; active minimize/maximize available when wlrctl is present"
-	notesHyprPartialSupport        = "supports active-window title, compositor-reported window geometry, close, and reliable maximize query/set/restore across Hyprland hyprlang/Lua config providers; active minimize requires wlrctl"
+	notesSwayPartialSupport        = "supports active-window title/PID, compositor-node/client geometry, and close; stable active handles remain unsupported; active minimize/maximize available when wlrctl is present"
+	notesHyprPartialSupport        = "supports active-window title/PID, compositor-reported window geometry, close, and reliable maximize query/set/restore across Hyprland hyprlang/Lua config providers; stable active handles remain unsupported; active minimize requires wlrctl"
 	cmdSwayMsg                     = "swaymsg"
 	cmdHyprCtl                     = "hyprctl"
 	cmdWlrCtl                      = "wlrctl"
@@ -59,6 +59,7 @@ const (
 var (
 	errWindowTitleUnavailable    = errors.New("window title unavailable from compositor backend")
 	errWindowGeometryUnavailable = errors.New("window geometry unavailable from compositor backend")
+	errWindowIdentityUnavailable = errors.New("window identity unavailable from selected backend")
 	errWindowStateUnavailable    = errors.New("window state unavailable from compositor backend")
 	errWindowOperationFailed     = errors.New("window operation failed for compositor backend")
 	errHyprlandStatusUnavailable = errors.New("hyprland status request unavailable")
@@ -70,6 +71,8 @@ var (
 type windowBackend interface {
 	Name() string
 	Capability() FeatureCapability
+	Active() (Handle, error)
+	PID() (int, error)
 	SetActive(win Handle) error
 	Minimize(pid int, state bool, isPid bool) error
 	Maximize(pid int, state bool, isPid bool) error
@@ -128,6 +131,33 @@ func nativeX11WindowReady() error {
 	unlock := lockNativeX11Display()
 	defer unlock()
 	return nativeX11DisplayReadyLocked()
+}
+
+func (nativeWindowBackend) Active() (Handle, error) {
+	if err := nativeX11WindowReady(); err != nil {
+		return Handle{}, err
+	}
+	handle := Handle(nativeGetActiveC())
+	var zero Handle
+	if handle == zero {
+		return Handle{}, errWindowIdentityUnavailable
+	}
+	return handle, nil
+}
+
+func (nativeWindowBackend) PID() (int, error) {
+	if err := nativeX11WindowReady(); err != nil {
+		return 0, err
+	}
+	pid := nativeGetActivePID()
+	if pid <= 0 {
+		return 0, fmt.Errorf(
+			"%w: native backend returned invalid active-window pid %d",
+			errWindowIdentityUnavailable,
+			pid,
+		)
+	}
+	return pid, nil
 }
 
 func (nativeWindowBackend) SetActive(win Handle) error {
@@ -262,6 +292,14 @@ func (b waylandCoreWindowBackend) unsupported(op string) error {
 	return fmt.Errorf("%w (compositor=%s)", waylandWindowNotSupported(op), b.compositor)
 }
 
+func (b waylandCoreWindowBackend) Active() (Handle, error) {
+	return Handle{}, b.unsupported("get active window handle")
+}
+
+func (b waylandCoreWindowBackend) PID() (int, error) {
+	return 0, b.unsupported("get active window pid")
+}
+
 func (b waylandCoreWindowBackend) SetActive(win Handle) error {
 	_ = win
 	return b.unsupported("set active window")
@@ -326,6 +364,27 @@ func (swayWindowBackend) Capability() FeatureCapability {
 		Reason:    reason,
 		Notes:     notes,
 	}
+}
+func (swayWindowBackend) Active() (Handle, error) {
+	return Handle{}, waylandWindowNotSupported(
+		"get active window handle (sway does not expose a stable cross-process handle)",
+	)
+}
+func (swayWindowBackend) PID() (int, error) {
+	if !hasCommand(cmdSwayMsg) {
+		return 0, waylandWindowNotSupported("get active window pid (swaymsg unavailable)")
+	}
+	node, err := getSwayActiveWindow()
+	if err != nil {
+		return 0, fmt.Errorf("%w: %w", errWindowIdentityUnavailable, err)
+	}
+	if node.PID == nil || *node.PID <= 0 {
+		return 0, fmt.Errorf(
+			"%w: sway response omitted a valid active-window pid",
+			errWindowIdentityUnavailable,
+		)
+	}
+	return *node.PID, nil
 }
 func (swayWindowBackend) SetActive(win Handle) error {
 	_ = win
@@ -417,6 +476,27 @@ func (hyprlandWindowBackend) Capability() FeatureCapability {
 		Reason:    reason,
 		Notes:     notes,
 	}
+}
+func (hyprlandWindowBackend) Active() (Handle, error) {
+	return Handle{}, waylandWindowNotSupported(
+		"get active window handle (hyprland does not expose a stable cross-process handle)",
+	)
+}
+func (hyprlandWindowBackend) PID() (int, error) {
+	if !hasCommand(cmdHyprCtl) {
+		return 0, waylandWindowNotSupported("get active window pid (hyprctl unavailable)")
+	}
+	info, err := getHyprlandActiveWindow()
+	if err != nil {
+		return 0, fmt.Errorf("%w: %w", errWindowIdentityUnavailable, err)
+	}
+	if info.PID == nil || *info.PID <= 0 {
+		return 0, fmt.Errorf(
+			"%w: hyprland response omitted a valid active-window pid",
+			errWindowIdentityUnavailable,
+		)
+	}
+	return *info.PID, nil
 }
 func (hyprlandWindowBackend) SetActive(win Handle) error {
 	_ = win
@@ -578,7 +658,7 @@ func (wlrootsGenericWindowBackend) Capability() FeatureCapability {
 	notes := notesWlrootsBackend
 	if available {
 		reason = "wlroots generic backend can minimize/maximize active window via wlrctl"
-		notes = "supports active-window minimize/maximize (state=true only); close/title and pid/handle-specific operations remain unsupported"
+		notes = "supports active-window minimize/maximize (state=true only); close/title, active identity, and pid/handle-specific operations remain unsupported"
 	} else {
 		notes += "; install wlrctl to enable active-window minimize/maximize operations"
 	}
@@ -589,6 +669,14 @@ func (wlrootsGenericWindowBackend) Capability() FeatureCapability {
 		Reason:    reason,
 		Notes:     notes,
 	}
+}
+
+func (wlrootsGenericWindowBackend) Active() (Handle, error) {
+	return Handle{}, waylandWindowNotSupported("get active window handle")
+}
+
+func (wlrootsGenericWindowBackend) PID() (int, error) {
+	return 0, waylandWindowNotSupported("get active window pid")
 }
 
 func (wlrootsGenericWindowBackend) SetActive(win Handle) error {

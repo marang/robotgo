@@ -54,6 +54,13 @@ func TestNativeWindowBackendReportsUnavailableDisplay(t *testing.T) {
 	if err := backend.Close(1); !errors.Is(err, ErrNotSupported) {
 		t.Fatalf("Close(1) error = %v, want ErrNotSupported", err)
 	}
+	if handle, err := backend.Active(); handle != (Handle{}) ||
+		!errors.Is(err, ErrNotSupported) {
+		t.Fatalf("Active() = %#v, %v; want zero and ErrNotSupported", handle, err)
+	}
+	if pid, err := backend.PID(); pid != 0 || !errors.Is(err, ErrNotSupported) {
+		t.Fatalf("PID() = %d, %v; want zero and ErrNotSupported", pid, err)
+	}
 }
 
 func TestWaylandBuildCannotReportX11WindowStubSuccess(t *testing.T) {
@@ -93,6 +100,13 @@ func TestWaylandBuildCannotReportX11WindowStubSuccess(t *testing.T) {
 	}
 	if _, err := GetTitleE(1, 1); !errors.Is(err, ErrNotSupported) {
 		t.Errorf("public title error = %v, want ErrNotSupported", err)
+	}
+	if handle, err := GetActiveE(); handle != (Handle{}) ||
+		!errors.Is(err, ErrNotSupported) {
+		t.Errorf("public active = %#v, %v; want zero and ErrNotSupported", handle, err)
+	}
+	if pid, err := GetPidE(); pid != 0 || !errors.Is(err, ErrNotSupported) {
+		t.Errorf("public pid = %d, %v; want zero and ErrNotSupported", pid, err)
 	}
 	if x, y, width, height := GetBounds(1, 1); x != 0 || y != 0 || width != 0 || height != 0 {
 		t.Errorf("wayland-build X11 GetBounds = (%d,%d %dx%d), want zero unsupported result", x, y, width, height)
