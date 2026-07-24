@@ -651,6 +651,11 @@ of assuming parity with X11. Hyprland window mutations query
 older Hyprland versions without the status request keep the legacy path.
 Transport failures and successful but malformed/unknown provider responses
 fail before mutation.
+All Sway, Hyprland, and generic wlroots window-helper commands use the same
+bounded process-group runner. A stalled helper and its descendants are
+terminated, inherited command I/O has a bounded cleanup window, and callers of
+error-returning APIs can inspect `context.DeadlineExceeded` or
+`exec.ErrWaitDelay` through `errors.Is`.
 
 Use `GetActiveE` and `GetPidE` when active-window identity matters. The legacy
 `GetActive` and `GetPid` wrappers remain source-compatible but return zero when

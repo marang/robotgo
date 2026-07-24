@@ -246,7 +246,11 @@ backends.
     independently from window geometry on protected wlroots/GNOME/KDE runners.
     The hosted Sway window cell proves exact active node/client geometry;
     Hyprland protected geometry evidence remains open.
-  - Add resource‑leak checks for Wayland window helpers.
+  - Keep the delivered bounded Wayland window-helper lifecycle contract green.
+    Sway, Hyprland, and generic wlroots commands share one two-second runner;
+    hermetic Linux/CGO tests prove process-group and inherited-I/O cleanup with
+    no surviving descendants, and backend errors preserve timeout/cleanup
+    causes.
 - API Parity Follow-up:
   - Extend compositor-backed implementations for existing topmost/min/max
     status APIs where Wayland protocols or helpers make the state observable.

@@ -63,10 +63,35 @@ var (
 	errWindowStateUnavailable    = errors.New("window state unavailable from compositor backend")
 	errWindowOperationFailed     = errors.New("window operation failed for compositor backend")
 	errHyprlandStatusUnavailable = errors.New("hyprland status request unavailable")
+	errInvalidWindowCommandBound = errors.New("invalid window command timeout")
 	runWindowCommand             = func(ctx context.Context, name string, args ...string) ([]byte, error) {
 		return commandpkg.Output(ctx, name, args...)
 	}
 )
+
+func runBoundedWindowCommand(name string, args ...string) ([]byte, error) {
+	return runWindowCommandWithin(windowCommandTimeout, name, args...)
+}
+
+func runWindowCommandWithin(
+	timeout time.Duration,
+	name string,
+	args ...string,
+) ([]byte, error) {
+	if timeout <= 0 {
+		return nil, fmt.Errorf("%w: %s", errInvalidWindowCommandBound, timeout)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+	output, err := runWindowCommand(ctx, name, args...)
+	if err == nil {
+		return output, nil
+	}
+	if ctxErr := ctx.Err(); ctxErr != nil && !errors.Is(err, ctxErr) {
+		err = errors.Join(err, ctxErr)
+	}
+	return output, err
+}
 
 type windowBackend interface {
 	Name() string
@@ -444,10 +469,8 @@ func (swayWindowBackend) Close(args ...int) error {
 	if len(args) > 0 {
 		return waylandWindowNotSupported("close window by pid/handle")
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), windowCommandTimeout)
-	defer cancel()
-	if _, err := runWindowCommand(ctx, cmdSwayMsg, argKill); err != nil {
-		return fmt.Errorf("%w: %v", errWindowOperationFailed, err)
+	if _, err := runBoundedWindowCommand(cmdSwayMsg, argKill); err != nil {
+		return fmt.Errorf("%w: %w", errWindowOperationFailed, err)
 	}
 	return nil
 }
@@ -565,10 +588,7 @@ func (hyprlandWindowBackend) Maximize(pid int, state bool, isPid bool) error {
 	if err != nil {
 		return fmt.Errorf("%w: %w", errWindowOperationFailed, err)
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), windowCommandTimeout)
-	defer cancel()
-	if _, err := runWindowCommand(
-		ctx,
+	if _, err := runBoundedWindowCommand(
 		cmdHyprCtl,
 		args...,
 	); err != nil {
@@ -634,9 +654,7 @@ func (hyprlandWindowBackend) Close(args ...int) error {
 	if err != nil {
 		return fmt.Errorf("%w: %w", errWindowOperationFailed, err)
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), windowCommandTimeout)
-	defer cancel()
-	if _, err := runWindowCommand(ctx, cmdHyprCtl, dispatchArgs...); err != nil {
+	if _, err := runBoundedWindowCommand(cmdHyprCtl, dispatchArgs...); err != nil {
 		return fmt.Errorf("%w: %w", errWindowOperationFailed, err)
 	}
 	return nil
@@ -717,10 +735,13 @@ func runWlrctlActiveWindowAction(op, action string) error {
 	if !hasCommand(cmdWlrCtl) {
 		return waylandWindowNotSupported(op + " (wlrctl unavailable)")
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), windowCommandTimeout)
-	defer cancel()
-	if _, err := runWindowCommand(ctx, cmdWlrCtl, argWindow, action, argStateActive); err != nil {
-		return fmt.Errorf("%w: %v", errWindowOperationFailed, err)
+	if _, err := runBoundedWindowCommand(
+		cmdWlrCtl,
+		argWindow,
+		action,
+		argStateActive,
+	); err != nil {
+		return fmt.Errorf("%w: %w", errWindowOperationFailed, err)
 	}
 	return nil
 }
@@ -764,9 +785,7 @@ func resolveHyprlandDispatchArgs(legacy []string, luaExpression string) ([]strin
 }
 
 func getHyprlandConfigProvider() (string, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), windowCommandTimeout)
-	defer cancel()
-	out, err := runWindowCommand(ctx, cmdHyprCtl, argStatus, argJSON)
+	out, err := runBoundedWindowCommand(cmdHyprCtl, argStatus, argJSON)
 	if err != nil {
 		return "", fmt.Errorf("query hyprland status: %w", err)
 	}
@@ -797,9 +816,7 @@ func hyprlandFullscreenModeIsMaximized(mode int) bool {
 }
 
 func getHyprlandActiveWindow() (hyprlandActiveWindow, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), windowCommandTimeout)
-	defer cancel()
-	out, err := runWindowCommand(ctx, cmdHyprCtl, argActiveWindow, argJSON)
+	out, err := runBoundedWindowCommand(cmdHyprCtl, argActiveWindow, argJSON)
 	if err != nil {
 		return hyprlandActiveWindow{}, err
 	}
@@ -813,7 +830,7 @@ func getHyprlandActiveWindow() (hyprlandActiveWindow, error) {
 func getHyprlandActiveWindowTitle() (string, error) {
 	info, err := getHyprlandActiveWindow()
 	if err != nil {
-		return "", fmt.Errorf("%w: %v", errWindowTitleUnavailable, err)
+		return "", fmt.Errorf("%w: %w", errWindowTitleUnavailable, err)
 	}
 	if strings.TrimSpace(info.Title) == "" {
 		return "", errWindowTitleUnavailable

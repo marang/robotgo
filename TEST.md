@@ -753,6 +753,7 @@ go test -tags "portal" ./screen/portal -v
 go test -tags "pipewire" ./screen/portal -v
 go test -tags "wayland test" ./screen -run 'TestScreencopy(BitmapStringHelper|WlShm|PortalFallback)' -v
 go test -tags "wayland integration" . ./mouse ./window -v
+go test . -run '^(TestRunBoundedWindowCommand|TestRunWindowCommandWithin|TestWindowBackendCommandErrors|TestWindowCommand)' -count=1 -v
 CGO_ENABLED=0 go test -tags "waylandoutputintegration" . \
   -run '^TestPureGoWaylandOutputEnumerationWeston$' -count=1 -timeout=30s -v
 
@@ -789,6 +790,13 @@ or protocol data is a failure rather than a skip.
 Run tag-gated suites as needed for the area you changed. Native or Pure-Go X11
 input changes must also run the required `x11integration` comparison command
 above.
+
+The focused window-helper command runs are hermetic and do not require a
+compositor. On Linux with CGO, they create test-only commands and PID records
+under `t.TempDir()`, then prove that timeouts and inherited-I/O failures remove
+the complete owned process group. Defensive `t.Cleanup` handlers repeat the
+termination on every test exit; no desktop data or command artifact survives
+the test.
 
 ## Real-Compositor Evidence
 

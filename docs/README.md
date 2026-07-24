@@ -20,6 +20,9 @@ Use the following documents as the primary entry points:
 - [Explicit window identity plan](plan/explicit-window-identity.md) for
   error-returning active handle/PID queries and compositor-aware Wayland
   semantics.
+- [Wayland window-helper lifecycle plan](plan/wayland-window-helper-lifecycle.md)
+  for bounded compositor commands, error-cause fidelity, and descendant
+  cleanup evidence.
 - [Wayland status](wayland-tasks.md) for backend support and open Wayland work.
 - [Upstream compatibility audit](compatibility/upstream-master.md) for
   selectively adopted and intentionally rejected upstream changes.

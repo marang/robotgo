@@ -7,10 +7,105 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"testing"
+	"time"
 )
+
+func TestRunBoundedWindowCommandUsesProductionDeadline(t *testing.T) {
+	old := runWindowCommand
+	t.Cleanup(func() { runWindowCommand = old })
+
+	runWindowCommand = func(ctx context.Context, name string, args ...string) ([]byte, error) {
+		if name != cmdSwayMsg || len(args) != 1 || args[0] != argKill {
+			t.Fatalf("unexpected command: %s %#v", name, args)
+		}
+		deadline, ok := ctx.Deadline()
+		if !ok {
+			t.Fatal("window command context has no deadline")
+		}
+		remaining := time.Until(deadline)
+		if remaining <= 0 || remaining > windowCommandTimeout {
+			t.Fatalf("window command deadline remaining = %s", remaining)
+		}
+		return []byte("ok"), nil
+	}
+
+	output, err := runBoundedWindowCommand(cmdSwayMsg, argKill)
+	if err != nil {
+		t.Fatalf("runBoundedWindowCommand error = %v", err)
+	}
+	if string(output) != "ok" {
+		t.Fatalf("runBoundedWindowCommand output = %q, want ok", output)
+	}
+}
+
+func TestRunWindowCommandWithinRejectsInvalidBound(t *testing.T) {
+	old := runWindowCommand
+	t.Cleanup(func() { runWindowCommand = old })
+
+	called := false
+	runWindowCommand = func(context.Context, string, ...string) ([]byte, error) {
+		called = true
+		return nil, nil
+	}
+
+	for _, timeout := range []time.Duration{0, -time.Nanosecond} {
+		output, err := runWindowCommandWithin(timeout, cmdSwayMsg, argKill)
+		if output != nil || !errors.Is(err, errInvalidWindowCommandBound) {
+			t.Errorf(
+				"runWindowCommandWithin(%s) = %q, %v; want nil and invalid-bound error",
+				timeout,
+				output,
+				err,
+			)
+		}
+	}
+	if called {
+		t.Fatal("invalid timeout invoked external window command")
+	}
+}
+
+func TestWindowBackendCommandErrorsPreserveCleanupCause(t *testing.T) {
+	tmp := t.TempDir()
+	for _, command := range []string{cmdSwayMsg, cmdHyprCtl, cmdWlrCtl} {
+		writeStubCommand(t, tmp, command)
+	}
+	t.Setenv(envPath, tmp)
+
+	old := runWindowCommand
+	t.Cleanup(func() { runWindowCommand = old })
+	runWindowCommand = func(context.Context, string, ...string) ([]byte, error) {
+		return nil, exec.ErrWaitDelay
+	}
+
+	tests := []struct {
+		name string
+		run  func() error
+	}{
+		{name: "sway close", run: func() error { return newSwayWindowBackend().Close() }},
+		{name: "sway title", run: func() error {
+			_, err := newSwayWindowBackend().Title()
+			return err
+		}},
+		{name: "hyprland title", run: func() error {
+			_, err := newHyprlandWindowBackend().Title()
+			return err
+		}},
+		{name: "wlrctl action", run: func() error {
+			return newWlrootsGenericWindowBackend().Maximize(0, true, false)
+		}},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if err := test.run(); !errors.Is(err, exec.ErrWaitDelay) {
+				t.Fatalf("error = %v, want exec.ErrWaitDelay in error chain", err)
+			}
+		})
+	}
+}
 
 func writeStubCommand(t *testing.T, dir, name string) {
 	t.Helper()

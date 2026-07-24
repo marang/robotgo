@@ -3,7 +3,6 @@
 package robotgo
 
 import (
-	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -61,9 +60,7 @@ func findFocusedSwayWindow(node swayTreeNode) (swayTreeNode, bool) {
 }
 
 func getSwayActiveWindow() (swayTreeNode, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), windowCommandTimeout)
-	defer cancel()
-	out, err := runWindowCommand(ctx, cmdSwayMsg, argType, argGetTree, argRawJSON)
+	out, err := runBoundedWindowCommand(cmdSwayMsg, argType, argGetTree, argRawJSON)
 	if err != nil {
 		return swayTreeNode{}, fmt.Errorf("query sway tree: %w", err)
 	}
