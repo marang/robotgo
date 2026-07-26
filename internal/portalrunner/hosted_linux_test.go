@@ -168,6 +168,33 @@ func TestHostedPortalCommandsSelectDesktopLane(t *testing.T) {
 	}
 }
 
+func TestHostedPortalApprovalPolicyMatchesDesktopBackend(t *testing.T) {
+	t.Parallel()
+	for _, test := range []struct {
+		lane string
+		cell string
+		want bool
+	}{
+		{lane: portalLaneGNOME, cell: "remote-desktop", want: true},
+		{lane: portalLaneGNOME, cell: "screencast", want: true},
+		{lane: portalLaneKDE, cell: "remote-desktop", want: false},
+		{lane: portalLaneKDE, cell: "screencast", want: true},
+	} {
+		if got := hostedPortalApprovalRequired(
+			test.lane,
+			test.cell,
+		); got != test.want {
+			t.Errorf(
+				"hostedPortalApprovalRequired(%q, %q) = %t, want %t",
+				test.lane,
+				test.cell,
+				got,
+				test.want,
+			)
+		}
+	}
+}
+
 func TestHostedSourceArchiveMovesOutOfRootBeforeExtraction(t *testing.T) {
 	t.Parallel()
 	executor := &scriptedCommandExecutor{}

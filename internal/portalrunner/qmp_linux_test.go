@@ -88,7 +88,7 @@ func TestQMPPortalApprovalUsesIndependentKeyboardChords(t *testing.T) {
 	assertQMPChord(t, got[2], []string{"alt", "s"})
 }
 
-func TestQMPKDEPortalApprovalSelectsMonitorAndShares(t *testing.T) {
+func TestQMPKDEPortalApprovalSharesPreselectedMonitor(t *testing.T) {
 	t.Parallel()
 	socket := filepath.Join(t.TempDir(), "qmp.sock")
 	listener, err := net.Listen("unix", socket)
@@ -97,7 +97,7 @@ func TestQMPKDEPortalApprovalSelectsMonitorAndShares(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = listener.Close() })
 
-	commands := make(chan qmpCommand, 3)
+	commands := make(chan qmpCommand, 2)
 	serverDone := make(chan error, 1)
 	go func() {
 		connection, err := listener.Accept()
@@ -114,7 +114,7 @@ func TestQMPKDEPortalApprovalSelectsMonitorAndShares(t *testing.T) {
 		}
 		decoder := json.NewDecoder(bufio.NewReader(connection))
 		encoder := json.NewEncoder(connection)
-		for range 3 {
+		for range 2 {
 			var command qmpCommand
 			if err := decoder.Decode(&command); err != nil {
 				serverDone <- err
@@ -158,8 +158,7 @@ func TestQMPKDEPortalApprovalSelectsMonitorAndShares(t *testing.T) {
 	if got[0].Execute != "qmp_capabilities" {
 		t.Fatalf("first QMP command = %q", got[0].Execute)
 	}
-	assertQMPChord(t, got[1], []string{"spc"})
-	assertQMPChord(t, got[2], []string{"alt", "s"})
+	assertQMPChord(t, got[1], []string{"alt", "s"})
 }
 
 func TestQMPRejectsMalformedAndFailedResponses(t *testing.T) {

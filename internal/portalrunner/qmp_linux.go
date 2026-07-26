@@ -147,14 +147,13 @@ func (client *qmpClient) approvePortal(
 		}
 		return client.sendChord(ctx, "alt", "s")
 	case portalLaneKDE:
-		// Plasma's source chooser starts with its monitor entry focused.
-		// Space selects it and Alt+S activates the real Share action.
-		if err := client.sendChord(ctx, "spc"); err != nil {
-			return err
+		if cell == "remote-desktop" {
+			return errors.New(
+				"KDE native RemoteDesktop follows the backend notification policy",
+			)
 		}
-		if err := waitQMPChord(ctx); err != nil {
-			return err
-		}
+		// Plasma 5.27 preselects the only available monitor. Toggling it
+		// would disable Share, so activate only the real Share action.
 		return client.sendChord(ctx, "alt", "s")
 	default:
 		return errors.New("QMP portal approval lane is invalid")

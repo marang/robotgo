@@ -357,12 +357,6 @@ func RunHostedPortal(
 		return err
 	}
 
-	qmp, err := connectQMP(guestContext, qmpSocket)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = qmp.close() }()
-
 	marker := "/run/user/1100/robotgo-portal-consent-" +
 		options.Cell + ".ready"
 	testLogPath := filepath.Join(runDirectory, "portal-test.log")
@@ -401,29 +395,38 @@ func RunHostedPortal(
 		close(testResult.done)
 	}()
 
-	if err := waitForConsentMarker(
-		guestContext,
-		options.Commands,
-		sshArguments,
-		marker,
-		options.Cell,
-		logWriter,
-		testResult.done,
-	); err != nil {
-		stopProcessGroup(testCommand, testResult.done)
-		return err
-	}
-	if err := waitForPortalDialog(guestContext, testResult.done); err != nil {
-		stopProcessGroup(testCommand, testResult.done)
-		return err
-	}
-	if err := qmp.approvePortal(
-		guestContext,
-		manifest.Lane,
-		options.Cell,
-	); err != nil {
-		stopProcessGroup(testCommand, testResult.done)
-		return err
+	if hostedPortalApprovalRequired(manifest.Lane, options.Cell) {
+		if err := waitForConsentMarker(
+			guestContext,
+			options.Commands,
+			sshArguments,
+			marker,
+			options.Cell,
+			logWriter,
+			testResult.done,
+		); err != nil {
+			stopProcessGroup(testCommand, testResult.done)
+			return err
+		}
+		if err := waitForPortalDialog(guestContext, testResult.done); err != nil {
+			stopProcessGroup(testCommand, testResult.done)
+			return err
+		}
+		qmp, err := connectQMP(guestContext, qmpSocket)
+		if err != nil {
+			stopProcessGroup(testCommand, testResult.done)
+			return err
+		}
+		approvalError := qmp.approvePortal(
+			guestContext,
+			manifest.Lane,
+			options.Cell,
+		)
+		closeError := qmp.close()
+		if err := errors.Join(approvalError, closeError); err != nil {
+			stopProcessGroup(testCommand, testResult.done)
+			return err
+		}
 	}
 	<-testResult.done
 	testError := testResult.err
@@ -788,6 +791,11 @@ func hostedDesktopEnvironment(lane string) (current, session string, err error) 
 	default:
 		return "", "", errors.New("hosted portal lane is invalid")
 	}
+}
+
+func hostedPortalApprovalRequired(lane, cell string) bool {
+	return lane == portalLaneGNOME ||
+		(lane == portalLaneKDE && cell == "screencast")
 }
 
 func collectHostedDiagnostics(
