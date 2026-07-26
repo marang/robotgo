@@ -32,6 +32,10 @@ var portalFailureStagePattern = regexp.MustCompile(
 	`ROBOTGO_PORTAL_STAGE=([a-z0-9-]{1,32})`,
 )
 
+var sessionFailureStagePattern = regexp.MustCompile(
+	`ROBOTGO_SESSION_STAGE=([a-z0-9-]{1,32})`,
+)
+
 // HostedRuntimeOptions identifies one credential-free portal test in a
 // disposable desktop guest running inside a GitHub-hosted Linux runner.
 type HostedRuntimeOptions struct {
@@ -589,6 +593,11 @@ func waitForHostedSession(
 	sshArguments []string,
 	output io.Writer,
 ) error {
+	var diagnostic bytes.Buffer
+	diagnosticWriter := &truncatingWriter{
+		destination: &diagnostic,
+		remaining:   maximumBuildInput,
+	}
 	command := "set -euo pipefail; runuser -u robotgo -- env " +
 		"XDG_RUNTIME_DIR=/run/user/1100 " +
 		"DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1100/bus " +
@@ -602,11 +611,53 @@ func waitForHostedSession(
 			command,
 		),
 		nil,
-		output,
+		io.MultiWriter(output, diagnosticWriter),
 	); err != nil {
+		if stage := readSessionFailureStage(diagnostic.Bytes()); stage != "" {
+			return fmt.Errorf(
+				"wait for hosted portal session at stage %q",
+				stage,
+			)
+		}
 		return errors.New("wait for hosted portal session")
 	}
 	return nil
+}
+
+func readSessionFailureStage(data []byte) string {
+	if len(data) > maximumBuildInput {
+		return ""
+	}
+	matches := sessionFailureStagePattern.FindAllSubmatch(data, -1)
+	if len(matches) == 0 {
+		return ""
+	}
+	return string(matches[len(matches)-1][1])
+}
+
+type truncatingWriter struct {
+	destination io.Writer
+	remaining   int64
+}
+
+func (writer *truncatingWriter) Write(data []byte) (int, error) {
+	inputLength := len(data)
+	if writer.remaining <= 0 {
+		return inputLength, nil
+	}
+	if int64(len(data)) > writer.remaining {
+		data = data[:writer.remaining]
+	}
+	captureLength := len(data)
+	written, err := writer.destination.Write(data)
+	writer.remaining -= int64(written)
+	if err != nil {
+		return written, err
+	}
+	if written != captureLength {
+		return written, io.ErrShortWrite
+	}
+	return inputLength, nil
 }
 
 func enforceHostedEgressBoundary(

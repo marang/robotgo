@@ -13,5 +13,19 @@ while ((SECONDS < deadline)); do
   sleep 1
 done
 
-echo "GNOME portal session did not become ready" >&2
+stage=unknown
+if ! systemctl is-active --quiet gdm3.service; then
+  stage=display-manager
+elif [[ ! -d /run/user/1100 ]]; then
+  stage=runtime-directory
+elif [[ ! -S /run/user/1100/bus ]]; then
+  stage=user-bus
+elif [[ ! -S /run/user/1100/wayland-0 ]]; then
+  stage=wayland
+elif ! busctl --address=unix:path=/run/user/1100/bus \
+  --no-pager --no-legend status org.freedesktop.portal.Desktop \
+  >/dev/null 2>&1; then
+  stage=portal
+fi
+printf 'ROBOTGO_SESSION_STAGE=%s\n' "$stage" >&2
 exit 1

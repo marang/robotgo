@@ -273,3 +273,50 @@ func TestPortalFailureStageParserReturnsOnlyAllowlistedMarker(t *testing.T) {
 		t.Fatalf("failure stage = %q", got)
 	}
 }
+
+func TestHostedSessionFailureReportsOnlyAllowlistedStage(t *testing.T) {
+	t.Parallel()
+	executor := &scriptedCommandExecutor{
+		outputs: []string{
+			"private diagnostic ignored\n" +
+				"ROBOTGO_SESSION_STAGE=desktop-shell\n" +
+				"token=must-not-leak\n",
+		},
+		errors: []error{errors.New("exit status 1")},
+	}
+	err := waitForHostedSession(
+		context.Background(),
+		executor,
+		[]string{"-p", "22222"},
+		&strings.Builder{},
+	)
+	if err == nil ||
+		!strings.Contains(err.Error(), `stage "desktop-shell"`) {
+		t.Fatalf("session failure = %v", err)
+	}
+	for _, private := range []string{"private diagnostic", "token", "exit status"} {
+		if strings.Contains(err.Error(), private) {
+			t.Fatalf("session failure leaks %q: %v", private, err)
+		}
+	}
+}
+
+func TestTruncatingWriterRetainsPrefixWithoutShortWrite(t *testing.T) {
+	t.Parallel()
+	var destination strings.Builder
+	writer := &truncatingWriter{
+		destination: &destination,
+		remaining:   4,
+	}
+	data := []byte("private")
+	written, err := writer.Write(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if written != len(data) {
+		t.Fatalf("written = %d, want %d", written, len(data))
+	}
+	if got := destination.String(); got != "priv" {
+		t.Fatalf("captured prefix = %q", got)
+	}
+}
