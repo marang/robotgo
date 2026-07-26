@@ -86,7 +86,13 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          sudo apt-get update
+          test -r /etc/apt/sources.list.d/ubuntu.sources
+          apt_options=(
+            -o Dir::Etc::sourcelist=sources.list.d/ubuntu.sources
+            -o Dir::Etc::sourceparts=-
+            -o APT::Get::List-Cleanup=0
+          )
+          sudo apt-get "${apt_options[@]}" update
           packages=(
             cloud-image-utils
             openssh-client
@@ -96,7 +102,8 @@ jobs:
           if [[ "${{ matrix.topology }}" == "multi-output" ]]; then
             packages+=(qemu-system-gui xauth xvfb)
           fi
-          sudo apt-get install --no-install-recommends -y "${packages[@]}"
+          sudo apt-get "${apt_options[@]}" install \
+            --no-install-recommends -y "${packages[@]}"
       - name: Verify hosted capacity
         shell: bash
         run: |
