@@ -317,6 +317,14 @@ func RunHostedGNOME(
 	); err != nil {
 		return fmt.Errorf("wait for hosted GNOME VM: %w", err)
 	}
+	if err := enforceHostedEgressBoundary(
+		guestContext,
+		options.Commands,
+		sshArguments,
+		logWriter,
+	); err != nil {
+		return err
+	}
 	if err := waitForHostedSession(
 		guestContext,
 		options.Commands,
@@ -589,6 +597,38 @@ func waitForHostedSession(
 		output,
 	); err != nil {
 		return errors.New("wait for hosted GNOME portal session")
+	}
+	return nil
+}
+
+func enforceHostedEgressBoundary(
+	ctx context.Context,
+	commands CommandExecutor,
+	sshArguments []string,
+	output io.Writer,
+) error {
+	const command = `set -euo pipefail
+systemctl is-enabled --quiet robotgo-runner-egress.service
+systemctl start robotgo-runner-egress.service
+systemctl is-active --quiet robotgo-runner-egress.service
+nft --json list chain inet robotgo_runner output |
+  jq -e 'any(.nftables[]; (.chain? // {}) as $chain |
+    $chain.table == "robotgo_runner" and
+    $chain.name == "output" and
+    $chain.hook == "output" and
+    $chain.policy == "drop")' >/dev/null`
+	if err := commands.Run(
+		ctx,
+		"ssh",
+		append(
+			append([]string{}, sshArguments...),
+			"root@127.0.0.1",
+			command,
+		),
+		nil,
+		output,
+	); err != nil {
+		return errors.New("enforce hosted GNOME egress boundary")
 	}
 	return nil
 }

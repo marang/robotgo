@@ -4,6 +4,7 @@ package portalrunner
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -153,6 +154,44 @@ func TestHostedSourceArchiveMovesOutOfRootBeforeExtraction(t *testing.T) {
 		"runuser -u robotgo -- tar --no-same-owner --no-same-permissions -xf /root/",
 	) {
 		t.Fatal("unprivileged archive extraction still reads through /root")
+	}
+}
+
+func TestHostedEgressBoundaryRequiresEnabledActiveDropPolicy(t *testing.T) {
+	t.Parallel()
+	executor := &scriptedCommandExecutor{}
+	if err := enforceHostedEgressBoundary(
+		context.Background(),
+		executor,
+		[]string{"-p", "22222"},
+		&strings.Builder{},
+	); err != nil {
+		t.Fatalf("enforceHostedEgressBoundary: %v", err)
+	}
+	if len(executor.calls) != 1 {
+		t.Fatalf("egress boundary calls = %v", executor.calls)
+	}
+	command := executor.calls[0][len(executor.calls[0])-1]
+	for _, required := range []string{
+		"systemctl is-enabled --quiet robotgo-runner-egress.service",
+		"systemctl start robotgo-runner-egress.service",
+		"systemctl is-active --quiet robotgo-runner-egress.service",
+		"nft --json list chain inet robotgo_runner output",
+		`$chain.policy == "drop"`,
+	} {
+		if !strings.Contains(command, required) {
+			t.Errorf("hosted egress enforcement omits %q", required)
+		}
+	}
+
+	failing := &scriptedCommandExecutor{errors: []error{errors.New("disabled")}}
+	if err := enforceHostedEgressBoundary(
+		context.Background(),
+		failing,
+		[]string{"-p", "22222"},
+		&strings.Builder{},
+	); err == nil {
+		t.Fatal("disabled hosted egress boundary was accepted")
 	}
 }
 

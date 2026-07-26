@@ -245,6 +245,7 @@ Enable=false
 EOF
 systemctl set-default graphical.target
 systemctl enable gdm3
+systemctl enable robotgo-runner-egress.service
 
 cat >/etc/ssh/sshd_config.d/90-robotgo-runner.conf <<'EOF'
 PasswordAuthentication no

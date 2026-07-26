@@ -292,6 +292,7 @@ func TestRepositoryGuestSessionContract(t *testing.T) {
 		"chmod 0644 /etc/dconf/db/robotgo",
 		"ACTIONS_RUNNER_HOOK_JOB_STARTED=/usr/local/libexec/robotgo-runner-job-started-hook.sh",
 		"ACTIONS_RUNNER_HOOK_JOB_COMPLETED=/usr/local/libexec/robotgo-runner-job-completed-hook.sh",
+		"systemctl enable robotgo-runner-egress.service",
 	} {
 		if !strings.Contains(string(installScript), required) {
 			t.Fatalf("install.sh omits readable DConf contract %q", required)
