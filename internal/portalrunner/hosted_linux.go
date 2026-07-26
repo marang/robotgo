@@ -570,8 +570,9 @@ func configureHostedGuestDisplay(
 	lane string,
 	output io.Writer,
 ) error {
-	if lane != portalLaneGNOME && lane != portalLaneKDE {
-		return errors.New("hosted display lane is invalid")
+	currentDesktop, sessionDesktop, err := hostedDesktopEnvironment(lane)
+	if err != nil {
+		return err
 	}
 	command := "cd /home/robotgo/robotgo; exec env " +
 		"ROBOTGO_HOSTED_GUEST=1 " +
@@ -590,6 +591,10 @@ func configureHostedGuestDisplay(
 				"XDG_RUNTIME_DIR=/run/user/1100 "+
 				"DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1100/bus "+
 				"WAYLAND_DISPLAY=wayland-0 "+
+				"XDG_CURRENT_DESKTOP="+currentDesktop+" "+
+				"XDG_SESSION_DESKTOP="+sessionDesktop+" "+
+				"XDG_SESSION_TYPE=wayland "+
+				"QT_QPA_PLATFORM=wayland "+
 				"DISPLAY=:0 "+
 				"HTTP_PROXY=http://10.0.2.2:3128 "+
 				"HTTPS_PROXY=http://10.0.2.2:3128 "+

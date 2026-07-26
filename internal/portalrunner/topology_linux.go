@@ -292,14 +292,9 @@ func configureMutterDisplay(
 			}},
 		})
 	}
-	properties := map[string]dbus.Variant{}
-	if layoutMode, ok := state.Properties["layout-mode"]; ok {
-		var mode uint32
-		if err := layoutMode.Store(&mode); err != nil ||
-			mode < 1 || mode > 2 {
-			return newHostedDisplayFailure(hostedDisplayStageGNOMEState)
-		}
-		properties["layout-mode"] = dbus.MakeVariant(mode)
+	properties, err := mutterApplyProperties(state.Properties)
+	if err != nil {
+		return newHostedDisplayFailure(hostedDisplayStageGNOMEState)
 	}
 	call := object.CallWithContext(
 		ctx,
@@ -314,6 +309,28 @@ func configureMutterDisplay(
 		return newHostedDisplayFailure(hostedDisplayStageGNOMEApply)
 	}
 	return waitForMutterTopology(ctx, object, selections)
+}
+
+func mutterApplyProperties(
+	stateProperties map[string]dbus.Variant,
+) (map[string]dbus.Variant, error) {
+	properties := map[string]dbus.Variant{}
+	if !mutterBoolProperty(
+		stateProperties,
+		"supports-changing-layout-mode",
+	) {
+		return properties, nil
+	}
+	layoutMode, ok := stateProperties["layout-mode"]
+	if !ok {
+		return nil, errors.New("mutter layout mode is unavailable")
+	}
+	var mode uint32
+	if err := layoutMode.Store(&mode); err != nil || mode < 1 || mode > 2 {
+		return nil, errors.New("mutter layout mode is invalid")
+	}
+	properties["layout-mode"] = dbus.MakeVariant(mode)
+	return properties, nil
 }
 
 func readMutterDisplayState(

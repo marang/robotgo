@@ -274,43 +274,68 @@ func TestHostedDisplayConfigurationIsGuestRestrictedAndCredentialFree(
 	t *testing.T,
 ) {
 	t.Parallel()
-	executor := &scriptedCommandExecutor{}
-	if err := configureHostedGuestDisplay(
-		context.Background(),
-		executor,
-		[]string{"-p", "22222"},
-		portalLaneGNOME,
-		&strings.Builder{},
-	); err != nil {
-		t.Fatal(err)
-	}
-	if len(executor.calls) != 1 {
-		t.Fatalf("guest display calls = %v", executor.calls)
-	}
-	command := strings.Join(executor.calls[0], " ")
-	for _, required := range []string{
-		"ssh",
-		"root@127.0.0.1",
-		"runuser -u robotgo",
-		"ROBOTGO_HOSTED_GUEST=1",
-		"guest-display",
-		"infrastructure/portal-runner/gnome/manifest.json",
-		"HTTP_PROXY=http://10.0.2.2:3128",
-		"HTTPS_PROXY=http://10.0.2.2:3128",
-		"NO_PROXY=localhost,127.0.0.1",
+	for _, test := range []struct {
+		lane     string
+		desktop  string
+		session  string
+		manifest string
+	}{
+		{
+			lane: portalLaneGNOME, desktop: "GNOME", session: "gnome",
+			manifest: "gnome",
+		},
+		{
+			lane: portalLaneKDE, desktop: "KDE", session: "plasmawayland",
+			manifest: "kde",
+		},
 	} {
-		if !strings.Contains(command, required) {
-			t.Errorf("guest display command omits %q", required)
-		}
-	}
-	for _, forbidden := range []string{
-		"GITHUB_TOKEN",
-		"ACTIONS_RUNTIME_TOKEN",
-		"sudo",
-	} {
-		if strings.Contains(command, forbidden) {
-			t.Errorf("guest display command contains %q", forbidden)
-		}
+		test := test
+		t.Run(test.lane, func(t *testing.T) {
+			t.Parallel()
+			executor := &scriptedCommandExecutor{}
+			if err := configureHostedGuestDisplay(
+				context.Background(),
+				executor,
+				[]string{"-p", "22222"},
+				test.lane,
+				&strings.Builder{},
+			); err != nil {
+				t.Fatal(err)
+			}
+			if len(executor.calls) != 1 {
+				t.Fatalf("guest display calls = %v", executor.calls)
+			}
+			command := strings.Join(executor.calls[0], " ")
+			for _, required := range []string{
+				"ssh",
+				"root@127.0.0.1",
+				"runuser -u robotgo",
+				"ROBOTGO_HOSTED_GUEST=1",
+				"guest-display",
+				"infrastructure/portal-runner/" + test.manifest +
+					"/manifest.json",
+				"XDG_CURRENT_DESKTOP=" + test.desktop,
+				"XDG_SESSION_DESKTOP=" + test.session,
+				"XDG_SESSION_TYPE=wayland",
+				"QT_QPA_PLATFORM=wayland",
+				"HTTP_PROXY=http://10.0.2.2:3128",
+				"HTTPS_PROXY=http://10.0.2.2:3128",
+				"NO_PROXY=localhost,127.0.0.1",
+			} {
+				if !strings.Contains(command, required) {
+					t.Errorf("guest display command omits %q", required)
+				}
+			}
+			for _, forbidden := range []string{
+				"GITHUB_TOKEN",
+				"ACTIONS_RUNTIME_TOKEN",
+				"sudo",
+			} {
+				if strings.Contains(command, forbidden) {
+					t.Errorf("guest display command contains %q", forbidden)
+				}
+			}
+		})
 	}
 	if err := configureHostedGuestDisplay(
 		context.Background(),

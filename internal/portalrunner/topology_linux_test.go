@@ -274,6 +274,48 @@ func TestMutterTopologyMatchesExactTwoOutputs(t *testing.T) {
 	}
 }
 
+func TestMutterApplyPropertiesOnlyChangesSupportedLayoutMode(t *testing.T) {
+	t.Parallel()
+	properties, err := mutterApplyProperties(map[string]dbus.Variant{
+		"layout-mode": dbus.MakeVariant(uint32(2)),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(properties) != 0 {
+		t.Fatalf("unsupported Mutter apply properties = %#v", properties)
+	}
+
+	properties, err = mutterApplyProperties(map[string]dbus.Variant{
+		"supports-changing-layout-mode": dbus.MakeVariant(true),
+		"layout-mode":                   dbus.MakeVariant(uint32(2)),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var mode uint32
+	if err := properties["layout-mode"].Store(&mode); err != nil {
+		t.Fatal(err)
+	}
+	if mode != 2 {
+		t.Fatalf("Mutter apply layout mode = %d, want 2", mode)
+	}
+
+	for _, invalid := range []map[string]dbus.Variant{
+		{
+			"supports-changing-layout-mode": dbus.MakeVariant(true),
+		},
+		{
+			"supports-changing-layout-mode": dbus.MakeVariant(true),
+			"layout-mode":                   dbus.MakeVariant(uint32(3)),
+		},
+	} {
+		if _, err := mutterApplyProperties(invalid); err == nil {
+			t.Fatalf("invalid Mutter apply properties accepted: %#v", invalid)
+		}
+	}
+}
+
 func TestKScreenTopologyMatchesExactTwoOutputs(t *testing.T) {
 	t.Parallel()
 	display := validManifest().HostedDisplay
