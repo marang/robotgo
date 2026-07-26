@@ -35,7 +35,9 @@ func TestPipeWireCapturePersistentSessionIntegration(t *testing.T) {
 	)
 	cancelOpen()
 	if err != nil {
-		stage = screenCastOpenFailureStage(err)
+		if classified := screenCastPortalFailureStage(err); classified != "" {
+			stage = classified
+		}
 		t.Fatalf("OpenPipeWireCapture error: %v", err)
 	}
 	defer func() {
@@ -67,7 +69,7 @@ func TestPipeWireCapturePersistentSessionIntegration(t *testing.T) {
 	}
 }
 
-func screenCastOpenFailureStage(err error) string {
+func screenCastPortalFailureStage(err error) string {
 	switch {
 	case errors.Is(err, context.DeadlineExceeded):
 		return "portal-timeout"
@@ -78,7 +80,30 @@ func screenCastOpenFailureStage(err error) string {
 	case errors.Is(err, ErrScreenCastUnavailable):
 		return "portal-unavailable"
 	default:
-		return "portal-open"
+		return ""
+	}
+}
+
+func TestScreenCastPortalFailureStage(t *testing.T) {
+	t.Parallel()
+	for _, test := range []struct {
+		name string
+		err  error
+		want string
+	}{
+		{name: "timeout", err: context.DeadlineExceeded, want: "portal-timeout"},
+		{name: "cancelled", err: ErrScreenCastCancelled, want: "portal-cancelled"},
+		{name: "rejected", err: ErrScreenCastRejected, want: "portal-rejected"},
+		{name: "unavailable", err: ErrScreenCastUnavailable, want: "portal-unavailable"},
+		{name: "detailed callback stage retained", err: errors.New("pipewire"), want: ""},
+	} {
+		test := test
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			if got := screenCastPortalFailureStage(test.err); got != test.want {
+				t.Fatalf("screenCastPortalFailureStage() = %q, want %q", got, test.want)
+			}
+		})
 	}
 }
 
