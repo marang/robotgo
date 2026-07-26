@@ -49,6 +49,8 @@ func TestHostedPortalProofUsesEphemeralGitHubKVM(t *testing.T) {
 			`-commit "$GITHUB_SHA"`,
 			"-cell " + cell,
 			"Reject transient runner artifacts",
+			"go run ./internal/cmd/portalrunner cleanup",
+			`git -C "$GITHUB_WORKSPACE" rev-parse HEAD`,
 			`find "$state_root" -maxdepth 1 -type d -name 'run-*'`,
 		} {
 			if !strings.Contains(hostedJob, required) {
