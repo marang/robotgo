@@ -16,7 +16,11 @@ import (
 	"time"
 )
 
-const probeTimeout = 10 * time.Minute
+const (
+	probeTimeout               = 10 * time.Minute
+	runnerJobStartedHookPath   = "/usr/local/libexec/robotgo-runner-job-started-hook.sh"
+	runnerJobCompletedHookPath = "/usr/local/libexec/robotgo-runner-job-completed-hook.sh"
+)
 
 // ImageProbeOptions defines a private non-runner guest boot.
 type ImageProbeOptions struct {
@@ -271,6 +275,21 @@ func ProbeImage(
 			"test \"$(uname -r)\" = " + shellQuote(manifest.VM.KernelRelease),
 		},
 		{"actions runner", "test -x /opt/actions-runner/config.sh"},
+		{
+			"actions runner job hooks",
+			"test -x " + shellQuote(runnerJobStartedHookPath) + " && " +
+				"test -x " + shellQuote(runnerJobCompletedHookPath) + " && " +
+				"systemctl cat robotgo-runner.service | grep -Fx " +
+				shellQuote(
+					"Environment=ACTIONS_RUNNER_HOOK_JOB_STARTED="+
+						runnerJobStartedHookPath,
+				) + " >/dev/null && " +
+				"systemctl cat robotgo-runner.service | grep -Fx " +
+				shellQuote(
+					"Environment=ACTIONS_RUNNER_HOOK_JOB_COMPLETED="+
+						runnerJobCompletedHookPath,
+				) + " >/dev/null",
+		},
 		{
 			"actions runner registration flags",
 			"runuser -u robotgo -- /opt/actions-runner/config.sh --help " +
