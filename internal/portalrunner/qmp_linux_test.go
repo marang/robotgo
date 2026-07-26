@@ -16,7 +16,64 @@ import (
 )
 
 func TestQMPPortalApprovalUsesIndependentKeyboardChords(t *testing.T) {
-	t.Parallel()
+	for _, test := range []struct {
+		name string
+		cell string
+		want [][]string
+	}{
+		{
+			name: "RemoteDesktop",
+			cell: "remote-desktop",
+			want: [][]string{
+				{"alt", "i"},
+				{"tab"},
+				{"spc"},
+				{"tab"},
+				{"spc"},
+				{"alt", "s"},
+			},
+		},
+		{
+			name: "ScreenCast",
+			cell: "screencast",
+			want: [][]string{
+				{"alt", "e"},
+				{"tab"},
+				{"spc"},
+				{"tab"},
+				{"spc"},
+				{"alt", "s"},
+			},
+		},
+	} {
+		test := test
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			got := recordQMPCommands(
+				t,
+				len(test.want),
+				func(ctx context.Context, client *qmpClient) error {
+					return client.approvePortal(
+						ctx,
+						portalLaneGNOME,
+						test.cell,
+						HostedTopologyMulti,
+					)
+				},
+			)
+			for index, want := range test.want {
+				assertQMPChord(t, got[index+1], want)
+			}
+		})
+	}
+}
+
+func recordQMPCommands(
+	t *testing.T,
+	chordCount int,
+	run func(context.Context, *qmpClient) error,
+) []qmpCommand {
+	t.Helper()
 	socket := filepath.Join(t.TempDir(), "qmp.sock")
 	listener, err := net.Listen("unix", socket)
 	if err != nil {
@@ -24,7 +81,8 @@ func TestQMPPortalApprovalUsesIndependentKeyboardChords(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = listener.Close() })
 
-	commands := make(chan qmpCommand, 7)
+	commandCount := chordCount + 1
+	commands := make(chan qmpCommand, commandCount)
 	serverDone := make(chan error, 1)
 	go func() {
 		connection, err := listener.Accept()
@@ -41,7 +99,7 @@ func TestQMPPortalApprovalUsesIndependentKeyboardChords(t *testing.T) {
 		}
 		decoder := json.NewDecoder(bufio.NewReader(connection))
 		encoder := json.NewEncoder(connection)
-		for range 7 {
+		for range commandCount {
 			var command qmpCommand
 			if err := decoder.Decode(&command); err != nil {
 				serverDone <- err
@@ -66,19 +124,14 @@ func TestQMPPortalApprovalUsesIndependentKeyboardChords(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { _ = client.close() }()
-	if err := client.approvePortal(
-		ctx,
-		portalLaneGNOME,
-		"remote-desktop",
-		HostedTopologyMulti,
-	); err != nil {
+	if err := run(ctx, client); err != nil {
 		t.Fatal(err)
 	}
 	if err := <-serverDone; err != nil {
 		t.Fatal(err)
 	}
 
-	got := make([]qmpCommand, 0, 7)
+	got := make([]qmpCommand, 0, commandCount)
 	close(commands)
 	for command := range commands {
 		got = append(got, command)
@@ -86,12 +139,7 @@ func TestQMPPortalApprovalUsesIndependentKeyboardChords(t *testing.T) {
 	if got[0].Execute != "qmp_capabilities" {
 		t.Fatalf("first QMP command = %q", got[0].Execute)
 	}
-	assertQMPChord(t, got[1], []string{"alt", "i"})
-	assertQMPChord(t, got[2], []string{"tab"})
-	assertQMPChord(t, got[3], []string{"spc"})
-	assertQMPChord(t, got[4], []string{"tab"})
-	assertQMPChord(t, got[5], []string{"spc"})
-	assertQMPChord(t, got[6], []string{"alt", "s"})
+	return got
 }
 
 func TestQMPKDEPhysicalOutputSelectionSkipsSyntheticCards(t *testing.T) {
@@ -103,7 +151,7 @@ func TestQMPKDEPhysicalOutputSelectionSkipsSyntheticCards(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = listener.Close() })
 
-	commands := make(chan qmpCommand, 5)
+	commands := make(chan qmpCommand, 6)
 	serverDone := make(chan error, 1)
 	go func() {
 		connection, err := listener.Accept()
@@ -120,7 +168,7 @@ func TestQMPKDEPhysicalOutputSelectionSkipsSyntheticCards(t *testing.T) {
 		}
 		decoder := json.NewDecoder(bufio.NewReader(connection))
 		encoder := json.NewEncoder(connection)
-		for range 5 {
+		for range 6 {
 			var command qmpCommand
 			if err := decoder.Decode(&command); err != nil {
 				serverDone <- err
@@ -152,17 +200,18 @@ func TestQMPKDEPhysicalOutputSelectionSkipsSyntheticCards(t *testing.T) {
 		t.Fatal(err)
 	}
 	close(commands)
-	got := make([]qmpCommand, 0, 5)
+	got := make([]qmpCommand, 0, 6)
 	for command := range commands {
 		got = append(got, command)
 	}
 	if got[0].Execute != "qmp_capabilities" {
 		t.Fatalf("first QMP command = %q", got[0].Execute)
 	}
-	assertQMPChord(t, got[1], []string{"down"})
-	assertQMPChord(t, got[2], []string{"spc"})
-	assertQMPChord(t, got[3], []string{"left"})
-	assertQMPChord(t, got[4], []string{"spc"})
+	assertQMPChord(t, got[1], []string{"home"})
+	assertQMPChord(t, got[2], []string{"down"})
+	assertQMPChord(t, got[3], []string{"spc"})
+	assertQMPChord(t, got[4], []string{"right"})
+	assertQMPChord(t, got[5], []string{"spc"})
 }
 
 func TestQMPAbsoluteClickUsesRuntimeDisplayGeometry(t *testing.T) {

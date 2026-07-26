@@ -1092,9 +1092,9 @@ func approveHostedPortal(
 		}
 		if approvalError == nil && topology == HostedTopologyMulti {
 			// Plasma 5.27 orders Full Workspace, New Virtual Output, then
-			// physical outputs in a two-column CardsGridView. The calibrated
-			// point focuses and toggles the virtual card. Toggle it back off,
-			// then use grid navigation to select only the two physical cards.
+			// physical outputs in a two-column CardsGridView. Toggle the
+			// calibrated card back off, then use Home as a deterministic grid
+			// anchor before selecting indices 2 and 3.
 			approvalError = qmp.clickAbsolute(
 				ctx,
 				card.x,

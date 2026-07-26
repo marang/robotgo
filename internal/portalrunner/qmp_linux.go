@@ -20,9 +20,11 @@ const (
 
 	qmpKeyAlt    = "alt"
 	qmpKeyDown   = "down"
+	qmpKeyE      = "e"
+	qmpKeyHome   = "home"
 	qmpKeyI      = "i"
-	qmpKeyLeft   = "left"
 	qmpKeyReturn = "ret"
+	qmpKeyRight  = "right"
 	qmpKeyS      = "s"
 	qmpKeySpace  = "spc"
 	qmpKeyTab    = "tab"
@@ -327,6 +329,16 @@ func (client *qmpClient) approvePortal(
 			if err := waitQMPChord(ctx); err != nil {
 				return err
 			}
+		} else if topology == HostedTopologyMulti {
+			// The ScreenCast dialog has no RemoteDesktop interaction switch
+			// to anchor keyboard focus. Focus its monitor-page mnemonic before
+			// traversing the physical monitor buttons.
+			if err := client.sendChord(ctx, qmpKeyAlt, qmpKeyE); err != nil {
+				return err
+			}
+			if err := waitQMPChord(ctx); err != nil {
+				return err
+			}
 		}
 		if topology == HostedTopologyMulti {
 			if err := client.selectGNOMEPhysicalOutputs(ctx); err != nil {
@@ -366,9 +378,10 @@ func (client *qmpClient) selectKDEPhysicalOutputs(
 	ctx context.Context,
 ) error {
 	for _, key := range []string{
+		qmpKeyHome,
 		qmpKeyDown,
 		qmpKeySpace,
-		qmpKeyLeft,
+		qmpKeyRight,
 		qmpKeySpace,
 	} {
 		if err := client.sendChord(ctx, key); err != nil {
