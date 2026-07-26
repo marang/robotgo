@@ -109,6 +109,19 @@ func TestRunRejectsUnsafeCommandsAndProxyBinding(t *testing.T) {
 		nil,
 		{"unknown"},
 		{"proxy", "-listen-host", "0.0.0.0"},
+		{
+			"guest-display",
+			"-manifest",
+			filepath.Join(
+				"..",
+				"..",
+				"..",
+				"infrastructure",
+				"portal-runner",
+				"gnome",
+				"manifest.json",
+			),
+		},
 	} {
 		if err := run(arguments, &bytes.Buffer{}, &bytes.Buffer{}); err == nil {
 			t.Fatalf("run(%q) succeeded", arguments)

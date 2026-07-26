@@ -26,6 +26,10 @@ func TestPortalWorkflowsUseHostedPinnedLaneContract(t *testing.T) {
 			"- all",
 			"inputs.desktop == 'kde'",
 			"inputs.desktop == 'all'",
+			"topology:",
+			"default: single-output",
+			"inputs.topology == 'multi-output'",
+			"inputs.topology == 'all'",
 			"actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
 			"actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e",
 			"Set up Go",
@@ -33,7 +37,8 @@ func TestPortalWorkflowsUseHostedPinnedLaneContract(t *testing.T) {
 			"persist-credentials: false",
 			"runs-on: ubuntu-24.04",
 			`infrastructure/portal-runner/${{ matrix.desktop }}/manifest.json`,
-			`robotgo-${{ matrix.desktop }}-portal-runner`,
+			`robotgo-${{ matrix.desktop }}-${{ matrix.topology }}-portal-runner`,
+			`-topology "${{ matrix.topology }}"`,
 		} {
 			if !strings.Contains(workflow, required) {
 				t.Errorf("%s omits protected runner contract %q", path, required)

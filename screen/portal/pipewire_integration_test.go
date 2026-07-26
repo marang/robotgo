@@ -5,13 +5,18 @@ package portal
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/marang/robotgo/internal/portalrunner"
 )
 
 const envScreenCastRequireMonitor = "ROBOTGO_SCREENCAST_REQUIRE_MONITOR"
+const envPortalMultiOutput = "ROBOTGO_PORTAL_MULTI_OUTPUT"
+const envPortalExpectedOutputs = "ROBOTGO_PORTAL_EXPECTED_OUTPUTS"
 
 func TestPipeWireCapturePersistentSessionIntegration(t *testing.T) {
 	if os.Getenv("ROBOTGO_SCREENCAST_E2E") == "" {
@@ -20,6 +25,11 @@ func TestPipeWireCapturePersistentSessionIntegration(t *testing.T) {
 	stage := "preflight"
 	defer reportScreenCastStageOnFailure(t, &stage)
 	signalScreenCastConsentReady(t)
+	expectedOutputs, multiOutput := expectedScreenCastOutputs(t)
+	if multiOutput {
+		testMultiplePipeWireStreams(t, &stage, expectedOutputs)
+		return
+	}
 	openCtx, cancelOpen := context.WithTimeout(context.Background(), 2*time.Minute)
 	capture, err := openPipeWireCapture(
 		openCtx,
@@ -66,6 +76,142 @@ func TestPipeWireCapturePersistentSessionIntegration(t *testing.T) {
 		if frame.Bounds().Empty() {
 			t.Fatalf("frame %d is empty", frameNumber)
 		}
+	}
+}
+
+func testMultiplePipeWireStreams(
+	t *testing.T,
+	stage *string,
+	expected portalrunner.HostedDisplay,
+) {
+	t.Helper()
+	if !pipeWireCaptureCompiled() {
+		t.Fatal("PipeWire capture backend is not compiled")
+	}
+	*stage = "portal-open"
+	openCtx, cancelOpen := context.WithTimeout(
+		context.Background(),
+		2*time.Minute,
+	)
+	session, err := OpenScreenCast(openCtx, ScreenCastOptions{
+		Sources:  ScreenCastSourceMonitor,
+		Multiple: true,
+		Cursor:   ScreenCastCursorEmbedded,
+		Persist:  ScreenCastPersistApplication,
+	})
+	cancelOpen()
+	if err != nil {
+		if classified := screenCastPortalFailureStage(err); classified != "" {
+			*stage = classified
+		}
+		t.Fatalf("OpenScreenCast multi-output error: %v", err)
+	}
+	closed := false
+	defer func() {
+		if !closed {
+			*stage = "close"
+			if err := session.Close(); err != nil {
+				t.Errorf("multi-output session Close error: %v", err)
+			}
+		}
+	}()
+	*stage = "stream-metadata"
+	streams := session.Streams()
+	validateScreenCastStreams(t, streams, expected)
+	for index, stream := range streams {
+		*stage = fmt.Sprintf("pipewire-open-%d", index+1)
+		backendCtx, cancelBackend := context.WithTimeout(
+			context.Background(),
+			15*time.Second,
+		)
+		backend, err := newPipeWireFrameSource(
+			backendCtx,
+			session,
+			stream,
+		)
+		cancelBackend()
+		if err != nil {
+			t.Fatalf("open PipeWire output %d: %v", index+1, err)
+		}
+		*stage = fmt.Sprintf("capture-output-%d", index+1)
+		frameCtx, cancelFrame := context.WithTimeout(
+			context.Background(),
+			10*time.Second,
+		)
+		frame, frameErr := backend.frame(frameCtx)
+		cancelFrame()
+		closeErr := backend.close()
+		if frameErr != nil || closeErr != nil {
+			t.Fatalf(
+				"capture PipeWire output %d: %v",
+				index+1,
+				errors.Join(frameErr, closeErr),
+			)
+		}
+		if frame == nil || frame.Bounds().Empty() {
+			t.Fatalf("PipeWire output %d returned an empty frame", index+1)
+		}
+		frame = nil
+	}
+	*stage = "close"
+	if err := session.Close(); err != nil {
+		t.Fatalf("multi-output session Close error: %v", err)
+	}
+	closed = true
+}
+
+func expectedScreenCastOutputs(
+	t *testing.T,
+) (portalrunner.HostedDisplay, bool) {
+	t.Helper()
+	multiOutput := os.Getenv(envPortalMultiOutput)
+	encoded := os.Getenv(envPortalExpectedOutputs)
+	if multiOutput == "" {
+		if encoded != "" {
+			t.Fatal("ScreenCast expected outputs require multi-output mode")
+		}
+		return portalrunner.HostedDisplay{}, false
+	}
+	if multiOutput != "1" {
+		t.Fatal("ScreenCast multi-output marker is invalid")
+	}
+	display, err := portalrunner.ParseHostedDisplay(encoded)
+	if err != nil {
+		t.Fatalf("parse expected ScreenCast outputs: %v", err)
+	}
+	return display, true
+}
+
+func validateScreenCastStreams(
+	t *testing.T,
+	streams []ScreenCastStream,
+	expected portalrunner.HostedDisplay,
+) {
+	t.Helper()
+	evidence := make(
+		[]portalrunner.HostedStreamEvidence,
+		0,
+		len(streams),
+	)
+	for _, stream := range streams {
+		evidence = append(evidence, portalrunner.HostedStreamEvidence{
+			NodeID: stream.NodeID, ID: stream.ID,
+			MappingID:      stream.MappingID,
+			PipeWireSerial: stream.PipeWireSerial,
+			Monitor:        stream.SourceType == ScreenCastSourceMonitor,
+			HasPosition:    stream.HasPosition,
+			HasSize:        stream.HasSize,
+			X:              int(stream.Position.X),
+			Y:              int(stream.Position.Y),
+			Width:          int(stream.Size.Width),
+			Height:         int(stream.Size.Height),
+		})
+	}
+	if err := portalrunner.ValidateHostedStreamEvidence(
+		expected,
+		evidence,
+	); err != nil {
+		t.Fatalf("validate ScreenCast multi-output evidence: %v", err)
 	}
 }
 

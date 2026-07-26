@@ -19,9 +19,13 @@ const (
 	qmpChordInterval   = 250 * time.Millisecond
 
 	qmpKeyAlt    = "alt"
+	qmpKeyDown   = "down"
 	qmpKeyI      = "i"
+	qmpKeyLeft   = "left"
 	qmpKeyReturn = "ret"
 	qmpKeyS      = "s"
+	qmpKeySpace  = "spc"
+	qmpKeyTab    = "tab"
 
 	qmpCommandHumanMonitor = "human-monitor-command"
 	qmpCommandInputEvent   = "input-send-event"
@@ -299,10 +303,15 @@ func qmpAbsoluteCoordinate(pixel, dimension int) (int, error) {
 func (client *qmpClient) approvePortal(
 	ctx context.Context,
 	lane,
-	cell string,
+	cell,
+	topology string,
 ) error {
 	if cell != "remote-desktop" && cell != "screencast" {
 		return errors.New("QMP portal approval cell is invalid")
+	}
+	if topology != HostedTopologySingle &&
+		topology != HostedTopologyMulti {
+		return errors.New("QMP portal approval topology is invalid")
 	}
 	switch lane {
 	case portalLaneGNOME:
@@ -314,6 +323,11 @@ func (client *qmpClient) approvePortal(
 				return err
 			}
 		}
+		if topology == HostedTopologyMulti {
+			if err := client.selectGNOMEPhysicalOutputs(ctx); err != nil {
+				return err
+			}
+		}
 		return client.sendChord(ctx, qmpKeyAlt, qmpKeyS)
 	case portalLaneKDE:
 		return errors.New(
@@ -322,6 +336,44 @@ func (client *qmpClient) approvePortal(
 	default:
 		return errors.New("QMP portal approval lane is invalid")
 	}
+}
+
+func (client *qmpClient) selectGNOMEPhysicalOutputs(
+	ctx context.Context,
+) error {
+	for _, key := range []string{
+		qmpKeyTab,
+		qmpKeySpace,
+		qmpKeyTab,
+		qmpKeySpace,
+	} {
+		if err := client.sendChord(ctx, key); err != nil {
+			return err
+		}
+		if err := waitQMPChord(ctx); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (client *qmpClient) selectKDEPhysicalOutputs(
+	ctx context.Context,
+) error {
+	for _, key := range []string{
+		qmpKeyDown,
+		qmpKeySpace,
+		qmpKeyLeft,
+		qmpKeySpace,
+	} {
+		if err := client.sendChord(ctx, key); err != nil {
+			return err
+		}
+		if err := waitQMPChord(ctx); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func waitQMPChord(ctx context.Context) error {
@@ -432,6 +484,7 @@ func buildHostedQEMUArguments(
 	serialLog string,
 	sshPort int,
 	qmpSocket string,
+	topology string,
 ) []string {
 	base := buildQEMUArguments(
 		manifest,
@@ -455,16 +508,26 @@ func buildHostedQEMUArguments(
 		}
 		arguments = append(arguments, base[index])
 	}
+	displayDevice := fmt.Sprintf(
+		"bochs-display,xres=%d,yres=%d",
+		hostedDisplayWidth,
+		hostedDisplayHeight,
+	)
+	if topology == HostedTopologyMulti {
+		primary := manifest.HostedDisplay.Outputs[0]
+		displayDevice = fmt.Sprintf(
+			"virtio-vga,max_outputs=%d,xres=%d,yres=%d",
+			len(manifest.HostedDisplay.Outputs),
+			primary.Width,
+			primary.Height,
+		)
+	}
 	return append(
 		arguments,
 		"-device", "qemu-xhci",
 		"-device", "usb-kbd",
 		"-device", "usb-tablet",
-		"-device", fmt.Sprintf(
-			"bochs-display,xres=%d,yres=%d",
-			hostedDisplayWidth,
-			hostedDisplayHeight,
-		),
+		"-device", displayDevice,
 		"-qmp", "unix:"+qmpSocket+",server=on,wait=off",
 	)
 }

@@ -24,7 +24,7 @@ func TestQMPPortalApprovalUsesIndependentKeyboardChords(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = listener.Close() })
 
-	commands := make(chan qmpCommand, 3)
+	commands := make(chan qmpCommand, 7)
 	serverDone := make(chan error, 1)
 	go func() {
 		connection, err := listener.Accept()
@@ -41,7 +41,7 @@ func TestQMPPortalApprovalUsesIndependentKeyboardChords(t *testing.T) {
 		}
 		decoder := json.NewDecoder(bufio.NewReader(connection))
 		encoder := json.NewEncoder(connection)
-		for range 3 {
+		for range 7 {
 			var command qmpCommand
 			if err := decoder.Decode(&command); err != nil {
 				serverDone <- err
@@ -70,6 +70,7 @@ func TestQMPPortalApprovalUsesIndependentKeyboardChords(t *testing.T) {
 		ctx,
 		portalLaneGNOME,
 		"remote-desktop",
+		HostedTopologyMulti,
 	); err != nil {
 		t.Fatal(err)
 	}
@@ -77,7 +78,7 @@ func TestQMPPortalApprovalUsesIndependentKeyboardChords(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	got := make([]qmpCommand, 0, 3)
+	got := make([]qmpCommand, 0, 7)
 	close(commands)
 	for command := range commands {
 		got = append(got, command)
@@ -86,7 +87,82 @@ func TestQMPPortalApprovalUsesIndependentKeyboardChords(t *testing.T) {
 		t.Fatalf("first QMP command = %q", got[0].Execute)
 	}
 	assertQMPChord(t, got[1], []string{"alt", "i"})
-	assertQMPChord(t, got[2], []string{"alt", "s"})
+	assertQMPChord(t, got[2], []string{"tab"})
+	assertQMPChord(t, got[3], []string{"spc"})
+	assertQMPChord(t, got[4], []string{"tab"})
+	assertQMPChord(t, got[5], []string{"spc"})
+	assertQMPChord(t, got[6], []string{"alt", "s"})
+}
+
+func TestQMPKDEPhysicalOutputSelectionSkipsSyntheticCards(t *testing.T) {
+	t.Parallel()
+	socket := filepath.Join(t.TempDir(), "qmp.sock")
+	listener, err := net.Listen("unix", socket)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = listener.Close() })
+
+	commands := make(chan qmpCommand, 5)
+	serverDone := make(chan error, 1)
+	go func() {
+		connection, err := listener.Accept()
+		if err != nil {
+			serverDone <- err
+			return
+		}
+		defer func() { _ = connection.Close() }()
+		if _, err := connection.Write([]byte(
+			`{"QMP":{"version":{"qemu":{"major":11}},"capabilities":[]}}` + "\n",
+		)); err != nil {
+			serverDone <- err
+			return
+		}
+		decoder := json.NewDecoder(bufio.NewReader(connection))
+		encoder := json.NewEncoder(connection)
+		for range 5 {
+			var command qmpCommand
+			if err := decoder.Decode(&command); err != nil {
+				serverDone <- err
+				return
+			}
+			commands <- command
+			if err := encoder.Encode(map[string]any{
+				"return": map[string]any{},
+				"id":     command.ID,
+			}); err != nil {
+				serverDone <- err
+				return
+			}
+		}
+		serverDone <- nil
+	}()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	client, err := connectQMP(ctx, socket)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = client.close() }()
+	if err := client.selectKDEPhysicalOutputs(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if err := <-serverDone; err != nil {
+		t.Fatal(err)
+	}
+	close(commands)
+	got := make([]qmpCommand, 0, 5)
+	for command := range commands {
+		got = append(got, command)
+	}
+	if got[0].Execute != "qmp_capabilities" {
+		t.Fatalf("first QMP command = %q", got[0].Execute)
+	}
+	assertQMPChord(t, got[1], []string{"down"})
+	assertQMPChord(t, got[2], []string{"spc"})
+	assertQMPChord(t, got[3], []string{"left"})
+	assertQMPChord(t, got[4], []string{"spc"})
 }
 
 func TestQMPAbsoluteClickUsesRuntimeDisplayGeometry(t *testing.T) {
@@ -390,6 +466,7 @@ func TestHostedQEMUIsHeadlessPrivateAndControllable(t *testing.T) {
 		"/private/serial.log",
 		22222,
 		qmpSocket,
+		HostedTopologySingle,
 	)
 	joined := strings.Join(arguments, " ")
 	for _, required := range []string{
@@ -417,6 +494,36 @@ func TestHostedQEMUIsHeadlessPrivateAndControllable(t *testing.T) {
 	}
 	if count := strings.Count(joined, "bochs-display"); count != 1 {
 		t.Fatalf("hosted QEMU display devices = %d, want exactly one", count)
+	}
+}
+
+func TestHostedMultiOutputQEMUUsesManifestBoundVirtIOScanouts(t *testing.T) {
+	t.Parallel()
+	manifest := validManifest()
+	arguments := buildHostedQEMUArguments(
+		manifest,
+		"/private/disk.qcow2",
+		"/private/seed.img",
+		"/private/qemu.pid",
+		"/private/serial.log",
+		22222,
+		"/private/run/qmp.sock",
+		HostedTopologyMulti,
+	)
+	joined := strings.Join(arguments, " ")
+	for _, required := range []string{
+		"-device virtio-vga,max_outputs=2,xres=1280,yres=720",
+		"-display none",
+		"-device usb-tablet",
+	} {
+		if !strings.Contains(joined, required) {
+			t.Errorf("hosted multi-output QEMU arguments omit %q", required)
+		}
+	}
+	for _, forbidden := range []string{"bochs-display", "-display gtk"} {
+		if strings.Contains(joined, forbidden) {
+			t.Errorf("hosted multi-output QEMU arguments contain %q", forbidden)
+		}
 	}
 }
 

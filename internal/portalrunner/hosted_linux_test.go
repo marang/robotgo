@@ -16,22 +16,54 @@ func TestHostedIdentityIsExact(t *testing.T) {
 	t.Parallel()
 	commit := strings.Repeat("a", 40)
 	for _, cell := range []string{"remote-desktop", "screencast"} {
-		if err := validateHostedIdentity(commit, cell); err != nil {
-			t.Fatalf("validateHostedIdentity(%q): %v", cell, err)
+		for _, topology := range []string{
+			HostedTopologySingle,
+			HostedTopologyMulti,
+		} {
+			if err := validateHostedIdentity(
+				commit,
+				cell,
+				topology,
+			); err != nil {
+				t.Fatalf(
+					"validateHostedIdentity(%q, %q): %v",
+					cell,
+					topology,
+					err,
+				)
+			}
 		}
 	}
 	for _, invalid := range []struct {
-		commit string
-		cell   string
+		commit   string
+		cell     string
+		topology string
 	}{
-		{commit: strings.Repeat("A", 40), cell: "remote-desktop"},
-		{commit: strings.Repeat("a", 39), cell: "remote-desktop"},
-		{commit: strings.Repeat("g", 40), cell: "remote-desktop"},
-		{commit: commit, cell: "other"},
+		{
+			commit: strings.Repeat("A", 40),
+			cell:   "remote-desktop", topology: HostedTopologySingle,
+		},
+		{
+			commit: strings.Repeat("a", 39),
+			cell:   "remote-desktop", topology: HostedTopologySingle,
+		},
+		{
+			commit: strings.Repeat("g", 40),
+			cell:   "remote-desktop", topology: HostedTopologySingle,
+		},
+		{
+			commit: commit, cell: "other",
+			topology: HostedTopologySingle,
+		},
+		{
+			commit: commit, cell: "remote-desktop",
+			topology: "other",
+		},
 	} {
 		if err := validateHostedIdentity(
 			invalid.commit,
 			invalid.cell,
+			invalid.topology,
 		); err == nil {
 			t.Fatalf("invalid hosted identity was accepted: %+v", invalid)
 		}
@@ -174,26 +206,128 @@ func TestHostedPortalCommandsSelectDesktopLane(t *testing.T) {
 	}
 }
 
+func TestHostedPortalMultiOutputCommandBindsCanonicalTopology(
+	t *testing.T,
+) {
+	t.Parallel()
+	command, err := hostedPortalTestCommandForTopology(
+		portalLaneGNOME,
+		"remote-desktop",
+		"/run/user/1100/robotgo-portal-consent-remote-desktop.ready",
+		HostedTopologyMulti,
+		validManifest().HostedDisplay,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, required := range []string{
+		"ROBOTGO_PORTAL_MULTI_OUTPUT=1",
+		"ROBOTGO_PORTAL_EXPECTED_OUTPUTS=" +
+			"0,0,1280,720;1280,0,1024,768",
+	} {
+		if !strings.Contains(command, required) {
+			t.Errorf("multi-output command omits %q", required)
+		}
+	}
+	if _, err := hostedPortalTestCommandForTopology(
+		portalLaneGNOME,
+		"remote-desktop",
+		"/run/user/1100/marker",
+		HostedTopologyMulti,
+		HostedDisplay{},
+	); err == nil {
+		t.Fatal("multi-output command accepted an empty topology")
+	}
+}
+
+func TestHostedDisplayConfigurationIsGuestRestrictedAndCredentialFree(
+	t *testing.T,
+) {
+	t.Parallel()
+	executor := &scriptedCommandExecutor{}
+	if err := configureHostedGuestDisplay(
+		context.Background(),
+		executor,
+		[]string{"-p", "22222"},
+		portalLaneGNOME,
+		&strings.Builder{},
+	); err != nil {
+		t.Fatal(err)
+	}
+	if len(executor.calls) != 1 {
+		t.Fatalf("guest display calls = %v", executor.calls)
+	}
+	command := strings.Join(executor.calls[0], " ")
+	for _, required := range []string{
+		"ssh",
+		"root@127.0.0.1",
+		"runuser -u robotgo",
+		"ROBOTGO_HOSTED_GUEST=1",
+		"guest-display",
+		"infrastructure/portal-runner/gnome/manifest.json",
+		"HTTP_PROXY=http://10.0.2.2:3128",
+		"HTTPS_PROXY=http://10.0.2.2:3128",
+		"NO_PROXY=localhost,127.0.0.1",
+	} {
+		if !strings.Contains(command, required) {
+			t.Errorf("guest display command omits %q", required)
+		}
+	}
+	for _, forbidden := range []string{
+		"GITHUB_TOKEN",
+		"ACTIONS_RUNTIME_TOKEN",
+		"sudo",
+	} {
+		if strings.Contains(command, forbidden) {
+			t.Errorf("guest display command contains %q", forbidden)
+		}
+	}
+	if err := configureHostedGuestDisplay(
+		context.Background(),
+		&scriptedCommandExecutor{},
+		nil,
+		"other",
+		&strings.Builder{},
+	); err == nil {
+		t.Fatal("unsupported guest display lane was accepted")
+	}
+}
+
 func TestHostedPortalApprovalPolicyMatchesDesktopBackend(t *testing.T) {
 	t.Parallel()
 	for _, test := range []struct {
-		lane string
-		cell string
-		want bool
+		lane     string
+		cell     string
+		topology string
+		want     bool
 	}{
-		{lane: portalLaneGNOME, cell: "remote-desktop", want: true},
-		{lane: portalLaneGNOME, cell: "screencast", want: true},
-		{lane: portalLaneKDE, cell: "remote-desktop", want: false},
-		{lane: portalLaneKDE, cell: "screencast", want: true},
+		{
+			lane: portalLaneGNOME, cell: "remote-desktop",
+			topology: HostedTopologySingle, want: true,
+		},
+		{
+			lane: portalLaneGNOME, cell: "screencast",
+			topology: HostedTopologyMulti, want: true,
+		},
+		{
+			lane: portalLaneKDE, cell: "remote-desktop",
+			topology: HostedTopologyMulti, want: false,
+		},
+		{
+			lane: portalLaneKDE, cell: "screencast",
+			topology: HostedTopologyMulti, want: true,
+		},
 	} {
 		if got := hostedPortalApprovalRequired(
 			test.lane,
 			test.cell,
+			test.topology,
 		); got != test.want {
 			t.Errorf(
-				"hostedPortalApprovalRequired(%q, %q) = %t, want %t",
+				"hostedPortalApprovalRequired(%q, %q, %q) = %t, want %t",
 				test.lane,
 				test.cell,
+				test.topology,
 				got,
 				test.want,
 			)

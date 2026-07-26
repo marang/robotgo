@@ -28,6 +28,11 @@ const (
 	hostedTestTimeout       = 4 * time.Minute
 	hostedTestLogLimit      = 2 * 1024 * 1024
 	maximumPortalGeometry   = 256
+
+	// HostedTopologySingle preserves the established one-output portal run.
+	HostedTopologySingle = "single-output"
+	// HostedTopologyMulti enables the manifest-bound two-output experiment.
+	HostedTopologyMulti = "multi-output"
 )
 
 var portalFailureStagePattern = regexp.MustCompile(
@@ -54,6 +59,7 @@ type HostedRuntimeOptions struct {
 	SSHPort        int
 	Commit         string
 	Cell           string
+	Topology       string
 	Output         io.Writer
 	Commands       CommandExecutor
 }
@@ -90,7 +96,11 @@ func RunHostedPortal(
 	if err != nil {
 		return err
 	}
-	if err := validateHostedIdentity(options.Commit, options.Cell); err != nil {
+	if err := validateHostedIdentity(
+		options.Commit,
+		options.Cell,
+		options.Topology,
+	); err != nil {
 		return err
 	}
 	if options.Output == nil {
@@ -298,6 +308,7 @@ func RunHostedPortal(
 			serialLog,
 			options.SSHPort,
 			qmpSocket,
+			options.Topology,
 		)...,
 	)
 	qemuCommand.Stdout = logWriter
@@ -381,6 +392,17 @@ func RunHostedPortal(
 	); err != nil {
 		return err
 	}
+	if options.Topology == HostedTopologyMulti {
+		if err := configureHostedGuestDisplay(
+			guestContext,
+			options.Commands,
+			sshArguments,
+			manifest.Lane,
+			logWriter,
+		); err != nil {
+			return err
+		}
+	}
 
 	marker := "/run/user/1100/robotgo-portal-consent-" +
 		options.Cell + ".ready"
@@ -398,13 +420,23 @@ func RunHostedPortal(
 		destination: testLog,
 		remaining:   hostedTestLogLimit,
 	}
+	portalTestCommand, err := hostedPortalTestCommandForTopology(
+		manifest.Lane,
+		options.Cell,
+		marker,
+		options.Topology,
+		manifest.HostedDisplay,
+	)
+	if err != nil {
+		return err
+	}
 	testCommand := exec.CommandContext(
 		guestContext,
 		"ssh",
 		append(
 			append([]string{}, sshArguments...),
 			"root@127.0.0.1",
-			hostedPortalTestCommand(manifest.Lane, options.Cell, marker),
+			portalTestCommand,
 		)...,
 	)
 	testOutput := io.MultiWriter(logWriter, testLogWriter)
@@ -420,7 +452,11 @@ func RunHostedPortal(
 		close(testResult.done)
 	}()
 
-	if hostedPortalApprovalRequired(manifest.Lane, options.Cell) {
+	if hostedPortalApprovalRequired(
+		manifest.Lane,
+		options.Cell,
+		options.Topology,
+	) {
 		if err := waitForConsentMarker(
 			guestContext,
 			options.Commands,
@@ -448,6 +484,7 @@ func RunHostedPortal(
 			qmpSocket,
 			manifest.Lane,
 			options.Cell,
+			options.Topology,
 			options.Output,
 		); err != nil {
 			stopProcessGroup(testCommand, testResult.done)
@@ -503,6 +540,49 @@ func RunHostedPortal(
 	)
 }
 
+func configureHostedGuestDisplay(
+	ctx context.Context,
+	commands CommandExecutor,
+	sshArguments []string,
+	lane string,
+	output io.Writer,
+) error {
+	if lane != portalLaneGNOME && lane != portalLaneKDE {
+		return errors.New("hosted display lane is invalid")
+	}
+	command := "cd /home/robotgo/robotgo; exec env " +
+		"ROBOTGO_HOSTED_GUEST=1 " +
+		"go run ./internal/cmd/portalrunner guest-display " +
+		"-manifest infrastructure/portal-runner/" + lane +
+		"/manifest.json"
+	if err := commands.Run(
+		ctx,
+		"ssh",
+		append(
+			append([]string{}, sshArguments...),
+			"root@127.0.0.1",
+			"exec runuser -u robotgo -- env "+
+				"HOME=/home/robotgo "+
+				"XDG_RUNTIME_DIR=/run/user/1100 "+
+				"DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1100/bus "+
+				"WAYLAND_DISPLAY=wayland-0 "+
+				"DISPLAY=:0 "+
+				"HTTP_PROXY=http://10.0.2.2:3128 "+
+				"HTTPS_PROXY=http://10.0.2.2:3128 "+
+				"http_proxy=http://10.0.2.2:3128 "+
+				"https_proxy=http://10.0.2.2:3128 "+
+				"NO_PROXY=localhost,127.0.0.1 "+
+				"no_proxy=localhost,127.0.0.1 "+
+				"bash -c "+shellQuote(command),
+		),
+		nil,
+		output,
+	); err != nil {
+		return errors.New("configure hosted display topology")
+	}
+	return nil
+}
+
 func readPortalFailureStage(path string) string {
 	data, err := os.ReadFile(path)
 	if err != nil || len(data) > hostedTestLogLimit {
@@ -515,7 +595,7 @@ func readPortalFailureStage(path string) string {
 	return string(matches[len(matches)-1][1])
 }
 
-func validateHostedIdentity(commit, cell string) error {
+func validateHostedIdentity(commit, cell, topology string) error {
 	if len(commit) != 40 {
 		return errors.New("hosted portal commit is invalid")
 	}
@@ -525,6 +605,10 @@ func validateHostedIdentity(commit, cell string) error {
 	}
 	if cell != "remote-desktop" && cell != "screencast" {
 		return errors.New("hosted portal cell is invalid")
+	}
+	if topology != HostedTopologySingle &&
+		topology != HostedTopologyMulti {
+		return errors.New("hosted portal topology is invalid")
 	}
 	return nil
 }
@@ -770,9 +854,30 @@ test -f /home/robotgo/robotgo/go.mod`
 }
 
 func hostedPortalTestCommand(lane, cell, marker string) string {
+	command, _ := hostedPortalTestCommandForTopology(
+		lane,
+		cell,
+		marker,
+		HostedTopologySingle,
+		HostedDisplay{},
+	)
+	return command
+}
+
+func hostedPortalTestCommandForTopology(
+	lane,
+	cell,
+	marker,
+	topology string,
+	display HostedDisplay,
+) (string, error) {
 	currentDesktop, sessionDesktop, err := hostedDesktopEnvironment(lane)
 	if err != nil {
-		return ""
+		return "", err
+	}
+	if topology != HostedTopologySingle &&
+		topology != HostedTopologyMulti {
+		return "", errors.New("hosted portal topology is invalid")
 	}
 	environment := strings.Join([]string{
 		"HOME=/home/robotgo",
@@ -791,6 +896,14 @@ func hostedPortalTestCommand(lane, cell, marker string) string {
 		"no_proxy=localhost,127.0.0.1",
 		"ROBOTGO_PORTAL_CONSENT_READY_FILE=" + marker,
 	}, " ")
+	if topology == HostedTopologyMulti {
+		encoded, err := display.Encode()
+		if err != nil {
+			return "", err
+		}
+		environment += " ROBOTGO_PORTAL_MULTI_OUTPUT=1" +
+			" ROBOTGO_PORTAL_EXPECTED_OUTPUTS=" + encoded
+	}
 	var test string
 	if cell == "screencast" {
 		environment += " ROBOTGO_SCREENCAST_E2E=1" +
@@ -806,7 +919,7 @@ func hostedPortalTestCommand(lane, cell, marker string) string {
 	}
 	guestCommand := "cd /home/robotgo/robotgo; exec " + test
 	return "set -euo pipefail; exec runuser -u robotgo -- env " +
-		environment + " bash -c " + shellQuote(guestCommand)
+		environment + " bash -c " + shellQuote(guestCommand), nil
 }
 
 func hostedDesktopEnvironment(lane string) (current, session string, err error) {
@@ -820,7 +933,7 @@ func hostedDesktopEnvironment(lane string) (current, session string, err error) 
 	}
 }
 
-func hostedPortalApprovalRequired(lane, cell string) bool {
+func hostedPortalApprovalRequired(lane, cell, topology string) bool {
 	return lane == portalLaneGNOME ||
 		(lane == portalLaneKDE && cell == "screencast")
 }
@@ -831,7 +944,8 @@ func approveHostedPortal(
 	sshArguments []string,
 	qmpSocket,
 	lane,
-	cell string,
+	cell,
+	topology string,
 	output io.Writer,
 ) error {
 	if lane == portalLaneKDE && cell == "screencast" {
@@ -894,6 +1008,25 @@ func approveHostedPortal(
 				"hosted KDE QMP pointer calibration passed\n",
 			)
 		}
+		if approvalError == nil && topology == HostedTopologyMulti {
+			// Plasma 5.27 orders Full Workspace, New Virtual Output, then
+			// physical outputs in a two-column CardsGridView. The calibrated
+			// point focuses and toggles the virtual card. Toggle it back off,
+			// then use grid navigation to select only the two physical cards.
+			approvalError = qmp.clickAbsolute(
+				ctx,
+				card.x,
+				card.y,
+				geometry.width,
+				geometry.height,
+			)
+			if approvalError == nil {
+				approvalError = waitQMPChord(ctx)
+			}
+			if approvalError == nil {
+				approvalError = qmp.selectKDEPhysicalOutputs(ctx)
+			}
+		}
 		if approvalError == nil {
 			// Plasma 5.27 SystemDialog handles Return at the focused loader and
 			// accepts only after the selected source enables its OK button.
@@ -905,7 +1038,10 @@ func approveHostedPortal(
 	if err != nil {
 		return err
 	}
-	return errors.Join(qmp.approvePortal(ctx, lane, cell), qmp.close())
+	return errors.Join(
+		qmp.approvePortal(ctx, lane, cell, topology),
+		qmp.close(),
+	)
 }
 
 func locateHostedKDEScreenCast(
