@@ -772,7 +772,8 @@ func hostedPortalTestCommand(lane, cell, marker string) string {
 	}, " ")
 	var test string
 	if cell == "screencast" {
-		environment += " ROBOTGO_SCREENCAST_E2E=1"
+		environment += " ROBOTGO_SCREENCAST_E2E=1" +
+			" ROBOTGO_SCREENCAST_REQUIRE_MONITOR=1"
 		test = "go test -count=1 -timeout=3m -tags=pipewire,integration " +
 			"./screen/portal " +
 			"-run '^TestPipeWireCapturePersistentSessionIntegration$' -v"

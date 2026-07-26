@@ -97,7 +97,7 @@ func TestQMPKDEPortalApprovalSharesPreselectedMonitor(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = listener.Close() })
 
-	commands := make(chan qmpCommand, 2)
+	commands := make(chan qmpCommand, 5)
 	serverDone := make(chan error, 1)
 	go func() {
 		connection, err := listener.Accept()
@@ -114,7 +114,7 @@ func TestQMPKDEPortalApprovalSharesPreselectedMonitor(t *testing.T) {
 		}
 		decoder := json.NewDecoder(bufio.NewReader(connection))
 		encoder := json.NewEncoder(connection)
-		for range 2 {
+		for range 5 {
 			var command qmpCommand
 			if err := decoder.Decode(&command); err != nil {
 				serverDone <- err
@@ -150,7 +150,7 @@ func TestQMPKDEPortalApprovalSharesPreselectedMonitor(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	got := make([]qmpCommand, 0, 3)
+	got := make([]qmpCommand, 0, 5)
 	close(commands)
 	for command := range commands {
 		got = append(got, command)
@@ -158,7 +158,10 @@ func TestQMPKDEPortalApprovalSharesPreselectedMonitor(t *testing.T) {
 	if got[0].Execute != "qmp_capabilities" {
 		t.Fatalf("first QMP command = %q", got[0].Execute)
 	}
-	assertQMPChord(t, got[1], []string{"ret"})
+	assertQMPChord(t, got[1], []string{qmpKeyTab})
+	assertQMPChord(t, got[2], []string{qmpKeyTab})
+	assertQMPChord(t, got[3], []string{qmpKeySpace})
+	assertQMPChord(t, got[4], []string{qmpKeyReturn})
 }
 
 func TestQMPRejectsMalformedAndFailedResponses(t *testing.T) {

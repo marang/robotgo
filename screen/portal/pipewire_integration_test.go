@@ -11,6 +11,8 @@ import (
 	"time"
 )
 
+const envScreenCastRequireMonitor = "ROBOTGO_SCREENCAST_REQUIRE_MONITOR"
+
 func TestPipeWireCapturePersistentSessionIntegration(t *testing.T) {
 	if os.Getenv("ROBOTGO_SCREENCAST_E2E") == "" {
 		t.Skip("set ROBOTGO_SCREENCAST_E2E=1 in a graphical Wayland session")
@@ -34,6 +36,14 @@ func TestPipeWireCapturePersistentSessionIntegration(t *testing.T) {
 	cancelOpen()
 	if err != nil {
 		t.Fatalf("OpenPipeWireCapture error: %v", err)
+	}
+	stage = "stream-metadata"
+	if os.Getenv(envScreenCastRequireMonitor) != "" &&
+		capture.SelectedStream().SourceType != ScreenCastSourceMonitor {
+		t.Fatalf(
+			"selected source type = %d, want physical monitor",
+			capture.SelectedStream().SourceType,
+		)
 	}
 	defer func() {
 		if err := capture.Close(); err != nil {

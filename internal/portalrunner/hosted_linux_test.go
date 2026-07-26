@@ -80,6 +80,7 @@ func TestHostedPortalCommandsAreCredentialFreeAndCellSpecific(t *testing.T) {
 	for _, test := range []struct {
 		cell    string
 		env     string
+		extra   string
 		pattern string
 	}{
 		{
@@ -90,6 +91,7 @@ func TestHostedPortalCommandsAreCredentialFreeAndCellSpecific(t *testing.T) {
 		{
 			cell:    "screencast",
 			env:     "ROBOTGO_SCREENCAST_E2E=1",
+			extra:   "ROBOTGO_SCREENCAST_REQUIRE_MONITOR=1",
 			pattern: "^TestPipeWireCapturePersistentSessionIntegration$",
 		},
 	} {
@@ -101,10 +103,14 @@ func TestHostedPortalCommandsAreCredentialFreeAndCellSpecific(t *testing.T) {
 		for _, required := range []string{
 			"runuser -u robotgo",
 			test.env,
+			test.extra,
 			test.pattern,
 			"ROBOTGO_PORTAL_CONSENT_READY_FILE=/run/user/1100/",
 			"HTTP_PROXY=http://10.0.2.2:3128",
 		} {
+			if required == "" {
+				continue
+			}
 			if !strings.Contains(command, required) {
 				t.Errorf("%s command omits %q", test.cell, required)
 			}

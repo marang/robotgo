@@ -17,6 +17,13 @@ const (
 	qmpConnectInterval = 100 * time.Millisecond
 	qmpMaximumResponse = 1024 * 1024
 	qmpChordInterval   = 250 * time.Millisecond
+
+	qmpKeyAlt    = "alt"
+	qmpKeyI      = "i"
+	qmpKeyReturn = "ret"
+	qmpKeyS      = "s"
+	qmpKeySpace  = "spc"
+	qmpKeyTab    = "tab"
 )
 
 type qmpClient struct {
@@ -138,24 +145,38 @@ func (client *qmpClient) approvePortal(
 	switch lane {
 	case portalLaneGNOME:
 		if cell == "remote-desktop" {
-			if err := client.sendChord(ctx, "alt", "i"); err != nil {
+			if err := client.sendChord(ctx, qmpKeyAlt, qmpKeyI); err != nil {
 				return err
 			}
 			if err := waitQMPChord(ctx); err != nil {
 				return err
 			}
 		}
-		return client.sendChord(ctx, "alt", "s")
+		return client.sendChord(ctx, qmpKeyAlt, qmpKeyS)
 	case portalLaneKDE:
 		if cell == "remote-desktop" {
 			return errors.New(
 				"KDE native RemoteDesktop follows the backend notification policy",
 			)
 		}
-		// Plasma 5.27 preselects the only available monitor, and its
-		// SystemDialog maps Return to the enabled standard accept button.
-		// This remains deterministic across translated Share button labels.
-		return client.sendChord(ctx, "ret")
+		// Plasma 5.27 lists a virtual output before the physical monitor, so
+		// its one-item auto-selection does not apply. The pinned QML focus
+		// order visits both cards before the restore checkbox. Select the
+		// second card, then let SystemDialog handle Return. This remains
+		// deterministic across translated output and button labels.
+		for _, key := range []string{
+			qmpKeyTab,
+			qmpKeyTab,
+			qmpKeySpace,
+		} {
+			if err := client.sendChord(ctx, key); err != nil {
+				return err
+			}
+			if err := waitQMPChord(ctx); err != nil {
+				return err
+			}
+		}
+		return client.sendChord(ctx, qmpKeyReturn)
 	default:
 		return errors.New("QMP portal approval lane is invalid")
 	}
