@@ -1,0 +1,102 @@
+name: X11 default suite
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: x11-default-suite-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  x11-default-suite:
+    name: x11-default-suite
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      CGO_ENABLED: "1"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version: 1.25.x
+      - name: Verify exact source
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test -z "$(git status --porcelain --untracked-files=all)"
+      - name: Install X11 default-suite dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential \
+            libdrm-dev \
+            libgbm-dev \
+            libwayland-dev \
+            libx11-dev \
+            libxkbcommon-dev \
+            libxtst-dev \
+            pkg-config \
+            wayland-protocols \
+            x11-utils \
+            xauth \
+            xclip \
+            xsel \
+            xvfb
+      - name: Run complete default suite in private Xvfb
+        shell: bash
+        run: |
+          set -euo pipefail
+          suite_root="$RUNNER_TEMP/robotgo-x11-default-suite"
+          cleanup() {
+            rm -rf -- "$suite_root"
+          }
+          trap cleanup EXIT INT TERM
+          cleanup
+          install -d -m 0700 "$suite_root" "$suite_root/tmp"
+          export TMPDIR="$suite_root/tmp"
+          xvfb-run -a \
+            -e "$suite_root/xvfb.err" \
+            -s "-screen 0 1280x720x24 -nolisten tcp -noreset" \
+            bash -euo pipefail -c '
+              test -n "${DISPLAY:-}"
+              test -z "${WAYLAND_DISPLAY:-}"
+              test -z "${XDG_SESSION_TYPE:-}"
+              xdpyinfo >/dev/null
+              go test -v ./...
+              output="$(
+                go test -count=1 -v \
+                  -run "^Test(GetScreenSize|GetSysScale|GetTitle)$" .
+              )"
+              printf "%s\n" "$output"
+              for test_name in \
+                TestGetScreenSize \
+                TestGetSysScale \
+                TestGetTitle
+              do
+                if ! printf "%s\n" "$output" |
+                  grep -Eq "^--- PASS: ${test_name} \(.*\)$"
+                then
+                  echo "display-aware default test did not pass: ${test_name}" >&2
+                  exit 1
+                fi
+              done
+              if printf "%s\n" "$output" | grep -Eq "^--- SKIP:"
+              then
+                echo "display-aware default probe unexpectedly skipped" >&2
+                exit 1
+              fi
+            '
+          test -z "$(git status --porcelain --untracked-files=all)"
+          cleanup
+          trap - EXIT INT TERM
+          test ! -e "$suite_root"

@@ -259,6 +259,12 @@ branch protection requires the stable three-OS, lint, vet, race, sanitizer,
 Wayland, and X11 evidence checks. Opt-in real-compositor jobs remain excluded
 until matching self-hosted runners are registered.
 
+The additive `X11 default suite` workflow runs the complete CGO default suite
+inside a private GitHub-hosted Xvfb and explicitly proves that the display-aware
+screen-size, scale, and title tests pass rather than skip. It retains no
+synthetic desktop artifact. CircleCI remains required until this replacement
+has passed on `main` and the release/branch-protection contract is migrated.
+
 Pure-Go Windows input has hermetic tests for Win32 `INPUT` layout,
 foreground-layout key mapping, Unicode surrogate pairs, partial-injection
 rollback, ownership, buttons, scrolling, movement, clipboard-paste sequencing,
