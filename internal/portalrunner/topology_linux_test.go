@@ -4,12 +4,61 @@ package portalrunner
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"strings"
 	"testing"
 
 	"github.com/godbus/dbus/v5"
 )
+
+func TestInitialKScreenStateRetriesTransientCommandFailure(t *testing.T) {
+	t.Parallel()
+	want := kscreenState{Outputs: []kscreenOutput{{Name: "Virtual-1"}}}
+	calls := 0
+	state, err := waitForInitialKScreenState(
+		context.Background(),
+		0,
+		func(context.Context) (kscreenState, error) {
+			calls++
+			if calls < 3 {
+				return kscreenState{}, newHostedDisplayFailure(
+					hostedDisplayStageKDEStateRun,
+				)
+			}
+			return want, nil
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if calls != 3 || len(state.Outputs) != 1 ||
+		state.Outputs[0].Name != want.Outputs[0].Name {
+		t.Fatalf("initial KScreen state = %#v after %d calls", state, calls)
+	}
+}
+
+func TestInitialKScreenStatePreservesFinalFailureStage(t *testing.T) {
+	t.Parallel()
+	ctx, cancel := context.WithCancel(context.Background())
+	state, err := waitForInitialKScreenState(
+		ctx,
+		0,
+		func(context.Context) (kscreenState, error) {
+			cancel()
+			return kscreenState{}, newHostedDisplayFailure(
+				hostedDisplayStageKDEStateJSON,
+			)
+		},
+	)
+	if len(state.Outputs) != 0 {
+		t.Fatalf("failed initial KScreen state = %#v", state)
+	}
+	if stage := HostedDisplayFailureStage(err); stage !=
+		hostedDisplayStageKDEStateJSON {
+		t.Fatalf("initial KScreen failure stage = %q", stage)
+	}
+}
 
 func TestHostedDisplayFailureMarkerIsPrivacySafe(t *testing.T) {
 	t.Parallel()

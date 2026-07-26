@@ -20,9 +20,10 @@ import (
 )
 
 const (
-	hostedTopologyTimeout = 30 * time.Second
-	hostedTopologyPoll    = 250 * time.Millisecond
-	hostedTopologyOutput  = 64 * 1024
+	hostedTopologyTimeout        = 30 * time.Second
+	hostedTopologyCommandTimeout = 3 * time.Second
+	hostedTopologyPoll           = 250 * time.Millisecond
+	hostedTopologyOutput         = 64 * 1024
 
 	mutterDisplayDestination = "org.gnome.Mutter.DisplayConfig"
 	mutterDisplayPath        = dbus.ObjectPath("/org/gnome/Mutter/DisplayConfig")
@@ -466,7 +467,11 @@ func configureKScreenDisplay(
 	ctx context.Context,
 	display HostedDisplay,
 ) error {
-	state, err := readKScreenState(ctx)
+	state, err := waitForInitialKScreenState(
+		ctx,
+		hostedTopologyPoll,
+		readKScreenState,
+	)
 	if err != nil {
 		return err
 	}
@@ -521,8 +526,35 @@ func configureKScreenDisplay(
 	}
 }
 
+type kscreenStateReader func(context.Context) (kscreenState, error)
+
+func waitForInitialKScreenState(
+	ctx context.Context,
+	poll time.Duration,
+	read kscreenStateReader,
+) (kscreenState, error) {
+	for {
+		state, err := read(ctx)
+		if err == nil {
+			return state, nil
+		}
+		timer := time.NewTimer(poll)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return kscreenState{}, err
+		case <-timer.C:
+		}
+	}
+}
+
 func readKScreenState(ctx context.Context) (kscreenState, error) {
-	command := exec.CommandContext(ctx, "kscreen-doctor", "-j")
+	commandContext, cancel := context.WithTimeout(
+		ctx,
+		hostedTopologyCommandTimeout,
+	)
+	defer cancel()
+	command := exec.CommandContext(commandContext, "kscreen-doctor", "-j")
 	var data bytes.Buffer
 	command.Stdout = &boundedWriter{
 		destination: &data,
