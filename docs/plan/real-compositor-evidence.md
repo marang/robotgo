@@ -241,11 +241,17 @@ green.
    [`RemoteDesktop E2E` run 30199452053](https://github.com/marang/robotgo/actions/runs/30199452053)
    and [`ScreenCast E2E` run 30199195890](https://github.com/marang/robotgo/actions/runs/30199195890).
    Multi-output geometry and release-gate promotion remain open.
-5. Provision and prove KDE RemoteDesktop and ScreenCast under the same gate.
+5. **Hosted KDE single-output proof delivered:** retained exact-commit
+   [`RemoteDesktop E2E` run 30204553569](https://github.com/marang/robotgo/actions/runs/30204553569)
+   and
+   [`ScreenCast E2E` run 30214614314](https://github.com/marang/robotgo/actions/runs/30214614314)
+   prove the real portal backends, independent consent handling, bounded test
+   execution, and transient-artifact cleanup. Multi-output geometry and
+   release-gate promotion remain open.
 6. **Implemented for hosted wlroots:** require all six stable Sway checks for
    the exact release commit and in branch protection. Extend promotion to GNOME
-   after wiring its passing jobs into exact-release evidence, and to KDE only
-   after its protected runner and consent path are proven.
+   after wiring its passing jobs into exact-release evidence, then extend the
+   same promotion to the now-proven KDE jobs.
 
 Create Linear issues only when the next slice has concrete runner ownership and
 acceptance evidence. Do not create speculative implementation tickets for

@@ -1,4 +1,4 @@
-# Protected KDE Portal Runner
+# GitHub-Hosted KDE Portal Runner
 
 This directory defines RobotGo's disposable KDE Plasma Wayland guest for real
 RemoteDesktop and ScreenCast tests. It runs through nested QEMU/KVM on a fresh
@@ -44,8 +44,7 @@ geometry through a short-lived private D-Bus receiver. The host selects the
 digest-bound physical-monitor target with a bounded move/click handoff, asks
 KWin only for the resulting cursor position to prove QMP reached that point,
 and then uses the portal's standard Return path. No window names, accessibility
-data, screen pixels, or dialog content leave the guest.
-RobotGo does not
+data, screen pixels, or dialog content leave the guest. RobotGo does not
 approve its own request, patch the portal backend, or pre-authorize the
 application.
 

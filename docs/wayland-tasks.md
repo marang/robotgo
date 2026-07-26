@@ -225,9 +225,10 @@ backends.
 - Portal Path:
   - Expand troubleshooting for xdg-desktop-portal backend selection and consent prompts.
   - Validate the existing high-level RemoteDesktop input fallback on GNOME/KDE.
-  - Validate the persistent ScreenCast/PipeWire stream path and repeated-frame
-    behavior across GNOME/KDE portal backends. Keep Sway/wlroots native capture
-    and portal-availability evidence separate unless a compatible portal backend
+  - GNOME/KDE single-output persistent ScreenCast/PipeWire and repeated-frame
+    behavior are validated in hosted guests. Extend the same contract to
+    multi-output portal selection. Keep Sway/wlroots native capture and
+    portal-availability evidence separate unless a compatible portal backend
     is explicitly promoted.
 - Keyboard Input:
   - Keep the delivered native Wayland exact-Unicode keysym path covered,

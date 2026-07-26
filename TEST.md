@@ -256,8 +256,9 @@ and verifies that native readiness rejects it without injecting input. Missing
 runtime prerequisites fail instead of turning these checks into successful
 skips. Performance numbers are report-only; correctness is blocking. Repository
 branch protection requires the stable three-OS, lint, vet, race, sanitizer,
-Wayland, and X11 evidence checks. Opt-in real-compositor jobs remain excluded
-until matching self-hosted runners are registered.
+Wayland, and X11 evidence checks. The hosted Sway, GNOME, and KDE compositor
+jobs are documented below; permission-granted macOS and optional
+operator-driven compositor jobs remain outside the default gate.
 
 Pure-Go Windows input has hermetic tests for Win32 `INPUT` layout,
 foreground-layout key mapping, Unicode surrogate pairs, partial-injection
@@ -862,8 +863,8 @@ directories, and rejects leftovers.
 
 The reproducible images, hosted supervisor, independent consent drivers,
 exact-tree transfer, and mandatory cleanup checks are documented in
-[Protected GNOME Portal Runner](infrastructure/portal-runner/gnome/README.md)
-and [Protected KDE Portal Runner](infrastructure/portal-runner/kde/README.md).
+[GitHub-Hosted GNOME Portal Runner](infrastructure/portal-runner/gnome/README.md)
+and [GitHub-Hosted KDE Portal Runner](infrastructure/portal-runner/kde/README.md).
 `probe` remains an infrastructure diagnostic; `hosted-run` is the automated,
 credential-free portal test path.
 

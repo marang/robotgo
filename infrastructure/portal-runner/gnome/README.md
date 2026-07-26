@@ -1,4 +1,4 @@
-# Protected GNOME Portal Runner
+# GitHub-Hosted GNOME Portal Runner
 
 This directory defines RobotGo's disposable GNOME Wayland guest for real
 RemoteDesktop and ScreenCast tests. The primary execution path is nested
