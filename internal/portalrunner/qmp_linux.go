@@ -23,6 +23,11 @@ const (
 	qmpKeyReturn = "ret"
 	qmpKeyS      = "s"
 
+	qmpCommandHumanMonitor = "human-monitor-command"
+	qmpCommandInputEvent   = "input-send-event"
+	qmpCommandQueryMice    = "query-mice"
+	qmpMouseSetCommand     = "mouse_set"
+
 	qmpEventAbsolute = "abs"
 	qmpEventButton   = "btn"
 	qmpPointerAxisX  = "x"
@@ -82,6 +87,12 @@ type qmpAbsoluteEventData struct {
 type qmpButtonEventData struct {
 	Down   bool   `json:"down"`
 	Button string `json:"button"`
+}
+
+type qmpMouseInfo struct {
+	Index    int  `json:"index"`
+	Absolute bool `json:"absolute"`
+	Current  bool `json:"current"`
 }
 
 func connectQMP(ctx context.Context, socketPath string) (*qmpClient, error) {
@@ -147,7 +158,7 @@ func (client *qmpClient) sendChord(ctx context.Context, keys ...string) error {
 	for index := len(keys) - 1; index >= 0; index-- {
 		events = append(events, qmpKeyEvent(keys[index], false))
 	}
-	return client.execute(ctx, "input-send-event", map[string]any{
+	return client.execute(ctx, qmpCommandInputEvent, map[string]any{
 		"events": events,
 	})
 }
@@ -167,7 +178,10 @@ func (client *qmpClient) clickAbsolute(
 	if err != nil {
 		return err
 	}
-	if err := client.execute(ctx, "input-send-event", map[string]any{
+	if err := client.selectAbsolutePointer(ctx); err != nil {
+		return err
+	}
+	if err := client.execute(ctx, qmpCommandInputEvent, map[string]any{
 		"events": []qmpInputEvent{
 			{
 				Type: qmpEventAbsolute,
@@ -188,7 +202,7 @@ func (client *qmpClient) clickAbsolute(
 	if err := waitQMPChord(ctx); err != nil {
 		return err
 	}
-	return client.execute(ctx, "input-send-event", map[string]any{
+	return client.execute(ctx, qmpCommandInputEvent, map[string]any{
 		"events": []qmpInputEvent{
 			{
 				Type: qmpEventButton,
@@ -204,6 +218,66 @@ func (client *qmpClient) clickAbsolute(
 			},
 		},
 	})
+}
+
+func (client *qmpClient) selectAbsolutePointer(ctx context.Context) error {
+	mice, err := client.queryMice(ctx)
+	if err != nil {
+		return err
+	}
+	var absolute *qmpMouseInfo
+	for index := range mice {
+		if !mice[index].Absolute {
+			continue
+		}
+		if absolute != nil {
+			return errors.New("QMP reported multiple absolute pointer handlers")
+		}
+		absolute = &mice[index]
+	}
+	if absolute == nil {
+		return errors.New("QMP reported no absolute pointer handler")
+	}
+	if absolute.Current {
+		return nil
+	}
+	if _, err := client.executeResult(
+		ctx,
+		qmpCommandHumanMonitor,
+		map[string]any{
+			"command-line": fmt.Sprintf(
+				"%s %d",
+				qmpMouseSetCommand,
+				absolute.Index,
+			),
+		},
+	); err != nil {
+		return err
+	}
+	mice, err = client.queryMice(ctx)
+	if err != nil {
+		return err
+	}
+	for index := range mice {
+		if mice[index].Index == absolute.Index &&
+			mice[index].Absolute &&
+			mice[index].Current {
+			return nil
+		}
+	}
+	return errors.New("QMP absolute pointer handler did not become current")
+}
+
+func (client *qmpClient) queryMice(ctx context.Context) ([]qmpMouseInfo, error) {
+	raw, err := client.executeResult(ctx, qmpCommandQueryMice, nil)
+	if err != nil {
+		return nil, err
+	}
+	var mice []qmpMouseInfo
+	if err := json.Unmarshal(raw, &mice); err != nil {
+		return nil, errors.New("decode QMP pointer handlers")
+	}
+	return mice, nil
 }
 
 func qmpAbsoluteCoordinate(pixel, dimension int) (int, error) {
@@ -255,11 +329,20 @@ func (client *qmpClient) execute(
 	command string,
 	arguments any,
 ) error {
+	_, err := client.executeResult(ctx, command, arguments)
+	return err
+}
+
+func (client *qmpClient) executeResult(
+	ctx context.Context,
+	command string,
+	arguments any,
+) (json.RawMessage, error) {
 	if command == "" {
-		return errors.New("QMP command is empty")
+		return nil, errors.New("QMP command is empty")
 	}
 	if err := client.applyDeadline(ctx); err != nil {
-		return err
+		return nil, err
 	}
 	client.nextID++
 	id := client.nextID
@@ -268,30 +351,36 @@ func (client *qmpClient) execute(
 		Arguments: arguments,
 		ID:        id,
 	}); err != nil {
-		return fmt.Errorf("send QMP command %q", command)
+		return nil, fmt.Errorf("send QMP command %q", command)
 	}
 	for {
 		var response qmpMessage
 		if err := client.decoder.Decode(&response); err != nil {
-			return fmt.Errorf("read QMP command %q response", command)
+			return nil, fmt.Errorf("read QMP command %q response", command)
 		}
 		if response.Event != "" {
 			continue
 		}
 		if response.ID != id {
-			return fmt.Errorf("QMP command %q response ID mismatch", command)
+			return nil, fmt.Errorf(
+				"QMP command %q response ID mismatch",
+				command,
+			)
 		}
 		if response.Error != nil {
-			return fmt.Errorf(
+			return nil, fmt.Errorf(
 				"QMP command %q failed with class %q",
 				command,
 				response.Error.Class,
 			)
 		}
 		if response.Return == nil {
-			return fmt.Errorf("QMP command %q response is invalid", command)
+			return nil, fmt.Errorf(
+				"QMP command %q response is invalid",
+				command,
+			)
 		}
-		return nil
+		return response.Return, nil
 	}
 }
 
