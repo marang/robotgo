@@ -18,10 +18,9 @@ const (
 	qmpMaximumResponse = 1024 * 1024
 	qmpChordInterval   = 250 * time.Millisecond
 
-	qmpKeyAlt    = "alt"
-	qmpKeyI      = "i"
-	qmpKeyReturn = "ret"
-	qmpKeyS      = "s"
+	qmpKeyAlt = "alt"
+	qmpKeyI   = "i"
+	qmpKeyS   = "s"
 
 	qmpEventAbsolute = "abs"
 	qmpEventButton   = "btn"

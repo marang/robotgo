@@ -72,6 +72,8 @@ type hostedPortalGeometry struct {
 	dialogHeight int
 	cardX        int
 	cardY        int
+	buttonX      int
+	buttonY      int
 }
 
 // RunHostedPortal transfers the exact clean commit into a disposable guest,
@@ -850,7 +852,13 @@ func approveHostedPortal(
 			approvalError = waitQMPChord(ctx)
 		}
 		if approvalError == nil {
-			approvalError = qmp.sendChord(ctx, qmpKeyReturn)
+			approvalError = qmp.clickAbsolute(
+				ctx,
+				geometry.buttonX,
+				geometry.buttonY,
+				geometry.width,
+				geometry.height,
+			)
 		}
 		return errors.Join(approvalError, qmp.close())
 	}
@@ -947,10 +955,25 @@ func locateHostedKDEScreenCast(
 		geometry.height,
 		hostedDisplayHeight,
 	)
-	if geometry.cardX < geometry.dialogX ||
-		geometry.cardX >= geometry.dialogX+geometry.dialogWidth ||
-		geometry.cardY < geometry.dialogY ||
-		geometry.cardY >= geometry.dialogY+geometry.dialogHeight {
+	geometry.buttonX = kdePortalReferenceCoordinate(
+		kdeShareButtonX,
+		geometry.width,
+		hostedDisplayWidth,
+	)
+	geometry.buttonY = kdePortalReferenceCoordinate(
+		kdeShareButtonY,
+		geometry.height,
+		hostedDisplayHeight,
+	)
+	if !kdePortalTargetInsideDialog(
+		geometry.cardX,
+		geometry.cardY,
+		geometry,
+	) || !kdePortalTargetInsideDialog(
+		geometry.buttonX,
+		geometry.buttonY,
+		geometry,
+	) {
 		return hostedPortalGeometry{}, errors.New(
 			"hosted KDE ScreenCast target is outside the active dialog",
 		)
@@ -961,10 +984,23 @@ func locateHostedKDEScreenCast(
 const (
 	kdePhysicalOutputX = 770
 	kdePhysicalOutputY = 337
+	kdeShareButtonX    = 835
+	kdeShareButtonY    = 607
 )
 
 func kdePortalReferenceCoordinate(reference, actual, baseline int) int {
 	return reference * actual / baseline
+}
+
+func kdePortalTargetInsideDialog(
+	x,
+	y int,
+	geometry hostedPortalGeometry,
+) bool {
+	return x >= geometry.dialogX &&
+		x < geometry.dialogX+geometry.dialogWidth &&
+		y >= geometry.dialogY &&
+		y < geometry.dialogY+geometry.dialogHeight
 }
 
 func collectHostedDiagnostics(

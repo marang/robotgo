@@ -221,6 +221,7 @@ func TestHostedKDEScreenCastLocatorUsesContentFreeKWinGeometry(
 		dialogX: 350, dialogY: 90,
 		dialogWidth: 580, dialogHeight: 540,
 		cardX: 770, cardY: 337,
+		buttonX: 835, buttonY: 607,
 	}) {
 		t.Fatalf("KDE geometry = %+v", geometry)
 	}
@@ -259,6 +260,7 @@ func TestHostedKDEScreenCastLocatorRejectsUnsafeGeometry(t *testing.T) {
 		"ok 1280 720 350 90 100 540\n",
 		"ok 1280 720 900 90 580 540\n",
 		"ok 1280 720 0 0 320 240\n",
+		"ok 1280 720 350 90 580 500\n",
 		"ok private 720 350 90 580 540\n",
 	} {
 		executor := &scriptedCommandExecutor{outputs: []string{output}}
@@ -300,6 +302,23 @@ func TestKDEPortalReferenceCoordinateScalesWithRuntimeDisplay(t *testing.T) {
 	t.Parallel()
 	if got := kdePortalReferenceCoordinate(770, 1920, 1280); got != 1155 {
 		t.Fatalf("scaled KDE portal coordinate = %d, want 1155", got)
+	}
+}
+
+func TestKDEPortalTargetMustRemainInsideActiveDialog(t *testing.T) {
+	t.Parallel()
+	geometry := hostedPortalGeometry{
+		dialogX: 350, dialogY: 90,
+		dialogWidth: 580, dialogHeight: 540,
+	}
+	if !kdePortalTargetInsideDialog(835, 607, geometry) {
+		t.Fatal("valid KDE portal target rejected")
+	}
+	if kdePortalTargetInsideDialog(930, 607, geometry) {
+		t.Fatal("right-edge KDE portal target accepted")
+	}
+	if kdePortalTargetInsideDialog(835, 630, geometry) {
+		t.Fatal("bottom-edge KDE portal target accepted")
 	}
 }
 
