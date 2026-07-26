@@ -15,15 +15,22 @@ func TestPipeWireCapturePersistentSessionIntegration(t *testing.T) {
 	if os.Getenv("ROBOTGO_SCREENCAST_E2E") == "" {
 		t.Skip("set ROBOTGO_SCREENCAST_E2E=1 in a graphical Wayland session")
 	}
-	stage := "open"
+	stage := "preflight"
 	defer reportScreenCastStageOnFailure(t, &stage)
 	signalScreenCastConsentReady(t)
 	openCtx, cancelOpen := context.WithTimeout(context.Background(), 2*time.Minute)
-	capture, err := OpenPipeWireCapture(openCtx, ScreenCastOptions{
-		Sources: ScreenCastSourceMonitor,
-		Cursor:  ScreenCastCursorEmbedded,
-		Persist: ScreenCastPersistApplication,
-	}, 0)
+	capture, err := openPipeWireCapture(
+		openCtx,
+		ScreenCastOptions{
+			Sources: ScreenCastSourceMonitor,
+			Cursor:  ScreenCastCursorEmbedded,
+			Persist: ScreenCastPersistApplication,
+		},
+		0,
+		func(current string) {
+			stage = current
+		},
+	)
 	cancelOpen()
 	if err != nil {
 		t.Fatalf("OpenPipeWireCapture error: %v", err)

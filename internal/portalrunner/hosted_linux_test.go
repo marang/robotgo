@@ -273,11 +273,28 @@ func TestPortalDialogWaitRejectsEarlyTestExit(t *testing.T) {
 	done := make(chan struct{})
 	close(done)
 	start := time.Now()
-	if err := waitForPortalDialog(context.Background(), done); err == nil {
+	if err := waitForPortalDialog(
+		context.Background(),
+		done,
+		kdePortalDialogSettle,
+	); err == nil {
 		t.Fatal("early hosted portal test exit was accepted")
 	}
 	if time.Since(start) > time.Second {
 		t.Fatal("early hosted portal test exit was not detected promptly")
+	}
+}
+
+func TestPortalDialogSettleUsesLongerKDEWindow(t *testing.T) {
+	t.Parallel()
+	if got := portalDialogSettle(portalLaneGNOME); got != gnomePortalDialogSettle {
+		t.Fatalf("GNOME portal dialog settle = %s", got)
+	}
+	if got := portalDialogSettle(portalLaneKDE); got != kdePortalDialogSettle {
+		t.Fatalf("KDE portal dialog settle = %s", got)
+	}
+	if kdePortalDialogSettle <= gnomePortalDialogSettle {
+		t.Fatal("KDE portal dialog settle must exceed GNOME settle")
 	}
 }
 

@@ -21,11 +21,12 @@ import (
 )
 
 const (
-	maximumSourceArchive = 128 * 1024 * 1024
-	portalDialogSettle   = 2 * time.Second
-	consentPollInterval  = 250 * time.Millisecond
-	hostedTestTimeout    = 4 * time.Minute
-	hostedTestLogLimit   = 2 * 1024 * 1024
+	maximumSourceArchive    = 128 * 1024 * 1024
+	gnomePortalDialogSettle = 2 * time.Second
+	kdePortalDialogSettle   = 5 * time.Second
+	consentPollInterval     = 250 * time.Millisecond
+	hostedTestTimeout       = 4 * time.Minute
+	hostedTestLogLimit      = 2 * 1024 * 1024
 )
 
 var portalFailureStagePattern = regexp.MustCompile(
@@ -408,7 +409,11 @@ func RunHostedPortal(
 			stopProcessGroup(testCommand, testResult.done)
 			return err
 		}
-		if err := waitForPortalDialog(guestContext, testResult.done); err != nil {
+		if err := waitForPortalDialog(
+			guestContext,
+			testResult.done,
+			portalDialogSettle(manifest.Lane),
+		); err != nil {
 			stopProcessGroup(testCommand, testResult.done)
 			return err
 		}
@@ -892,8 +897,19 @@ func waitForConsentMarker(
 	}
 }
 
-func waitForPortalDialog(ctx context.Context, testDone <-chan struct{}) error {
-	timer := time.NewTimer(portalDialogSettle)
+func portalDialogSettle(lane string) time.Duration {
+	if lane == portalLaneKDE {
+		return kdePortalDialogSettle
+	}
+	return gnomePortalDialogSettle
+}
+
+func waitForPortalDialog(
+	ctx context.Context,
+	testDone <-chan struct{},
+	settle time.Duration,
+) error {
+	timer := time.NewTimer(settle)
 	defer timer.Stop()
 	select {
 	case <-ctx.Done():
