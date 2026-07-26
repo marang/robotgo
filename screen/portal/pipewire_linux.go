@@ -176,6 +176,18 @@ static int robotgo_pw_copy_buffer(struct robotgo_pw_capture *capture, struct spa
 		capture->frame_width = frame_width;
 		capture->frame_height = frame_height;
 		capture->transform = frame_transform;
+		return 1;
+}
+
+static int robotgo_pw_cache_buffer(struct robotgo_pw_capture *capture,
+		struct spa_buffer *spa) {
+	int result = robotgo_pw_copy_buffer(capture, spa);
+	if (result <= 0) return result;
+	capture->generation++;
+	if (capture->frame_requested) {
+		capture->frame_requested = 0;
+		pw_thread_loop_signal(capture->loop, false);
+	}
 	return 1;
 }
 
@@ -183,17 +195,9 @@ static void robotgo_pw_process(void *userdata) {
 	struct robotgo_pw_capture *capture = userdata;
 	struct pw_buffer *buffer;
 	while ((buffer = pw_stream_dequeue_buffer(capture->stream)) != NULL) {
-		if (!capture->frame_requested) {
-			pw_stream_queue_buffer(capture->stream, buffer);
-			continue;
-		}
-		int result = robotgo_pw_copy_buffer(capture, buffer->buffer);
+		int result = robotgo_pw_cache_buffer(capture, buffer->buffer);
 		pw_stream_queue_buffer(capture->stream, buffer);
 		if (result < 0) return;
-		if (result == 0) continue;
-		capture->frame_requested = 0;
-		capture->generation++;
-		pw_thread_loop_signal(capture->loop, false);
 	}
 }
 
@@ -414,6 +418,55 @@ static int robotgo_pw_test_copy_cached_frame(const uint8_t *input, uint32_t inpu
 	return robotgo_pw_copy_cached_frame(&capture, output, output_size,
 		&output_width, &output_height, &output_transform);
 }
+
+static int robotgo_pw_test_cache_inter_call_frame(const uint8_t *first,
+		const uint8_t *second, uint32_t input_size, uint32_t width,
+		uint32_t height, uint32_t format, uint8_t **output,
+		size_t *output_size) {
+	struct robotgo_pw_capture capture = {0};
+	capture.width = width;
+	capture.height = height;
+	capture.format.format = format;
+	struct spa_chunk chunk = {
+		.offset = 0,
+		.size = input_size,
+		.stride = (int32_t)(width * robotgo_pw_pixel_size(format)),
+	};
+	struct spa_data data = {
+		.type = SPA_DATA_MemPtr,
+		.data = (void*)first,
+		.maxsize = input_size,
+		.chunk = &chunk,
+	};
+	struct spa_buffer spa = { .n_datas = 1, .datas = &data };
+	if (robotgo_pw_cache_buffer(&capture, &spa) != 1) {
+		free(capture.pixels);
+		return -1;
+	}
+	uint8_t *first_copy = NULL;
+	size_t first_size = 0;
+	uint32_t output_width, output_height, output_transform;
+	if (robotgo_pw_copy_cached_frame(&capture, &first_copy, &first_size,
+			&output_width, &output_height, &output_transform) < 0) {
+		free(capture.pixels);
+		return -1;
+	}
+	free(first_copy);
+	if (capture.generation != capture.delivered || capture.frame_requested) {
+		free(capture.pixels);
+		return -1;
+	}
+	data.data = (void*)second;
+	if (robotgo_pw_cache_buffer(&capture, &spa) != 1 ||
+			capture.generation <= capture.delivered) {
+		free(capture.pixels);
+		return -1;
+	}
+	int result = robotgo_pw_copy_cached_frame(&capture, output, output_size,
+		&output_width, &output_height, &output_transform);
+	free(capture.pixels);
+	return result;
+}
 */
 import "C"
 
@@ -626,6 +679,41 @@ func pipeWireNativeCachedFrameForTest(
 		C.uint32_t(len(input)),
 		C.uint32_t(width),
 		C.uint32_t(height),
+		&output,
+		&outputSize,
+	)
+	if result != 0 || output == nil {
+		return nil, ErrPipeWireUnavailable
+	}
+	defer C.free(unsafe.Pointer(output))
+	return C.GoBytes(unsafe.Pointer(output), C.int(outputSize)), nil
+}
+
+func pipeWireNativeInterCallFrameForTest(
+	first,
+	second []byte,
+	width,
+	height int,
+) ([]byte, error) {
+	if len(first) == 0 ||
+		len(first) != len(second) ||
+		width <= 0 ||
+		height <= 0 {
+		return nil, errors.New("invalid inter-call PipeWire test frames")
+	}
+	cFirst := C.CBytes(first)
+	defer C.free(cFirst)
+	cSecond := C.CBytes(second)
+	defer C.free(cSecond)
+	var output *C.uint8_t
+	var outputSize C.size_t
+	result := C.robotgo_pw_test_cache_inter_call_frame(
+		(*C.uint8_t)(cFirst),
+		(*C.uint8_t)(cSecond),
+		C.uint32_t(len(first)),
+		C.uint32_t(width),
+		C.uint32_t(height),
+		C.uint32_t(pipeWireTestFormatRGBA),
 		&output,
 		&outputSize,
 	)

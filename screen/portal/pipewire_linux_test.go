@@ -137,3 +137,22 @@ func TestNativePipeWireCachedFrameIsCopiedForStaticDesktop(t *testing.T) {
 		t.Fatal("cached frame aliases the native source buffer")
 	}
 }
+
+func TestNativePipeWireCachesFrameArrivingBetweenCaptureCalls(t *testing.T) {
+	t.Parallel()
+	first := []byte{
+		1, 2, 3, 4,
+		5, 6, 7, 8,
+	}
+	updated := []byte{
+		9, 10, 11, 12,
+		13, 14, 15, 16,
+	}
+	got, err := pipeWireNativeInterCallFrameForTest(first, updated, 2, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(got, updated) {
+		t.Fatalf("inter-call frame = %v, want latest %v", got, updated)
+	}
+}
