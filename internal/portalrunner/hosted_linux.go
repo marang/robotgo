@@ -70,8 +70,6 @@ type hostedPortalGeometry struct {
 	dialogY      int
 	dialogWidth  int
 	dialogHeight int
-	cardX        int
-	cardY        int
 }
 
 // RunHostedPortal transfers the exact clean commit into a disposable guest,
@@ -827,7 +825,7 @@ func approveHostedPortal(
 	cell string,
 ) error {
 	if lane == portalLaneKDE && cell == "screencast" {
-		geometry, err := locateHostedKDEScreenCast(
+		_, err := locateHostedKDEScreenCast(
 			ctx,
 			commands,
 			sshArguments,
@@ -839,19 +837,7 @@ func approveHostedPortal(
 		if err != nil {
 			return err
 		}
-		approvalError := qmp.clickAbsolute(
-			ctx,
-			geometry.cardX,
-			geometry.cardY,
-			geometry.width,
-			geometry.height,
-		)
-		if approvalError == nil {
-			approvalError = waitQMPChord(ctx)
-		}
-		if approvalError == nil {
-			approvalError = qmp.confirmKDEPortal(ctx)
-		}
+		approvalError := qmp.confirmKDEPortal(ctx)
 		return errors.Join(approvalError, qmp.close())
 	}
 	qmp, err := connectQMP(ctx, qmpSocket)
@@ -937,46 +923,7 @@ func locateHostedKDEScreenCast(
 			"hosted KDE ScreenCast geometry is invalid",
 		)
 	}
-	geometry.cardX = kdePortalReferenceCoordinate(
-		kdePhysicalOutputX,
-		geometry.width,
-		hostedDisplayWidth,
-	)
-	geometry.cardY = kdePortalReferenceCoordinate(
-		kdePhysicalOutputY,
-		geometry.height,
-		hostedDisplayHeight,
-	)
-	if !kdePortalTargetInsideDialog(
-		geometry.cardX,
-		geometry.cardY,
-		geometry,
-	) {
-		return hostedPortalGeometry{}, errors.New(
-			"hosted KDE ScreenCast target is outside the active dialog",
-		)
-	}
 	return geometry, nil
-}
-
-const (
-	kdePhysicalOutputX = 770
-	kdePhysicalOutputY = 337
-)
-
-func kdePortalReferenceCoordinate(reference, actual, baseline int) int {
-	return reference * actual / baseline
-}
-
-func kdePortalTargetInsideDialog(
-	x,
-	y int,
-	geometry hostedPortalGeometry,
-) bool {
-	return x >= geometry.dialogX &&
-		x < geometry.dialogX+geometry.dialogWidth &&
-		y >= geometry.dialogY &&
-		y < geometry.dialogY+geometry.dialogHeight
 }
 
 func collectHostedDiagnostics(
