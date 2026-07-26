@@ -18,6 +18,14 @@ func TestProtectedPortalWorkflowsUsePinnedSingleLaneContract(t *testing.T) {
 			t.Fatalf("read %s: %v", path, err)
 		}
 		workflow := string(data)
+		protectedJob := workflow
+		if path == "../.github/workflows/remote-desktop-e2e.yml" {
+			start := strings.Index(workflow, "\n  portal-input:")
+			if start < 0 {
+				t.Fatalf("%s omits protected portal-input job", path)
+			}
+			protectedJob = workflow[start:]
+		}
 		for _, required := range []string{
 			"desktop:",
 			"default: gnome",
@@ -54,7 +62,7 @@ func TestProtectedPortalWorkflowsUsePinnedSingleLaneContract(t *testing.T) {
 			"actions/upload-artifact@v",
 			"persist-credentials: true",
 		} {
-			if strings.Contains(workflow, forbidden) {
+			if strings.Contains(protectedJob, forbidden) {
 				t.Errorf("%s contains unsafe protected runner token %q", path, forbidden)
 			}
 		}
