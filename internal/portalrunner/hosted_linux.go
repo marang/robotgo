@@ -440,6 +440,7 @@ func RunHostedPortal(
 			qmpSocket,
 			manifest.Lane,
 			options.Cell,
+			options.Output,
 		); err != nil {
 			stopProcessGroup(testCommand, testResult.done)
 			return err
@@ -823,14 +824,27 @@ func approveHostedPortal(
 	qmpSocket,
 	lane,
 	cell string,
+	output io.Writer,
 ) error {
 	if lane == portalLaneKDE && cell == "screencast" {
-		_, err := locateHostedKDEScreenCast(
+		geometry, err := locateHostedKDEScreenCast(
 			ctx,
 			commands,
 			sshArguments,
 		)
 		if err != nil {
+			return err
+		}
+		if err := writeStatus(
+			output,
+			"hosted KDE dialog geometry display=%dx%d dialog=%d,%d,%dx%d\n",
+			geometry.width,
+			geometry.height,
+			geometry.dialogX,
+			geometry.dialogY,
+			geometry.dialogWidth,
+			geometry.dialogHeight,
+		); err != nil {
 			return err
 		}
 		qmp, err := connectQMP(ctx, qmpSocket)
