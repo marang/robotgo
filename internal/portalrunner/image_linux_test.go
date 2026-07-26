@@ -290,9 +290,19 @@ func TestRepositoryGuestSessionContract(t *testing.T) {
 		"chmod 0644 /etc/dconf/profile/user",
 		"chmod 0644 /etc/dconf/db/robotgo.d/00-runner",
 		"chmod 0644 /etc/dconf/db/robotgo",
+		"ACTIONS_RUNNER_HOOK_JOB_STARTED=/usr/local/libexec/robotgo-runner-job-started-hook.sh",
+		"ACTIONS_RUNNER_HOOK_JOB_COMPLETED=/usr/local/libexec/robotgo-runner-job-completed-hook.sh",
 	} {
 		if !strings.Contains(string(installScript), required) {
 			t.Fatalf("install.sh omits readable DConf contract %q", required)
+		}
+	}
+	for _, forbidden := range []string{
+		"ACTIONS_RUNNER_HOOK_JOB_STARTED=/usr/local/libexec/robotgo-runner-job-started-hook\n",
+		"ACTIONS_RUNNER_HOOK_JOB_COMPLETED=/usr/local/libexec/robotgo-runner-job-completed-hook\n",
+	} {
+		if strings.Contains(string(installScript), forbidden) {
+			t.Fatalf("install.sh configures unsupported extensionless runner hook %q", forbidden)
 		}
 	}
 

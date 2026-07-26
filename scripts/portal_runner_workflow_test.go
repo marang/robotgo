@@ -32,6 +32,12 @@ func TestProtectedPortalWorkflowsUsePinnedSingleLaneContract(t *testing.T) {
 			"Verify pinned guest toolchain",
 			`manifest="infrastructure/portal-runner/${{ matrix.desktop }}/manifest.json"`,
 			`test "$(go env GOVERSION)" = "$expected_go"`,
+			`[ -f "$GITHUB_WORKSPACE/go.mod" ]`,
+			`git -C "$GITHUB_WORKSPACE" rev-parse HEAD`,
+			`= "$ROBOTGO_APPROVED_COMMIT"`,
+			`cd "$GITHUB_WORKSPACE"`,
+			`elif [ -e "$output" ] || [ -L "$output" ]; then`,
+			"evidence workspace exists without a trusted checkout",
 			"persist-credentials: false",
 			"environment:",
 			"runs-on: [self-hosted, linux, wayland, \"${{ matrix.desktop }}\", " +

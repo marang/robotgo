@@ -56,10 +56,11 @@ func (proxy *CONNECTProxy) Serve(ctx context.Context, listener net.Listener) err
 		IdleTimeout:       proxyIdleTimeout,
 		MaxHeaderBytes:    16 * 1024,
 	}
+	shutdownSignal, stopShutdown := context.WithCancel(ctx)
 	shutdownDone := make(chan struct{})
 	go func() {
 		defer close(shutdownDone)
-		<-ctx.Done()
+		<-shutdownSignal.Done()
 		shutdownContext, cancel := context.WithTimeout(
 			context.Background(),
 			proxyShutdownTimeout,
@@ -69,10 +70,13 @@ func (proxy *CONNECTProxy) Serve(ctx context.Context, listener net.Listener) err
 	}()
 
 	err := server.Serve(listener)
-	if !errors.Is(err, http.ErrServerClosed) {
+	expectedShutdown := errors.Is(err, http.ErrServerClosed) ||
+		(errors.Is(err, net.ErrClosed) && ctx.Err() != nil)
+	stopShutdown()
+	<-shutdownDone
+	if !expectedShutdown {
 		return fmt.Errorf("serve portal runner proxy: %w", err)
 	}
-	<-shutdownDone
 	return nil
 }
 

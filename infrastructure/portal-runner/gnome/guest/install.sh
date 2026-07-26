@@ -108,7 +108,7 @@ install -m 0755 "$(dirname "$0")/configure-egress.sh" \
 install -m 0755 "$(dirname "$0")/register.sh" \
   /usr/local/sbin/robotgo-runner-register
 
-cat >/usr/local/libexec/robotgo-runner-job-started-hook <<'EOF'
+cat >/usr/local/libexec/robotgo-runner-job-started-hook.sh <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
 
@@ -131,14 +131,14 @@ exec sudo -n /usr/local/sbin/robotgo-runner-job-started \
   "${GITHUB_RUN_ATTEMPT:-}" \
   "${GITHUB_WORKFLOW:-}"
 EOF
-chmod 0755 /usr/local/libexec/robotgo-runner-job-started-hook
+chmod 0755 /usr/local/libexec/robotgo-runner-job-started-hook.sh
 
-cat >/usr/local/libexec/robotgo-runner-job-completed-hook <<'EOF'
+cat >/usr/local/libexec/robotgo-runner-job-completed-hook.sh <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
 exec sudo -n /usr/local/sbin/robotgo-runner-job-completed
 EOF
-chmod 0755 /usr/local/libexec/robotgo-runner-job-completed-hook
+chmod 0755 /usr/local/libexec/robotgo-runner-job-completed-hook.sh
 
 cat >/etc/sudoers.d/robotgo-runner-hooks <<'EOF'
 robotgo ALL=(root) NOPASSWD: /usr/local/sbin/robotgo-runner-job-started
@@ -170,8 +170,8 @@ Environment=XDG_SESSION_TYPE=wayland
 Environment=DISPLAY=:0
 Environment=ROBOTGO_COMPOSITOR_OUTPUT_COUNT=1
 Environment=ROBOTGO_COMPOSITOR_OPERATOR_READY_FILE=/run/robotgo-evidence/operator-ready
-Environment=ACTIONS_RUNNER_HOOK_JOB_STARTED=/usr/local/libexec/robotgo-runner-job-started-hook
-Environment=ACTIONS_RUNNER_HOOK_JOB_COMPLETED=/usr/local/libexec/robotgo-runner-job-completed-hook
+Environment=ACTIONS_RUNNER_HOOK_JOB_STARTED=/usr/local/libexec/robotgo-runner-job-started-hook.sh
+Environment=ACTIONS_RUNNER_HOOK_JOB_COMPLETED=/usr/local/libexec/robotgo-runner-job-completed-hook.sh
 Environment=HTTP_PROXY=http://10.0.2.2:3128
 Environment=HTTPS_PROXY=http://10.0.2.2:3128
 Environment=http_proxy=http://10.0.2.2:3128

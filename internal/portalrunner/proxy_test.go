@@ -3,6 +3,7 @@ package portalrunner
 import (
 	"bufio"
 	"context"
+	"errors"
 	"io"
 	"net"
 	"net/http"
@@ -102,6 +103,54 @@ func TestCONNECTProxyDeniesUnsafeRequests(t *testing.T) {
 		if !strings.Contains(response.body.String(), "denied") {
 			t.Errorf("%s %s response disclosed unexpected detail", request.Method, request.Host)
 		}
+	}
+}
+
+func TestCONNECTProxyAcceptsListenerCloseAfterCancellation(t *testing.T) {
+	t.Parallel()
+	proxy, err := NewCONNECTProxy(validManifest().Network)
+	if err != nil {
+		t.Fatal(err)
+	}
+	listener := newLoopbackListener(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- proxy.Serve(ctx, listener) }()
+
+	cancel()
+	if err := listener.Close(); err != nil && !errors.Is(err, net.ErrClosed) {
+		t.Fatal(err)
+	}
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("proxy shutdown: %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("proxy did not stop after listener close")
+	}
+}
+
+func TestCONNECTProxyReportsUnexpectedListenerClose(t *testing.T) {
+	t.Parallel()
+	proxy, err := NewCONNECTProxy(validManifest().Network)
+	if err != nil {
+		t.Fatal(err)
+	}
+	listener := newLoopbackListener(t)
+	done := make(chan error, 1)
+	go func() { done <- proxy.Serve(context.Background(), listener) }()
+
+	if err := listener.Close(); err != nil && !errors.Is(err, net.ErrClosed) {
+		t.Fatal(err)
+	}
+	select {
+	case err := <-done:
+		if err == nil || !strings.Contains(err.Error(), "serve portal runner proxy") {
+			t.Fatalf("unexpected listener close error = %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("proxy did not report listener close")
 	}
 }
 
