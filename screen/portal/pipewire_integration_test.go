@@ -37,6 +37,12 @@ func TestPipeWireCapturePersistentSessionIntegration(t *testing.T) {
 	if err != nil {
 		t.Fatalf("OpenPipeWireCapture error: %v", err)
 	}
+	defer func() {
+		if err := capture.Close(); err != nil {
+			stage = "close"
+			t.Errorf("Close error: %v", err)
+		}
+	}()
 	stage = "stream-metadata"
 	if os.Getenv(envScreenCastRequireMonitor) != "" &&
 		capture.SelectedStream().SourceType != ScreenCastSourceMonitor {
@@ -45,12 +51,6 @@ func TestPipeWireCapturePersistentSessionIntegration(t *testing.T) {
 			capture.SelectedStream().SourceType,
 		)
 	}
-	defer func() {
-		if err := capture.Close(); err != nil {
-			stage = "close"
-			t.Errorf("Close error: %v", err)
-		}
-	}()
 
 	for frameNumber := 1; frameNumber <= 2; frameNumber++ {
 		stage = []string{"capture-1", "capture-2"}[frameNumber-1]
