@@ -199,7 +199,10 @@ func (client *qmpClient) clickAbsolute(
 }
 
 func (client *qmpClient) confirmKDEPortal(ctx context.Context) error {
+	// The pointer-selected output card owns focus. Plasma 5.27 then visits
+	// restore, Cancel, and Share in that order; Space activates Share.
 	for _, key := range []string{
+		qmpKeyTab,
 		qmpKeyTab,
 		qmpKeyTab,
 		qmpKeySpace,
