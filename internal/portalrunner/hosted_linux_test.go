@@ -206,7 +206,7 @@ func TestHostedKDEScreenCastLocatorUsesProtectedAccessibilityBridge(
 ) {
 	t.Parallel()
 	executor := &scriptedCommandExecutor{
-		outputs: []string{"1280 720 770 337 835 607\n"},
+		outputs: []string{"ok 1280 720 770 337 835 607\n"},
 	}
 	geometry, err := locateHostedKDEScreenCast(
 		context.Background(),
@@ -255,9 +255,9 @@ func TestHostedKDEScreenCastLocatorRejectsUnsafeGeometry(t *testing.T) {
 	for _, output := range []string{
 		"",
 		"1280 720 770 337 835\n",
-		"1280 720 770 337 835 607 extra\n",
-		"1280 720 1280 337 835 607\n",
-		"private 720 770 337 835 607\n",
+		"ok 1280 720 770 337 835 607 extra\n",
+		"ok 1280 720 1280 337 835 607\n",
+		"ok private 720 770 337 835 607\n",
 	} {
 		executor := &scriptedCommandExecutor{outputs: []string{output}}
 		if _, err := locateHostedKDEScreenCast(
@@ -266,6 +266,27 @@ func TestHostedKDEScreenCastLocatorRejectsUnsafeGeometry(t *testing.T) {
 			[]string{"-p", "22222"},
 		); err == nil {
 			t.Fatalf("unsafe KDE geometry %q was accepted", output)
+		}
+	}
+}
+
+func TestHostedKDEScreenCastLocatorReportsOnlyAllowlistedStage(t *testing.T) {
+	t.Parallel()
+	executor := &scriptedCommandExecutor{
+		outputs: []string{"error cards-0\n"},
+		errors:  []error{errors.New("private failure")},
+	}
+	_, err := locateHostedKDEScreenCast(
+		context.Background(),
+		executor,
+		[]string{"-p", "22222"},
+	)
+	if err == nil || !strings.Contains(err.Error(), `stage "cards-0"`) {
+		t.Fatalf("KDE locator failure = %v", err)
+	}
+	for _, private := range []string{"private failure"} {
+		if strings.Contains(err.Error(), private) {
+			t.Fatalf("KDE locator failure leaks %q: %v", private, err)
 		}
 	}
 }

@@ -38,6 +38,17 @@ var sessionFailureStagePattern = regexp.MustCompile(
 	`ROBOTGO_SESSION_STAGE=([a-z0-9-]{1,32})`,
 )
 
+var kdeLocatorFailureStages = map[string]struct{}{
+	"accessibility-unavailable": {},
+	"buttons-0":                 {},
+	"buttons-many":              {},
+	"cards-0":                   {},
+	"cards-1":                   {},
+	"cards-many":                {},
+	"dialog-ambiguous":          {},
+	"display-unavailable":       {},
+}
+
 // HostedRuntimeOptions identifies one credential-free portal test in a
 // disposable desktop guest running inside a GitHub-hosted Linux runner.
 type HostedRuntimeOptions struct {
@@ -872,7 +883,7 @@ func locateHostedKDEScreenCast(
 		"QT_ACCESSIBILITY=1 QT_LINUX_ACCESSIBILITY_ALWAYS_ON=1 " +
 		"/usr/local/libexec/robotgo-runner-locate-screencast"
 	var geometryOutput bytes.Buffer
-	if err := commands.Run(
+	runError := commands.Run(
 		approvalContext,
 		"ssh",
 		append(
@@ -885,19 +896,28 @@ func locateHostedKDEScreenCast(
 			destination: &geometryOutput,
 			remaining:   maximumPortalGeometry,
 		},
-	); err != nil {
+	)
+	fields := strings.Fields(geometryOutput.String())
+	if len(fields) == 2 && fields[0] == "error" {
+		if _, allowed := kdeLocatorFailureStages[fields[1]]; allowed {
+			return hostedPortalGeometry{}, fmt.Errorf(
+				"locate hosted KDE ScreenCast controls at stage %q",
+				fields[1],
+			)
+		}
+	}
+	if runError != nil {
 		return hostedPortalGeometry{}, errors.New(
 			"locate hosted KDE ScreenCast controls",
 		)
 	}
-	fields := strings.Fields(geometryOutput.String())
-	if len(fields) != 6 {
+	if len(fields) != 7 || fields[0] != "ok" {
 		return hostedPortalGeometry{}, errors.New(
 			"hosted KDE ScreenCast geometry is invalid",
 		)
 	}
-	values := make([]int, len(fields))
-	for index, field := range fields {
+	values := make([]int, len(fields)-1)
+	for index, field := range fields[1:] {
 		value, err := strconv.Atoi(field)
 		if err != nil {
 			return hostedPortalGeometry{}, errors.New(

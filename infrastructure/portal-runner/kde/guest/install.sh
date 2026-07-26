@@ -125,6 +125,12 @@ POLL_SECONDS = 0.1
 MINIMUM_CARD_EXTENT = 100
 
 
+class LocatorError(RuntimeError):
+    def __init__(self, stage):
+        super().__init__(stage)
+        self.stage = stage
+
+
 def descendants(root):
     pending = [root]
     while pending:
@@ -162,20 +168,15 @@ def extents(accessible):
     return rectangle
 
 
-def snapshot():
-    desktop = pyatspi.Registry.getDesktop(0)
+def controls(root):
     checkable_cards = []
     disabled_buttons = []
-    display_width = 0
-    display_height = 0
-    for accessible in descendants(desktop):
+    for accessible in descendants(root):
         rectangle = extents(accessible)
         if rectangle is None or not state_contains(
             accessible, pyatspi.STATE_SHOWING
         ):
             continue
-        display_width = max(display_width, rectangle.x + rectangle.width)
-        display_height = max(display_height, rectangle.y + rectangle.height)
         role = accessible.getRole()
         if (
             state_contains(accessible, pyatspi.STATE_CHECKABLE)
@@ -189,16 +190,73 @@ def snapshot():
         if not state_contains(accessible, pyatspi.STATE_SENSITIVE):
             disabled_buttons.append(accessible)
     checkable_cards.sort(key=lambda item: (item[0], item[1]))
-    return checkable_cards, disabled_buttons, display_width, display_height
+    return checkable_cards, disabled_buttons
+
+
+def snapshot():
+    desktop = pyatspi.Registry.getDesktop(0)
+    display_width = 0
+    display_height = 0
+    for accessible in descendants(desktop):
+        rectangle = extents(accessible)
+        if rectangle is None or not state_contains(
+            accessible, pyatspi.STATE_SHOWING
+        ):
+            continue
+        display_width = max(display_width, rectangle.x + rectangle.width)
+        display_height = max(display_height, rectangle.y + rectangle.height)
+
+    windows = []
+    try:
+        for application in desktop:
+            windows.extend(list(application))
+    except (LookupError, RuntimeError):
+        return [], display_width, display_height
+    candidates = []
+    for window in windows:
+        cards, disabled = controls(window)
+        candidates.append((cards, disabled))
+    return candidates, display_width, display_height
 
 
 def wait_for_dialog(deadline):
+    last_candidates = []
+    last_width = 0
+    last_height = 0
     while time.monotonic() < deadline:
-        cards, disabled, width, height = snapshot()
-        if len(cards) == 2 and len(disabled) == 1 and width > 0 and height > 0:
-            return cards, disabled[0], width, height
+        candidates, width, height = snapshot()
+        matching = [
+            (cards, disabled)
+            for cards, disabled in candidates
+            if len(cards) == 2 and len(disabled) == 1
+        ]
+        if len(matching) == 1 and width > 0 and height > 0:
+            return matching[0][0], matching[0][1][0], width, height
+        last_candidates = candidates
+        last_width = width
+        last_height = height
         time.sleep(POLL_SECONDS)
-    raise RuntimeError("KDE ScreenCast accessibility contract unavailable")
+    if last_width <= 0 or last_height <= 0:
+        raise LocatorError("display-unavailable")
+    maximum_cards = max(
+        (len(cards) for cards, _ in last_candidates),
+        default=0,
+    )
+    maximum_buttons = max(
+        (len(disabled) for _, disabled in last_candidates),
+        default=0,
+    )
+    if maximum_cards == 0:
+        raise LocatorError("cards-0")
+    if maximum_cards == 1:
+        raise LocatorError("cards-1")
+    if maximum_cards > 2:
+        raise LocatorError("cards-many")
+    if maximum_buttons == 0:
+        raise LocatorError("buttons-0")
+    if maximum_buttons > 1:
+        raise LocatorError("buttons-many")
+    raise LocatorError("dialog-ambiguous")
 
 
 def main():
@@ -209,6 +267,7 @@ def main():
     if card_rectangle is None or button_rectangle is None:
         raise RuntimeError("KDE ScreenCast geometry became unavailable")
     print(
+        "ok",
         width,
         height,
         card_rectangle.x + card_rectangle.width // 2,
@@ -221,8 +280,11 @@ def main():
 if __name__ == "__main__":
     try:
         main()
-    except (LookupError, RuntimeError) as error:
-        print(str(error), file=sys.stderr)
+    except LocatorError as error:
+        print("error", error.stage)
+        sys.exit(1)
+    except Exception:
+        print("error accessibility-unavailable")
         sys.exit(1)
 PYTHON
 chmod 0755 /usr/local/libexec/robotgo-runner-locate-screencast
