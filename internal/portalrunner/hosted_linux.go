@@ -506,6 +506,7 @@ func RunHostedPortal(
 			manifest.Lane,
 			options.Cell,
 			options.Topology,
+			manifest.HostedDisplay,
 			options.Output,
 		); err != nil {
 			stopProcessGroup(testCommand, testResult.done)
@@ -1028,8 +1029,42 @@ func approveHostedPortal(
 	lane,
 	cell,
 	topology string,
+	display HostedDisplay,
 	output io.Writer,
 ) error {
+	if lane == portalLaneGNOME &&
+		cell == "screencast" &&
+		topology == HostedTopologyMulti {
+		targets, err := gnomePortalPhysicalCardTargets(display)
+		if err != nil {
+			return err
+		}
+		qmp, err := connectQMP(ctx, qmpSocket)
+		if err != nil {
+			return err
+		}
+		var approvalError error
+		for _, target := range targets.points {
+			approvalError = qmp.clickAbsolute(
+				ctx,
+				target.x,
+				target.y,
+				target.width,
+				target.height,
+			)
+			if approvalError != nil {
+				break
+			}
+			approvalError = waitQMPChord(ctx)
+			if approvalError != nil {
+				break
+			}
+		}
+		if approvalError == nil {
+			approvalError = qmp.sendChord(ctx, qmpKeyAlt, qmpKeyS)
+		}
+		return errors.Join(approvalError, qmp.close())
+	}
 	if lane == portalLaneKDE && cell == "screencast" {
 		geometry, err := locateHostedKDEScreenCast(
 			ctx,
@@ -1144,6 +1179,83 @@ func approveHostedPortal(
 		qmp.approvePortal(ctx, lane, cell, topology),
 		qmp.close(),
 	)
+}
+
+const (
+	gnomePortalDialogWidth        = 660
+	gnomePortalDialogHeight       = 500
+	gnomePortalHorizontalInset    = 43
+	gnomePortalTargetYNumerator   = 3
+	gnomePortalTargetYDenominator = 5
+)
+
+type hostedPortalTarget struct {
+	x      int
+	y      int
+	width  int
+	height int
+}
+
+type hostedPortalTargetSet struct {
+	points [2]hostedPortalTarget
+}
+
+func gnomePortalPhysicalCardTargets(
+	display HostedDisplay,
+) (hostedPortalTargetSet, error) {
+	if err := display.Validate(); err != nil {
+		return hostedPortalTargetSet{}, err
+	}
+	if len(display.Outputs) != 2 {
+		return hostedPortalTargetSet{}, errors.New(
+			"hosted GNOME ScreenCast requires exactly two outputs",
+		)
+	}
+	minX, minY := display.Outputs[0].X, display.Outputs[0].Y
+	maxX := minX + display.Outputs[0].Width
+	maxY := minY + display.Outputs[0].Height
+	for _, output := range display.Outputs[1:] {
+		minX = min(minX, output.X)
+		minY = min(minY, output.Y)
+		maxX = max(maxX, output.X+output.Width)
+		maxY = max(maxY, output.Y+output.Height)
+	}
+	width, height := maxX-minX, maxY-minY
+	primary := display.Outputs[0]
+	if primary.Width < gnomePortalDialogWidth ||
+		primary.Height < gnomePortalDialogHeight {
+		return hostedPortalTargetSet{}, errors.New(
+			"hosted GNOME primary output cannot contain the ScreenCast dialog",
+		)
+	}
+	dialogX := primary.X - minX +
+		(primary.Width-gnomePortalDialogWidth)/2
+	dialogY := primary.Y - minY +
+		(primary.Height-gnomePortalDialogHeight)/2
+	containerX := dialogX + gnomePortalHorizontalInset
+	containerWidth := gnomePortalDialogWidth -
+		2*gnomePortalHorizontalInset
+	targetY := dialogY +
+		gnomePortalDialogHeight*gnomePortalTargetYNumerator/
+			gnomePortalTargetYDenominator
+	var targets hostedPortalTargetSet
+	for index, output := range display.Outputs {
+		targetX := containerX +
+			(output.X-minX+output.Width/2)*containerWidth/width
+		if targetX < dialogX ||
+			targetX >= dialogX+gnomePortalDialogWidth ||
+			targetY < dialogY ||
+			targetY >= dialogY+gnomePortalDialogHeight {
+			return hostedPortalTargetSet{}, errors.New(
+				"hosted GNOME ScreenCast target is outside the expected dialog",
+			)
+		}
+		targets.points[index] = hostedPortalTarget{
+			x: targetX, y: targetY,
+			width: width, height: height,
+		}
+	}
+	return targets, nil
 }
 
 func locateHostedKDEScreenCast(

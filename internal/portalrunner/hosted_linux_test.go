@@ -565,6 +565,23 @@ func TestKDEPortalCardTargetUsesRuntimeDialogGeometry(t *testing.T) {
 	}
 }
 
+func TestGNOMEPortalPhysicalCardTargetsUseManifestGeometry(t *testing.T) {
+	t.Parallel()
+	targets, err := gnomePortalPhysicalCardTargets(
+		validManifest().HostedDisplay,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := hostedPortalTargetSet{points: [2]hostedPortalTarget{
+		{x: 512, y: 410, width: 2304, height: 768},
+		{x: 799, y: 410, width: 2304, height: 768},
+	}}
+	if targets != want {
+		t.Fatalf("GNOME physical card targets = %+v, want %+v", targets, want)
+	}
+}
+
 func TestKDEPortalPointerCalibration(t *testing.T) {
 	t.Parallel()
 	geometry := hostedPortalGeometry{

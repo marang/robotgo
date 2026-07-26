@@ -19,7 +19,6 @@ const (
 	qmpChordInterval   = 250 * time.Millisecond
 
 	qmpKeyAlt    = "alt"
-	qmpKeyE      = "e"
 	qmpKeyI      = "i"
 	qmpKeyReturn = "ret"
 	qmpKeyS      = "s"
@@ -321,25 +320,13 @@ func (client *qmpClient) approvePortal(
 	}
 	switch lane {
 	case portalLaneGNOME:
+		if cell == "screencast" && topology == HostedTopologyMulti {
+			return errors.New(
+				"GNOME multi-output ScreenCast approval requires pointer geometry",
+			)
+		}
 		if cell == "remote-desktop" {
 			if err := client.sendChord(ctx, qmpKeyAlt, qmpKeyI); err != nil {
-				return err
-			}
-			if err := waitQMPChord(ctx); err != nil {
-				return err
-			}
-		} else if topology == HostedTopologyMulti {
-			// The ScreenCast dialog has no RemoteDesktop interaction switch
-			// to anchor keyboard focus. Its monitor-page mnemonic focuses the
-			// one-page ViewSwitcher; advance once to the monitor container
-			// before traversing its physical monitor buttons.
-			if err := client.sendChord(ctx, qmpKeyAlt, qmpKeyE); err != nil {
-				return err
-			}
-			if err := waitQMPChord(ctx); err != nil {
-				return err
-			}
-			if err := client.sendChord(ctx, qmpKeyTab); err != nil {
 				return err
 			}
 			if err := waitQMPChord(ctx); err != nil {

@@ -33,19 +33,6 @@ func TestQMPPortalApprovalUsesIndependentKeyboardChords(t *testing.T) {
 				{"alt", "s"},
 			},
 		},
-		{
-			name: "ScreenCast",
-			cell: "screencast",
-			want: [][]string{
-				{"alt", "e"},
-				{"tab"},
-				{"tab"},
-				{"spc"},
-				{"tab"},
-				{"spc"},
-				{"alt", "s"},
-			},
-		},
 	} {
 		test := test
 		t.Run(test.name, func(t *testing.T) {
@@ -66,6 +53,22 @@ func TestQMPPortalApprovalUsesIndependentKeyboardChords(t *testing.T) {
 				assertQMPChord(t, got[index+1], want)
 			}
 		})
+	}
+}
+
+func TestQMPGNOMEMultiOutputScreenCastRequiresPointerGeometry(
+	t *testing.T,
+) {
+	t.Parallel()
+	client := &qmpClient{}
+	err := client.approvePortal(
+		context.Background(),
+		portalLaneGNOME,
+		"screencast",
+		HostedTopologyMulti,
+	)
+	if err == nil || !strings.Contains(err.Error(), "pointer geometry") {
+		t.Fatalf("GNOME multi-output keyboard approval error = %v", err)
 	}
 }
 
