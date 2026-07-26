@@ -320,6 +320,22 @@ func TestRepositoryGuestSessionContract(t *testing.T) {
 	) {
 		t.Fatal("wait-session.sh does not use the protected user's explicit bus")
 	}
+	for _, required := range []string{
+		"--no-pager call",
+		"org.freedesktop.portal.Desktop",
+		"org.freedesktop.DBus.Peer",
+		"Ping",
+	} {
+		if !strings.Contains(string(waitScript), required) {
+			t.Fatalf(
+				"wait-session.sh omits portal activation contract %q",
+				required,
+			)
+		}
+	}
+	if strings.Contains(string(waitScript), "--no-legend status") {
+		t.Fatal("wait-session.sh passively inspects an on-demand portal")
+	}
 
 	installScript, err := os.ReadFile(filepath.Join(guestRoot, "install.sh"))
 	if err != nil {
@@ -386,6 +402,38 @@ func TestRepositoryGuestSessionContract(t *testing.T) {
 		if !strings.Contains(string(jobStartedScript), required) {
 			t.Fatalf("job-started.sh omits exact attestation contract %q", required)
 		}
+	}
+}
+
+func TestRepositoryKDEGuestActivatesPortalFrontendAndBackend(t *testing.T) {
+	t.Parallel()
+	waitScript, err := os.ReadFile(filepath.Join(
+		"..",
+		"..",
+		"infrastructure",
+		"portal-runner",
+		"kde",
+		"guest",
+		"wait-session.sh",
+	))
+	if err != nil {
+		t.Fatal(err)
+	}
+	script := string(waitScript)
+	for _, required := range []string{
+		"busctl --address=unix:path=/run/user/1100/bus",
+		"--no-pager call",
+		"org.freedesktop.portal.Desktop",
+		"org.freedesktop.impl.portal.desktop.kde",
+		"org.freedesktop.DBus.Peer",
+		"Ping",
+	} {
+		if !strings.Contains(script, required) {
+			t.Errorf("KDE session readiness omits %q", required)
+		}
+	}
+	if strings.Contains(script, "--no-legend status") {
+		t.Fatal("KDE session readiness passively inspects an on-demand portal")
 	}
 }
 
