@@ -29,19 +29,20 @@ const (
 	mutterDisplayInterface   = "org.gnome.Mutter.DisplayConfig"
 	mutterApplyTemporary     = uint32(1)
 
-	hostedDisplayStageManifest    = "manifest"
-	hostedDisplayStageLane        = "lane"
-	hostedDisplayStageStatus      = "status"
-	hostedDisplayStageGNOMEBus    = "gnome-bus"
-	hostedDisplayStageGNOMEState  = "gnome-state"
-	hostedDisplayStageGNOMEPlan   = "gnome-plan"
-	hostedDisplayStageGNOMEApply  = "gnome-apply"
-	hostedDisplayStageGNOMESettle = "gnome-settle"
-	hostedDisplayStageKDEState    = "kde-state"
-	hostedDisplayStageKDEPlan     = "kde-plan"
-	hostedDisplayStageKDEApply    = "kde-apply"
-	hostedDisplayStageKDESettle   = "kde-settle"
-	hostedDisplayFailureMarker    = "ROBOTGO_HOSTED_DISPLAY_STAGE="
+	hostedDisplayStageManifest     = "manifest"
+	hostedDisplayStageLane         = "lane"
+	hostedDisplayStageStatus       = "status"
+	hostedDisplayStageGNOMEBus     = "gnome-bus"
+	hostedDisplayStageGNOMEState   = "gnome-state"
+	hostedDisplayStageGNOMEPlan    = "gnome-plan"
+	hostedDisplayStageGNOMEApply   = "gnome-apply"
+	hostedDisplayStageGNOMESettle  = "gnome-settle"
+	hostedDisplayStageKDEStateRun  = "kde-state-command"
+	hostedDisplayStageKDEStateJSON = "kde-state-decode"
+	hostedDisplayStageKDEPlan      = "kde-plan"
+	hostedDisplayStageKDEApply     = "kde-apply"
+	hostedDisplayStageKDESettle    = "kde-settle"
+	hostedDisplayFailureMarker     = "ROBOTGO_HOSTED_DISPLAY_STAGE="
 )
 
 var topologyIdentifierPattern = regexp.MustCompile(`^[A-Za-z0-9_-]{1,64}$`)
@@ -450,7 +451,7 @@ func configureKScreenDisplay(
 ) error {
 	state, err := readKScreenState(ctx)
 	if err != nil {
-		return newHostedDisplayFailure(hostedDisplayStageKDEState)
+		return err
 	}
 	selections, err := selectHostedTopology(
 		kscreenTopologyConnectors(state.Outputs),
@@ -513,11 +514,15 @@ func readKScreenState(ctx context.Context) (kscreenState, error) {
 	command.Stderr = io.Discard
 	configureHostedProcess(command)
 	if err := command.Run(); err != nil {
-		return kscreenState{}, errors.New("read hosted KDE display state")
+		return kscreenState{}, newHostedDisplayFailure(
+			hostedDisplayStageKDEStateRun,
+		)
 	}
 	var state kscreenState
 	if err := json.Unmarshal(data.Bytes(), &state); err != nil {
-		return kscreenState{}, errors.New("decode hosted KDE display state")
+		return kscreenState{}, newHostedDisplayFailure(
+			hostedDisplayStageKDEStateJSON,
+		)
 	}
 	return state, nil
 }

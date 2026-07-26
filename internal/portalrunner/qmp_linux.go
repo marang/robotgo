@@ -42,6 +42,11 @@ const (
 	qmpAbsoluteMaximum  = 0x7fff
 	hostedDisplayWidth  = 1280
 	hostedDisplayHeight = 720
+
+	hostedQEMUDisplayNone = "none"
+	hostedQEMUDisplayGTK  = "gtk,gl=off,show-cursor=off," +
+		"grab-on-hover=off,show-tabs=off,show-menubar=off," +
+		"zoom-to-fit=on,window-close=off"
 )
 
 type qmpClient struct {
@@ -506,6 +511,10 @@ func buildHostedQEMUArguments(
 			index++
 			continue
 		}
+		if base[index] == "-display" && index+1 < len(base) {
+			index++
+			continue
+		}
 		arguments = append(arguments, base[index])
 	}
 	displayDevice := fmt.Sprintf(
@@ -516,11 +525,15 @@ func buildHostedQEMUArguments(
 	if topology == HostedTopologyMulti {
 		primary := manifest.HostedDisplay.Outputs[0]
 		displayDevice = fmt.Sprintf(
-			"virtio-vga,max_outputs=%d,xres=%d,yres=%d",
+			"virtio-vga,max_outputs=%d,edid=off,xres=%d,yres=%d",
 			len(manifest.HostedDisplay.Outputs),
 			primary.Width,
 			primary.Height,
 		)
+	}
+	displayBackend := hostedQEMUDisplayNone
+	if topology == HostedTopologyMulti {
+		displayBackend = hostedQEMUDisplayGTK
 	}
 	return append(
 		arguments,
@@ -528,6 +541,7 @@ func buildHostedQEMUArguments(
 		"-device", "usb-kbd",
 		"-device", "usb-tablet",
 		"-device", displayDevice,
+		"-display", displayBackend,
 		"-qmp", "unix:"+qmpSocket+",server=on,wait=off",
 	)
 }

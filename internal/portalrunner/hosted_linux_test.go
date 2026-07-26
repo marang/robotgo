@@ -70,6 +70,36 @@ func TestHostedIdentityIsExact(t *testing.T) {
 	}
 }
 
+func TestHostedMultiOutputRequiresIsolatedXvfb(t *testing.T) {
+	if err := validateHostedHostDisplay(
+		HostedTopologySingle,
+	); err != nil {
+		t.Fatalf("single-output display validation: %v", err)
+	}
+	for _, display := range []string{"", ":0.0", "localhost:10", "private"} {
+		t.Setenv(hostedXvfbEnvKey, "1")
+		t.Setenv("DISPLAY", display)
+		if err := validateHostedHostDisplay(
+			HostedTopologyMulti,
+		); err == nil {
+			t.Fatalf("unsafe hosted display %q was accepted", display)
+		}
+	}
+	t.Setenv(hostedXvfbEnvKey, "")
+	t.Setenv("DISPLAY", ":99")
+	if err := validateHostedHostDisplay(
+		HostedTopologyMulti,
+	); err == nil {
+		t.Fatal("unmarked hosted Xvfb display was accepted")
+	}
+	t.Setenv(hostedXvfbEnvKey, "1")
+	if err := validateHostedHostDisplay(
+		HostedTopologyMulti,
+	); err != nil {
+		t.Fatalf("isolated hosted Xvfb display: %v", err)
+	}
+}
+
 func TestHostedRepositoryMustBeExactAndClean(t *testing.T) {
 	t.Parallel()
 	commit := strings.Repeat("a", 40)

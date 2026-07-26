@@ -28,6 +28,7 @@ const (
 	hostedTestTimeout       = 4 * time.Minute
 	hostedTestLogLimit      = 2 * 1024 * 1024
 	maximumPortalGeometry   = 256
+	hostedXvfbEnvKey        = "ROBOTGO_HOSTED_XVFB"
 
 	// HostedTopologySingle preserves the established one-output portal run.
 	HostedTopologySingle = "single-output"
@@ -42,6 +43,7 @@ var portalFailureStagePattern = regexp.MustCompile(
 var hostedDisplayFailureStagePattern = regexp.MustCompile(
 	hostedDisplayFailureMarker + `([a-z0-9-]{1,32})`,
 )
+var hostedXvfbDisplayPattern = regexp.MustCompile(`^:[0-9]{1,5}$`)
 
 var sessionFailureStagePattern = regexp.MustCompile(
 	`ROBOTGO_SESSION_STAGE=([a-z0-9-]{1,32})`,
@@ -105,6 +107,9 @@ func RunHostedPortal(
 		options.Cell,
 		options.Topology,
 	); err != nil {
+		return err
+	}
+	if err := validateHostedHostDisplay(options.Topology); err != nil {
 		return err
 	}
 	if options.Output == nil {
@@ -544,6 +549,20 @@ func RunHostedPortal(
 	)
 }
 
+func validateHostedHostDisplay(topology string) error {
+	if topology == HostedTopologySingle {
+		return nil
+	}
+	if topology != HostedTopologyMulti ||
+		os.Getenv(hostedXvfbEnvKey) != "1" ||
+		!hostedXvfbDisplayPattern.MatchString(os.Getenv("DISPLAY")) {
+		return errors.New(
+			"hosted multi-output requires an isolated Xvfb display",
+		)
+	}
+	return nil
+}
+
 func configureHostedGuestDisplay(
 	ctx context.Context,
 	commands CommandExecutor,
@@ -618,7 +637,8 @@ func parseHostedDisplayFailureStage(output []byte) string {
 		hostedDisplayStageGNOMEPlan,
 		hostedDisplayStageGNOMEApply,
 		hostedDisplayStageGNOMESettle,
-		hostedDisplayStageKDEState,
+		hostedDisplayStageKDEStateRun,
+		hostedDisplayStageKDEStateJSON,
 		hostedDisplayStageKDEPlan,
 		hostedDisplayStageKDEApply,
 		hostedDisplayStageKDESettle:

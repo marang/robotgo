@@ -87,11 +87,16 @@ jobs:
         run: |
           set -euo pipefail
           sudo apt-get update
-          sudo apt-get install --no-install-recommends -y \
-            cloud-image-utils \
-            openssh-client \
-            qemu-system-x86 \
+          packages=(
+            cloud-image-utils
+            openssh-client
+            qemu-system-x86
             qemu-utils
+          )
+          if [[ "${{ matrix.topology }}" == "multi-output" ]]; then
+            packages+=(qemu-system-gui xauth xvfb)
+          fi
+          sudo apt-get install --no-install-recommends -y "${packages[@]}"
       - name: Verify hosted capacity
         shell: bash
         run: |
@@ -120,13 +125,20 @@ jobs:
             -manifest "$manifest" \
             -repository-root "$GITHUB_WORKSPACE" \
             -state-root "$state_root"
-          go run ./internal/cmd/portalrunner hosted-run \
+          hosted_run=(go run ./internal/cmd/portalrunner hosted-run \
             -manifest "$manifest" \
             -repository-root "$GITHUB_WORKSPACE" \
             -state-root "$state_root" \
             -commit "$GITHUB_SHA" \
             -cell screencast \
-            -topology "${{ matrix.topology }}"
+            -topology "${{ matrix.topology }}")
+          if [[ "${{ matrix.topology }}" == "multi-output" ]]; then
+            xvfb-run -a \
+              -s '-screen 0 1280x800x24 -nolisten tcp -noreset' \
+              env ROBOTGO_HOSTED_XVFB=1 "${hosted_run[@]}"
+          else
+            "${hosted_run[@]}"
+          fi
       - name: Reject transient runner artifacts
         if: always()
         shell: bash

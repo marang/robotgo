@@ -512,15 +512,15 @@ func TestHostedMultiOutputQEMUUsesManifestBoundVirtIOScanouts(t *testing.T) {
 	)
 	joined := strings.Join(arguments, " ")
 	for _, required := range []string{
-		"-device virtio-vga,max_outputs=2,xres=1280,yres=720",
-		"-display none",
+		"-device virtio-vga,max_outputs=2,edid=off,xres=1280,yres=720",
+		"-display " + hostedQEMUDisplayGTK,
 		"-device usb-tablet",
 	} {
 		if !strings.Contains(joined, required) {
 			t.Errorf("hosted multi-output QEMU arguments omit %q", required)
 		}
 	}
-	for _, forbidden := range []string{"bochs-display", "-display gtk"} {
+	for _, forbidden := range []string{"bochs-display", "-display none"} {
 		if strings.Contains(joined, forbidden) {
 			t.Errorf("hosted multi-output QEMU arguments contain %q", forbidden)
 		}
