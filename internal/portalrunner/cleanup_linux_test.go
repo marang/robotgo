@@ -93,7 +93,12 @@ func TestQEMUArgumentsMustBindPIDAndDiskToOwnedRuntime(t *testing.T) {
 				"/other/hosted.qcow2\x00",
 		),
 		[]byte(
+			"qemu-system-x86_64\x00-pidfile\x00" + pidFile + "\x00" +
+				filepath.Join(runDirectory, "hosted.qcow2") + "\x00",
+		),
+		[]byte(
 			"qemu-system-x86_64\x00-pidfile\x00/other/qemu.pid\x00" +
+				"-drive\x00file=" +
 				filepath.Join(runDirectory, "hosted.qcow2") + "\x00",
 		),
 	} {

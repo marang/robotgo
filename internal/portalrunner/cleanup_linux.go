@@ -159,10 +159,15 @@ func qemuArgumentsBindRun(
 			string(arguments[index+1]) == pidFile {
 			hasPIDFile = true
 		}
-		disk := argument
-		if strings.HasPrefix(disk, "file=") {
-			disk, _, _ = strings.Cut(strings.TrimPrefix(disk, "file="), ",")
+		if index == 0 ||
+			string(arguments[index-1]) != "-drive" ||
+			!strings.HasPrefix(argument, "file=") {
+			continue
 		}
+		disk, _, _ := strings.Cut(
+			strings.TrimPrefix(argument, "file="),
+			",",
+		)
 		if filepath.Ext(disk) == ".qcow2" &&
 			filepath.IsAbs(disk) &&
 			filepath.Clean(disk) == disk &&
