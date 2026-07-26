@@ -290,6 +290,28 @@ static int robotgo_pw_capture_ready(struct robotgo_pw_capture *capture, int time
 	return ready ? 0 : -1;
 }
 
+static int robotgo_pw_copy_cached_frame(struct robotgo_pw_capture *capture,
+		uint8_t **pixels, size_t *size, uint32_t *width, uint32_t *height,
+		uint32_t *transform) {
+	if (capture == NULL || capture->pixels == NULL || capture->pixels_size == 0 ||
+			capture->frame_width == 0 || capture->frame_height == 0 ||
+			(uint64_t)capture->frame_width * (uint64_t)capture->frame_height * 4u !=
+				capture->pixels_size) {
+		errno = EINVAL;
+		return -1;
+	}
+	uint8_t *copy = malloc(capture->pixels_size);
+	if (copy == NULL) return -1;
+	memcpy(copy, capture->pixels, capture->pixels_size);
+	*pixels = copy;
+	*size = capture->pixels_size;
+	*width = capture->frame_width;
+	*height = capture->frame_height;
+	*transform = capture->transform;
+	capture->delivered = capture->generation;
+	return 0;
+}
+
 static int robotgo_pw_capture_frame(struct robotgo_pw_capture *capture, int timeout_ms,
 		uint8_t **pixels, size_t *size, uint32_t *width, uint32_t *height,
 		uint32_t *transform, char **error_out) {
@@ -307,15 +329,23 @@ static int robotgo_pw_capture_frame(struct robotgo_pw_capture *capture, int time
 	}
 	while (!capture->failed && capture->generation <= capture->delivered) {
 		int result = pw_thread_loop_timed_wait_full(capture->loop, &timeout);
-		if (result == -ETIMEDOUT) { capture->frame_requested = 0; pw_thread_loop_unlock(capture->loop); return 1; }
+		if (result == -ETIMEDOUT) {
+			capture->frame_requested = 0;
+			if (capture->generation == 0 || capture->pixels == NULL || capture->pixels_size == 0) {
+				pw_thread_loop_unlock(capture->loop);
+				return 1;
+			}
+			break;
+		}
 		if (result < 0) { capture->frame_requested = 0; errno = -result; *error_out = robotgo_pw_error("wait for PipeWire frame"); pw_thread_loop_unlock(capture->loop); return -1; }
 	}
 	if (capture->failed) { capture->frame_requested = 0; *error_out = strdup(capture->error); pw_thread_loop_unlock(capture->loop); return -1; }
-	uint8_t *copy = malloc(capture->pixels_size);
-	if (copy == NULL) { *error_out = robotgo_pw_error("copy PipeWire frame"); pw_thread_loop_unlock(capture->loop); return -1; }
-	memcpy(copy, capture->pixels, capture->pixels_size);
-	*pixels = copy; *size = capture->pixels_size; *width = capture->frame_width; *height = capture->frame_height; *transform = capture->transform;
-	capture->delivered = capture->generation;
+	capture->frame_requested = 0;
+	if (robotgo_pw_copy_cached_frame(capture, pixels, size, width, height, transform) < 0) {
+		*error_out = robotgo_pw_error("copy PipeWire frame");
+		pw_thread_loop_unlock(capture->loop);
+		return -1;
+	}
 	pw_thread_loop_unlock(capture->loop);
 	return 0;
 }
@@ -368,6 +398,21 @@ static int robotgo_pw_test_copy_frame(const uint8_t *input, uint32_t input_size,
 	*output_transform = capture.transform;
 	*error_out = NULL;
 	return 0;
+}
+
+static int robotgo_pw_test_copy_cached_frame(const uint8_t *input, uint32_t input_size,
+		uint32_t width, uint32_t height, uint8_t **output, size_t *output_size) {
+	struct robotgo_pw_capture capture = {
+		.pixels = (uint8_t*)input,
+		.pixels_size = input_size,
+		.frame_width = width,
+		.frame_height = height,
+		.generation = 1,
+		.delivered = 1,
+	};
+	uint32_t output_width, output_height, output_transform;
+	return robotgo_pw_copy_cached_frame(&capture, output, output_size,
+		&output_width, &output_height, &output_transform);
 }
 */
 import "C"
@@ -550,6 +595,11 @@ func (s *cgoPipeWireFrameSource) frame(ctx context.Context) (*image.RGBA, error)
 			return nil, ErrPipeWireUnavailable
 		}
 		defer C.free(unsafe.Pointer(pixels))
+		if ctx != nil {
+			if err := ctx.Err(); err != nil {
+				return nil, err
+			}
+		}
 		w, h := int(width), int(height)
 		if w <= 0 || h <= 0 || uint64(size) != uint64(w)*uint64(h)*4 {
 			return nil, fmt.Errorf("%w: invalid frame dimensions %dx%d size=%d", ErrPipeWireUnavailable, w, h, uint64(size))
@@ -557,6 +607,33 @@ func (s *cgoPipeWireFrameSource) frame(ctx context.Context) (*image.RGBA, error)
 		data := C.GoBytes(unsafe.Pointer(pixels), C.int(size))
 		return transformPipeWireFrame(&image.RGBA{Pix: data, Stride: w * 4, Rect: image.Rect(0, 0, w, h)}, uint32(transform))
 	}
+}
+
+func pipeWireNativeCachedFrameForTest(
+	input []byte,
+	width,
+	height int,
+) ([]byte, error) {
+	if len(input) == 0 || width <= 0 || height <= 0 {
+		return nil, errors.New("invalid cached PipeWire test frame")
+	}
+	cInput := C.CBytes(input)
+	defer C.free(cInput)
+	var output *C.uint8_t
+	var outputSize C.size_t
+	result := C.robotgo_pw_test_copy_cached_frame(
+		(*C.uint8_t)(cInput),
+		C.uint32_t(len(input)),
+		C.uint32_t(width),
+		C.uint32_t(height),
+		&output,
+		&outputSize,
+	)
+	if result != 0 || output == nil {
+		return nil, ErrPipeWireUnavailable
+	}
+	defer C.free(unsafe.Pointer(output))
+	return C.GoBytes(unsafe.Pointer(output), C.int(outputSize)), nil
 }
 
 func transformPipeWireFrame(source *image.RGBA, transform uint32) (*image.RGBA, error) {

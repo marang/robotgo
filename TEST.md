@@ -508,7 +508,9 @@ ROBOTGO_SCREENCAST_E2E=1 go test -tags "pipewire integration" ./screen/portal -r
 
 Run it from a graphical Wayland session. It displays the portal consent UI,
 captures two frames from the same session, validates non-empty output, and
-closes the PipeWire consumer before the portal session.
+closes the PipeWire consumer before the portal session. The second capture
+also covers compositors that suppress unchanged frames: the backend waits one
+short poll for a fresh frame and then returns an owned copy of the latest frame.
 `.github/workflows/screencast-e2e.yml` runs GNOME in the same disposable
 GitHub-hosted nested-QEMU model and retains a protected self-hosted KDE lane.
 GNOME runs on `main` pushes and manual `gnome|all` dispatches. KDE remains

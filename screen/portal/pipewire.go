@@ -106,8 +106,10 @@ func (c *PipeWireCapture) RestoreToken() string {
 	return c.session.RestoreToken()
 }
 
-// Capture returns the next frame. A positive region is interpreted in logical
-// compositor coordinates and scaled to the negotiated PipeWire frame size.
+// Capture returns the next frame. If a compositor suppresses unchanged frames,
+// it returns a copy of the most recently delivered frame after one short poll.
+// A positive region is interpreted in logical compositor coordinates and
+// scaled to the negotiated PipeWire frame size.
 func (c *PipeWireCapture) Capture(ctx context.Context, x, y, width, height int) (image.Image, error) {
 	if c == nil {
 		return nil, ErrScreenCastClosed

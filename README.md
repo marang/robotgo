@@ -555,7 +555,10 @@ frame, err := robotgo.CaptureScreenCast(ctx) // image.Image
 ```
 
 `CaptureScreenCast(ctx, x, y, width, height)` crops in logical compositor
-coordinates and maps fractional stream scaling to physical pixels.
+coordinates and maps fractional stream scaling to physical pixels. Some
+compositors suppress unchanged PipeWire frames; after one short poll, repeated
+capture then returns an owned copy of the most recently delivered frame instead
+of timing out on a static desktop.
 `CaptureScreenCastDisplay(ctx, displayID, x, y, width, height)` additionally
 requires the active selected stream to be an unambiguous monitor geometry match
 for that display and fails closed before reading a frame otherwise. Agent
