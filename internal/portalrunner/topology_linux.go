@@ -538,6 +538,10 @@ func waitForInitialKScreenState(
 		if err == nil {
 			return state, nil
 		}
+		if HostedDisplayFailureStage(err) !=
+			hostedDisplayStageKDEStateRun {
+			return kscreenState{}, err
+		}
 		timer := time.NewTimer(poll)
 		select {
 		case <-ctx.Done():

@@ -40,12 +40,12 @@ func TestInitialKScreenStateRetriesTransientCommandFailure(t *testing.T) {
 
 func TestInitialKScreenStatePreservesFinalFailureStage(t *testing.T) {
 	t.Parallel()
-	ctx, cancel := context.WithCancel(context.Background())
+	calls := 0
 	state, err := waitForInitialKScreenState(
-		ctx,
+		context.Background(),
 		0,
 		func(context.Context) (kscreenState, error) {
-			cancel()
+			calls++
 			return kscreenState{}, newHostedDisplayFailure(
 				hostedDisplayStageKDEStateJSON,
 			)
@@ -57,6 +57,9 @@ func TestInitialKScreenStatePreservesFinalFailureStage(t *testing.T) {
 	if stage := HostedDisplayFailureStage(err); stage !=
 		hostedDisplayStageKDEStateJSON {
 		t.Fatalf("initial KScreen failure stage = %q", stage)
+	}
+	if calls != 1 {
+		t.Fatalf("deterministic KScreen failure was retried %d times", calls)
 	}
 }
 
