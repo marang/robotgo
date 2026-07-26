@@ -37,6 +37,9 @@ func TestHostedPortalProofUsesEphemeralGitHubKVM(t *testing.T) {
 			`ref: ${{ github.sha }}`,
 			`test "$(git rev-parse HEAD)" = "$GITHUB_SHA"`,
 			"test -c /dev/kvm",
+			"sudo chmod 0666 /dev/kvm",
+			"test -r /dev/kvm",
+			"test -w /dev/kvm",
 			"qemu-system-x86",
 			`manifest="infrastructure/portal-runner/${{ matrix.desktop }}/manifest.json"`,
 			`state_root="$RUNNER_TEMP/robotgo-${{ matrix.desktop }}-portal-runner"`,
@@ -65,6 +68,8 @@ func TestHostedPortalProofUsesEphemeralGitHubKVM(t *testing.T) {
 			"actions/checkout@v",
 			"actions/setup-go@v",
 			"persist-credentials: true",
+			"udevadm trigger",
+			"99-robotgo-kvm.rules",
 			"go run ./internal/cmd/portalrunner probe",
 		} {
 			if strings.Contains(hostedJob, forbidden) {
