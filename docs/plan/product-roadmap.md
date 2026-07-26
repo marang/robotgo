@@ -119,8 +119,10 @@ frames, converts supported RGB/BGR formats to RGBA, maps logical regions at
 fractional scale, applies all eight SPA video transforms and crop metadata,
 exposes stream/restore metadata, and provides hermetic plus opt-in runtime
 tests. Native readiness is bounded, PipeWire initialization is balanced, and
-idle sessions do not convert unrequested frames. `CaptureScreen` can reuse the active session after native
-screencopy failure or select it explicitly. Output geometry, scale, and
+each incoming buffer updates an owned latest-frame cache so changes between
+capture calls are retained; damage-driven streams that emit no unchanged frame
+perform no extra conversion. `CaptureScreen` can reuse the active session after
+native screencopy failure or select it explicitly. Output geometry, scale, and
 transform handling now share enclosing-edge crop semantics and have a
 non-skipping hermetic CI matrix for negative output origins, fractional scale,
 clipped regions, overflow boundaries, and all eight transforms. The complete

@@ -576,8 +576,10 @@ The image capture backend supports hidden and embedded cursor modes. Raw cursor
 metadata remains available to lower-level `OpenScreenCast` consumers, but
 `OpenPipeWireCapture` rejects that mode explicitly because its `image.Image`
 result cannot represent separate cursor metadata. Starting a capture waits for
-the PipeWire stream to reach a usable state; an idle session recycles frames
-without converting them until a capture is requested.
+the PipeWire stream to reach a usable state. While the session remains open,
+each incoming buffer becomes the owned latest RGBA frame so an update between
+two capture calls is not lost. Damage-driven streams that emit no buffer for an
+unchanged desktop require no additional conversion.
 
 For explicit GNOME/KDE portal input, probe support without prompting and then
 call `StartRemoteDesktopInput` with the required device mask. While that session
