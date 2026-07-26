@@ -152,9 +152,10 @@ func (client *qmpClient) approvePortal(
 				"KDE native RemoteDesktop follows the backend notification policy",
 			)
 		}
-		// Plasma 5.27 preselects the only available monitor. Toggling it
-		// would disable Share, so activate only the real Share action.
-		return client.sendChord(ctx, "alt", "s")
+		// Plasma 5.27 preselects the only available monitor, and its
+		// SystemDialog maps Return to the enabled standard accept button.
+		// This remains deterministic across translated Share button labels.
+		return client.sendChord(ctx, "ret")
 	default:
 		return errors.New("QMP portal approval lane is invalid")
 	}

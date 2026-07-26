@@ -158,7 +158,7 @@ func TestQMPKDEPortalApprovalSharesPreselectedMonitor(t *testing.T) {
 	if got[0].Execute != "qmp_capabilities" {
 		t.Fatalf("first QMP command = %q", got[0].Execute)
 	}
-	assertQMPChord(t, got[1], []string{"alt", "s"})
+	assertQMPChord(t, got[1], []string{"ret"})
 }
 
 func TestQMPRejectsMalformedAndFailedResponses(t *testing.T) {
