@@ -56,14 +56,17 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          suite_root="$RUNNER_TEMP/robotgo-x11-default-suite"
+          suite_root="$(mktemp -d /tmp/r.XXXXXX)"
           cleanup() {
             rm -rf -- "$suite_root"
           }
           trap cleanup EXIT INT TERM
-          cleanup
-          install -d -m 0700 "$suite_root" "$suite_root/tmp"
-          export TMPDIR="$suite_root/tmp"
+          case "$suite_root" in
+            /tmp/r.*) ;;
+            *) echo "unsafe X11 suite temporary root" >&2; exit 1 ;;
+          esac
+          test "$(stat -c '%a' "$suite_root")" = "700"
+          export TMPDIR="$suite_root"
           xvfb-run -a \
             -e "$suite_root/xvfb.err" \
             -s "-screen 0 1280x720x24 -nolisten tcp -noreset" \
