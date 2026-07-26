@@ -36,16 +36,19 @@ const (
 	imageIdentitySchema  = "1"
 )
 
-var guestImageFiles = []string{
+var commonGuestImageFiles = []string{
 	"guest/configure-egress.sh",
 	"guest/install.sh",
 	"guest/job-completed.sh",
 	"guest/job-started.sh",
-	"guest/locate-screencast.sh",
 	"guest/register.sh",
+	"guest/wait-session.sh",
+}
+
+var kdeGuestImageFiles = []string{
+	"guest/locate-screencast.sh",
 	"guest/report-screencast-geometry.js",
 	"guest/report-screencast-geometry.py",
-	"guest/wait-session.sh",
 }
 
 type imageBuildInput struct {
@@ -150,7 +153,7 @@ func BuildImage(
 		return "", err
 	}
 	defer func() { _ = stateLock.Close() }()
-	if err := validateGuestFiles(options.GuestFiles); err != nil {
+	if err := validateGuestFiles(options.GuestFiles, manifest.Lane); err != nil {
 		return "", err
 	}
 	for _, executable := range []string{
@@ -170,6 +173,7 @@ func BuildImage(
 		options.ManifestPath,
 		options.RepositoryRoot,
 		options.GuestFiles,
+		manifest.Lane,
 	)
 	if err != nil {
 		return "", err
@@ -670,13 +674,29 @@ func preparePersistentDirectory(path string) error {
 	return validatePrivateDirectory(path)
 }
 
-func validateGuestFiles(path string) error {
+func guestImageFilesForLane(lane string) ([]string, error) {
+	switch lane {
+	case portalLaneGNOME:
+		return append([]string{}, commonGuestImageFiles...), nil
+	case portalLaneKDE:
+		files := append([]string{}, commonGuestImageFiles...)
+		return append(files, kdeGuestImageFiles...), nil
+	default:
+		return nil, errors.New("portal runner guest lane is unsupported")
+	}
+}
+
+func validateGuestFiles(path, lane string) error {
 	if err := validateCleanAbsolutePath("portal runner guest files", path); err != nil {
 		return err
 	}
 	evaluated, err := filepath.EvalSymlinks(path)
 	if err != nil || evaluated != path {
 		return errors.New("portal runner guest files must be a real absolute directory")
+	}
+	guestImageFiles, err := guestImageFilesForLane(lane)
+	if err != nil {
+		return err
 	}
 	expected := make(map[string]bool, len(guestImageFiles))
 	for _, relative := range guestImageFiles {
@@ -740,7 +760,8 @@ func validateGuestFiles(path string) error {
 func computeImageIdentity(
 	manifestPath,
 	repositoryRoot,
-	guestFiles string,
+	guestFiles,
+	lane string,
 ) (string, []byte, []byte, error) {
 	manifestData, err := os.ReadFile(manifestPath)
 	if err != nil {
@@ -753,6 +774,10 @@ func computeImageIdentity(
 		return "", nil, nil, errors.New("portal runner manifest exceeds size limit")
 	}
 	manifestDigest := sha256.Sum256(manifestData)
+	guestImageFiles, err := guestImageFilesForLane(lane)
+	if err != nil {
+		return "", nil, nil, err
+	}
 	inputPaths := append(
 		[]string{"internal/portalrunner/image_linux.go"},
 		guestImageFiles...,

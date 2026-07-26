@@ -63,13 +63,14 @@ func ProbeImage(
 		return err
 	}
 	defer func() { _ = stateLock.Close() }()
-	if err := validateGuestFiles(options.GuestFiles); err != nil {
+	if err := validateGuestFiles(options.GuestFiles, manifest.Lane); err != nil {
 		return err
 	}
 	imageID, buildMetadata, _, err := computeImageIdentity(
 		options.ManifestPath,
 		options.RepositoryRoot,
 		options.GuestFiles,
+		manifest.Lane,
 	)
 	if err != nil {
 		return err

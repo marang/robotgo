@@ -110,7 +110,7 @@ func RunHostedPortal(
 		return err
 	}
 	defer func() { _ = stateLock.Close() }()
-	if err := validateGuestFiles(options.GuestFiles); err != nil {
+	if err := validateGuestFiles(options.GuestFiles, manifest.Lane); err != nil {
 		return err
 	}
 	for _, executable := range []string{
@@ -142,6 +142,7 @@ func RunHostedPortal(
 		options.ManifestPath,
 		options.RepositoryRoot,
 		options.GuestFiles,
+		manifest.Lane,
 	)
 	if err != nil {
 		return err

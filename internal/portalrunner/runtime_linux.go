@@ -89,7 +89,7 @@ func RunProtectedGNOME(
 		return err
 	}
 	defer func() { _ = stateLock.Close() }()
-	if err := validateGuestFiles(options.GuestFiles); err != nil {
+	if err := validateGuestFiles(options.GuestFiles, manifest.Lane); err != nil {
 		return err
 	}
 	for _, executable := range []string{
@@ -111,6 +111,7 @@ func RunProtectedGNOME(
 		options.ManifestPath,
 		options.RepositoryRoot,
 		options.GuestFiles,
+		manifest.Lane,
 	)
 	if err != nil {
 		return err

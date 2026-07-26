@@ -21,11 +21,12 @@ func TestComputeImageIdentityBindsEveryBuildInput(t *testing.T) {
 		manifestPath,
 		repositoryRoot,
 		guestRoot,
+		portalLaneGNOME,
 	)
 	if err != nil {
 		t.Fatalf("compute initial image identity: %v", err)
 	}
-	changedPath := filepath.Join(guestRoot, guestImageFiles[0])
+	changedPath := filepath.Join(guestRoot, commonGuestImageFiles[0])
 	if err := os.WriteFile(changedPath, []byte("#!/bin/sh\nexit 1\n"), 0o755); err != nil {
 		t.Fatalf("change guest input: %v", err)
 	}
@@ -33,6 +34,7 @@ func TestComputeImageIdentityBindsEveryBuildInput(t *testing.T) {
 		manifestPath,
 		repositoryRoot,
 		guestRoot,
+		portalLaneGNOME,
 	)
 	if err != nil {
 		t.Fatalf("compute changed image identity: %v", err)
@@ -52,6 +54,7 @@ func TestComputeImageIdentityBindsEveryBuildInput(t *testing.T) {
 		manifestPath,
 		repositoryRoot,
 		guestRoot,
+		portalLaneGNOME,
 	)
 	if err != nil {
 		t.Fatalf("compute builder-changed image identity: %v", err)
@@ -69,15 +72,25 @@ func TestComputeImageIdentityBindsExecutableMode(t *testing.T) {
 	writeImageIdentityFixture(t, repositoryRoot, guestRoot)
 	manifestPath := filepath.Join(guestRoot, "manifest.json")
 
-	firstID, _, _, err := computeImageIdentity(manifestPath, repositoryRoot, guestRoot)
+	firstID, _, _, err := computeImageIdentity(
+		manifestPath,
+		repositoryRoot,
+		guestRoot,
+		portalLaneGNOME,
+	)
 	if err != nil {
 		t.Fatalf("compute initial image identity: %v", err)
 	}
-	changedPath := filepath.Join(guestRoot, guestImageFiles[0])
+	changedPath := filepath.Join(guestRoot, commonGuestImageFiles[0])
 	if err := os.Chmod(changedPath, 0o700); err != nil {
 		t.Fatalf("change guest input mode: %v", err)
 	}
-	secondID, _, _, err := computeImageIdentity(manifestPath, repositoryRoot, guestRoot)
+	secondID, _, _, err := computeImageIdentity(
+		manifestPath,
+		repositoryRoot,
+		guestRoot,
+		portalLaneGNOME,
+	)
 	if err != nil {
 		t.Fatalf("compute mode-changed image identity: %v", err)
 	}
@@ -138,39 +151,46 @@ func TestRemoveStaleImagesKeepsOnlyCurrentAttestedPair(t *testing.T) {
 	}
 }
 
-func TestRepositoryKDEGuestFilesAreCompleteAndExecutable(t *testing.T) {
+func TestRepositoryGuestFilesAreCompleteAndExecutable(t *testing.T) {
 	t.Parallel()
-	path, err := filepath.Abs(
-		filepath.Join(
-			"..",
-			"..",
-			"infrastructure",
-			"portal-runner",
-			"kde",
-		),
-	)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := validateGuestFiles(path); err != nil {
-		t.Fatalf("validateGuestFiles: %v", err)
-	}
-	for _, relative := range guestImageFiles {
-		info, err := os.Stat(filepath.Join(path, relative))
+	for _, lane := range []string{portalLaneGNOME, portalLaneKDE} {
+		path, err := filepath.Abs(
+			filepath.Join(
+				"..",
+				"..",
+				"infrastructure",
+				"portal-runner",
+				lane,
+			),
+		)
 		if err != nil {
 			t.Fatal(err)
 		}
-		wantMode := os.FileMode(0o755)
-		if filepath.Ext(relative) == ".js" {
-			wantMode = 0o644
+		if err := validateGuestFiles(path, lane); err != nil {
+			t.Fatalf("validate %s guest files: %v", lane, err)
 		}
-		if info.Mode().Perm() != wantMode {
-			t.Errorf(
-				"%s mode = %o, want %o",
-				relative,
-				info.Mode().Perm(),
-				wantMode,
-			)
+		files, err := guestImageFilesForLane(lane)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, relative := range files {
+			info, err := os.Stat(filepath.Join(path, relative))
+			if err != nil {
+				t.Fatal(err)
+			}
+			wantMode := os.FileMode(0o755)
+			if filepath.Ext(relative) == ".js" {
+				wantMode = 0o644
+			}
+			if info.Mode().Perm() != wantMode {
+				t.Errorf(
+					"%s %s mode = %o, want %o",
+					lane,
+					relative,
+					info.Mode().Perm(),
+					wantMode,
+				)
+			}
 		}
 	}
 }
@@ -188,7 +208,7 @@ func TestValidateGuestFilesRejectsUnboundInput(t *testing.T) {
 	); err != nil {
 		t.Fatalf("write unexpected guest input: %v", err)
 	}
-	if err := validateGuestFiles(guestRoot); err == nil ||
+	if err := validateGuestFiles(guestRoot, portalLaneGNOME); err == nil ||
 		!strings.Contains(err.Error(), "not identity-bound") {
 		t.Fatalf("validateGuestFiles() error = %v, want identity-bound rejection", err)
 	}
@@ -547,6 +567,10 @@ func writeImageIdentityFixture(t *testing.T, repositoryRoot, guestRoot string) {
 		0o644,
 	); err != nil {
 		t.Fatalf("write manifest fixture: %v", err)
+	}
+	guestImageFiles, err := guestImageFilesForLane(portalLaneGNOME)
+	if err != nil {
+		t.Fatal(err)
 	}
 	for _, relative := range guestImageFiles {
 		if err := os.WriteFile(
