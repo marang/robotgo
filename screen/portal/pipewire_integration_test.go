@@ -4,7 +4,9 @@ package portal
 
 import (
 	"context"
+	"errors"
 	"os"
+	"path/filepath"
 	"testing"
 	"time"
 )
@@ -13,6 +15,9 @@ func TestPipeWireCapturePersistentSessionIntegration(t *testing.T) {
 	if os.Getenv("ROBOTGO_SCREENCAST_E2E") == "" {
 		t.Skip("set ROBOTGO_SCREENCAST_E2E=1 in a graphical Wayland session")
 	}
+	stage := "open"
+	defer reportScreenCastStageOnFailure(t, &stage)
+	signalScreenCastConsentReady(t)
 	openCtx, cancelOpen := context.WithTimeout(context.Background(), 2*time.Minute)
 	capture, err := OpenPipeWireCapture(openCtx, ScreenCastOptions{
 		Sources: ScreenCastSourceMonitor,
@@ -25,11 +30,13 @@ func TestPipeWireCapturePersistentSessionIntegration(t *testing.T) {
 	}
 	defer func() {
 		if err := capture.Close(); err != nil {
+			stage = "close"
 			t.Errorf("Close error: %v", err)
 		}
 	}()
 
 	for frameNumber := 1; frameNumber <= 2; frameNumber++ {
+		stage = []string{"capture-1", "capture-2"}[frameNumber-1]
 		frameCtx, cancelFrame := context.WithTimeout(context.Background(), 10*time.Second)
 		frame, err := capture.Capture(frameCtx, 0, 0, 0, 0)
 		cancelFrame()
@@ -40,4 +47,78 @@ func TestPipeWireCapturePersistentSessionIntegration(t *testing.T) {
 			t.Fatalf("frame %d is empty", frameNumber)
 		}
 	}
+}
+
+func reportScreenCastStageOnFailure(t *testing.T, stage *string) {
+	t.Helper()
+	if t.Failed() {
+		t.Logf("ROBOTGO_PORTAL_STAGE=%s", *stage)
+	}
+}
+
+func TestScreenCastConsentMarkerCleanup(t *testing.T) {
+	runtimeDirectory := t.TempDir()
+	marker := filepath.Join(
+		runtimeDirectory,
+		"robotgo-portal-consent-screencast.ready",
+	)
+	t.Setenv("XDG_RUNTIME_DIR", runtimeDirectory)
+	t.Setenv("ROBOTGO_PORTAL_CONSENT_READY_FILE", marker)
+	t.Run("lifecycle", func(t *testing.T) {
+		signalScreenCastConsentReady(t)
+		info, err := os.Lstat(marker)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !info.Mode().IsRegular() || info.Mode().Perm() != 0o600 {
+			t.Fatalf("consent marker mode = %v", info.Mode())
+		}
+		content, err := os.ReadFile(marker)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if string(content) != "screencast\n" {
+			t.Fatalf("consent marker content = %q", content)
+		}
+	})
+	if _, err := os.Lstat(marker); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("consent marker survived test cleanup: %v", err)
+	}
+}
+
+func signalScreenCastConsentReady(t *testing.T) {
+	t.Helper()
+	const (
+		cell    = "screencast"
+		envName = "ROBOTGO_PORTAL_CONSENT_READY_FILE"
+	)
+	path := os.Getenv(envName)
+	if path == "" {
+		return
+	}
+	runtimeDirectory := filepath.Clean(os.Getenv("XDG_RUNTIME_DIR"))
+	if !filepath.IsAbs(path) ||
+		filepath.Clean(path) != path ||
+		filepath.Dir(path) != runtimeDirectory ||
+		filepath.Base(path) != "robotgo-portal-consent-"+cell+".ready" {
+		t.Fatal("portal consent readiness path is outside the private runtime directory")
+	}
+	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+	if err != nil {
+		t.Fatalf("create portal consent readiness marker: %v", err)
+	}
+	if _, err := file.WriteString(cell + "\n"); err != nil {
+		_ = file.Close()
+		_ = os.Remove(path)
+		t.Fatalf("write portal consent readiness marker: %v", err)
+	}
+	if err := file.Close(); err != nil {
+		_ = os.Remove(path)
+		t.Fatalf("close portal consent readiness marker: %v", err)
+	}
+	t.Cleanup(func() {
+		if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
+			t.Errorf("remove portal consent readiness marker: %v", err)
+		}
+	})
 }

@@ -555,7 +555,10 @@ frame, err := robotgo.CaptureScreenCast(ctx) // image.Image
 ```
 
 `CaptureScreenCast(ctx, x, y, width, height)` crops in logical compositor
-coordinates and maps fractional stream scaling to physical pixels.
+coordinates and maps fractional stream scaling to physical pixels. Some
+compositors suppress unchanged PipeWire frames; after one short poll, repeated
+capture then returns an owned copy of the most recently delivered frame instead
+of timing out on a static desktop.
 `CaptureScreenCastDisplay(ctx, displayID, x, y, width, height)` additionally
 requires the active selected stream to be an unambiguous monitor geometry match
 for that display and fails closed before reading a frame otherwise. Agent
@@ -573,8 +576,10 @@ The image capture backend supports hidden and embedded cursor modes. Raw cursor
 metadata remains available to lower-level `OpenScreenCast` consumers, but
 `OpenPipeWireCapture` rejects that mode explicitly because its `image.Image`
 result cannot represent separate cursor metadata. Starting a capture waits for
-the PipeWire stream to reach a usable state; an idle session recycles frames
-without converting them until a capture is requested.
+the PipeWire stream to reach a usable state. While the session remains open,
+each incoming buffer becomes the owned latest RGBA frame so an update between
+two capture calls is not lost. Damage-driven streams that emit no buffer for an
+unchanged desktop require no additional conversion.
 
 For explicit GNOME/KDE portal input, probe support without prompting and then
 call `StartRemoteDesktopInput` with the required device mask. While that session
@@ -1096,8 +1101,11 @@ Pure-Go remains the supported CGO-disabled backend. The earlier direct-path
 sample remains linked from the performance report as historical evidence.
 The stable remote checks and the six hosted Sway/wlroots native,
 single-/multi-output, and portal-availability jobs are required by `main`
-branch protection. Real GNOME and KDE portal jobs remain opt-in until matching
-protected runners and consent Environments are registered.
+branch protection. Trusted `main` pushes also run real GNOME RemoteDesktop and
+persistent ScreenCast checks automatically inside disposable GitHub-hosted
+nested-KVM guests; these GNOME jobs are not yet required release gates. KDE
+portal evidence remains opt-in on separately protected self-hosted runners and
+consent Environments.
 
 Wayland and portal code has additional tagged suites:
 
@@ -1133,9 +1141,11 @@ identity. Published releases receive a checksummed evidence bundle. The active
 slice is now the
 [Protected Real-Compositor Evidence Plan](docs/plan/real-compositor-evidence.md),
 whose fail-closed preflight and sanitized evidence contract are implemented.
-Protected GNOME/KDE portal runner provisioning and separate Sway/wlroots native
-and portal-availability promotion remain across roadmap phases 1, 2, 3, and 5;
-those phases remain partial until their gates are green.
+Automated hosted GNOME single-output portal execution and the separate
+Sway/wlroots native and portal-availability jobs are implemented. Protected KDE
+runner evidence, GNOME/KDE multi-output proof, and promotion of the passing
+GNOME jobs into required release gates remain across roadmap phases 1, 2, 3,
+and 5; those phases remain partial until their gates are green.
 Phase 4 exposes the parity surface and now has a dedicated
 [P006 window-geometry project](https://linear.app/riotbox/project/robotgo-or-p006-or-explicit-window-geometry-4af461c427fb).
 `GetBoundsE`/`GetClientE` distinguish real window geometry from display

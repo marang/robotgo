@@ -5,6 +5,16 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      desktop:
+        description: Protected desktop lane to run
+        required: true
+        default: gnome
+        type: choice
+        options:
+          - gnome
+          - kde
+          - all
 
 concurrency:
   group: remote-desktop-e2e-${{ github.ref }}
@@ -14,10 +24,98 @@ permissions:
   contents: read
 
 jobs:
+  hosted-gnome:
+    if: >-
+      github.event_name == 'push' ||
+      (github.event_name == 'workflow_dispatch' &&
+      (inputs.desktop == 'gnome' || inputs.desktop == 'all'))
+    name: GitHub-hosted GNOME portal input
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+          ref: ${{ github.sha }}
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version: 1.25.x
+      - name: Verify exact hosted source
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test -z "$(git status --porcelain --untracked-files=all)"
+      - name: Enable hosted KVM
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -c /dev/kvm
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' |
+            sudo tee /etc/udev/rules.d/99-robotgo-kvm.rules >/dev/null
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+          test -r /dev/kvm
+          test -w /dev/kvm
+      - name: Install hosted QEMU dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y \
+            cloud-image-utils \
+            openssh-client \
+            qemu-system-x86 \
+            qemu-utils
+      - name: Verify hosted capacity
+        shell: bash
+        run: |
+          set -euo pipefail
+          manifest=infrastructure/portal-runner/gnome/manifest.json
+          required_cpus="$(jq -r '.vm.cpus' "$manifest")"
+          required_memory_kib="$(( $(jq -r '.vm.memory_mib' "$manifest") * 1024 ))"
+          available_memory_kib="$(awk '/^MemTotal:/ {print $2}' /proc/meminfo)"
+          minimum_free_bytes="$(( 8 * 1024 * 1024 * 1024 ))"
+          available_bytes="$(df --output=avail -B1 "$RUNNER_TEMP" | tail -n 1)"
+          test "$(nproc)" -ge "$required_cpus"
+          test "$available_memory_kib" -ge "$required_memory_kib"
+          test "$available_bytes" -ge "$minimum_free_bytes"
+      - name: Build and test nested GNOME
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          state_root="$RUNNER_TEMP/robotgo-portal-runner"
+          go run ./internal/cmd/portalrunner validate \
+            -repository-root "$GITHUB_WORKSPACE" \
+            -state-root "$state_root"
+          go run ./internal/cmd/portalrunner build \
+            -repository-root "$GITHUB_WORKSPACE" \
+            -state-root "$state_root"
+          go run ./internal/cmd/portalrunner hosted-run \
+            -repository-root "$GITHUB_WORKSPACE" \
+            -state-root "$state_root" \
+            -commit "$GITHUB_SHA" \
+            -cell remote-desktop
+      - name: Reject transient runner artifacts
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          state_root="$RUNNER_TEMP/robotgo-portal-runner"
+          if [ -d "$state_root" ]; then
+            leftover="$(
+              find "$state_root" -maxdepth 1 -type d -name 'run-*' -print -quit
+            )"
+            test -z "$leftover"
+          fi
+
   portal-input:
     if: >-
-      github.event_name == 'workflow_dispatch' ||
-      (vars.ROBOTGO_REMOTE_DESKTOP_E2E == '1' &&
+      (github.event_name == 'workflow_dispatch' &&
+      (inputs.desktop == 'kde' || inputs.desktop == 'all')) ||
+      (contains(fromJSON('["kde","all"]'), vars.ROBOTGO_REMOTE_DESKTOP_E2E) &&
       (github.event_name == 'push' ||
       github.event.pull_request.head.repo.full_name == github.repository))
     name: ${{ matrix.desktop }} portal input
@@ -25,16 +123,25 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        desktop: [gnome, kde]
-    runs-on: [self-hosted, linux, wayland, "${{ matrix.desktop }}"]
+        desktop: >-
+          ${{
+            fromJSON(
+              github.event_name == 'workflow_dispatch' && inputs.desktop == 'kde' && '["kde"]' ||
+              github.event_name == 'workflow_dispatch' && inputs.desktop == 'all' && '["kde"]' ||
+              vars.ROBOTGO_REMOTE_DESKTOP_E2E == 'kde' && '["kde"]' ||
+              vars.ROBOTGO_REMOTE_DESKTOP_E2E == 'all' && '["kde"]' ||
+              '["kde"]'
+            )
+          }}
+    runs-on: [self-hosted, linux, wayland, "${{ matrix.desktop }}", robotgo-remote-desktop]
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - name: Set up Go
-        uses: actions/setup-go@v7
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
           go-version: 1.25.x
       - name: Run protected runner preflight
@@ -103,7 +210,7 @@ jobs:
             -run-attempt "$GITHUB_RUN_ATTEMPT"
           cat "$output/summary.md" >> "$GITHUB_STEP_SUMMARY"
       - name: Upload compatibility evidence
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: remote-desktop-${{ matrix.desktop }}
           path: |
@@ -114,6 +221,8 @@ jobs:
           retention-days: 90
       - name: Remove compositor evidence workspace
         if: always()
+        env:
+          ROBOTGO_APPROVED_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
         shell: bash
         run: |
           set -euo pipefail
@@ -121,6 +230,15 @@ jobs:
           rm -f -- \
             "$RUNNER_TEMP/remote-desktop-report/raw-test.log" \
             "$RUNNER_TEMP/remote-desktop-report/.preflight.json" || true
-          go run ./internal/cmd/compositorevidence cleanup \
-            -runner-temp "$RUNNER_TEMP" \
-            -output-dir "$RUNNER_TEMP/remote-desktop-report"
+          output="$RUNNER_TEMP/remote-desktop-report"
+          if [ -f "$GITHUB_WORKSPACE/go.mod" ] &&
+            [ -f "$GITHUB_WORKSPACE/internal/cmd/compositorevidence/main.go" ] &&
+            [ "$(git -C "$GITHUB_WORKSPACE" rev-parse HEAD 2>/dev/null || true)" = "$ROBOTGO_APPROVED_COMMIT" ]; then
+            cd "$GITHUB_WORKSPACE"
+            go run ./internal/cmd/compositorevidence cleanup \
+              -runner-temp "$RUNNER_TEMP" \
+              -output-dir "$output"
+          elif [ -e "$output" ] || [ -L "$output" ]; then
+            echo "evidence workspace exists without a trusted checkout" >&2
+            exit 1
+          fi

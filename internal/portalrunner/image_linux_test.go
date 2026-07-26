@@ -1,0 +1,388 @@
+//go:build linux
+
+package portalrunner
+
+import (
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+)
+
+func TestComputeImageIdentityBindsEveryBuildInput(t *testing.T) {
+	t.Parallel()
+
+	repositoryRoot := t.TempDir()
+	guestRoot := filepath.Join(repositoryRoot, "infrastructure", "gnome")
+	writeImageIdentityFixture(t, repositoryRoot, guestRoot)
+	manifestPath := filepath.Join(guestRoot, "manifest.json")
+
+	firstID, firstMetadata, _, err := computeImageIdentity(
+		manifestPath,
+		repositoryRoot,
+		guestRoot,
+	)
+	if err != nil {
+		t.Fatalf("compute initial image identity: %v", err)
+	}
+	changedPath := filepath.Join(guestRoot, guestImageFiles[0])
+	if err := os.WriteFile(changedPath, []byte("#!/bin/sh\nexit 1\n"), 0o755); err != nil {
+		t.Fatalf("change guest input: %v", err)
+	}
+	secondID, secondMetadata, _, err := computeImageIdentity(
+		manifestPath,
+		repositoryRoot,
+		guestRoot,
+	)
+	if err != nil {
+		t.Fatalf("compute changed image identity: %v", err)
+	}
+	if firstID == secondID {
+		t.Fatal("guest input change did not change image identity")
+	}
+	if string(firstMetadata) == string(secondMetadata) {
+		t.Fatal("guest input change did not change build metadata")
+	}
+
+	builderPath := filepath.Join(repositoryRoot, "internal", "portalrunner", "image_linux.go")
+	if err := os.WriteFile(builderPath, []byte("changed builder\n"), 0o644); err != nil {
+		t.Fatalf("change builder input: %v", err)
+	}
+	thirdID, _, _, err := computeImageIdentity(
+		manifestPath,
+		repositoryRoot,
+		guestRoot,
+	)
+	if err != nil {
+		t.Fatalf("compute builder-changed image identity: %v", err)
+	}
+	if secondID == thirdID {
+		t.Fatal("builder input change did not change image identity")
+	}
+}
+
+func TestComputeImageIdentityBindsExecutableMode(t *testing.T) {
+	t.Parallel()
+
+	repositoryRoot := t.TempDir()
+	guestRoot := filepath.Join(repositoryRoot, "infrastructure", "gnome")
+	writeImageIdentityFixture(t, repositoryRoot, guestRoot)
+	manifestPath := filepath.Join(guestRoot, "manifest.json")
+
+	firstID, _, _, err := computeImageIdentity(manifestPath, repositoryRoot, guestRoot)
+	if err != nil {
+		t.Fatalf("compute initial image identity: %v", err)
+	}
+	changedPath := filepath.Join(guestRoot, guestImageFiles[0])
+	if err := os.Chmod(changedPath, 0o700); err != nil {
+		t.Fatalf("change guest input mode: %v", err)
+	}
+	secondID, _, _, err := computeImageIdentity(manifestPath, repositoryRoot, guestRoot)
+	if err != nil {
+		t.Fatalf("compute mode-changed image identity: %v", err)
+	}
+	if firstID == secondID {
+		t.Fatal("guest input mode change did not change image identity")
+	}
+}
+
+func TestRemoveStaleImagesKeepsOnlyCurrentAttestedPair(t *testing.T) {
+	t.Parallel()
+
+	directory := t.TempDir()
+	currentDigest := strings.Repeat("a", 64)
+	staleDigest := strings.Repeat("b", 64)
+	currentImage := filepath.Join(directory, "gnome-"+currentDigest+".qcow2")
+	currentMetadata := currentImage + ".build.json"
+	staleImage := filepath.Join(directory, "gnome-"+staleDigest+".qcow2")
+	staleMetadata := staleImage + ".build.json"
+	baseImage := filepath.Join(directory, "ubuntu-base.qcow2")
+	for _, path := range []string{
+		currentImage,
+		currentMetadata,
+		staleImage,
+		staleMetadata,
+		baseImage,
+	} {
+		if err := os.WriteFile(path, []byte("fixture"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := removeStaleImages(
+		directory,
+		currentImage,
+		currentMetadata,
+	); err != nil {
+		t.Fatalf("removeStaleImages: %v", err)
+	}
+	for _, path := range []string{currentImage, currentMetadata, baseImage} {
+		if _, err := os.Stat(path); err != nil {
+			t.Fatalf("expected retained image %q: %v", path, err)
+		}
+	}
+	for _, path := range []string{staleImage, staleMetadata} {
+		if _, err := os.Stat(path); !os.IsNotExist(err) {
+			t.Fatalf("stale image %q still exists: %v", path, err)
+		}
+	}
+}
+
+func TestValidateGuestFilesRejectsUnboundInput(t *testing.T) {
+	t.Parallel()
+
+	repositoryRoot := t.TempDir()
+	guestRoot := filepath.Join(repositoryRoot, "infrastructure", "gnome")
+	writeImageIdentityFixture(t, repositoryRoot, guestRoot)
+	if err := os.WriteFile(
+		filepath.Join(guestRoot, "guest", "unexpected.sh"),
+		[]byte("#!/bin/sh\n"),
+		0o755,
+	); err != nil {
+		t.Fatalf("write unexpected guest input: %v", err)
+	}
+	if err := validateGuestFiles(guestRoot); err == nil ||
+		!strings.Contains(err.Error(), "not identity-bound") {
+		t.Fatalf("validateGuestFiles() error = %v, want identity-bound rejection", err)
+	}
+}
+
+func TestBuildCloudConfigSuppressesCommentsAndFingerprints(t *testing.T) {
+	t.Parallel()
+
+	config, err := buildCloudConfig("ssh-ed25519 AAAATEST developer@example.invalid")
+	if err != nil {
+		t.Fatalf("build cloud config: %v", err)
+	}
+	for _, forbidden := range []string{
+		"developer@example.invalid",
+		"AAAATEST developer",
+	} {
+		if strings.Contains(config, forbidden) {
+			t.Fatalf("cloud config retained forbidden key metadata %q", forbidden)
+		}
+	}
+	for _, required := range []string{
+		"no_ssh_fingerprints: true",
+		"emit_keys_to_console: false",
+		"ssh_quiet_keygen: true",
+		"ssh_publish_hostkeys:",
+		"enabled: false",
+		"ssh-ed25519 AAAATEST",
+	} {
+		if !strings.Contains(config, required) {
+			t.Fatalf("cloud config omitted %q", required)
+		}
+	}
+}
+
+func TestRuntimeNetworkConfigUsesCloudImageRenderer(t *testing.T) {
+	t.Parallel()
+
+	config := runtimeNetworkConfig()
+	if !strings.Contains(config, "renderer: networkd") {
+		t.Fatal("runtime network config does not use systemd-networkd")
+	}
+	if strings.Contains(config, "NetworkManager") {
+		t.Fatal("runtime network config unexpectedly selects NetworkManager")
+	}
+	if !strings.Contains(config, "dhcp4: true") {
+		t.Fatal("runtime network config does not request IPv4 DHCP")
+	}
+}
+
+func TestBuildQEMUArgumentsExposeOnlyLoopbackSSH(t *testing.T) {
+	t.Parallel()
+
+	arguments := buildQEMUArguments(
+		Manifest{
+			Lane: "gnome",
+			VM: VMConfig{
+				CPUs:      4,
+				MemoryMiB: 8192,
+			},
+		},
+		"/private/disk.qcow2",
+		"/private/seed.img",
+		"/private/qemu.pid",
+		"/private/serial.log",
+		22222,
+		true,
+	)
+	joined := strings.Join(arguments, " ")
+	if !strings.Contains(joined, "hostfwd=tcp:127.0.0.1:22222-:22") {
+		t.Fatal("QEMU does not bind SSH forwarding exclusively to loopback")
+	}
+	if !strings.Contains(joined, "-device bochs-display -display none") {
+		t.Fatal("headless QEMU does not expose a DRM-capable display device")
+	}
+	for _, forbidden := range []string{"-virtfs", "hostfwd=tcp:0.0.0.0", "-snapshot"} {
+		if strings.Contains(joined, forbidden) {
+			t.Fatalf("QEMU arguments contain forbidden host exposure %q", forbidden)
+		}
+	}
+}
+
+func TestVisibleQEMUProvidesPrivateOperatorInput(t *testing.T) {
+	t.Parallel()
+
+	arguments := buildQEMUArguments(
+		Manifest{
+			Lane: "gnome",
+			VM: VMConfig{
+				CPUs:      4,
+				MemoryMiB: 8192,
+			},
+		},
+		"/private/disk.qcow2",
+		"/private/seed.img",
+		"/private/qemu.pid",
+		"/private/serial.log",
+		22222,
+		false,
+	)
+	joined := strings.Join(arguments, " ")
+	for _, required := range []string{
+		"-device virtio-vga",
+		"-device qemu-xhci",
+		"-device usb-kbd",
+		"-device usb-tablet",
+		"-display gtk,gl=off,show-cursor=on,grab-on-hover=on",
+	} {
+		if !strings.Contains(joined, required) {
+			t.Fatalf("visible QEMU omits operator device %q", required)
+		}
+	}
+	if strings.Contains(joined, "-daemonize") {
+		t.Fatal("visible QEMU must remain supervised by the host process")
+	}
+}
+
+func TestRepositoryGuestSessionContract(t *testing.T) {
+	t.Parallel()
+
+	guestRoot := filepath.Join(
+		"..",
+		"..",
+		"infrastructure",
+		"portal-runner",
+		"gnome",
+		"guest",
+	)
+	waitScript, err := os.ReadFile(filepath.Join(guestRoot, "wait-session.sh"))
+	if err != nil {
+		t.Fatalf("read wait-session.sh: %v", err)
+	}
+	if strings.Contains(string(waitScript), "busctl --user --address=") {
+		t.Fatal("wait-session.sh combines mutually exclusive busctl connections")
+	}
+	if !strings.Contains(
+		string(waitScript),
+		"busctl --address=unix:path=/run/user/1100/bus",
+	) {
+		t.Fatal("wait-session.sh does not use the protected user's explicit bus")
+	}
+
+	installScript, err := os.ReadFile(filepath.Join(guestRoot, "install.sh"))
+	if err != nil {
+		t.Fatalf("read install.sh: %v", err)
+	}
+	for _, required := range []string{
+		"chmod 0644 /etc/dconf/profile/user",
+		"chmod 0644 /etc/dconf/db/robotgo.d/00-runner",
+		"chmod 0644 /etc/dconf/db/robotgo",
+		"ACTIONS_RUNNER_HOOK_JOB_STARTED=/usr/local/libexec/robotgo-runner-job-started-hook.sh",
+		"ACTIONS_RUNNER_HOOK_JOB_COMPLETED=/usr/local/libexec/robotgo-runner-job-completed-hook.sh",
+		"systemctl enable robotgo-runner-egress.service",
+	} {
+		if !strings.Contains(string(installScript), required) {
+			t.Fatalf("install.sh omits readable DConf contract %q", required)
+		}
+	}
+	for _, forbidden := range []string{
+		"ACTIONS_RUNNER_HOOK_JOB_STARTED=/usr/local/libexec/robotgo-runner-job-started-hook\n",
+		"ACTIONS_RUNNER_HOOK_JOB_COMPLETED=/usr/local/libexec/robotgo-runner-job-completed-hook\n",
+	} {
+		if strings.Contains(string(installScript), forbidden) {
+			t.Fatalf("install.sh configures unsupported extensionless runner hook %q", forbidden)
+		}
+	}
+
+	egressScript, err := os.ReadFile(filepath.Join(guestRoot, "configure-egress.sh"))
+	if err != nil {
+		t.Fatalf("read configure-egress.sh: %v", err)
+	}
+	if !strings.Contains(
+		string(egressScript),
+		"ip daddr 10.0.2.2 tcp sport 22 accept",
+	) {
+		t.Fatal("configure-egress.sh would sever the protected host control channel")
+	}
+
+	registerScript, err := os.ReadFile(filepath.Join(guestRoot, "register.sh"))
+	if err != nil {
+		t.Fatalf("read register.sh: %v", err)
+	}
+	for _, required := range []string{
+		"--no-default-labels",
+		"--ephemeral",
+		"--disableupdate",
+		"systemctl start --no-block robotgo-runner.service",
+		`printf 'ready commit=%s run=%s attempt=%s lane=gnome cell=%s\n'`,
+	} {
+		if !strings.Contains(string(registerScript), required) {
+			t.Fatalf("register.sh omits protected runner contract %q", required)
+		}
+	}
+
+	jobStartedScript, err := os.ReadFile(filepath.Join(guestRoot, "job-started.sh"))
+	if err != nil {
+		t.Fatalf("read job-started.sh: %v", err)
+	}
+	for _, required := range []string{
+		`expected="ready commit=$commit run=$run_id attempt=$run_attempt lane=gnome cell=$cell"`,
+		`test "$(cat "$console_ready")" = "$expected"`,
+		"install -d -m 0755 -o root -g root",
+		`chmod 0444 "$temporary"`,
+	} {
+		if !strings.Contains(string(jobStartedScript), required) {
+			t.Fatalf("job-started.sh omits exact attestation contract %q", required)
+		}
+	}
+}
+
+func writeImageIdentityFixture(t *testing.T, repositoryRoot, guestRoot string) {
+	t.Helper()
+
+	if err := os.MkdirAll(
+		filepath.Join(repositoryRoot, "internal", "portalrunner"),
+		0o700,
+	); err != nil {
+		t.Fatalf("create builder fixture directory: %v", err)
+	}
+	if err := os.MkdirAll(filepath.Join(guestRoot, "guest"), 0o700); err != nil {
+		t.Fatalf("create guest fixture directory: %v", err)
+	}
+	if err := os.WriteFile(
+		filepath.Join(repositoryRoot, "internal", "portalrunner", "image_linux.go"),
+		[]byte("builder\n"),
+		0o644,
+	); err != nil {
+		t.Fatalf("write builder fixture: %v", err)
+	}
+	if err := os.WriteFile(
+		filepath.Join(guestRoot, "manifest.json"),
+		[]byte("{\"schema_version\":\"1\"}\n"),
+		0o644,
+	); err != nil {
+		t.Fatalf("write manifest fixture: %v", err)
+	}
+	for _, relative := range guestImageFiles {
+		if err := os.WriteFile(
+			filepath.Join(guestRoot, relative),
+			[]byte("#!/bin/sh\nexit 0\n"),
+			0o755,
+		); err != nil {
+			t.Fatalf("write guest fixture %q: %v", relative, err)
+		}
+	}
+}

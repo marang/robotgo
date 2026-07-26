@@ -230,11 +230,14 @@ func Finalize(config FinalizeConfig) (_ Manifest, retErr error) {
 	if err != nil {
 		return Manifest{}, fmt.Errorf("marshal compositor evidence: %w", err)
 	}
-	if err := rejectSensitive(manifestData, config.SensitiveValues); err != nil {
+	// Dynamic host values are checked against the private raw log above.
+	// Canonical artifacts contain only schema-validated protocol fields; a
+	// public ref or commit may legitimately contain a host-value substring.
+	if err := rejectSensitive(manifestData, nil); err != nil {
 		return Manifest{}, err
 	}
 	summary := renderSummary(manifest)
-	if err := rejectSensitive(summary, config.SensitiveValues); err != nil {
+	if err := rejectSensitive(summary, nil); err != nil {
 		return Manifest{}, err
 	}
 

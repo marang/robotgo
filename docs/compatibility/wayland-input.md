@@ -11,13 +11,14 @@ pass.
 | 2026-07-11 | Sway (wlroots) | RemoteDesktop portal | CGO/default | unavailable, actionable | Local portal exposes ScreenCast v4/source mask 3 but no `org.freedesktop.portal.RemoteDesktop`; diagnostics return an explicit unavailable error |
 | 2026-07-21 | Sway 1.9, nested headless Ubuntu 24.04 | Native virtual keyboard/pointer | `cgo,wayland,swayintegration` | pass | [`Sway E2E` run 29857289675](https://github.com/marang/robotgo/actions/runs/29857289675), `native-input`, artifact `sway-native-input`; self-owned `wev` target, no physical devices or host desktop |
 | 2026-07-21 | Sway 1.9, nested headless Ubuntu 24.04 | Native logical output mapping used by absolute input | `cgo,wayland,swayintegration` | pass | [`Sway E2E` run 29861058126](https://github.com/marang/robotgo/actions/runs/29861058126), `native-output-multi`, artifact `sway-native-output-multi`; exact two-output negative-origin, scale-2, transform-90 topology |
-| pending | GNOME | RemoteDesktop + ScreenCast mapping | Pure-Go portal client | no runner | Requires self-hosted runner label `gnome` |
+| 2026-07-26 | GNOME 46, nested Ubuntu 24.04 | RemoteDesktop + ScreenCast mapping | Pure-Go portal client | pass, single output | [`RemoteDesktop E2E` run 30199452053](https://github.com/marang/robotgo/actions/runs/30199452053), exact commit `ac3c6683817b4740219becba9b5242eed4fed7b7`; real portal consent, relative/absolute pointer, modifier key, optional touch, session close, and transient-artifact rejection |
 | pending | KDE Plasma | RemoteDesktop + ScreenCast mapping | Pure-Go portal client | no runner | Requires self-hosted runner label `kde` |
 
 ## Evidence workflow
 
 `.github/workflows/remote-desktop-e2e.yml` validates the CGO-independent pure-Go
-portal client on protected, ephemeral GNOME and KDE runners:
+portal client in a credential-free nested GNOME guest and, when provisioned, a
+protected ephemeral KDE runner:
 
 The harness calls the lower-level portal session methods directly, ensuring a
 native input backend cannot satisfy the checks instead of RemoteDesktop.
@@ -30,12 +31,12 @@ native input backend cannot satisfy the checks instead of RemoteDesktop.
 - touchscreen down/up when advertised
 - deterministic close
 
-The workflow uploads only the schema-v1 evidence manifest, canonical sanitized
-test log, and summary. Set the repository variable
-`ROBOTGO_REMOTE_DESKTOP_E2E=1` only after protected, ephemeral GNOME and KDE
-runners are registered. Fork pull requests are excluded from self-hosted
-execution. Sway/wlroots native input and explicit portal-unavailability evidence
-use separate P005 lanes; they are not counted as RemoteDesktop portal passes.
+The GNOME job retains no desktop artifact or raw log. It runs automatically on
+trusted `main` pushes and can be manually dispatched; fork and ordinary
+pull-request events do not boot the guest. KDE remains gated by
+`ROBOTGO_REMOTE_DESKTOP_E2E=kde|all` and the protected self-hosted contract.
+Sway/wlroots native input and explicit portal-unavailability evidence use
+separate P005 lanes; they are not counted as RemoteDesktop portal passes.
 
 `.github/workflows/sway-e2e.yml` independently validates the native Sway input
 path and explicit portal availability in an isolated GitHub-hosted compositor.
