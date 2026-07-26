@@ -63,8 +63,13 @@ func TestSwayFailureReasonReaderRejectsUnsafeInput(t *testing.T) {
 			)
 			if test.mutate != nil {
 				test.mutate(t, runnerTemp, reasonFile)
-			} else if err := os.WriteFile(reasonFile, []byte(test.content), test.mode); err != nil {
-				t.Fatal(err)
+			} else {
+				if err := os.WriteFile(reasonFile, []byte(test.content), 0o600); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.Chmod(reasonFile, test.mode); err != nil {
+					t.Fatal(err)
+				}
 			}
 			output, err := runFailureReasonReader(runnerTemp, reasonFile)
 			if err == nil {

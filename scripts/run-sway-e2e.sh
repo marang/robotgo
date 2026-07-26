@@ -270,7 +270,9 @@ fi
 terminate_group "$test_pid"
 test_pid=''
 
-failure_stage='finalize'
+if ((test_status == 0)); then
+	failure_stage='finalize'
+fi
 go run ./internal/cmd/compositorevidence finalize \
 	-lane wlroots \
 	-cell "$cell" \
