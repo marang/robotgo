@@ -4,6 +4,8 @@ package portalrunner
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -164,5 +166,25 @@ func TestPortalDialogWaitRejectsEarlyTestExit(t *testing.T) {
 	}
 	if time.Since(start) > time.Second {
 		t.Fatal("early hosted portal test exit was not detected promptly")
+	}
+}
+
+func TestPortalFailureStageParserReturnsOnlyAllowlistedMarker(t *testing.T) {
+	t.Parallel()
+	path := filepath.Join(t.TempDir(), "portal-test.log")
+	if err := os.WriteFile(
+		path,
+		[]byte(
+			"private diagnostic ignored\n"+
+				"ROBOTGO_PORTAL_STAGE=open\n"+
+				"token=must-not-leak\n"+
+				"ROBOTGO_PORTAL_STAGE=capture-2\n",
+		),
+		0o600,
+	); err != nil {
+		t.Fatal(err)
+	}
+	if got := readPortalFailureStage(path); got != "capture-2" {
+		t.Fatalf("failure stage = %q", got)
 	}
 }

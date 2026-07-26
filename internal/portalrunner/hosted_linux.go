@@ -13,6 +13,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"syscall"
@@ -24,6 +25,11 @@ const (
 	portalDialogSettle   = 2 * time.Second
 	consentPollInterval  = 250 * time.Millisecond
 	hostedTestTimeout    = 4 * time.Minute
+	hostedTestLogLimit   = 2 * 1024 * 1024
+)
+
+var portalFailureStagePattern = regexp.MustCompile(
+	`ROBOTGO_PORTAL_STAGE=([a-z0-9-]{1,32})`,
 )
 
 // HostedRuntimeOptions identifies one credential-free portal test in a
@@ -343,6 +349,20 @@ func RunHostedGNOME(
 
 	marker := "/run/user/1100/robotgo-portal-consent-" +
 		options.Cell + ".ready"
+	testLogPath := filepath.Join(runDirectory, "portal-test.log")
+	testLog, err := os.OpenFile(
+		testLogPath,
+		os.O_WRONLY|os.O_CREATE|os.O_EXCL,
+		0o600,
+	)
+	if err != nil {
+		return fmt.Errorf("create hosted portal test log: %w", err)
+	}
+	defer func() { _ = testLog.Close() }()
+	testLogWriter := &boundedWriter{
+		destination: testLog,
+		remaining:   hostedTestLogLimit,
+	}
 	testCommand := exec.CommandContext(
 		guestContext,
 		"ssh",
@@ -352,8 +372,9 @@ func RunHostedGNOME(
 			hostedPortalTestCommand(options.Cell, marker),
 		)...,
 	)
-	testCommand.Stdout = logWriter
-	testCommand.Stderr = logWriter
+	testOutput := io.MultiWriter(logWriter, testLogWriter)
+	testCommand.Stdout = testOutput
+	testCommand.Stderr = testOutput
 	configureHostedProcess(testCommand)
 	if err := testCommand.Start(); err != nil {
 		return errors.New("start hosted portal integration test")
@@ -394,7 +415,15 @@ func RunHostedGNOME(
 		logWriter,
 	)
 	if testError != nil {
-		testError = errors.New("hosted portal integration test failed")
+		stage := readPortalFailureStage(testLogPath)
+		if stage == "" {
+			testError = errors.New("hosted portal integration test failed")
+		} else {
+			testError = fmt.Errorf(
+				"hosted portal integration test failed at stage %q",
+				stage,
+			)
+		}
 	}
 	if err := errors.Join(testError, cleanupError); err != nil {
 		return err
@@ -423,6 +452,18 @@ func RunHostedGNOME(
 		options.Cell,
 		options.Commit,
 	)
+}
+
+func readPortalFailureStage(path string) string {
+	data, err := os.ReadFile(path)
+	if err != nil || len(data) > hostedTestLogLimit {
+		return ""
+	}
+	matches := portalFailureStagePattern.FindAllSubmatch(data, -1)
+	if len(matches) == 0 {
+		return ""
+	}
+	return string(matches[len(matches)-1][1])
 }
 
 func validateHostedIdentity(commit, cell string) error {

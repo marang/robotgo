@@ -15,6 +15,8 @@ func TestPipeWireCapturePersistentSessionIntegration(t *testing.T) {
 	if os.Getenv("ROBOTGO_SCREENCAST_E2E") == "" {
 		t.Skip("set ROBOTGO_SCREENCAST_E2E=1 in a graphical Wayland session")
 	}
+	stage := "open"
+	defer reportScreenCastStageOnFailure(t, &stage)
 	signalScreenCastConsentReady(t)
 	openCtx, cancelOpen := context.WithTimeout(context.Background(), 2*time.Minute)
 	capture, err := OpenPipeWireCapture(openCtx, ScreenCastOptions{
@@ -28,11 +30,13 @@ func TestPipeWireCapturePersistentSessionIntegration(t *testing.T) {
 	}
 	defer func() {
 		if err := capture.Close(); err != nil {
+			stage = "close"
 			t.Errorf("Close error: %v", err)
 		}
 	}()
 
 	for frameNumber := 1; frameNumber <= 2; frameNumber++ {
+		stage = []string{"capture-1", "capture-2"}[frameNumber-1]
 		frameCtx, cancelFrame := context.WithTimeout(context.Background(), 10*time.Second)
 		frame, err := capture.Capture(frameCtx, 0, 0, 0, 0)
 		cancelFrame()
@@ -42,6 +46,13 @@ func TestPipeWireCapturePersistentSessionIntegration(t *testing.T) {
 		if frame.Bounds().Empty() {
 			t.Fatalf("frame %d is empty", frameNumber)
 		}
+	}
+}
+
+func reportScreenCastStageOnFailure(t *testing.T, stage *string) {
+	t.Helper()
+	if t.Failed() {
+		t.Logf("ROBOTGO_PORTAL_STAGE=%s", *stage)
 	}
 }
 

@@ -20,6 +20,8 @@ func TestRemoteDesktopPortalRuntime(t *testing.T) {
 	if os.Getenv(envRemoteDesktopE2E) == "" {
 		t.Skip("set ROBOTGO_REMOTE_DESKTOP_E2E=1 to allow a portal consent dialog and pointer motion")
 	}
+	stage := "probe"
+	defer reportPortalStageOnFailure(t, &stage)
 
 	probeCtx, cancelProbe := context.WithTimeout(context.Background(), 2*time.Second)
 	capability, err := portalinput.Probe(probeCtx)
@@ -47,6 +49,7 @@ func TestRemoteDesktopPortalRuntime(t *testing.T) {
 		Devices: devices, Sources: portalinput.SourceMonitor,
 		CursorMode: portalinput.CursorHidden,
 	}
+	stage = "open"
 	signalPortalConsentReady(t, "remote-desktop")
 	session, err := portalinput.OpenWithOptions(ctx, options)
 	if err != nil {
@@ -58,6 +61,7 @@ func TestRemoteDesktopPortalRuntime(t *testing.T) {
 			_ = session.Close()
 		}
 	}()
+	stage = "validate-session"
 	if granted := session.Devices(); granted&devices != devices {
 		t.Fatalf("granted devices=%d, want all requested devices=%d", granted, devices)
 	}
@@ -72,6 +76,7 @@ func TestRemoteDesktopPortalRuntime(t *testing.T) {
 		t.Fatal("portal session returned no ScreenCast streams")
 	}
 	stream := streams[0]
+	stage = "input-events"
 	runPortalEvent(t, "PointerMotionAbsolute", func(eventCtx context.Context) error {
 		return session.PointerMotionAbsolute(eventCtx, stream.NodeID, 1, 1)
 	})
@@ -91,10 +96,18 @@ func TestRemoteDesktopPortalRuntime(t *testing.T) {
 	runPortalEvent(t, "modifier release", func(eventCtx context.Context) error {
 		return session.KeyboardKeysym(eventCtx, 0xffe1, false)
 	})
+	stage = "close"
 	if err := session.Close(); err != nil {
 		t.Fatalf("portal session Close error: %v", err)
 	}
 	closed = true
+}
+
+func reportPortalStageOnFailure(t *testing.T, stage *string) {
+	t.Helper()
+	if t.Failed() {
+		t.Logf("ROBOTGO_PORTAL_STAGE=%s", *stage)
+	}
 }
 
 func TestRemoteDesktopConsentMarkerCleanup(t *testing.T) {
