@@ -201,12 +201,12 @@ func TestHostedPortalApprovalPolicyMatchesDesktopBackend(t *testing.T) {
 	}
 }
 
-func TestHostedKDEScreenCastLocatorUsesProtectedAccessibilityBridge(
+func TestHostedKDEScreenCastLocatorUsesContentFreeKWinGeometry(
 	t *testing.T,
 ) {
 	t.Parallel()
 	executor := &scriptedCommandExecutor{
-		outputs: []string{"ok 1280 720 770 337 835 607\n"},
+		outputs: []string{"ok 1280 720 350 90 580 540\n"},
 	}
 	geometry, err := locateHostedKDEScreenCast(
 		context.Background(),
@@ -218,8 +218,9 @@ func TestHostedKDEScreenCastLocatorUsesProtectedAccessibilityBridge(
 	}
 	if geometry != (hostedPortalGeometry{
 		width: 1280, height: 720,
+		dialogX: 350, dialogY: 90,
+		dialogWidth: 580, dialogHeight: 540,
 		cardX: 770, cardY: 337,
-		buttonX: 835, buttonY: 607,
 	}) {
 		t.Fatalf("KDE geometry = %+v", geometry)
 	}
@@ -233,7 +234,6 @@ func TestHostedKDEScreenCastLocatorUsesProtectedAccessibilityBridge(
 		"runuser -u robotgo",
 		"XDG_RUNTIME_DIR=/run/user/1100",
 		"DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1100/bus",
-		"QT_ACCESSIBILITY=1",
 		"/usr/local/libexec/robotgo-runner-locate-screencast",
 	} {
 		if !strings.Contains(call, required) {
@@ -254,10 +254,12 @@ func TestHostedKDEScreenCastLocatorRejectsUnsafeGeometry(t *testing.T) {
 	t.Parallel()
 	for _, output := range []string{
 		"",
-		"1280 720 770 337 835\n",
-		"ok 1280 720 770 337 835 607 extra\n",
-		"ok 1280 720 1280 337 835 607\n",
-		"ok private 720 770 337 835 607\n",
+		"1280 720 350 90 580\n",
+		"ok 1280 720 350 90 580 540 extra\n",
+		"ok 1280 720 350 90 100 540\n",
+		"ok 1280 720 900 90 580 540\n",
+		"ok 1280 720 0 0 320 240\n",
+		"ok private 720 350 90 580 540\n",
 	} {
 		executor := &scriptedCommandExecutor{outputs: []string{output}}
 		if _, err := locateHostedKDEScreenCast(
@@ -273,7 +275,7 @@ func TestHostedKDEScreenCastLocatorRejectsUnsafeGeometry(t *testing.T) {
 func TestHostedKDEScreenCastLocatorReportsOnlyAllowlistedStage(t *testing.T) {
 	t.Parallel()
 	executor := &scriptedCommandExecutor{
-		outputs: []string{"error cards-0\n"},
+		outputs: []string{"error window-unavailable\n"},
 		errors:  []error{errors.New("private failure")},
 	}
 	_, err := locateHostedKDEScreenCast(
@@ -281,13 +283,23 @@ func TestHostedKDEScreenCastLocatorReportsOnlyAllowlistedStage(t *testing.T) {
 		executor,
 		[]string{"-p", "22222"},
 	)
-	if err == nil || !strings.Contains(err.Error(), `stage "cards-0"`) {
+	if err == nil || !strings.Contains(
+		err.Error(),
+		`stage "window-unavailable"`,
+	) {
 		t.Fatalf("KDE locator failure = %v", err)
 	}
 	for _, private := range []string{"private failure"} {
 		if strings.Contains(err.Error(), private) {
 			t.Fatalf("KDE locator failure leaks %q: %v", private, err)
 		}
+	}
+}
+
+func TestKDEPortalReferenceCoordinateScalesWithRuntimeDisplay(t *testing.T) {
+	t.Parallel()
+	if got := kdePortalReferenceCoordinate(770, 1920, 1280); got != 1155 {
+		t.Fatalf("scaled KDE portal coordinate = %d, want 1155", got)
 	}
 }
 

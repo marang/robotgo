@@ -39,14 +39,9 @@ var sessionFailureStagePattern = regexp.MustCompile(
 )
 
 var kdeLocatorFailureStages = map[string]struct{}{
-	"accessibility-unavailable": {},
-	"buttons-0":                 {},
-	"buttons-many":              {},
-	"cards-0":                   {},
-	"cards-1":                   {},
-	"cards-many":                {},
-	"dialog-ambiguous":          {},
-	"display-unavailable":       {},
+	"bridge-unavailable":     {},
+	"compositor-unavailable": {},
+	"window-unavailable":     {},
 }
 
 // HostedRuntimeOptions identifies one credential-free portal test in a
@@ -69,12 +64,14 @@ type hostedProcessResult struct {
 }
 
 type hostedPortalGeometry struct {
-	width   int
-	height  int
-	cardX   int
-	cardY   int
-	buttonX int
-	buttonY int
+	width        int
+	height       int
+	dialogX      int
+	dialogY      int
+	dialogWidth  int
+	dialogHeight int
+	cardX        int
+	cardY        int
 }
 
 // RunHostedPortal transfers the exact clean commit into a disposable guest,
@@ -853,13 +850,7 @@ func approveHostedPortal(
 			approvalError = waitQMPChord(ctx)
 		}
 		if approvalError == nil {
-			approvalError = qmp.clickAbsolute(
-				ctx,
-				geometry.buttonX,
-				geometry.buttonY,
-				geometry.width,
-				geometry.height,
-			)
+			approvalError = qmp.sendChord(ctx, qmpKeyReturn)
 		}
 		return errors.Join(approvalError, qmp.close())
 	}
@@ -880,7 +871,6 @@ func locateHostedKDEScreenCast(
 	command := "exec runuser -u robotgo -- env " +
 		"XDG_RUNTIME_DIR=/run/user/1100 " +
 		"DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1100/bus " +
-		"QT_ACCESSIBILITY=1 QT_LINUX_ACCESSIBILITY_ALWAYS_ON=1 " +
 		"/usr/local/libexec/robotgo-runner-locate-screencast"
 	var geometryOutput bytes.Buffer
 	runError := commands.Run(
@@ -928,26 +918,53 @@ func locateHostedKDEScreenCast(
 	}
 	geometry := hostedPortalGeometry{
 		width: values[0], height: values[1],
-		cardX: values[2], cardY: values[3],
-		buttonX: values[4], buttonY: values[5],
+		dialogX: values[2], dialogY: values[3],
+		dialogWidth: values[4], dialogHeight: values[5],
 	}
 	if geometry.width < 640 ||
 		geometry.width > 8192 ||
 		geometry.height < 480 ||
 		geometry.height > 8192 ||
-		geometry.cardX < 0 ||
-		geometry.cardX >= geometry.width ||
-		geometry.cardY < 0 ||
-		geometry.cardY >= geometry.height ||
-		geometry.buttonX < 0 ||
-		geometry.buttonX >= geometry.width ||
-		geometry.buttonY < 0 ||
-		geometry.buttonY >= geometry.height {
+		geometry.dialogX < 0 ||
+		geometry.dialogX >= geometry.width ||
+		geometry.dialogY < 0 ||
+		geometry.dialogY >= geometry.height ||
+		geometry.dialogWidth < 320 ||
+		geometry.dialogHeight < 240 ||
+		geometry.dialogWidth > geometry.width-geometry.dialogX ||
+		geometry.dialogHeight > geometry.height-geometry.dialogY {
 		return hostedPortalGeometry{}, errors.New(
 			"hosted KDE ScreenCast geometry is invalid",
 		)
 	}
+	geometry.cardX = kdePortalReferenceCoordinate(
+		kdePhysicalOutputX,
+		geometry.width,
+		hostedDisplayWidth,
+	)
+	geometry.cardY = kdePortalReferenceCoordinate(
+		kdePhysicalOutputY,
+		geometry.height,
+		hostedDisplayHeight,
+	)
+	if geometry.cardX < geometry.dialogX ||
+		geometry.cardX >= geometry.dialogX+geometry.dialogWidth ||
+		geometry.cardY < geometry.dialogY ||
+		geometry.cardY >= geometry.dialogY+geometry.dialogHeight {
+		return hostedPortalGeometry{}, errors.New(
+			"hosted KDE ScreenCast target is outside the active dialog",
+		)
+	}
 	return geometry, nil
+}
+
+const (
+	kdePhysicalOutputX = 770
+	kdePhysicalOutputY = 337
+)
+
+func kdePortalReferenceCoordinate(reference, actual, baseline int) int {
+	return reference * actual / baseline
 }
 
 func collectHostedDiagnostics(

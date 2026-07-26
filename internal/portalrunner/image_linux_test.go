@@ -160,8 +160,17 @@ func TestRepositoryKDEGuestFilesAreCompleteAndExecutable(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if info.Mode().Perm() != 0o755 {
-			t.Errorf("%s mode = %o, want 755", relative, info.Mode().Perm())
+		wantMode := os.FileMode(0o755)
+		if filepath.Ext(relative) == ".js" {
+			wantMode = 0o644
+		}
+		if info.Mode().Perm() != wantMode {
+			t.Errorf(
+				"%s mode = %o, want %o",
+				relative,
+				info.Mode().Perm(),
+				wantMode,
+			)
 		}
 	}
 }
@@ -423,9 +432,6 @@ func TestRepositoryKDEGuestActivatesPortalFrontendAndBackend(t *testing.T) {
 	for _, required := range []string{
 		"busctl --address=unix:path=/run/user/1100/bus",
 		"--no-pager call",
-		"org.a11y.Bus",
-		"/org/a11y/bus",
-		"GetAddress",
 		"org.freedesktop.portal.Desktop",
 		"org.freedesktop.impl.portal.desktop.kde",
 		"org.freedesktop.DBus.Peer",
@@ -444,26 +450,74 @@ func TestRepositoryKDEGuestActivatesPortalFrontendAndBackend(t *testing.T) {
 	}
 	for _, required := range []string{
 		"/usr/local/libexec/robotgo-runner-locate-screencast",
-		"QT_ACCESSIBILITY=1",
-		"QT_LINUX_ACCESSIBILITY_ALWAYS_ON=1",
-		"Requires=at-spi-dbus-bus.service",
-		"After=at-spi-dbus-bus.service",
-		"len(cards) == 2",
-		"card_rectangle = extents(cards[1][2])",
-		"len(disabled) == 1",
-		"card_rectangle.x + card_rectangle.width // 2",
-		"button_rectangle.x + button_rectangle.width // 2",
+		"/usr/local/libexec/robotgo-runner-report-screencast-geometry",
+		"/usr/local/share/robotgo/report-screencast-geometry.js",
 	} {
 		if !strings.Contains(string(installScript), required) {
-			t.Errorf("KDE accessibility approval omits %q", required)
+			t.Errorf("KDE geometry approval omits %q", required)
 		}
 	}
 	manifest, err := os.ReadFile(filepath.Join(filepath.Dir(guestRoot), "manifest.json"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(manifest), `"python3-pyatspi"`) {
-		t.Fatal("KDE manifest omits the pinned accessibility bridge package")
+	for _, required := range []string{`"python3-dbus"`, `"python3-gi"`} {
+		if !strings.Contains(string(manifest), required) {
+			t.Fatalf("KDE manifest omits geometry bridge package %s", required)
+		}
+	}
+	if strings.Contains(string(manifest), `"python3-pyatspi"`) {
+		t.Fatal("KDE manifest still installs the ineffective AT-SPI bridge")
+	}
+
+	locator, err := os.ReadFile(filepath.Join(guestRoot, "locate-screencast.sh"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, required := range []string{
+		"org.kde.KWin",
+		"org.kde.kwin.Scripting",
+		"org.kde.kwin.Script run",
+		"unloadScript",
+		`rm -f -- "$output"`,
+	} {
+		if !strings.Contains(string(locator), required) {
+			t.Errorf("KDE geometry locator omits %q", required)
+		}
+	}
+	for _, forbidden := range []string{"screendump", "journalctl", "title"} {
+		if strings.Contains(string(locator), forbidden) {
+			t.Errorf("KDE geometry locator contains %q", forbidden)
+		}
+	}
+
+	reporter, err := os.ReadFile(
+		filepath.Join(guestRoot, "report-screencast-geometry.js"),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, required := range []string{
+		"workspace.virtualScreenSize",
+		"workspace.activeClient",
+		"dialog.x",
+		"dialog.y",
+		"dialog.width",
+		"dialog.height",
+	} {
+		if !strings.Contains(string(reporter), required) {
+			t.Errorf("KDE KWin reporter omits %q", required)
+		}
+	}
+	for _, forbidden := range []string{
+		"caption",
+		"resourceName",
+		"title",
+		"screenshot",
+	} {
+		if strings.Contains(string(reporter), forbidden) {
+			t.Errorf("KDE KWin reporter contains %q", forbidden)
+		}
 	}
 }
 

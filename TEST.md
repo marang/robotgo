@@ -512,9 +512,10 @@ also covers compositors that suppress unchanged frames: the backend waits one
 short poll for a fresh frame and then returns an owned copy of the latest frame.
 `.github/workflows/screencast-e2e.yml` runs GNOME and KDE in the same
 disposable GitHub-hosted nested-QEMU model. Both run on `main` pushes and on
-manual `gnome|kde|all` dispatches. KDE's pinned guest accessibility bridge
-reports only control geometry; the private host QMP pointer selects the
-physical monitor, and the integration test rejects a virtual-output stream.
+manual `gnome|kde|all` dispatches. KDE's pinned KWin helper reports only
+virtual-screen and active-dialog geometry through private D-Bus; the host
+verifies its digest-bound target, selects the physical monitor through QMP,
+and the integration test rejects a virtual-output stream.
 wlroots does not count as a ScreenCast pass and is promoted separately under
 P005.
 

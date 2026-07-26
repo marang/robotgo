@@ -18,9 +18,10 @@ const (
 	qmpMaximumResponse = 1024 * 1024
 	qmpChordInterval   = 250 * time.Millisecond
 
-	qmpKeyAlt = "alt"
-	qmpKeyI   = "i"
-	qmpKeyS   = "s"
+	qmpKeyAlt    = "alt"
+	qmpKeyI      = "i"
+	qmpKeyReturn = "ret"
+	qmpKeyS      = "s"
 
 	qmpEventAbsolute = "abs"
 	qmpEventButton   = "btn"
@@ -224,7 +225,7 @@ func (client *qmpClient) approvePortal(
 		return client.sendChord(ctx, qmpKeyAlt, qmpKeyS)
 	case portalLaneKDE:
 		return errors.New(
-			"KDE portal approval uses the protected guest accessibility bridge",
+			"KDE portal approval uses protected KWin dialog geometry",
 		)
 	default:
 		return errors.New("QMP portal approval lane is invalid")

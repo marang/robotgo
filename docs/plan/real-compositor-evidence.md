@@ -95,11 +95,12 @@ auto-approve requests and does not persist restore tokens between jobs.
 GNOME and KDE use independent host-side consent controllers. The test writes a
 private, non-sensitive marker immediately before its portal call. After a
 bounded dialog settle interval, the GNOME host injects the required keyboard
-input through QMP. For KDE ScreenCast, a digest-bound accessibility helper
-inside the immutable guest reports only the physical card and disabled
-confirmation-control geometry; the host performs both actions through QMP's
-private pointer. Accessible names, pixels, and dialog content never leave the
-guest. KDE's native non-sandboxed RemoteDesktop backend follows the upstream
+input through QMP. For KDE ScreenCast, a digest-bound KWin helper reports only
+virtual-screen and active-dialog geometry through a short-lived private D-Bus
+receiver. The host verifies that its physical-monitor target lies inside that
+dialog, then selects and confirms it through QMP. Window names, accessibility
+data, pixels, and dialog content never leave the guest. KDE's native
+non-sandboxed RemoteDesktop backend follows the upstream
 notification policy and presents no modal approval dialog. RobotGo cannot
 access the private QMP socket, does not patch the portal backend, and does not
 call its own input API to grant permission. Missing readiness, early test exit,
@@ -122,7 +123,7 @@ before RobotGo reads frames or injects input:
 5. PipeWire development/runtime availability for persistent capture
 6. lane-specific native tools and capabilities used by window/input evidence
 7. declared output count and multi-output requirement for geometry cells
-8. independent QMP consent-driver readiness, plus the KDE control-geometry
+8. independent QMP consent-driver readiness, plus the KDE dialog-geometry
    locator for its ScreenCast cell
 9. writable runner-temporary evidence directory with cleanup registered
 

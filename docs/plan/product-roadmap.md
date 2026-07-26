@@ -47,7 +47,7 @@ project P002 is complete, while roadmap Phase 5 remains partial. The active
 [Protected Real-Compositor Evidence Plan](real-compositor-evidence.md) now
 provides the shared evidence contract. Credential-free hosted GNOME/KDE jobs
 provide exact-tree transfer, real portal execution, independent QMP consent,
-digest-bound KDE ScreenCast control-geometry discovery, and mandatory
+digest-bound KDE ScreenCast dialog-geometry validation, and mandatory
 transient cleanup;
 release promotion and GNOME/KDE multi-output remain open. The
 hosted
