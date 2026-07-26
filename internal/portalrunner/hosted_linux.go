@@ -588,7 +588,7 @@ func configureHostedGuestDisplay(
 		return err
 	}
 	command := "cd /home/robotgo/robotgo; exec env " +
-		"ROBOTGO_HOSTED_GUEST=1 " +
+		HostedGuestEnvKey + "=1 " +
 		"go run ./internal/cmd/portalrunner guest-display " +
 		"-manifest infrastructure/portal-runner/" + lane +
 		"/manifest.json"

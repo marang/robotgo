@@ -71,7 +71,7 @@ func runGuestDisplay(
 	if flags.NArg() != 0 {
 		return errors.New("guest-display accepts no positional arguments")
 	}
-	if os.Getenv("ROBOTGO_HOSTED_GUEST") != "1" {
+	if os.Getenv(portalrunner.HostedGuestEnvKey) != "1" {
 		return errors.New(
 			"guest-display is restricted to a disposable hosted guest",
 		)

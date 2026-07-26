@@ -23,6 +23,9 @@ import (
 const (
 	// ManifestSchemaVersion identifies the protected runner definition format.
 	ManifestSchemaVersion = "1"
+	// HostedGuestEnvKey gates commands that may reconfigure the disposable
+	// hosted guest desktop.
+	HostedGuestEnvKey = "ROBOTGO_HOSTED_GUEST"
 
 	portalLaneGNOME = "gnome"
 	portalLaneKDE   = "kde"
