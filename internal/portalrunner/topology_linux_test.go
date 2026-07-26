@@ -113,6 +113,68 @@ func TestKScreenApplyPreservesNonApplyFailure(t *testing.T) {
 	}
 }
 
+func TestKScreenSettleRetriesTransientCommandFailure(t *testing.T) {
+	t.Parallel()
+	selection := topologySelection{
+		Connector: "Virtual-1",
+		ModeID:    "1280x720@60",
+		Output: HostedOutput{
+			Width: 1280, Height: 720,
+		},
+	}
+	calls := 0
+	err := waitForKScreenSettle(
+		context.Background(),
+		0,
+		[]topologySelection{selection},
+		func(context.Context) (kscreenState, error) {
+			calls++
+			if calls < 3 {
+				return kscreenState{}, newHostedDisplayFailure(
+					hostedDisplayStageKDEStateRun,
+				)
+			}
+			return kscreenState{Outputs: []kscreenOutput{{
+				Name:          selection.Connector,
+				Scale:         1,
+				Size:          kscreenSize{Width: 1280, Height: 720},
+				CurrentModeID: selection.ModeID,
+				Connected:     true,
+				Enabled:       true,
+			}}}, nil
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if calls != 3 {
+		t.Fatalf("KScreen settle calls = %d", calls)
+	}
+}
+
+func TestKScreenSettlePreservesDeterministicStateFailure(t *testing.T) {
+	t.Parallel()
+	calls := 0
+	err := waitForKScreenSettle(
+		context.Background(),
+		0,
+		nil,
+		func(context.Context) (kscreenState, error) {
+			calls++
+			return kscreenState{}, newHostedDisplayFailure(
+				hostedDisplayStageKDEStateJSON,
+			)
+		},
+	)
+	if stage := HostedDisplayFailureStage(err); stage !=
+		hostedDisplayStageKDEStateJSON {
+		t.Fatalf("KScreen settle failure stage = %q", stage)
+	}
+	if calls != 1 {
+		t.Fatalf("deterministic KScreen settle failure was retried %d times", calls)
+	}
+}
+
 func TestHostedDisplayFailureMarkerIsPrivacySafe(t *testing.T) {
 	t.Parallel()
 	failure := errors.Join(

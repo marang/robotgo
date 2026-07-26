@@ -17,8 +17,6 @@ import (
 
 const envRemoteDesktopE2E = "ROBOTGO_REMOTE_DESKTOP_E2E"
 const envPortalConsentReadyFile = "ROBOTGO_PORTAL_CONSENT_READY_FILE"
-const envPortalMultiOutput = "ROBOTGO_PORTAL_MULTI_OUTPUT"
-const envPortalExpectedOutputs = "ROBOTGO_PORTAL_EXPECTED_OUTPUTS"
 
 func TestRemoteDesktopPortalRuntime(t *testing.T) {
 	if os.Getenv(envRemoteDesktopE2E) == "" {
@@ -141,8 +139,8 @@ func expectedPortalOutputs(
 	t *testing.T,
 ) (portalrunner.HostedDisplay, bool) {
 	t.Helper()
-	multiOutput := os.Getenv(envPortalMultiOutput)
-	encoded := os.Getenv(envPortalExpectedOutputs)
+	multiOutput := os.Getenv(portalrunner.PortalMultiOutputEnvKey)
+	encoded := os.Getenv(portalrunner.PortalExpectedOutputsEnvKey)
 	if multiOutput == "" {
 		if encoded != "" {
 			t.Fatal("portal expected outputs require multi-output mode")

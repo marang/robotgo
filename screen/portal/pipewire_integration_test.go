@@ -15,8 +15,6 @@ import (
 )
 
 const envScreenCastRequireMonitor = "ROBOTGO_SCREENCAST_REQUIRE_MONITOR"
-const envPortalMultiOutput = "ROBOTGO_PORTAL_MULTI_OUTPUT"
-const envPortalExpectedOutputs = "ROBOTGO_PORTAL_EXPECTED_OUTPUTS"
 
 func TestPipeWireCapturePersistentSessionIntegration(t *testing.T) {
 	if os.Getenv("ROBOTGO_SCREENCAST_E2E") == "" {
@@ -184,8 +182,8 @@ func expectedScreenCastOutputs(
 	t *testing.T,
 ) (portalrunner.HostedDisplay, bool) {
 	t.Helper()
-	multiOutput := os.Getenv(envPortalMultiOutput)
-	encoded := os.Getenv(envPortalExpectedOutputs)
+	multiOutput := os.Getenv(portalrunner.PortalMultiOutputEnvKey)
+	encoded := os.Getenv(portalrunner.PortalExpectedOutputsEnvKey)
 	if multiOutput == "" {
 		if encoded != "" {
 			t.Fatal("ScreenCast expected outputs require multi-output mode")

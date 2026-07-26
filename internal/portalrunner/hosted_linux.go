@@ -984,8 +984,8 @@ func hostedPortalTestCommandForTopology(
 		if err != nil {
 			return "", err
 		}
-		environment += " ROBOTGO_PORTAL_MULTI_OUTPUT=1" +
-			" ROBOTGO_PORTAL_EXPECTED_OUTPUTS=" + shellQuote(encoded)
+		environment += " " + PortalMultiOutputEnvKey + "=1" +
+			" " + PortalExpectedOutputsEnvKey + "=" + shellQuote(encoded)
 	}
 	var test string
 	if cell == "screencast" {

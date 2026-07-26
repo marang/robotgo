@@ -509,16 +509,37 @@ func configureKScreenDisplay(
 	); err != nil {
 		return err
 	}
+	return waitForKScreenSettle(
+		ctx,
+		hostedTopologyPoll,
+		selections,
+		readKScreenState,
+	)
+}
+
+func waitForKScreenSettle(
+	ctx context.Context,
+	poll time.Duration,
+	selections []topologySelection,
+	read kscreenStateReader,
+) error {
 	for {
-		state, err = readKScreenState(ctx)
+		state, err := read(ctx)
 		if err == nil &&
 			kscreenTopologyMatches(state.Outputs, selections) {
 			return nil
 		}
+		if err != nil &&
+			HostedDisplayFailureStage(err) !=
+				hostedDisplayStageKDEStateRun {
+			return err
+		}
+		timer := time.NewTimer(poll)
 		select {
 		case <-ctx.Done():
+			timer.Stop()
 			return newHostedDisplayFailure(hostedDisplayStageKDESettle)
-		case <-time.After(hostedTopologyPoll):
+		case <-timer.C:
 		}
 	}
 }

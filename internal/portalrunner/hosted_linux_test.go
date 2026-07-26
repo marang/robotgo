@@ -251,8 +251,8 @@ func TestHostedPortalMultiOutputCommandBindsCanonicalTopology(
 		t.Fatal(err)
 	}
 	for _, required := range []string{
-		"ROBOTGO_PORTAL_MULTI_OUTPUT=1",
-		"ROBOTGO_PORTAL_EXPECTED_OUTPUTS=" +
+		PortalMultiOutputEnvKey + "=1",
+		PortalExpectedOutputsEnvKey + "=" +
 			"'0,0,1280,720;1280,0,1024,768'",
 	} {
 		if !strings.Contains(command, required) {

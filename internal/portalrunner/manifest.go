@@ -26,6 +26,10 @@ const (
 	// HostedGuestEnvKey gates commands that may reconfigure the disposable
 	// hosted guest desktop.
 	HostedGuestEnvKey = "ROBOTGO_HOSTED_GUEST"
+	// PortalMultiOutputEnvKey enables the hosted multi-output portal contract.
+	PortalMultiOutputEnvKey = "ROBOTGO_PORTAL_MULTI_OUTPUT"
+	// PortalExpectedOutputsEnvKey carries the encoded hosted output topology.
+	PortalExpectedOutputsEnvKey = "ROBOTGO_PORTAL_EXPECTED_OUTPUTS"
 
 	portalLaneGNOME = "gnome"
 	portalLaneKDE   = "kde"
