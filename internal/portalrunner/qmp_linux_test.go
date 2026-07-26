@@ -98,7 +98,7 @@ func TestQMPAbsoluteClickUsesRuntimeDisplayGeometry(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = listener.Close() })
 
-	commands := make(chan qmpCommand, 6)
+	commands := make(chan qmpCommand, 7)
 	serverDone := make(chan error, 1)
 	go func() {
 		connection, err := listener.Accept()
@@ -115,7 +115,7 @@ func TestQMPAbsoluteClickUsesRuntimeDisplayGeometry(t *testing.T) {
 		}
 		decoder := json.NewDecoder(bufio.NewReader(connection))
 		encoder := json.NewEncoder(connection)
-		for commandIndex := range 6 {
+		for commandIndex := range 7 {
 			var command qmpCommand
 			if err := decoder.Decode(&command); err != nil {
 				serverDone <- err
@@ -182,7 +182,7 @@ func TestQMPAbsoluteClickUsesRuntimeDisplayGeometry(t *testing.T) {
 		t.Fatal(err)
 	}
 	close(commands)
-	got := make([]qmpCommand, 0, 6)
+	got := make([]qmpCommand, 0, 7)
 	for command := range commands {
 		got = append(got, command)
 	}
@@ -197,7 +197,8 @@ func TestQMPAbsoluteClickUsesRuntimeDisplayGeometry(t *testing.T) {
 		t.Fatalf("pointer verification command = %q", got[3].Execute)
 	}
 	assertQMPMove(t, got[4], 400, 300, 1600, 900)
-	assertQMPLeftClick(t, got[5])
+	assertQMPButton(t, got[5], true)
+	assertQMPButton(t, got[6], false)
 }
 
 func TestQMPAbsoluteClickRejectsAmbiguousPointerHandlers(t *testing.T) {
@@ -451,21 +452,20 @@ func assertQMPMove(
 	assertQMPPointerEvent(t, rawEvents[1], "abs", "y", wantY, false)
 }
 
-func assertQMPLeftClick(t *testing.T, command qmpCommand) {
+func assertQMPButton(t *testing.T, command qmpCommand, down bool) {
 	t.Helper()
 	if command.Execute != "input-send-event" {
-		t.Fatalf("QMP click command = %q", command.Execute)
+		t.Fatalf("QMP button command = %q", command.Execute)
 	}
 	arguments, ok := command.Arguments.(map[string]any)
 	if !ok {
-		t.Fatalf("QMP click arguments type = %T", command.Arguments)
+		t.Fatalf("QMP button arguments type = %T", command.Arguments)
 	}
 	rawEvents, ok := arguments["events"].([]any)
-	if !ok || len(rawEvents) != 2 {
-		t.Fatalf("QMP click events = %#v", arguments["events"])
+	if !ok || len(rawEvents) != 1 {
+		t.Fatalf("QMP button events = %#v", arguments["events"])
 	}
-	assertQMPPointerEvent(t, rawEvents[0], "btn", "left", 0, true)
-	assertQMPPointerEvent(t, rawEvents[1], "btn", "left", 0, false)
+	assertQMPPointerEvent(t, rawEvents[0], "btn", "left", 0, down)
 }
 
 func assertQMPMouseSet(t *testing.T, command qmpCommand, index int) {

@@ -204,7 +204,7 @@ func (client *qmpClient) clickAbsolute(
 	if err := waitQMPChord(ctx); err != nil {
 		return err
 	}
-	return client.execute(ctx, qmpCommandInputEvent, map[string]any{
+	if err := client.execute(ctx, qmpCommandInputEvent, map[string]any{
 		"events": []qmpInputEvent{
 			{
 				Type: qmpEventButton,
@@ -212,6 +212,12 @@ func (client *qmpClient) clickAbsolute(
 					Down: true, Button: qmpPointerLeft,
 				},
 			},
+		},
+	}); err != nil {
+		return err
+	}
+	return client.execute(ctx, qmpCommandInputEvent, map[string]any{
+		"events": []qmpInputEvent{
 			{
 				Type: qmpEventButton,
 				Data: qmpButtonEventData{
