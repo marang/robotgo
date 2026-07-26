@@ -27,6 +27,7 @@ const (
 	qmpCommandInputEvent   = "input-send-event"
 	qmpCommandQueryMice    = "query-mice"
 	qmpMouseSetCommand     = "mouse_set"
+	qmpUSBTabletName       = "QEMU HID Tablet"
 
 	qmpEventAbsolute = "abs"
 	qmpEventButton   = "btn"
@@ -90,9 +91,10 @@ type qmpButtonEventData struct {
 }
 
 type qmpMouseInfo struct {
-	Index    int  `json:"index"`
-	Absolute bool `json:"absolute"`
-	Current  bool `json:"current"`
+	Name     string `json:"name"`
+	Index    int    `json:"index"`
+	Absolute bool   `json:"absolute"`
+	Current  bool   `json:"current"`
 }
 
 func connectQMP(ctx context.Context, socketPath string) (*qmpClient, error) {
@@ -225,20 +227,20 @@ func (client *qmpClient) selectAbsolutePointer(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	var absolute *qmpMouseInfo
+	var tablet *qmpMouseInfo
 	for index := range mice {
-		if !mice[index].Absolute {
+		if !mice[index].Absolute || mice[index].Name != qmpUSBTabletName {
 			continue
 		}
-		if absolute != nil {
-			return errors.New("QMP reported multiple absolute pointer handlers")
+		if tablet != nil {
+			return errors.New("QMP reported multiple USB tablet handlers")
 		}
-		absolute = &mice[index]
+		tablet = &mice[index]
 	}
-	if absolute == nil {
-		return errors.New("QMP reported no absolute pointer handler")
+	if tablet == nil {
+		return errors.New("QMP reported no USB tablet handler")
 	}
-	if absolute.Current {
+	if tablet.Current {
 		return nil
 	}
 	if _, err := client.executeResult(
@@ -248,7 +250,7 @@ func (client *qmpClient) selectAbsolutePointer(ctx context.Context) error {
 			"command-line": fmt.Sprintf(
 				"%s %d",
 				qmpMouseSetCommand,
-				absolute.Index,
+				tablet.Index,
 			),
 		},
 	); err != nil {
@@ -259,8 +261,9 @@ func (client *qmpClient) selectAbsolutePointer(ctx context.Context) error {
 		return err
 	}
 	for index := range mice {
-		if mice[index].Index == absolute.Index &&
+		if mice[index].Index == tablet.Index &&
 			mice[index].Absolute &&
+			mice[index].Name == qmpUSBTabletName &&
 			mice[index].Current {
 			return nil
 		}

@@ -127,10 +127,16 @@ func TestQMPAbsoluteClickUsesRuntimeDisplayGeometry(t *testing.T) {
 			case 1:
 				response = []map[string]any{
 					{
-						"index": 1, "absolute": false, "current": true,
+						"name": "relative", "index": 1,
+						"absolute": false, "current": true,
 					},
 					{
-						"index": 2, "absolute": true, "current": false,
+						"name": qmpUSBTabletName, "index": 2,
+						"absolute": true, "current": false,
+					},
+					{
+						"name": "other absolute", "index": 3,
+						"absolute": true, "current": false,
 					},
 				}
 			case 2:
@@ -138,10 +144,16 @@ func TestQMPAbsoluteClickUsesRuntimeDisplayGeometry(t *testing.T) {
 			case 3:
 				response = []map[string]any{
 					{
-						"index": 1, "absolute": false, "current": false,
+						"name": "relative", "index": 1,
+						"absolute": false, "current": false,
 					},
 					{
-						"index": 2, "absolute": true, "current": true,
+						"name": qmpUSBTabletName, "index": 2,
+						"absolute": true, "current": true,
+					},
+					{
+						"name": "other absolute", "index": 3,
+						"absolute": true, "current": false,
 					},
 				}
 			}
@@ -192,8 +204,10 @@ func TestQMPAbsoluteClickRejectsAmbiguousPointerHandlers(t *testing.T) {
 	t.Parallel()
 	for _, response := range []string{
 		`[]`,
-		`[{"index":2,"absolute":true,"current":true},` +
-			`{"index":3,"absolute":true,"current":false}]`,
+		`[{"name":"QEMU HID Tablet","index":2,` +
+			`"absolute":true,"current":true},` +
+			`{"name":"QEMU HID Tablet","index":3,` +
+			`"absolute":true,"current":false}]`,
 	} {
 		response := response
 		t.Run(response, func(t *testing.T) {
@@ -244,11 +258,15 @@ func TestQMPAbsoluteClickVerifiesPointerActivation(t *testing.T) {
 	go serveQMPResponses(t, listener, []string{
 		`{"QMP":{"version":{"qemu":{"major":11}}}}`,
 		`{"return":{},"id":1}`,
-		`{"return":[{"index":1,"absolute":false,"current":true},` +
-			`{"index":2,"absolute":true,"current":false}],"id":2}`,
+		`{"return":[{"name":"relative","index":1,` +
+			`"absolute":false,"current":true},` +
+			`{"name":"QEMU HID Tablet","index":2,` +
+			`"absolute":true,"current":false}],"id":2}`,
 		`{"return":"","id":3}`,
-		`{"return":[{"index":1,"absolute":false,"current":true},` +
-			`{"index":2,"absolute":true,"current":false}],"id":4}`,
+		`{"return":[{"name":"relative","index":1,` +
+			`"absolute":false,"current":true},` +
+			`{"name":"QEMU HID Tablet","index":2,` +
+			`"absolute":true,"current":false}],"id":4}`,
 	})
 
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
