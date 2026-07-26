@@ -18,12 +18,24 @@ const (
 	qmpMaximumResponse = 1024 * 1024
 	qmpChordInterval   = 250 * time.Millisecond
 
-	qmpKeyAlt    = "alt"
-	qmpKeyI      = "i"
-	qmpKeyReturn = "ret"
-	qmpKeyS      = "s"
-	qmpKeySpace  = "spc"
-	qmpKeyTab    = "tab"
+	qmpKeyAlt = "alt"
+	qmpKeyI   = "i"
+	qmpKeyS   = "s"
+
+	qmpEventAbsolute = "abs"
+	qmpEventButton   = "btn"
+	qmpPointerAxisX  = "x"
+	qmpPointerAxisY  = "y"
+	qmpPointerLeft   = "left"
+
+	qmpAbsoluteMaximum  = 0x7fff
+	hostedDisplayWidth  = 1280
+	hostedDisplayHeight = 720
+
+	kdePhysicalOutputX = 770
+	kdePhysicalOutputY = 337
+	kdeShareButtonX    = 835
+	kdeShareButtonY    = 607
 )
 
 type qmpClient struct {
@@ -52,8 +64,8 @@ type qmpCommand struct {
 }
 
 type qmpInputEvent struct {
-	Type string          `json:"type"`
-	Data qmpKeyEventData `json:"data"`
+	Type string `json:"type"`
+	Data any    `json:"data"`
 }
 
 type qmpKeyEventData struct {
@@ -64,6 +76,16 @@ type qmpKeyEventData struct {
 type qmpKeyValue struct {
 	Type string `json:"type"`
 	Data string `json:"data"`
+}
+
+type qmpAbsoluteEventData struct {
+	Axis  string `json:"axis"`
+	Value int    `json:"value"`
+}
+
+type qmpButtonEventData struct {
+	Down   bool   `json:"down"`
+	Button string `json:"button"`
 }
 
 func connectQMP(ctx context.Context, socketPath string) (*qmpClient, error) {
@@ -134,6 +156,56 @@ func (client *qmpClient) sendChord(ctx context.Context, keys ...string) error {
 	})
 }
 
+func (client *qmpClient) clickAbsolute(
+	ctx context.Context,
+	x,
+	y int,
+) error {
+	absoluteX, err := qmpAbsoluteCoordinate(x, hostedDisplayWidth)
+	if err != nil {
+		return err
+	}
+	absoluteY, err := qmpAbsoluteCoordinate(y, hostedDisplayHeight)
+	if err != nil {
+		return err
+	}
+	return client.execute(ctx, "input-send-event", map[string]any{
+		"events": []qmpInputEvent{
+			{
+				Type: qmpEventAbsolute,
+				Data: qmpAbsoluteEventData{
+					Axis: qmpPointerAxisX, Value: absoluteX,
+				},
+			},
+			{
+				Type: qmpEventAbsolute,
+				Data: qmpAbsoluteEventData{
+					Axis: qmpPointerAxisY, Value: absoluteY,
+				},
+			},
+			{
+				Type: qmpEventButton,
+				Data: qmpButtonEventData{
+					Down: true, Button: qmpPointerLeft,
+				},
+			},
+			{
+				Type: qmpEventButton,
+				Data: qmpButtonEventData{
+					Down: false, Button: qmpPointerLeft,
+				},
+			},
+		},
+	})
+}
+
+func qmpAbsoluteCoordinate(pixel, dimension int) (int, error) {
+	if dimension <= 1 || pixel < 0 || pixel >= dimension {
+		return 0, errors.New("QMP absolute pointer coordinate is invalid")
+	}
+	return pixel * qmpAbsoluteMaximum / (dimension - 1), nil
+}
+
 func (client *qmpClient) approvePortal(
 	ctx context.Context,
 	lane,
@@ -160,23 +232,25 @@ func (client *qmpClient) approvePortal(
 			)
 		}
 		// Plasma 5.27 lists a virtual output before the physical monitor, so
-		// its one-item auto-selection does not apply. The pinned QML focus
-		// order visits both cards before the restore checkbox. Select the
-		// second card, then let SystemDialog handle Return. This remains
-		// deterministic across translated output and button labels.
-		for _, key := range []string{
-			qmpKeyTab,
-			qmpKeyTab,
-			qmpKeySpace,
-		} {
-			if err := client.sendChord(ctx, key); err != nil {
-				return err
-			}
-			if err := waitQMPChord(ctx); err != nil {
-				return err
-			}
+		// its one-item auto-selection does not apply. The pinned 1280x720
+		// Breeze dialog places the physical card second. QMP pointer input
+		// selects that card and then the right-aligned standard Share button,
+		// independently of translated labels and keyboard focus policy.
+		if err := client.clickAbsolute(
+			ctx,
+			kdePhysicalOutputX,
+			kdePhysicalOutputY,
+		); err != nil {
+			return err
 		}
-		return client.sendChord(ctx, qmpKeyReturn)
+		if err := waitQMPChord(ctx); err != nil {
+			return err
+		}
+		return client.clickAbsolute(
+			ctx,
+			kdeShareButtonX,
+			kdeShareButtonY,
+		)
 	default:
 		return errors.New("QMP portal approval lane is invalid")
 	}
@@ -285,17 +359,29 @@ func buildHostedQEMUArguments(
 		sshPort,
 		true,
 	)
-	arguments := make([]string, 0, len(base)+8)
-	for _, argument := range base {
-		if argument != "-daemonize" {
-			arguments = append(arguments, argument)
+	arguments := make([]string, 0, len(base)+10)
+	for index := 0; index < len(base); index++ {
+		if base[index] == "-daemonize" {
+			continue
 		}
+		if base[index] == "-device" &&
+			index+1 < len(base) &&
+			base[index+1] == "bochs-display" {
+			index++
+			continue
+		}
+		arguments = append(arguments, base[index])
 	}
 	return append(
 		arguments,
 		"-device", "qemu-xhci",
 		"-device", "usb-kbd",
 		"-device", "usb-tablet",
+		"-device", fmt.Sprintf(
+			"bochs-display,xres=%d,yres=%d",
+			hostedDisplayWidth,
+			hostedDisplayHeight,
+		),
 		"-qmp", "unix:"+qmpSocket+",server=on,wait=off",
 	)
 }

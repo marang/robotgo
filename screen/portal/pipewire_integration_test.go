@@ -35,6 +35,7 @@ func TestPipeWireCapturePersistentSessionIntegration(t *testing.T) {
 	)
 	cancelOpen()
 	if err != nil {
+		stage = screenCastOpenFailureStage(err)
 		t.Fatalf("OpenPipeWireCapture error: %v", err)
 	}
 	defer func() {
@@ -63,6 +64,21 @@ func TestPipeWireCapturePersistentSessionIntegration(t *testing.T) {
 		if frame.Bounds().Empty() {
 			t.Fatalf("frame %d is empty", frameNumber)
 		}
+	}
+}
+
+func screenCastOpenFailureStage(err error) string {
+	switch {
+	case errors.Is(err, context.DeadlineExceeded):
+		return "portal-timeout"
+	case errors.Is(err, ErrScreenCastCancelled):
+		return "portal-cancelled"
+	case errors.Is(err, ErrScreenCastRejected):
+		return "portal-rejected"
+	case errors.Is(err, ErrScreenCastUnavailable):
+		return "portal-unavailable"
+	default:
+		return "portal-open"
 	}
 }
 
