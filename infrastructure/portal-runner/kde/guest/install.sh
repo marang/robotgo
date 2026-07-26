@@ -169,7 +169,7 @@ def extents(accessible):
 
 
 def controls(root):
-    checkable_cards = []
+    output_cards = []
     disabled_buttons = []
     for accessible in descendants(root):
         rectangle = extents(accessible)
@@ -179,18 +179,17 @@ def controls(root):
             continue
         role = accessible.getRole()
         if (
-            state_contains(accessible, pyatspi.STATE_CHECKABLE)
-            and rectangle.width >= MINIMUM_CARD_EXTENT
+            rectangle.width >= MINIMUM_CARD_EXTENT
             and rectangle.height >= MINIMUM_CARD_EXTENT
             and action(accessible) is not None
         ):
-            checkable_cards.append((rectangle.y, rectangle.x, accessible))
+            output_cards.append((rectangle.y, rectangle.x, accessible))
         if role != pyatspi.ROLE_PUSH_BUTTON or action(accessible) is None:
             continue
         if not state_contains(accessible, pyatspi.STATE_SENSITIVE):
             disabled_buttons.append(accessible)
-    checkable_cards.sort(key=lambda item: (item[0], item[1]))
-    return checkable_cards, disabled_buttons
+    output_cards.sort(key=lambda item: (item[0], item[1]))
+    return output_cards, disabled_buttons
 
 
 def snapshot():
