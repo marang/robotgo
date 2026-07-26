@@ -293,6 +293,58 @@ func TestHostedDisplayConfigurationIsGuestRestrictedAndCredentialFree(
 	}
 }
 
+func TestHostedDisplayConfigurationReportsOnlyAllowlistedStage(
+	t *testing.T,
+) {
+	t.Parallel()
+	output := &strings.Builder{}
+	executor := &scriptedCommandExecutor{
+		outputs: []string{
+			hostedDisplayFailureMarker +
+				hostedDisplayStageKDEPlan + "\nprivate connector\n",
+		},
+		errors: []error{errors.New("private command failure")},
+	}
+	err := configureHostedGuestDisplay(
+		context.Background(),
+		executor,
+		[]string{"-p", "22222"},
+		portalLaneKDE,
+		output,
+	)
+	if err == nil || !strings.Contains(
+		err.Error(),
+		`stage "kde-plan"`,
+	) {
+		t.Fatalf("hosted display failure = %v", err)
+	}
+	for _, private := range []string{
+		"private connector",
+		"private command failure",
+	} {
+		if strings.Contains(err.Error(), private) ||
+			strings.Contains(output.String(), private) {
+			t.Fatalf("hosted display failure leaked %q", private)
+		}
+	}
+}
+
+func TestHostedDisplayFailureStageParserRejectsAmbiguousOutput(t *testing.T) {
+	t.Parallel()
+	for _, output := range []string{
+		hostedDisplayFailureMarker + "unknown\n",
+		hostedDisplayFailureMarker + hostedDisplayStageKDEPlan + "\n" +
+			hostedDisplayFailureMarker + hostedDisplayStageKDEApply + "\n",
+		"private\n",
+	} {
+		if stage := parseHostedDisplayFailureStage(
+			[]byte(output),
+		); stage != "" {
+			t.Fatalf("ambiguous display stage %q parsed as %q", output, stage)
+		}
+	}
+}
+
 func TestHostedPortalApprovalPolicyMatchesDesktopBackend(t *testing.T) {
 	t.Parallel()
 	for _, test := range []struct {

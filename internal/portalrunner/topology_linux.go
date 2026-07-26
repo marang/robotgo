@@ -28,6 +28,20 @@ const (
 	mutterDisplayPath        = dbus.ObjectPath("/org/gnome/Mutter/DisplayConfig")
 	mutterDisplayInterface   = "org.gnome.Mutter.DisplayConfig"
 	mutterApplyTemporary     = uint32(1)
+
+	hostedDisplayStageManifest    = "manifest"
+	hostedDisplayStageLane        = "lane"
+	hostedDisplayStageStatus      = "status"
+	hostedDisplayStageGNOMEBus    = "gnome-bus"
+	hostedDisplayStageGNOMEState  = "gnome-state"
+	hostedDisplayStageGNOMEPlan   = "gnome-plan"
+	hostedDisplayStageGNOMEApply  = "gnome-apply"
+	hostedDisplayStageGNOMESettle = "gnome-settle"
+	hostedDisplayStageKDEState    = "kde-state"
+	hostedDisplayStageKDEPlan     = "kde-plan"
+	hostedDisplayStageKDEApply    = "kde-apply"
+	hostedDisplayStageKDESettle   = "kde-settle"
+	hostedDisplayFailureMarker    = "ROBOTGO_HOSTED_DISPLAY_STAGE="
 )
 
 var topologyIdentifierPattern = regexp.MustCompile(`^[A-Za-z0-9_-]{1,64}$`)
@@ -143,6 +157,47 @@ type kscreenState struct {
 	Outputs []kscreenOutput `json:"outputs"`
 }
 
+type hostedDisplayFailure struct {
+	stage string
+}
+
+func (failure *hostedDisplayFailure) Error() string {
+	return "configure hosted display"
+}
+
+// HostedDisplayFailureStage returns only an allowlisted, privacy-safe stage
+// name for a topology failure. It never exposes connector or mode identifiers.
+func HostedDisplayFailureStage(err error) string {
+	var failure *hostedDisplayFailure
+	if errors.As(err, &failure) {
+		return failure.stage
+	}
+	return ""
+}
+
+// WriteHostedDisplayFailureMarker emits only the allowlisted stage marker used
+// by the independent host controller.
+func WriteHostedDisplayFailureMarker(output io.Writer, err error) error {
+	if output == nil {
+		return errors.New("hosted display failure output is nil")
+	}
+	stage := HostedDisplayFailureStage(err)
+	if stage == "" {
+		return errors.New("hosted display failure stage is unavailable")
+	}
+	if _, writeErr := fmt.Fprintln(
+		output,
+		hostedDisplayFailureMarker+stage,
+	); writeErr != nil {
+		return errors.New("write hosted display failure stage")
+	}
+	return nil
+}
+
+func newHostedDisplayFailure(stage string) error {
+	return &hostedDisplayFailure{stage: stage}
+}
+
 // ConfigureHostedDisplay applies and verifies the manifest-bound topology
 // inside a disposable hosted guest. Callers must independently ensure this is
 // never invoked against a developer desktop.
@@ -151,8 +206,11 @@ func ConfigureHostedDisplay(
 	manifest Manifest,
 	output io.Writer,
 ) error {
+	if output == nil {
+		return newHostedDisplayFailure(hostedDisplayStageStatus)
+	}
 	if err := manifest.HostedDisplay.Validate(); err != nil {
-		return err
+		return newHostedDisplayFailure(hostedDisplayStageManifest)
 	}
 	topologyContext, cancel := context.WithTimeout(ctx, hostedTopologyTimeout)
 	defer cancel()
@@ -172,19 +230,22 @@ func ConfigureHostedDisplay(
 			return err
 		}
 	default:
-		return errors.New("hosted display lane is unsupported")
+		return newHostedDisplayFailure(hostedDisplayStageLane)
 	}
 	minX, minY, maxX, maxY := hostedDisplayBounds(
 		manifest.HostedDisplay.Outputs,
 	)
-	return writeStatus(
+	if err := writeStatus(
 		output,
 		"hosted display topology configured outputs=2 bounds=%d,%d,%dx%d\n",
 		minX,
 		minY,
 		maxX-minX,
 		maxY-minY,
-	)
+	); err != nil {
+		return newHostedDisplayFailure(hostedDisplayStageStatus)
+	}
+	return nil
 }
 
 func configureMutterDisplay(
@@ -193,27 +254,27 @@ func configureMutterDisplay(
 ) (returnError error) {
 	connection, err := dbus.ConnectSessionBus()
 	if err != nil {
-		return errors.New("connect hosted GNOME display bus")
+		return newHostedDisplayFailure(hostedDisplayStageGNOMEBus)
 	}
 	defer func() {
 		if err := connection.Close(); err != nil {
 			returnError = errors.Join(
 				returnError,
-				errors.New("close hosted GNOME display bus"),
+				newHostedDisplayFailure(hostedDisplayStageGNOMEBus),
 			)
 		}
 	}()
 	object := connection.Object(mutterDisplayDestination, mutterDisplayPath)
 	state, err := readMutterDisplayState(ctx, object)
 	if err != nil {
-		return err
+		return newHostedDisplayFailure(hostedDisplayStageGNOMEState)
 	}
 	selections, err := selectHostedTopology(
 		mutterTopologyConnectors(state.Monitors),
 		display.Outputs,
 	)
 	if err != nil {
-		return fmt.Errorf("plan hosted GNOME display: %w", err)
+		return newHostedDisplayFailure(hostedDisplayStageGNOMEPlan)
 	}
 	requested := make([]mutterRequestedLogicalMonitor, 0, len(selections))
 	for _, selection := range selections {
@@ -235,7 +296,7 @@ func configureMutterDisplay(
 		var mode uint32
 		if err := layoutMode.Store(&mode); err != nil ||
 			mode < 1 || mode > 2 {
-			return errors.New("hosted GNOME display layout mode is invalid")
+			return newHostedDisplayFailure(hostedDisplayStageGNOMEState)
 		}
 		properties["layout-mode"] = dbus.MakeVariant(mode)
 	}
@@ -249,7 +310,7 @@ func configureMutterDisplay(
 		properties,
 	)
 	if call.Err != nil {
-		return errors.New("apply hosted GNOME display topology")
+		return newHostedDisplayFailure(hostedDisplayStageGNOMEApply)
 	}
 	return waitForMutterTopology(ctx, object, selections)
 }
@@ -339,7 +400,7 @@ func waitForMutterTopology(
 		}
 		select {
 		case <-ctx.Done():
-			return errors.New("hosted GNOME display topology did not settle")
+			return newHostedDisplayFailure(hostedDisplayStageGNOMESettle)
 		case <-time.After(hostedTopologyPoll):
 		}
 	}
@@ -389,14 +450,14 @@ func configureKScreenDisplay(
 ) error {
 	state, err := readKScreenState(ctx)
 	if err != nil {
-		return err
+		return newHostedDisplayFailure(hostedDisplayStageKDEState)
 	}
 	selections, err := selectHostedTopology(
 		kscreenTopologyConnectors(state.Outputs),
 		display.Outputs,
 	)
 	if err != nil {
-		return fmt.Errorf("plan hosted KDE display: %w", err)
+		return newHostedDisplayFailure(hostedDisplayStageKDEPlan)
 	}
 	arguments := make([]string, 0, len(selections)*6)
 	for index, selection := range selections {
@@ -426,7 +487,7 @@ func configureKScreenDisplay(
 	command.Stderr = command.Stdout
 	configureHostedProcess(command)
 	if err := command.Run(); err != nil {
-		return errors.New("apply hosted KDE display topology")
+		return newHostedDisplayFailure(hostedDisplayStageKDEApply)
 	}
 	for {
 		state, err = readKScreenState(ctx)
@@ -436,7 +497,7 @@ func configureKScreenDisplay(
 		}
 		select {
 		case <-ctx.Done():
-			return errors.New("hosted KDE display topology did not settle")
+			return newHostedDisplayFailure(hostedDisplayStageKDESettle)
 		case <-time.After(hostedTopologyPoll):
 		}
 	}

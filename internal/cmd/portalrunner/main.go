@@ -86,7 +86,15 @@ func runGuestDisplay(
 		syscall.SIGTERM,
 	)
 	defer cancel()
-	return portalrunner.ConfigureHostedDisplay(ctx, manifest, stdout)
+	if err := portalrunner.ConfigureHostedDisplay(
+		ctx,
+		manifest,
+		stdout,
+	); err != nil {
+		_ = portalrunner.WriteHostedDisplayFailureMarker(stderr, err)
+		return errors.New("configure hosted display")
+	}
+	return nil
 }
 
 func runCleanup(arguments []string, stdout, stderr io.Writer) error {

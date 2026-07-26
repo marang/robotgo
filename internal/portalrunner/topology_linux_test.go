@@ -3,11 +3,51 @@
 package portalrunner
 
 import (
+	"bytes"
+	"errors"
 	"strings"
 	"testing"
 
 	"github.com/godbus/dbus/v5"
 )
+
+func TestHostedDisplayFailureMarkerIsPrivacySafe(t *testing.T) {
+	t.Parallel()
+	failure := errors.Join(
+		newHostedDisplayFailure(hostedDisplayStageGNOMEApply),
+		errors.New("private connector and mode"),
+	)
+	if stage := HostedDisplayFailureStage(failure); stage !=
+		hostedDisplayStageGNOMEApply {
+		t.Fatalf("hosted display failure stage = %q", stage)
+	}
+	var output bytes.Buffer
+	if err := WriteHostedDisplayFailureMarker(
+		&output,
+		failure,
+	); err != nil {
+		t.Fatal(err)
+	}
+	if output.String() !=
+		hostedDisplayFailureMarker+hostedDisplayStageGNOMEApply+"\n" {
+		t.Fatalf("hosted display failure marker = %q", output.String())
+	}
+	if strings.Contains(output.String(), "private") {
+		t.Fatal("hosted display failure marker leaked the wrapped cause")
+	}
+	if err := WriteHostedDisplayFailureMarker(
+		&output,
+		errors.New("unclassified"),
+	); err == nil {
+		t.Fatal("unclassified display failure emitted a marker")
+	}
+	if err := WriteHostedDisplayFailureMarker(
+		nil,
+		failure,
+	); err == nil {
+		t.Fatal("nil display failure output was accepted")
+	}
+}
 
 func TestSelectHostedTopologyIsDeterministicAndExact(t *testing.T) {
 	t.Parallel()

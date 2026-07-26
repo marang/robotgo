@@ -39,6 +39,10 @@ var portalFailureStagePattern = regexp.MustCompile(
 	`ROBOTGO_PORTAL_STAGE=([a-z0-9-]{1,32})`,
 )
 
+var hostedDisplayFailureStagePattern = regexp.MustCompile(
+	hostedDisplayFailureMarker + `([a-z0-9-]{1,32})`,
+)
+
 var sessionFailureStagePattern = regexp.MustCompile(
 	`ROBOTGO_SESSION_STAGE=([a-z0-9-]{1,32})`,
 )
@@ -555,6 +559,7 @@ func configureHostedGuestDisplay(
 		"go run ./internal/cmd/portalrunner guest-display " +
 		"-manifest infrastructure/portal-runner/" + lane +
 		"/manifest.json"
+	var commandOutput bytes.Buffer
 	if err := commands.Run(
 		ctx,
 		"ssh",
@@ -576,11 +581,51 @@ func configureHostedGuestDisplay(
 				"bash -c "+shellQuote(command),
 		),
 		nil,
-		output,
+		&boundedWriter{
+			destination: &commandOutput,
+			remaining:   hostedTopologyOutput,
+		},
 	); err != nil {
+		if stage := parseHostedDisplayFailureStage(
+			commandOutput.Bytes(),
+		); stage != "" {
+			return fmt.Errorf(
+				"configure hosted display topology at stage %q",
+				stage,
+			)
+		}
 		return errors.New("configure hosted display topology")
 	}
-	return nil
+	return writeStatus(
+		output,
+		"hosted display topology configured lane=%s\n",
+		lane,
+	)
+}
+
+func parseHostedDisplayFailureStage(output []byte) string {
+	matches := hostedDisplayFailureStagePattern.FindAllSubmatch(output, -1)
+	if len(matches) != 1 {
+		return ""
+	}
+	stage := string(matches[0][1])
+	switch stage {
+	case hostedDisplayStageManifest,
+		hostedDisplayStageLane,
+		hostedDisplayStageStatus,
+		hostedDisplayStageGNOMEBus,
+		hostedDisplayStageGNOMEState,
+		hostedDisplayStageGNOMEPlan,
+		hostedDisplayStageGNOMEApply,
+		hostedDisplayStageGNOMESettle,
+		hostedDisplayStageKDEState,
+		hostedDisplayStageKDEPlan,
+		hostedDisplayStageKDEApply,
+		hostedDisplayStageKDESettle:
+		return stage
+	default:
+		return ""
+	}
 }
 
 func readPortalFailureStage(path string) string {
