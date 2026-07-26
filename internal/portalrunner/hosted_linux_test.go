@@ -201,6 +201,75 @@ func TestHostedPortalApprovalPolicyMatchesDesktopBackend(t *testing.T) {
 	}
 }
 
+func TestHostedKDEScreenCastLocatorUsesProtectedAccessibilityBridge(
+	t *testing.T,
+) {
+	t.Parallel()
+	executor := &scriptedCommandExecutor{
+		outputs: []string{"1280 720 770 337 835 607\n"},
+	}
+	geometry, err := locateHostedKDEScreenCast(
+		context.Background(),
+		executor,
+		[]string{"-p", "22222"},
+	)
+	if err != nil {
+		t.Fatalf("locateHostedKDEScreenCast: %v", err)
+	}
+	if geometry != (hostedPortalGeometry{
+		width: 1280, height: 720,
+		cardX: 770, cardY: 337,
+		buttonX: 835, buttonY: 607,
+	}) {
+		t.Fatalf("KDE geometry = %+v", geometry)
+	}
+	if len(executor.calls) != 1 {
+		t.Fatalf("KDE approval calls = %v", executor.calls)
+	}
+	call := strings.Join(executor.calls[0], " ")
+	for _, required := range []string{
+		"ssh",
+		"root@127.0.0.1",
+		"runuser -u robotgo",
+		"XDG_RUNTIME_DIR=/run/user/1100",
+		"DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1100/bus",
+		"QT_ACCESSIBILITY=1",
+		"/usr/local/libexec/robotgo-runner-locate-screencast",
+	} {
+		if !strings.Contains(call, required) {
+			t.Errorf("KDE approval omits %q", required)
+		}
+	}
+	for _, forbidden := range []string{
+		"kdePhysicalOutput",
+		"GITHUB_TOKEN",
+	} {
+		if strings.Contains(call, forbidden) {
+			t.Errorf("KDE approval contains %q", forbidden)
+		}
+	}
+}
+
+func TestHostedKDEScreenCastLocatorRejectsUnsafeGeometry(t *testing.T) {
+	t.Parallel()
+	for _, output := range []string{
+		"",
+		"1280 720 770 337 835\n",
+		"1280 720 770 337 835 607 extra\n",
+		"1280 720 1280 337 835 607\n",
+		"private 720 770 337 835 607\n",
+	} {
+		executor := &scriptedCommandExecutor{outputs: []string{output}}
+		if _, err := locateHostedKDEScreenCast(
+			context.Background(),
+			executor,
+			[]string{"-p", "22222"},
+		); err == nil {
+			t.Fatalf("unsafe KDE geometry %q was accepted", output)
+		}
+	}
+}
+
 func TestHostedSourceArchiveMovesOutOfRootBeforeExtraction(t *testing.T) {
 	t.Parallel()
 	executor := &scriptedCommandExecutor{}

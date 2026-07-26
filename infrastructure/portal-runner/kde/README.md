@@ -39,9 +39,12 @@ Use `-cell screencast` for persistent PipeWire capture.
 
 The host transfers the exact clean tree without credentials and enforces an
 active nftables output chain with `policy drop` before the transfer. A private
-host-side QMP client selects the test monitor and activates KDE's real Share
-action. RobotGo does not approve its own request, patch the portal backend, or
-pre-authorize the application.
+host-side controller asks the immutable guest's accessibility bridge only for
+the physical output card and disabled confirmation-control geometry. It then
+performs both actions through QMP's private virtual pointer. No accessible
+names, screen pixels, or dialog content leave the guest. RobotGo does not
+approve its own request, patch the portal backend, or pre-authorize the
+application.
 
 ## Cleanup
 

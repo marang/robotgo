@@ -1,6 +1,7 @@
 # Protected Real-Compositor Evidence Plan
 
-Status: Hosted wlroots and GNOME single-output portal evidence delivered; KDE and GNOME multi-output remain
+Status: Hosted wlroots and GNOME/KDE single-output portal execution delivered;
+GNOME/KDE multi-output and portal release promotion remain
 
 Linear project:
 [RobotGo | P005 | Protected Compositor Evidence](https://linear.app/riotbox/project/robotgo-or-p005-or-protected-compositor-evidence-d66467e3b5ee)
@@ -23,21 +24,17 @@ not actually demonstrate.
 
 The P005 target design requires every matrix job to use a clean, ephemeral
 Linux environment that is destroyed afterward. Persistent personal desktop
-sessions are not eligible. GNOME runs as a nested guest on a fresh
-GitHub-hosted runner without self-hosted registration credentials. KDE still
-requires a restricted ephemeral runner group until an equivalent hosted path
-exists.
+sessions are not eligible. GNOME and KDE run as nested guests on fresh
+GitHub-hosted runners without self-hosted registration credentials.
 
 Before the protected workflows are enabled, their implementation must enforce
 these boundaries:
 
-- hosted GNOME runs only on trusted `main` pushes or explicit manual dispatch;
-  fork and ordinary pull-request events never boot the GNOME guest
+- hosted GNOME/KDE runs only on trusted `main` pushes or explicit manual
+  dispatch; fork and ordinary pull-request events never boot either guest
 - read-only GitHub permissions and checkout credentials disabled
-- a protected GitHub Environment with a maintainer approval boundary for
-  remaining self-hosted lanes
 - no repository, cloud, personal, checkout, or runner-registration credential
-  inside the GNOME desktop session
+  inside either portal desktop session
 - outbound network access limited to GitHub endpoints and pinned package/image
   sources required to run the job
 - runner application and system logs forwarded outside the disposable VM for
@@ -95,14 +92,18 @@ auto-approve requests and does not persist restore tokens between jobs.
 
 ### Consent handoff
 
-GNOME uses an independent host-side QMP controller. The test writes a private,
-non-sensitive marker immediately before its portal call; after a bounded dialog
-settle interval, the host injects only GNOME's dialog mnemonics through QEMU's
-virtual keyboard. RobotGo cannot access the private QMP socket, does not patch
-the portal backend, and does not call its own input API to grant permission.
-Missing readiness, early test exit, denial, timeout, or a surviving marker fails
-the cell. KDE retains the operator-console handoff until it has an equally
-isolated automation contract.
+GNOME and KDE use independent host-side consent controllers. The test writes a
+private, non-sensitive marker immediately before its portal call. After a
+bounded dialog settle interval, the GNOME host injects the required keyboard
+input through QMP. For KDE ScreenCast, a digest-bound accessibility helper
+inside the immutable guest reports only the physical card and disabled
+confirmation-control geometry; the host performs both actions through QMP's
+private pointer. Accessible names, pixels, and dialog content never leave the
+guest. KDE's native non-sandboxed RemoteDesktop backend follows the upstream
+notification policy and presents no modal approval dialog. RobotGo cannot
+access the private QMP socket, does not patch the portal backend, and does not
+call its own input API to grant permission. Missing readiness, early test exit,
+denial, timeout, a wrong source type, or a surviving marker fails the cell.
 
 This handoff must be proven operational for the lane before its portal cells
 become required. GitHub Environment instructions may link to the private
@@ -121,8 +122,8 @@ before RobotGo reads frames or injects input:
 5. PipeWire development/runtime availability for persistent capture
 6. lane-specific native tools and capabilities used by window/input evidence
 7. declared output count and multi-output requirement for geometry cells
-8. independent QMP consent readiness for hosted GNOME or operator-console
-   readiness for other interactive portal cells
+8. independent QMP consent-driver readiness, plus the KDE control-geometry
+   locator for its ScreenCast cell
 9. writable runner-temporary evidence directory with cleanup registered
 
 The preflight returns a non-zero status for missing or mismatched requirements.
@@ -230,7 +231,7 @@ green.
    aggregate bounds, and induced-failure cleanup evidence. Retained evidence:
    [`Sway E2E` run 29861058126](https://github.com/marang/robotgo/actions/runs/29861058126).
 4. **Hosted GNOME single-output proof delivered:** the pinned nested-KVM image, exact
-   clean-tree transfer, real session, independent QMP consent, bounded test,
+   clean-tree transfer, real session, independent consent control, bounded test,
    egress, process-group shutdown, and artifact cleanup contracts are wired
    into both portal workflows. Retained exact-commit evidence:
    [`RemoteDesktop E2E` run 30199452053](https://github.com/marang/robotgo/actions/runs/30199452053)

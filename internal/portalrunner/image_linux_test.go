@@ -407,15 +407,15 @@ func TestRepositoryGuestSessionContract(t *testing.T) {
 
 func TestRepositoryKDEGuestActivatesPortalFrontendAndBackend(t *testing.T) {
 	t.Parallel()
-	waitScript, err := os.ReadFile(filepath.Join(
+	guestRoot := filepath.Join(
 		"..",
 		"..",
 		"infrastructure",
 		"portal-runner",
 		"kde",
 		"guest",
-		"wait-session.sh",
-	))
+	)
+	waitScript, err := os.ReadFile(filepath.Join(guestRoot, "wait-session.sh"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -434,6 +434,31 @@ func TestRepositoryKDEGuestActivatesPortalFrontendAndBackend(t *testing.T) {
 	}
 	if strings.Contains(script, "--no-legend status") {
 		t.Fatal("KDE session readiness passively inspects an on-demand portal")
+	}
+	installScript, err := os.ReadFile(filepath.Join(guestRoot, "install.sh"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, required := range []string{
+		"/usr/local/libexec/robotgo-runner-locate-screencast",
+		"QT_ACCESSIBILITY=1",
+		"QT_LINUX_ACCESSIBILITY_ALWAYS_ON=1",
+		"len(cards) == 2",
+		"card_rectangle = extents(cards[1][2])",
+		"len(disabled) == 1",
+		"card_rectangle.x + card_rectangle.width // 2",
+		"button_rectangle.x + button_rectangle.width // 2",
+	} {
+		if !strings.Contains(string(installScript), required) {
+			t.Errorf("KDE accessibility approval omits %q", required)
+		}
+	}
+	manifest, err := os.ReadFile(filepath.Join(filepath.Dir(guestRoot), "manifest.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(manifest), `"python3-pyatspi"`) {
+		t.Fatal("KDE manifest omits the pinned accessibility bridge package")
 	}
 }
 

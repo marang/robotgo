@@ -110,6 +110,122 @@ install -m 0755 "$(dirname "$0")/configure-egress.sh" \
   /usr/local/sbin/robotgo-runner-configure-egress
 install -m 0755 "$(dirname "$0")/register.sh" \
   /usr/local/sbin/robotgo-runner-register
+cat >/usr/local/libexec/robotgo-runner-locate-screencast <<'PYTHON'
+#!/usr/bin/python3
+"""Locate controls in the pinned KDE ScreenCast dialog through accessibility."""
+
+import sys
+import time
+
+import pyatspi
+
+
+TIMEOUT_SECONDS = 30
+POLL_SECONDS = 0.1
+MINIMUM_CARD_EXTENT = 100
+
+
+def descendants(root):
+    pending = [root]
+    while pending:
+        current = pending.pop()
+        yield current
+        try:
+            pending.extend(reversed(list(current)))
+        except (LookupError, RuntimeError):
+            continue
+
+
+def state_contains(accessible, state):
+    try:
+        return accessible.getState().contains(state)
+    except (LookupError, RuntimeError):
+        return False
+
+
+def action(accessible):
+    try:
+        return accessible.queryAction()
+    except (LookupError, NotImplementedError, RuntimeError):
+        return None
+
+
+def extents(accessible):
+    try:
+        rectangle = accessible.queryComponent().getExtents(
+            pyatspi.DESKTOP_COORDS
+        )
+    except (LookupError, NotImplementedError, RuntimeError):
+        return None
+    if rectangle.width <= 0 or rectangle.height <= 0:
+        return None
+    return rectangle
+
+
+def snapshot():
+    desktop = pyatspi.Registry.getDesktop(0)
+    checkable_cards = []
+    disabled_buttons = []
+    display_width = 0
+    display_height = 0
+    for accessible in descendants(desktop):
+        rectangle = extents(accessible)
+        if rectangle is None or not state_contains(
+            accessible, pyatspi.STATE_SHOWING
+        ):
+            continue
+        display_width = max(display_width, rectangle.x + rectangle.width)
+        display_height = max(display_height, rectangle.y + rectangle.height)
+        role = accessible.getRole()
+        if (
+            state_contains(accessible, pyatspi.STATE_CHECKABLE)
+            and rectangle.width >= MINIMUM_CARD_EXTENT
+            and rectangle.height >= MINIMUM_CARD_EXTENT
+            and action(accessible) is not None
+        ):
+            checkable_cards.append((rectangle.y, rectangle.x, accessible))
+        if role != pyatspi.ROLE_PUSH_BUTTON or action(accessible) is None:
+            continue
+        if not state_contains(accessible, pyatspi.STATE_SENSITIVE):
+            disabled_buttons.append(accessible)
+    checkable_cards.sort(key=lambda item: (item[0], item[1]))
+    return checkable_cards, disabled_buttons, display_width, display_height
+
+
+def wait_for_dialog(deadline):
+    while time.monotonic() < deadline:
+        cards, disabled, width, height = snapshot()
+        if len(cards) == 2 and len(disabled) == 1 and width > 0 and height > 0:
+            return cards, disabled[0], width, height
+        time.sleep(POLL_SECONDS)
+    raise RuntimeError("KDE ScreenCast accessibility contract unavailable")
+
+
+def main():
+    deadline = time.monotonic() + TIMEOUT_SECONDS
+    cards, confirmation, width, height = wait_for_dialog(deadline)
+    card_rectangle = extents(cards[1][2])
+    button_rectangle = extents(confirmation)
+    if card_rectangle is None or button_rectangle is None:
+        raise RuntimeError("KDE ScreenCast geometry became unavailable")
+    print(
+        width,
+        height,
+        card_rectangle.x + card_rectangle.width // 2,
+        card_rectangle.y + card_rectangle.height // 2,
+        button_rectangle.x + button_rectangle.width // 2,
+        button_rectangle.y + button_rectangle.height // 2,
+    )
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except (LookupError, RuntimeError) as error:
+        print(str(error), file=sys.stderr)
+        sys.exit(1)
+PYTHON
+chmod 0755 /usr/local/libexec/robotgo-runner-locate-screencast
 
 cat >/usr/local/libexec/robotgo-runner-job-started-hook.sh <<'EOF'
 #!/usr/bin/env bash
@@ -223,6 +339,12 @@ EOF
 chmod 0644 /etc/sddm.conf.d/10-robotgo.conf
 
 install -d -m 0700 -o robotgo -g robotgo /home/robotgo/.config
+install -d -m 0700 -o robotgo -g robotgo \
+  /home/robotgo/.config/environment.d
+cat >/home/robotgo/.config/environment.d/90-robotgo-accessibility.conf <<'EOF'
+QT_ACCESSIBILITY=1
+QT_LINUX_ACCESSIBILITY_ALWAYS_ON=1
+EOF
 cat >/home/robotgo/.config/kscreenlockerrc <<'EOF'
 [Daemon]
 Autolock=false
@@ -242,9 +364,11 @@ suspendThenHibernate=false
 suspendType=0
 EOF
 chown robotgo:robotgo \
+  /home/robotgo/.config/environment.d/90-robotgo-accessibility.conf \
   /home/robotgo/.config/kscreenlockerrc \
   /home/robotgo/.config/powermanagementprofilesrc
 chmod 0600 \
+  /home/robotgo/.config/environment.d/90-robotgo-accessibility.conf \
   /home/robotgo/.config/kscreenlockerrc \
   /home/robotgo/.config/powermanagementprofilesrc
 

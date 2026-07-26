@@ -27,6 +27,7 @@ const (
 	consentPollInterval     = 250 * time.Millisecond
 	hostedTestTimeout       = 4 * time.Minute
 	hostedTestLogLimit      = 2 * 1024 * 1024
+	maximumPortalGeometry   = 256
 )
 
 var portalFailureStagePattern = regexp.MustCompile(
@@ -54,6 +55,15 @@ type HostedRuntimeOptions struct {
 type hostedProcessResult struct {
 	done chan struct{}
 	err  error
+}
+
+type hostedPortalGeometry struct {
+	width   int
+	height  int
+	cardX   int
+	cardY   int
+	buttonX int
+	buttonY int
 }
 
 // RunHostedPortal transfers the exact clean commit into a disposable guest,
@@ -417,18 +427,14 @@ func RunHostedPortal(
 			stopProcessGroup(testCommand, testResult.done)
 			return err
 		}
-		qmp, err := connectQMP(guestContext, qmpSocket)
-		if err != nil {
-			stopProcessGroup(testCommand, testResult.done)
-			return err
-		}
-		approvalError := qmp.approvePortal(
+		if err := approveHostedPortal(
 			guestContext,
+			options.Commands,
+			sshArguments,
+			qmpSocket,
 			manifest.Lane,
 			options.Cell,
-		)
-		closeError := qmp.close()
-		if err := errors.Join(approvalError, closeError); err != nil {
+		); err != nil {
 			stopProcessGroup(testCommand, testResult.done)
 			return err
 		}
@@ -802,6 +808,126 @@ func hostedDesktopEnvironment(lane string) (current, session string, err error) 
 func hostedPortalApprovalRequired(lane, cell string) bool {
 	return lane == portalLaneGNOME ||
 		(lane == portalLaneKDE && cell == "screencast")
+}
+
+func approveHostedPortal(
+	ctx context.Context,
+	commands CommandExecutor,
+	sshArguments []string,
+	qmpSocket,
+	lane,
+	cell string,
+) error {
+	if lane == portalLaneKDE && cell == "screencast" {
+		geometry, err := locateHostedKDEScreenCast(
+			ctx,
+			commands,
+			sshArguments,
+		)
+		if err != nil {
+			return err
+		}
+		qmp, err := connectQMP(ctx, qmpSocket)
+		if err != nil {
+			return err
+		}
+		approvalError := qmp.clickAbsolute(
+			ctx,
+			geometry.cardX,
+			geometry.cardY,
+			geometry.width,
+			geometry.height,
+		)
+		if approvalError == nil {
+			approvalError = waitQMPChord(ctx)
+		}
+		if approvalError == nil {
+			approvalError = qmp.clickAbsolute(
+				ctx,
+				geometry.buttonX,
+				geometry.buttonY,
+				geometry.width,
+				geometry.height,
+			)
+		}
+		return errors.Join(approvalError, qmp.close())
+	}
+	qmp, err := connectQMP(ctx, qmpSocket)
+	if err != nil {
+		return err
+	}
+	return errors.Join(qmp.approvePortal(ctx, lane, cell), qmp.close())
+}
+
+func locateHostedKDEScreenCast(
+	ctx context.Context,
+	commands CommandExecutor,
+	sshArguments []string,
+) (hostedPortalGeometry, error) {
+	approvalContext, cancel := context.WithTimeout(ctx, 45*time.Second)
+	defer cancel()
+	command := "exec runuser -u robotgo -- env " +
+		"XDG_RUNTIME_DIR=/run/user/1100 " +
+		"DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1100/bus " +
+		"QT_ACCESSIBILITY=1 QT_LINUX_ACCESSIBILITY_ALWAYS_ON=1 " +
+		"/usr/local/libexec/robotgo-runner-locate-screencast"
+	var geometryOutput bytes.Buffer
+	if err := commands.Run(
+		approvalContext,
+		"ssh",
+		append(
+			append([]string{}, sshArguments...),
+			"root@127.0.0.1",
+			command,
+		),
+		nil,
+		&boundedWriter{
+			destination: &geometryOutput,
+			remaining:   maximumPortalGeometry,
+		},
+	); err != nil {
+		return hostedPortalGeometry{}, errors.New(
+			"locate hosted KDE ScreenCast controls",
+		)
+	}
+	fields := strings.Fields(geometryOutput.String())
+	if len(fields) != 6 {
+		return hostedPortalGeometry{}, errors.New(
+			"hosted KDE ScreenCast geometry is invalid",
+		)
+	}
+	values := make([]int, len(fields))
+	for index, field := range fields {
+		value, err := strconv.Atoi(field)
+		if err != nil {
+			return hostedPortalGeometry{}, errors.New(
+				"hosted KDE ScreenCast geometry is invalid",
+			)
+		}
+		values[index] = value
+	}
+	geometry := hostedPortalGeometry{
+		width: values[0], height: values[1],
+		cardX: values[2], cardY: values[3],
+		buttonX: values[4], buttonY: values[5],
+	}
+	if geometry.width < 640 ||
+		geometry.width > 8192 ||
+		geometry.height < 480 ||
+		geometry.height > 8192 ||
+		geometry.cardX < 0 ||
+		geometry.cardX >= geometry.width ||
+		geometry.cardY < 0 ||
+		geometry.cardY >= geometry.height ||
+		geometry.buttonX < 0 ||
+		geometry.buttonX >= geometry.width ||
+		geometry.buttonY < 0 ||
+		geometry.buttonY >= geometry.height {
+		return hostedPortalGeometry{}, errors.New(
+			"hosted KDE ScreenCast geometry is invalid",
+		)
+	}
+	return geometry, nil
 }
 
 func collectHostedDiagnostics(

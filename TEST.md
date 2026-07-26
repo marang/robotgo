@@ -459,17 +459,16 @@ and absolute pointer input, a modifier press/release, optional touch, and
 deterministic close. It intentionally does not use the high-level fallback APIs,
 so an available native Wayland backend cannot mask a broken portal path.
 Default CI compile-checks this harness without opening a consent session.
-`.github/workflows/remote-desktop-e2e.yml` runs GNOME inside a disposable
-nested-QEMU guest on GitHub-hosted Ubuntu and keeps KDE on an explicitly
-provisioned protected runner. wlroots native and portal-availability evidence
-is promoted through the separate P005 runner path and is not a RemoteDesktop
-pass. The portal client is pure Go and therefore independent of the root
-package's CGO setting; CGO and non-CGO high-level fallback dispatch remains
-covered by the hermetic root tests. GNOME runs automatically for pushes to
-`main` and manually for `gnome` or `all`; pull requests do not boot the nested
-GNOME VM. KDE remains controlled by
-`ROBOTGO_REMOTE_DESKTOP_E2E=kde|all` and a protected Environment. Both paths
-use read-only workflow permissions and do not persist checkout credentials.
+`.github/workflows/remote-desktop-e2e.yml` runs GNOME and KDE inside disposable
+nested-QEMU guests on GitHub-hosted Ubuntu. wlroots native and
+portal-availability evidence is promoted through the separate P005 runner path
+and is not a RemoteDesktop pass. The portal client is pure Go and therefore
+independent of the root package's CGO setting; CGO and non-CGO high-level
+fallback dispatch remains covered by the hermetic root tests. Both desktop
+lanes run automatically for pushes to `main` and can be selected manually with
+`gnome`, `kde`, or `all`; pull requests do not boot the nested guests. The
+workflow uses read-only permissions, retains no checkout credentials, and
+registers no self-hosted runner.
 
 Runtime outcomes and missing infrastructure are recorded in
 `docs/compatibility/wayland-input.md`; an unavailable runner is not counted as a
@@ -511,11 +510,13 @@ captures two frames from the same session, validates non-empty output, and
 closes the PipeWire consumer before the portal session. The second capture
 also covers compositors that suppress unchanged frames: the backend waits one
 short poll for a fresh frame and then returns an owned copy of the latest frame.
-`.github/workflows/screencast-e2e.yml` runs GNOME in the same disposable
-GitHub-hosted nested-QEMU model and retains a protected self-hosted KDE lane.
-GNOME runs on `main` pushes and manual `gnome|all` dispatches. KDE remains
-controlled by `ROBOTGO_SCREENCAST_E2E=kde|all`. wlroots does not count as a
-ScreenCast pass and is promoted separately under P005.
+`.github/workflows/screencast-e2e.yml` runs GNOME and KDE in the same
+disposable GitHub-hosted nested-QEMU model. Both run on `main` pushes and on
+manual `gnome|kde|all` dispatches. KDE's pinned guest accessibility bridge
+reports only control geometry; the private host QMP pointer selects the
+physical monitor, and the integration test rejects a virtual-output stream.
+wlroots does not count as a ScreenCast pass and is promoted separately under
+P005.
 
 ### `waylandint` (Keyboard integration harness)
 
@@ -837,26 +838,31 @@ success and failure. The hosted Sway job is safe for fork pull requests because
 it has read-only permissions, no credentials, no physical input devices, and no
 access to a developer or self-hosted desktop.
 
-The GNOME jobs build a pinned image on a fresh GitHub-hosted Ubuntu runner,
-transfer only the exact clean commit through `git archive`, and execute inside
-a disposable guest with a live Wayland/user-bus session. A private readiness
-marker is created immediately before the real portal request. The independent
-host-side QMP controller then operates GNOME's actual consent dialog through a
-virtual keyboard; RobotGo does not approve its own request or patch the portal.
-No Actions token, checkout credential, `.git` directory, untracked file,
-screen frame, restore token, or raw log enters retained guest state.
+The GNOME and KDE jobs build pinned images on fresh GitHub-hosted Ubuntu
+runners, transfer only the exact clean commit through `git archive`, and
+execute inside disposable guests with live Wayland/user-bus sessions. A private
+readiness marker is created immediately before the real portal request. The
+independent host-side controller operates modal consent through QMP keyboard
+input on GNOME. For KDE ScreenCast, an immutable guest helper reports only
+control geometry and the host performs both actions through QMP's private
+pointer; KDE's native non-sandboxed RemoteDesktop backend uses its upstream
+notification policy and therefore has no modal approval to drive.
+RobotGo never approves its own request or patches a portal. No Actions token,
+checkout credential, `.git` directory, untracked file, screen frame, restore
+token, or raw log enters retained guest state.
 
 Missing KVM capacity, portal/session readiness, consent, exact-commit match,
 test pass, or cleanup fails the cell. VM destruction is the final
-cancellation/timeout boundary, and an `always()` workflow step rejects leftover
-sentinel-owned `run-*` directories. The legacy KDE jobs retain the protected
-Environment, sanitized evidence, and operator-readiness contract.
+cancellation/timeout boundary, and an `always()` workflow step terminates only
+verified runner-owned QEMU processes, removes sentinel-owned `run-*`
+directories, and rejects leftovers.
 
-The reproducible GNOME image, hosted supervisor, independent QMP consent
-driver, exact-tree transfer, and mandatory cleanup checks are documented in
-[Protected GNOME Portal Runner](infrastructure/portal-runner/gnome/README.md).
+The reproducible images, hosted supervisor, independent consent drivers,
+exact-tree transfer, and mandatory cleanup checks are documented in
+[Protected GNOME Portal Runner](infrastructure/portal-runner/gnome/README.md)
+and [Protected KDE Portal Runner](infrastructure/portal-runner/kde/README.md).
 `probe` remains an infrastructure diagnostic; `hosted-run` is the automated,
-credential-free GNOME test path.
+credential-free portal test path.
 
 wlroots is intentionally not treated as a RemoteDesktop/ScreenCast pass in
 these portal workflows. Its hosted native and explicit portal-availability

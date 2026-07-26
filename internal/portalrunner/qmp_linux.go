@@ -31,11 +31,6 @@ const (
 	qmpAbsoluteMaximum  = 0x7fff
 	hostedDisplayWidth  = 1280
 	hostedDisplayHeight = 720
-
-	kdePhysicalOutputX = 770
-	kdePhysicalOutputY = 337
-	kdeShareButtonX    = 835
-	kdeShareButtonY    = 607
 )
 
 type qmpClient struct {
@@ -159,13 +154,15 @@ func (client *qmpClient) sendChord(ctx context.Context, keys ...string) error {
 func (client *qmpClient) clickAbsolute(
 	ctx context.Context,
 	x,
-	y int,
+	y,
+	width,
+	height int,
 ) error {
-	absoluteX, err := qmpAbsoluteCoordinate(x, hostedDisplayWidth)
+	absoluteX, err := qmpAbsoluteCoordinate(x, width)
 	if err != nil {
 		return err
 	}
-	absoluteY, err := qmpAbsoluteCoordinate(y, hostedDisplayHeight)
+	absoluteY, err := qmpAbsoluteCoordinate(y, height)
 	if err != nil {
 		return err
 	}
@@ -226,30 +223,8 @@ func (client *qmpClient) approvePortal(
 		}
 		return client.sendChord(ctx, qmpKeyAlt, qmpKeyS)
 	case portalLaneKDE:
-		if cell == "remote-desktop" {
-			return errors.New(
-				"KDE native RemoteDesktop follows the backend notification policy",
-			)
-		}
-		// Plasma 5.27 lists a virtual output before the physical monitor, so
-		// its one-item auto-selection does not apply. The pinned 1280x720
-		// Breeze dialog places the physical card second. QMP pointer input
-		// selects that card and then the right-aligned standard Share button,
-		// independently of translated labels and keyboard focus policy.
-		if err := client.clickAbsolute(
-			ctx,
-			kdePhysicalOutputX,
-			kdePhysicalOutputY,
-		); err != nil {
-			return err
-		}
-		if err := waitQMPChord(ctx); err != nil {
-			return err
-		}
-		return client.clickAbsolute(
-			ctx,
-			kdeShareButtonX,
-			kdeShareButtonY,
+		return errors.New(
+			"KDE portal approval uses the protected guest accessibility bridge",
 		)
 	default:
 		return errors.New("QMP portal approval lane is invalid")

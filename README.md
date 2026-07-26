@@ -1101,11 +1101,10 @@ Pure-Go remains the supported CGO-disabled backend. The earlier direct-path
 sample remains linked from the performance report as historical evidence.
 The stable remote checks and the six hosted Sway/wlroots native,
 single-/multi-output, and portal-availability jobs are required by `main`
-branch protection. Trusted `main` pushes also run real GNOME RemoteDesktop and
-persistent ScreenCast checks automatically inside disposable GitHub-hosted
-nested-KVM guests; these GNOME jobs are not yet required release gates. KDE
-portal evidence remains opt-in on separately protected self-hosted runners and
-consent Environments.
+branch protection. Trusted `main` pushes also run real GNOME and KDE
+RemoteDesktop and persistent ScreenCast checks automatically inside disposable
+GitHub-hosted nested-KVM guests; these portal jobs are not yet required release
+gates. They do not use contributor workstations or self-hosted runners.
 
 Wayland and portal code has additional tagged suites:
 
@@ -1141,11 +1140,11 @@ identity. Published releases receive a checksummed evidence bundle. The active
 slice is now the
 [Protected Real-Compositor Evidence Plan](docs/plan/real-compositor-evidence.md),
 whose fail-closed preflight and sanitized evidence contract are implemented.
-Automated hosted GNOME single-output portal execution and the separate
-Sway/wlroots native and portal-availability jobs are implemented. Protected KDE
-runner evidence, GNOME/KDE multi-output proof, and promotion of the passing
-GNOME jobs into required release gates remain across roadmap phases 1, 2, 3,
-and 5; those phases remain partial until their gates are green.
+Automated hosted GNOME/KDE single-output portal execution and the separate
+Sway/wlroots native and portal-availability jobs are implemented. GNOME/KDE
+multi-output proof and promotion of the passing portal jobs into required
+release gates remain across roadmap phases 1, 2, 3, and 5; those phases remain
+partial until their gates are green.
 Phase 4 exposes the parity surface and now has a dedicated
 [P006 window-geometry project](https://linear.app/riotbox/project/robotgo-or-p006-or-explicit-window-geometry-4af461c427fb).
 `GetBoundsE`/`GetClientE` distinguish real window geometry from display

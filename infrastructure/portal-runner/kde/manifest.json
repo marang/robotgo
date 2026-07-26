@@ -47,6 +47,7 @@
     "pkg-config",
     "plasma-desktop",
     "plasma-workspace-wayland",
+    "python3-pyatspi",
     "sddm",
     "sudo",
     "wireplumber",
