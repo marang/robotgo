@@ -54,9 +54,13 @@ silently reuse an older image.
 archive for the exact lowercase commit, and starts the test as the unprivileged
 `robotgo` guest user. Immediately before requesting portal consent, the test
 creates a private non-sensitive readiness marker. A separate host-side QMP
-client then sends GNOME's real dialog mnemonics through the VM's virtual
-keyboard. RobotGo does not patch or auto-approve the portal backend and is not
-the consent-input actor.
+client sends GNOME's real dialog mnemonics through the VM's virtual keyboard
+for RemoteDesktop. For the pinned two-output ScreenCast dialog, it selects both
+manifest-declared monitor buttons through the VM's virtual pointer. The target
+coordinates are derived from the validated output manifest and pinned dialog
+contract; no pixels, accessibility data, or window contents leave the guest.
+RobotGo does not patch or auto-approve the portal backend and is not the
+consent-input actor.
 
 Build and runtime logs, serial output, SSH keys, cloud-init inputs, seed disks,
 and overlays remain inside a private per-run directory. The command removes

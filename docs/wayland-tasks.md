@@ -154,18 +154,17 @@ PID/handle-specific control remains unsupported for all listed Wayland
 backends.
 
 - Priority Backlog (1-7):
-  - 1. Extend the delivered hosted GNOME/KDE single-output RemoteDesktop
-    execution with multi-output evidence and exact-release promotion. Track
+  - 1. Promote the delivered hosted GNOME/KDE single- and multi-output
+    RemoteDesktop evidence into exact-release gates. Track
     Sway/wlroots native input and explicit portal availability in the delivered
     passing isolated hosted lanes. Shared ScreenCast mapping, absolute
     pointer/touch, consent, denial, cancellation, timeout, restore metadata,
     teardown, and high-level dispatch have hermetic coverage.
     `[new vs robotgo-pro]`
-  - 2. Extend the hosted real GNOME/KDE ScreenCast/PipeWire execution with
-    multi-output evidence and promote its leak/timeout tests to release gates.
+  - 2. Promote the delivered hosted real GNOME/KDE single- and multi-output
+    ScreenCast/PipeWire evidence and its leak/timeout tests to release gates.
     The isolated hosted Sway native-capture and portal-availability lanes pass
-    separately; hosted Sway multi-output proof is delivered and GNOME/KDE
-    multi-output proof remains open.
+    separately; hosted Sway and GNOME/KDE multi-output proofs are delivered.
     `[new vs robotgo-pro]`
   - 3. Continue window state/query operations beyond the delivered Hyprland
     maximize slice where a compositor exposes equally trustworthy state.
@@ -201,8 +200,8 @@ backends.
     Evidence v1 binds that report and test-log digests to exact source across
     the six native/Pure-Go hosted platform cells.
   - 7. Keep race/vet and the manifest-checked native ASan/LeakSanitizer ownership
-    suites blocking. Hosted Sway and GNOME/KDE single-output jobs are defined;
-    provision the remaining GNOME/KDE multi-output and release-promotion jobs.
+    suites blocking. Hosted Sway and GNOME/KDE single-/multi-output jobs are
+    defined and evidenced; provision their remaining release-promotion gates.
 
 - Recently completed parity work:
   - Window state/query APIs expose `IsTopMostE`, `IsMinimizedE`,
@@ -219,15 +218,15 @@ backends.
     across native screencopy and PipeWire mapping.
   - Validate the same scale/transform and region-crop behavior on real wlroots,
     GNOME, and KDE sessions.
-  - Complete protected GNOME/KDE multi-output selection and bounds evidence
-    using `xdg-output`; hosted wlroots/Sway and Weston single-/multi-output
-    evidence are blocking and green.
+  - Protected GNOME/KDE portal multi-output selection and stream evidence is
+    retained alongside blocking hosted wlroots/Sway and Weston
+    single-/multi-output evidence. Promote the portal checks into release gates.
 - Portal Path:
   - Expand troubleshooting for xdg-desktop-portal backend selection and consent prompts.
   - Validate the existing high-level RemoteDesktop input fallback on GNOME/KDE.
-  - GNOME/KDE single-output persistent ScreenCast/PipeWire and repeated-frame
-    behavior are validated in hosted guests. Extend the same contract to
-    multi-output portal selection. Keep Sway/wlroots native capture and
+  - GNOME/KDE single-output repeated-frame behavior and multi-output
+    per-stream ScreenCast/PipeWire capture are validated in hosted guests. Keep
+    Sway/wlroots native capture and
     portal-availability evidence separate unless a compatible portal backend
     is explicitly promoted.
 - Keyboard Input:
