@@ -24,12 +24,27 @@ func TestPipeWireCapturePersistentSessionIntegration(t *testing.T) {
 	}
 	stage := "preflight"
 	defer reportScreenCastStageOnFailure(t, &stage)
-	signalScreenCastConsentReady(t)
 	expectedOutputs, multiOutput := expectedScreenCastOutputs(t)
 	if multiOutput {
-		testMultiplePipeWireStreams(t, &stage, expectedOutputs)
+		probeCtx, cancelProbe := context.WithTimeout(
+			context.Background(),
+			2*time.Second,
+		)
+		capability, err := ProbeScreenCast(probeCtx)
+		cancelProbe()
+		if err != nil {
+			t.Fatalf("ProbeScreenCast error: %v", err)
+		}
+		signalScreenCastConsentReady(t)
+		testMultiplePipeWireStreams(
+			t,
+			&stage,
+			expectedOutputs,
+			capability.Version,
+		)
 		return
 	}
+	signalScreenCastConsentReady(t)
 	openCtx, cancelOpen := context.WithTimeout(context.Background(), 2*time.Minute)
 	capture, err := openPipeWireCapture(
 		openCtx,
@@ -83,6 +98,7 @@ func testMultiplePipeWireStreams(
 	t *testing.T,
 	stage *string,
 	expected portalrunner.HostedDisplay,
+	screenCastVersion uint32,
 ) {
 	t.Helper()
 	if !pipeWireCaptureCompiled() {
@@ -117,7 +133,13 @@ func testMultiplePipeWireStreams(
 	}()
 	*stage = "stream-metadata"
 	streams := session.Streams()
-	validateScreenCastStreams(t, stage, streams, expected)
+	validateScreenCastStreams(
+		t,
+		stage,
+		streams,
+		expected,
+		screenCastVersion,
+	)
 	for index, stream := range streams {
 		*stage = fmt.Sprintf("pipewire-open-%d", index+1)
 		backendCtx, cancelBackend := context.WithTimeout(
@@ -187,6 +209,7 @@ func validateScreenCastStreams(
 	stage *string,
 	streams []ScreenCastStream,
 	expected portalrunner.HostedDisplay,
+	screenCastVersion uint32,
 ) {
 	t.Helper()
 	evidence := make(
@@ -210,6 +233,7 @@ func validateScreenCastStreams(
 	}
 	if err := portalrunner.ValidateHostedStreamEvidence(
 		expected,
+		screenCastVersion,
 		evidence,
 	); err != nil {
 		if category := portalrunner.HostedStreamEvidenceFailureStage(err); category != "" {

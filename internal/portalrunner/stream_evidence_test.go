@@ -23,11 +23,12 @@ func TestValidateHostedStreamEvidence(t *testing.T) {
 			X: 1280, Y: 0, Width: 1024, Height: 768,
 		},
 	}
-	if err := ValidateHostedStreamEvidence(display, valid); err != nil {
+	if err := ValidateHostedStreamEvidence(display, 6, valid); err != nil {
 		t.Fatalf("valid stream evidence: %v", err)
 	}
 	tests := []struct {
 		name      string
+		version   uint32
 		change    func([]HostedStreamEvidence) []HostedStreamEvidence
 		want      string
 		wantStage string
@@ -40,12 +41,13 @@ func TestValidateHostedStreamEvidence(t *testing.T) {
 			want: "stream count=1", wantStage: "count",
 		},
 		{
-			name: "ambiguous geometry",
+			name:    "non-monitor source",
+			version: 3,
 			change: func(streams []HostedStreamEvidence) []HostedStreamEvidence {
-				streams[1].HasPosition = false
+				streams[1].Monitor = false
 				return streams
 			},
-			want: "metadata is ambiguous", wantStage: "metadata",
+			want: "not identified as a monitor", wantStage: "metadata",
 		},
 		{
 			name: "unexpected geometry",
@@ -67,14 +69,6 @@ func TestValidateHostedStreamEvidence(t *testing.T) {
 			want: "geometry is unexpected", wantStage: "geometry",
 		},
 		{
-			name: "missing mapping",
-			change: func(streams []HostedStreamEvidence) []HostedStreamEvidence {
-				streams[1].MappingID = ""
-				return streams
-			},
-			want: "mapping ID is unavailable", wantStage: "mapping-id",
-		},
-		{
 			name: "duplicate mapping",
 			change: func(streams []HostedStreamEvidence) []HostedStreamEvidence {
 				streams[1].MappingID = streams[0].MappingID
@@ -91,6 +85,15 @@ func TestValidateHostedStreamEvidence(t *testing.T) {
 			want: "node ID is duplicated", wantStage: "node",
 		},
 		{
+			name:    "missing serial in version 6",
+			version: 6,
+			change: func(streams []HostedStreamEvidence) []HostedStreamEvidence {
+				streams[1].PipeWireSerial = 0
+				return streams
+			},
+			want: "PipeWire serial is unavailable", wantStage: "pipewire-serial",
+		},
+		{
 			name: "duplicate serial",
 			change: func(streams []HostedStreamEvidence) []HostedStreamEvidence {
 				streams[1].PipeWireSerial = streams[0].PipeWireSerial
@@ -104,8 +107,13 @@ func TestValidateHostedStreamEvidence(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
 			streams := append([]HostedStreamEvidence(nil), valid...)
+			version := test.version
+			if version == 0 {
+				version = 6
+			}
 			err := ValidateHostedStreamEvidence(
 				display,
+				version,
 				test.change(streams),
 			)
 			if err == nil || !strings.Contains(err.Error(), test.want) {
@@ -135,6 +143,86 @@ func TestValidateHostedStreamEvidence(t *testing.T) {
 						err,
 					)
 				}
+			}
+		})
+	}
+	for _, test := range []struct {
+		name    string
+		version uint32
+		change  func([]HostedStreamEvidence)
+	}{
+		{
+			name:    "version 5 without PipeWire serial",
+			version: 5,
+			change: func(streams []HostedStreamEvidence) {
+				for index := range streams {
+					streams[index].PipeWireSerial = 0
+				}
+			},
+		},
+		{
+			name:    "optional identifiers omitted",
+			version: 6,
+			change: func(streams []HostedStreamEvidence) {
+				for index := range streams {
+					streams[index].ID = ""
+					streams[index].MappingID = ""
+				}
+			},
+		},
+		{
+			name:    "optional geometry omitted",
+			version: 6,
+			change: func(streams []HostedStreamEvidence) {
+				for index := range streams {
+					streams[index].HasPosition = false
+					streams[index].HasSize = false
+					streams[index].X = 0
+					streams[index].Y = 0
+					streams[index].Width = 0
+					streams[index].Height = 0
+				}
+			},
+		},
+		{
+			name:    "optional position omitted",
+			version: 6,
+			change: func(streams []HostedStreamEvidence) {
+				streams[1].HasPosition = false
+				streams[1].X = 0
+				streams[1].Y = 0
+			},
+		},
+		{
+			name:    "optional size omitted",
+			version: 6,
+			change: func(streams []HostedStreamEvidence) {
+				streams[1].HasSize = false
+				streams[1].Width = 0
+				streams[1].Height = 0
+			},
+		},
+		{
+			name:    "version 2 without source type",
+			version: 2,
+			change: func(streams []HostedStreamEvidence) {
+				for index := range streams {
+					streams[index].Monitor = false
+				}
+			},
+		},
+	} {
+		test := test
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			streams := append([]HostedStreamEvidence(nil), valid...)
+			test.change(streams)
+			if err := ValidateHostedStreamEvidence(
+				display,
+				test.version,
+				streams,
+			); err != nil {
+				t.Fatalf("ValidateHostedStreamEvidence() error = %v", err)
 			}
 		})
 	}

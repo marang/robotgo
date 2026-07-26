@@ -5,6 +5,11 @@ import (
 	"fmt"
 )
 
+const (
+	screenCastSourceTypeVersion     uint32 = 3
+	screenCastPipeWireSerialVersion uint32 = 6
+)
+
 // HostedStreamEvidence contains only the transient metadata required to prove
 // one selected monitor stream. Callers must not log or persist the values.
 type HostedStreamEvidence struct {
@@ -48,11 +53,12 @@ func HostedStreamEvidenceFailureStage(err error) string {
 	return ""
 }
 
-// ValidateHostedStreamEvidence proves an exact one-to-one mapping between the
-// manifest topology and transient portal streams without returning identifiers
-// in errors.
+// ValidateHostedStreamEvidence validates the mandatory stream identity and any
+// optional topology metadata exposed by the negotiated ScreenCast interface
+// without returning transient identifiers in errors.
 func ValidateHostedStreamEvidence(
 	display HostedDisplay,
+	screenCastVersion uint32,
 	streams []HostedStreamEvidence,
 ) error {
 	if err := display.Validate(); err != nil {
@@ -77,23 +83,25 @@ func ValidateHostedStreamEvidence(
 	mappings := make(map[string]struct{}, len(streams))
 	serials := make(map[uint64]struct{}, len(streams))
 	for _, stream := range streams {
-		if !stream.Monitor || !stream.HasPosition || !stream.HasSize {
+		if screenCastVersion >= screenCastSourceTypeVersion && !stream.Monitor {
 			return newHostedStreamEvidenceFailure(
 				"metadata",
-				errors.New("portal monitor stream metadata is ambiguous"),
+				errors.New("portal stream is not identified as a monitor"),
 			)
 		}
-		geometry := HostedOutput{
-			X: stream.X, Y: stream.Y,
-			Width: stream.Width, Height: stream.Height,
+		if stream.HasPosition && stream.HasSize {
+			geometry := HostedOutput{
+				X: stream.X, Y: stream.Y,
+				Width: stream.Width, Height: stream.Height,
+			}
+			if _, ok := expectedGeometry[geometry]; !ok {
+				return newHostedStreamEvidenceFailure(
+					"geometry",
+					errors.New("portal monitor stream geometry is unexpected"),
+				)
+			}
+			delete(expectedGeometry, geometry)
 		}
-		if _, ok := expectedGeometry[geometry]; !ok {
-			return newHostedStreamEvidenceFailure(
-				"geometry",
-				errors.New("portal monitor stream geometry is unexpected"),
-			)
-		}
-		delete(expectedGeometry, geometry)
 		if stream.NodeID == 0 {
 			return newHostedStreamEvidenceFailure(
 				"node",
@@ -107,33 +115,26 @@ func ValidateHostedStreamEvidence(
 			)
 		}
 		nodes[stream.NodeID] = struct{}{}
-		if stream.ID == "" {
-			return newHostedStreamEvidenceFailure(
-				"stable-id",
-				errors.New("portal monitor stream stable ID is unavailable"),
-			)
+		if stream.ID != "" {
+			if _, duplicate := identifiers[stream.ID]; duplicate {
+				return newHostedStreamEvidenceFailure(
+					"stable-id",
+					errors.New("portal monitor stream stable ID is duplicated"),
+				)
+			}
+			identifiers[stream.ID] = struct{}{}
 		}
-		if _, duplicate := identifiers[stream.ID]; duplicate {
-			return newHostedStreamEvidenceFailure(
-				"stable-id",
-				errors.New("portal monitor stream stable ID is duplicated"),
-			)
+		if stream.MappingID != "" {
+			if _, duplicate := mappings[stream.MappingID]; duplicate {
+				return newHostedStreamEvidenceFailure(
+					"mapping-id",
+					errors.New("portal monitor stream mapping ID is duplicated"),
+				)
+			}
+			mappings[stream.MappingID] = struct{}{}
 		}
-		identifiers[stream.ID] = struct{}{}
-		if stream.MappingID == "" {
-			return newHostedStreamEvidenceFailure(
-				"mapping-id",
-				errors.New("portal monitor stream mapping ID is unavailable"),
-			)
-		}
-		if _, duplicate := mappings[stream.MappingID]; duplicate {
-			return newHostedStreamEvidenceFailure(
-				"mapping-id",
-				errors.New("portal monitor stream mapping ID is duplicated"),
-			)
-		}
-		mappings[stream.MappingID] = struct{}{}
-		if stream.PipeWireSerial == 0 {
+		if screenCastVersion >= screenCastPipeWireSerialVersion &&
+			stream.PipeWireSerial == 0 {
 			return newHostedStreamEvidenceFailure(
 				"pipewire-serial",
 				errors.New(
@@ -141,21 +142,17 @@ func ValidateHostedStreamEvidence(
 				),
 			)
 		}
-		if _, duplicate := serials[stream.PipeWireSerial]; duplicate {
-			return newHostedStreamEvidenceFailure(
-				"pipewire-serial",
-				errors.New(
-					"portal monitor stream PipeWire serial is duplicated",
-				),
-			)
+		if stream.PipeWireSerial != 0 {
+			if _, duplicate := serials[stream.PipeWireSerial]; duplicate {
+				return newHostedStreamEvidenceFailure(
+					"pipewire-serial",
+					errors.New(
+						"portal monitor stream PipeWire serial is duplicated",
+					),
+				)
+			}
+			serials[stream.PipeWireSerial] = struct{}{}
 		}
-		serials[stream.PipeWireSerial] = struct{}{}
-	}
-	if len(expectedGeometry) != 0 {
-		return newHostedStreamEvidenceFailure(
-			"geometry",
-			errors.New("portal monitor stream geometry is incomplete"),
-		)
 	}
 	return nil
 }

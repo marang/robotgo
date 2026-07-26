@@ -83,10 +83,17 @@ func TestRemoteDesktopPortalRuntime(t *testing.T) {
 	}
 	stage = "input-events"
 	if multiOutput {
-		validateRemoteDesktopStreams(t, &stage, streams, expectedOutputs)
+		validateRemoteDesktopStreams(
+			t,
+			&stage,
+			streams,
+			expectedOutputs,
+			capability.ScreenCastVersion,
+		)
 		for index, stream := range streams {
 			stage = fmt.Sprintf("input-output-%d", index+1)
 			stream := stream
+			x, y := remoteDesktopStreamCoordinates(stream)
 			runPortalEvent(
 				t,
 				fmt.Sprintf("PointerMotionAbsolute output %d", index+1),
@@ -94,8 +101,8 @@ func TestRemoteDesktopPortalRuntime(t *testing.T) {
 					return session.PointerMotionAbsolute(
 						eventCtx,
 						stream.NodeID,
-						float64(stream.Size.Width)/2,
-						float64(stream.Size.Height)/2,
+						x,
+						y,
 					)
 				},
 			)
@@ -157,6 +164,7 @@ func validateRemoteDesktopStreams(
 	stage *string,
 	streams []portalinput.Stream,
 	expected portalrunner.HostedDisplay,
+	screenCastVersion uint32,
 ) {
 	t.Helper()
 	evidence := make(
@@ -180,12 +188,73 @@ func validateRemoteDesktopStreams(
 	}
 	if err := portalrunner.ValidateHostedStreamEvidence(
 		expected,
+		screenCastVersion,
 		evidence,
 	); err != nil {
 		if category := portalrunner.HostedStreamEvidenceFailureStage(err); category != "" {
 			*stage = "streams-" + category
 		}
 		t.Fatalf("validate portal multi-output evidence: %v", err)
+	}
+}
+
+func remoteDesktopStreamCoordinates(stream portalinput.Stream) (float64, float64) {
+	x, y := float64(1), float64(1)
+	if stream.HasSize && stream.Size.Width > 0 {
+		x = float64(stream.Size.Width) / 2
+	}
+	if stream.HasSize && stream.Size.Height > 0 {
+		y = float64(stream.Size.Height) / 2
+	}
+	return x, y
+}
+
+func TestRemoteDesktopStreamCoordinates(t *testing.T) {
+	t.Parallel()
+	for _, test := range []struct {
+		name   string
+		stream portalinput.Stream
+		wantX  float64
+		wantY  float64
+	}{
+		{
+			name: "portal omitted optional size",
+			stream: portalinput.Stream{
+				Size: portalinput.Size{Width: 1280, Height: 720},
+			},
+			wantX: 1, wantY: 1,
+		},
+		{
+			name: "logical center",
+			stream: portalinput.Stream{
+				HasSize: true,
+				Size:    portalinput.Size{Width: 1280, Height: 720},
+			},
+			wantX: 640, wantY: 360,
+		},
+		{
+			name: "minimum safe coordinate",
+			stream: portalinput.Stream{
+				HasSize: true,
+				Size:    portalinput.Size{Width: 1, Height: 1},
+			},
+			wantX: 0.5, wantY: 0.5,
+		},
+	} {
+		test := test
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			x, y := remoteDesktopStreamCoordinates(test.stream)
+			if x != test.wantX || y != test.wantY {
+				t.Fatalf(
+					"remoteDesktopStreamCoordinates() = (%g,%g), want (%g,%g)",
+					x,
+					y,
+					test.wantX,
+					test.wantY,
+				)
+			}
+		})
 	}
 }
 
