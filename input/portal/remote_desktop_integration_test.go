@@ -83,7 +83,7 @@ func TestRemoteDesktopPortalRuntime(t *testing.T) {
 	}
 	stage = "input-events"
 	if multiOutput {
-		validateRemoteDesktopStreams(t, streams, expectedOutputs)
+		validateRemoteDesktopStreams(t, &stage, streams, expectedOutputs)
 		for index, stream := range streams {
 			stage = fmt.Sprintf("input-output-%d", index+1)
 			stream := stream
@@ -154,6 +154,7 @@ func expectedPortalOutputs(
 
 func validateRemoteDesktopStreams(
 	t *testing.T,
+	stage *string,
 	streams []portalinput.Stream,
 	expected portalrunner.HostedDisplay,
 ) {
@@ -181,6 +182,9 @@ func validateRemoteDesktopStreams(
 		expected,
 		evidence,
 	); err != nil {
+		if category := portalrunner.HostedStreamEvidenceFailureStage(err); category != "" {
+			*stage = "streams-" + category
+		}
 		t.Fatalf("validate portal multi-output evidence: %v", err)
 	}
 }

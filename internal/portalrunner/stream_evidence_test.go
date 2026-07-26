@@ -1,6 +1,7 @@
 package portalrunner
 
 import (
+	"errors"
 	"strings"
 	"testing"
 )
@@ -26,16 +27,17 @@ func TestValidateHostedStreamEvidence(t *testing.T) {
 		t.Fatalf("valid stream evidence: %v", err)
 	}
 	tests := []struct {
-		name   string
-		change func([]HostedStreamEvidence) []HostedStreamEvidence
-		want   string
+		name      string
+		change    func([]HostedStreamEvidence) []HostedStreamEvidence
+		want      string
+		wantStage string
 	}{
 		{
 			name: "one stream",
 			change: func(streams []HostedStreamEvidence) []HostedStreamEvidence {
 				return streams[:1]
 			},
-			want: "stream count=1",
+			want: "stream count=1", wantStage: "count",
 		},
 		{
 			name: "ambiguous geometry",
@@ -43,7 +45,7 @@ func TestValidateHostedStreamEvidence(t *testing.T) {
 				streams[1].HasPosition = false
 				return streams
 			},
-			want: "metadata is ambiguous",
+			want: "metadata is ambiguous", wantStage: "metadata",
 		},
 		{
 			name: "unexpected geometry",
@@ -51,7 +53,7 @@ func TestValidateHostedStreamEvidence(t *testing.T) {
 				streams[1].X = 0
 				return streams
 			},
-			want: "geometry is unexpected",
+			want: "geometry is unexpected", wantStage: "geometry",
 		},
 		{
 			name: "duplicate geometry",
@@ -62,7 +64,7 @@ func TestValidateHostedStreamEvidence(t *testing.T) {
 				streams[1].Height = streams[0].Height
 				return streams
 			},
-			want: "geometry is unexpected",
+			want: "geometry is unexpected", wantStage: "geometry",
 		},
 		{
 			name: "missing mapping",
@@ -70,7 +72,7 @@ func TestValidateHostedStreamEvidence(t *testing.T) {
 				streams[1].MappingID = ""
 				return streams
 			},
-			want: "mapping ID is unavailable",
+			want: "mapping ID is unavailable", wantStage: "mapping-id",
 		},
 		{
 			name: "duplicate mapping",
@@ -78,7 +80,7 @@ func TestValidateHostedStreamEvidence(t *testing.T) {
 				streams[1].MappingID = streams[0].MappingID
 				return streams
 			},
-			want: "mapping ID is duplicated",
+			want: "mapping ID is duplicated", wantStage: "mapping-id",
 		},
 		{
 			name: "duplicate node",
@@ -86,7 +88,7 @@ func TestValidateHostedStreamEvidence(t *testing.T) {
 				streams[1].NodeID = streams[0].NodeID
 				return streams
 			},
-			want: "node ID is duplicated",
+			want: "node ID is duplicated", wantStage: "node",
 		},
 		{
 			name: "duplicate serial",
@@ -94,7 +96,7 @@ func TestValidateHostedStreamEvidence(t *testing.T) {
 				streams[1].PipeWireSerial = streams[0].PipeWireSerial
 				return streams
 			},
-			want: "PipeWire serial is duplicated",
+			want: "PipeWire serial is duplicated", wantStage: "pipewire-serial",
 		},
 	}
 	for _, test := range tests {
@@ -113,6 +115,13 @@ func TestValidateHostedStreamEvidence(t *testing.T) {
 					test.want,
 				)
 			}
+			if stage := HostedStreamEvidenceFailureStage(err); stage != test.wantStage {
+				t.Fatalf(
+					"HostedStreamEvidenceFailureStage() = %q, want %q",
+					stage,
+					test.wantStage,
+				)
+			}
 			for _, sensitive := range []string{
 				"stream-a",
 				"stream-b",
@@ -128,5 +137,10 @@ func TestValidateHostedStreamEvidence(t *testing.T) {
 				}
 			}
 		})
+	}
+	if stage := HostedStreamEvidenceFailureStage(
+		errors.New("unclassified"),
+	); stage != "" {
+		t.Fatalf("unclassified stream evidence stage = %q", stage)
 	}
 }

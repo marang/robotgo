@@ -117,7 +117,7 @@ func testMultiplePipeWireStreams(
 	}()
 	*stage = "stream-metadata"
 	streams := session.Streams()
-	validateScreenCastStreams(t, streams, expected)
+	validateScreenCastStreams(t, stage, streams, expected)
 	for index, stream := range streams {
 		*stage = fmt.Sprintf("pipewire-open-%d", index+1)
 		backendCtx, cancelBackend := context.WithTimeout(
@@ -184,6 +184,7 @@ func expectedScreenCastOutputs(
 
 func validateScreenCastStreams(
 	t *testing.T,
+	stage *string,
 	streams []ScreenCastStream,
 	expected portalrunner.HostedDisplay,
 ) {
@@ -211,6 +212,9 @@ func validateScreenCastStreams(
 		expected,
 		evidence,
 	); err != nil {
+		if category := portalrunner.HostedStreamEvidenceFailureStage(err); category != "" {
+			*stage = "streams-" + category
+		}
 		t.Fatalf("validate ScreenCast multi-output evidence: %v", err)
 	}
 }
