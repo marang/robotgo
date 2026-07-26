@@ -465,17 +465,17 @@ once per desktop. wlroots native and portal-availability evidence is promoted
 through the separate P005 runner path and is not a RemoteDesktop pass. The portal
 client is pure Go and therefore independent of the
 root package's CGO setting; CGO and non-CGO high-level fallback dispatch remains
-covered by the hermetic root tests. The workflow can be triggered
-manually at any time. Set the repository variable
-`ROBOTGO_REMOTE_DESKTOP_E2E=1` after those runners are provisioned to run the
-same matrix on pull requests and pushes to `main`, where it can be configured as
-a required check for branches in this repository. Fork pull requests are
-intentionally excluded because untrusted code must never execute on protected
-self-hosted desktop runners. Configure the `remote-desktop-e2e` GitHub
-Environment with required reviewers and use ephemeral, network-isolated runners.
-The workflow uses read-only permissions, does not persist checkout credentials,
-and runs the shared fail-closed desktop, D-Bus, portal, operator-readiness, and
-exact-commit preflight before injecting input.
+covered by the hermetic root tests. The workflow can be triggered manually for
+`gnome`, `kde`, or both. After a lane's protected runner and consent path are
+proven, set the repository variable `ROBOTGO_REMOTE_DESKTOP_E2E` to `gnome`,
+`kde`, or `all` to run that matrix on same-repository pull requests and pushes
+to `main`, where it can be configured as a required check. Fork pull requests
+are intentionally excluded because untrusted code must never execute on
+protected self-hosted desktop runners. Configure the `remote-desktop-e2e`
+GitHub Environment with required reviewers and use ephemeral, network-isolated
+runners. The workflow uses read-only permissions, does not persist checkout
+credentials, and runs the shared fail-closed desktop, D-Bus, portal,
+operator-readiness, and exact-commit preflight before injecting input.
 
 Runtime outcomes and missing infrastructure are recorded in
 `docs/compatibility/wayland-input.md`; an unavailable runner is not counted as a
@@ -516,9 +516,11 @@ Run it from a graphical Wayland session. It displays the portal consent UI,
 captures two frames from the same session, validates non-empty output, and
 closes the PipeWire consumer before the portal session.
 `.github/workflows/screencast-e2e.yml` runs the same harness on protected,
-ephemeral self-hosted GNOME and KDE runners when the repository variable
-`ROBOTGO_SCREENCAST_E2E=1` is enabled, or by manual dispatch. wlroots does not
-count as a ScreenCast pass and is promoted separately under P005.
+ephemeral self-hosted GNOME and KDE runners. It can be dispatched manually for
+`gnome`, `kde`, or both. After a lane is proven, set the repository variable
+`ROBOTGO_SCREENCAST_E2E` to `gnome`, `kde`, or `all` to run its matrix on
+trusted pull requests and pushes. wlroots does not count as a ScreenCast pass
+and is promoted separately under P005.
 
 ### `waylandint` (Keyboard integration harness)
 
@@ -856,6 +858,14 @@ PipeWire/WirePlumber for ScreenCast, a fixed positive output count, and the
 out-of-band operator-console readiness attestation. Missing infrastructure,
 consent readiness, an exact-commit match, or a non-skipping test pass fails the
 cell. Raw output is never streamed through `tee` or uploaded on failure.
+
+The reproducible GNOME image, host-side supervisor, build/probe commands,
+operator-consent handoff, and mandatory cleanup checks are documented in
+[Protected GNOME Portal Runner](infrastructure/portal-runner/gnome/README.md).
+The image must pass `validate`, `build`, and `probe` before an exact workflow
+attempt is approved. Each `run` invocation registers one ephemeral runner for
+one `remote-desktop` or `screencast` cell and requires the operator to attest
+the visible private console with the exact input `READY`.
 
 wlroots is intentionally not treated as a RemoteDesktop/ScreenCast pass in
 these portal workflows. Its hosted native and explicit portal-availability

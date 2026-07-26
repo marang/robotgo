@@ -1,6 +1,6 @@
 # Protected Real-Compositor Evidence Plan
 
-Status: Hosted wlroots single- and multi-output proof delivered; protected portal runners are next
+Status: Hosted wlroots and local protected-GNOME proof delivered; real GNOME portal evidence is next
 
 Linear project:
 [RobotGo | P005 | Protected Compositor Evidence](https://linear.app/riotbox/project/robotgo-or-p005-or-protected-compositor-evidence-d66467e3b5ee)
@@ -242,8 +242,11 @@ green.
    negative origin, scale, transform, exact logical per-output bounds,
    aggregate bounds, and induced-failure cleanup evidence. Retained evidence:
    [`Sway E2E` run 29861058126](https://github.com/marang/robotgo/actions/runs/29861058126).
-4. Provision and prove GNOME RemoteDesktop and ScreenCast when protected
-   ephemeral runner ownership and operator consent are available.
+4. **Local provisioning proof implemented:** the pinned, ephemeral GNOME
+   runner passes its reproducible image, real session, portal availability,
+   PipeWire, attestation, egress, and cleanup probes. Promotion still requires
+   retained real RemoteDesktop and ScreenCast workflow evidence with operator
+   consent on the exact commit.
 5. Provision and prove KDE RemoteDesktop and ScreenCast under the same gate.
 6. **Implemented for hosted wlroots:** require all six stable Sway checks for
    the exact release commit and in branch protection. Extend the same promotion
