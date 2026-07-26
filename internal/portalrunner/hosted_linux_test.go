@@ -253,7 +253,7 @@ func TestHostedPortalMultiOutputCommandBindsCanonicalTopology(
 	for _, required := range []string{
 		"ROBOTGO_PORTAL_MULTI_OUTPUT=1",
 		"ROBOTGO_PORTAL_EXPECTED_OUTPUTS=" +
-			"0,0,1280,720;1280,0,1024,768",
+			"'0,0,1280,720;1280,0,1024,768'",
 	} {
 		if !strings.Contains(command, required) {
 			t.Errorf("multi-output command omits %q", required)
@@ -670,6 +670,24 @@ func TestPortalDialogWaitRejectsEarlyTestExit(t *testing.T) {
 	}
 	if time.Since(start) > time.Second {
 		t.Fatal("early hosted portal test exit was not detected promptly")
+	}
+}
+
+func TestConsentMarkerWaitClassifiesEarlyTestExit(t *testing.T) {
+	t.Parallel()
+	done := make(chan struct{})
+	close(done)
+	err := waitForConsentMarker(
+		context.Background(),
+		&scriptedCommandExecutor{},
+		nil,
+		"/run/user/1100/robotgo-portal-consent.ready",
+		"remote-desktop",
+		&strings.Builder{},
+		done,
+	)
+	if !errors.Is(err, errHostedPortalTestExitedBeforeConsent) {
+		t.Fatalf("early consent exit error = %v", err)
 	}
 }
 

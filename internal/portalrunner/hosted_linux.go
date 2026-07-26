@@ -49,6 +49,10 @@ var sessionFailureStagePattern = regexp.MustCompile(
 	`ROBOTGO_SESSION_STAGE=([a-z0-9-]{1,32})`,
 )
 
+var errHostedPortalTestExitedBeforeConsent = errors.New(
+	"hosted portal test exited before requesting consent",
+)
+
 var kdeLocatorFailureStages = map[string]struct{}{
 	"bridge-unavailable":     {},
 	"compositor-unavailable": {},
@@ -476,6 +480,14 @@ func RunHostedPortal(
 			testResult.done,
 		); err != nil {
 			stopProcessGroup(testCommand, testResult.done)
+			if errors.Is(err, errHostedPortalTestExitedBeforeConsent) {
+				if stage := readPortalFailureStage(testLogPath); stage != "" {
+					return fmt.Errorf(
+						"hosted portal test exited before consent at stage %q",
+						stage,
+					)
+				}
+			}
 			return err
 		}
 		if err := waitForPortalDialog(
@@ -972,7 +984,7 @@ func hostedPortalTestCommandForTopology(
 			return "", err
 		}
 		environment += " ROBOTGO_PORTAL_MULTI_OUTPUT=1" +
-			" ROBOTGO_PORTAL_EXPECTED_OUTPUTS=" + encoded
+			" ROBOTGO_PORTAL_EXPECTED_OUTPUTS=" + shellQuote(encoded)
 	}
 	var test string
 	if cell == "screencast" {
@@ -1329,7 +1341,7 @@ func waitForConsentMarker(
 	for {
 		select {
 		case <-testDone:
-			return errors.New("hosted portal test exited before requesting consent")
+			return errHostedPortalTestExitedBeforeConsent
 		default:
 		}
 		var content bytes.Buffer
@@ -1368,7 +1380,7 @@ func waitForConsentMarker(
 		case <-ctx.Done():
 			return ctx.Err()
 		case <-testDone:
-			return errors.New("hosted portal test exited before requesting consent")
+			return errHostedPortalTestExitedBeforeConsent
 		case <-time.After(consentPollInterval):
 		}
 	}
