@@ -200,12 +200,11 @@ func (client *qmpClient) clickAbsolute(
 
 func (client *qmpClient) confirmKDEPortal(ctx context.Context) error {
 	// Plasma 5.27 starts before the two output cards. The first trip selects
-	// the physical card; the second visits restore and activates Share.
+	// the physical card; the next focus stop is the now-enabled Share button.
 	for _, key := range []string{
 		qmpKeyTab,
 		qmpKeyTab,
 		qmpKeySpace,
-		qmpKeyTab,
 		qmpKeyTab,
 		qmpKeySpace,
 	} {

@@ -165,7 +165,7 @@ func TestQMPKDEConfirmationMovesFromCardToShare(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = listener.Close() })
 
-	commands := make(chan qmpCommand, 7)
+	commands := make(chan qmpCommand, 6)
 	serverDone := make(chan error, 1)
 	go func() {
 		connection, err := listener.Accept()
@@ -182,7 +182,7 @@ func TestQMPKDEConfirmationMovesFromCardToShare(t *testing.T) {
 		}
 		decoder := json.NewDecoder(bufio.NewReader(connection))
 		encoder := json.NewEncoder(connection)
-		for range 7 {
+		for range 6 {
 			var command qmpCommand
 			if err := decoder.Decode(&command); err != nil {
 				serverDone <- err
@@ -214,7 +214,7 @@ func TestQMPKDEConfirmationMovesFromCardToShare(t *testing.T) {
 		t.Fatal(err)
 	}
 	close(commands)
-	got := make([]qmpCommand, 0, 7)
+	got := make([]qmpCommand, 0, 6)
 	for command := range commands {
 		got = append(got, command)
 	}
@@ -225,8 +225,7 @@ func TestQMPKDEConfirmationMovesFromCardToShare(t *testing.T) {
 	assertQMPChord(t, got[2], []string{qmpKeyTab})
 	assertQMPChord(t, got[3], []string{qmpKeySpace})
 	assertQMPChord(t, got[4], []string{qmpKeyTab})
-	assertQMPChord(t, got[5], []string{qmpKeyTab})
-	assertQMPChord(t, got[6], []string{qmpKeySpace})
+	assertQMPChord(t, got[5], []string{qmpKeySpace})
 }
 
 func TestQMPAbsoluteCoordinateRejectsOutsideDisplay(t *testing.T) {
