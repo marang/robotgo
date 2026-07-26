@@ -501,16 +501,13 @@ func configureKScreenDisplay(
 			fmt.Sprintf("output.%s.priority.%d", name, priority),
 		)
 	}
-	command := exec.CommandContext(ctx, "kscreen-doctor", arguments...)
-	var commandOutput bytes.Buffer
-	command.Stdout = &boundedWriter{
-		destination: &commandOutput,
-		remaining:   hostedTopologyOutput,
-	}
-	command.Stderr = command.Stdout
-	configureHostedProcess(command)
-	if err := command.Run(); err != nil {
-		return newHostedDisplayFailure(hostedDisplayStageKDEApply)
+	if err := waitForKScreenApply(
+		ctx,
+		hostedTopologyPoll,
+		arguments,
+		applyKScreenTopology,
+	); err != nil {
+		return err
 	}
 	for {
 		state, err = readKScreenState(ctx)
@@ -524,6 +521,56 @@ func configureKScreenDisplay(
 		case <-time.After(hostedTopologyPoll):
 		}
 	}
+}
+
+type kscreenApplyFunc func(context.Context, []string) error
+
+func waitForKScreenApply(
+	ctx context.Context,
+	poll time.Duration,
+	arguments []string,
+	apply kscreenApplyFunc,
+) error {
+	for {
+		err := apply(ctx, arguments)
+		if err == nil {
+			return nil
+		}
+		if HostedDisplayFailureStage(err) != hostedDisplayStageKDEApply {
+			return err
+		}
+		timer := time.NewTimer(poll)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return err
+		case <-timer.C:
+		}
+	}
+}
+
+func applyKScreenTopology(ctx context.Context, arguments []string) error {
+	commandContext, cancel := context.WithTimeout(
+		ctx,
+		hostedTopologyCommandTimeout,
+	)
+	defer cancel()
+	command := exec.CommandContext(
+		commandContext,
+		"kscreen-doctor",
+		arguments...,
+	)
+	var commandOutput bytes.Buffer
+	command.Stdout = &boundedWriter{
+		destination: &commandOutput,
+		remaining:   hostedTopologyOutput,
+	}
+	command.Stderr = command.Stdout
+	configureHostedProcess(command)
+	if err := command.Run(); err != nil {
+		return newHostedDisplayFailure(hostedDisplayStageKDEApply)
+	}
+	return nil
 }
 
 type kscreenStateReader func(context.Context) (kscreenState, error)

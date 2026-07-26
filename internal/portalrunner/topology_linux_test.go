@@ -63,6 +63,56 @@ func TestInitialKScreenStatePreservesFinalFailureStage(t *testing.T) {
 	}
 }
 
+func TestKScreenApplyRetriesTransientCommandFailure(t *testing.T) {
+	t.Parallel()
+	calls := 0
+	err := waitForKScreenApply(
+		context.Background(),
+		0,
+		[]string{"output.Virtual-1.enable"},
+		func(_ context.Context, arguments []string) error {
+			calls++
+			if len(arguments) != 1 ||
+				arguments[0] != "output.Virtual-1.enable" {
+				t.Fatalf("KScreen apply arguments = %v", arguments)
+			}
+			if calls < 3 {
+				return newHostedDisplayFailure(
+					hostedDisplayStageKDEApply,
+				)
+			}
+			return nil
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if calls != 3 {
+		t.Fatalf("KScreen apply calls = %d", calls)
+	}
+}
+
+func TestKScreenApplyPreservesNonApplyFailure(t *testing.T) {
+	t.Parallel()
+	calls := 0
+	err := waitForKScreenApply(
+		context.Background(),
+		0,
+		nil,
+		func(context.Context, []string) error {
+			calls++
+			return newHostedDisplayFailure(hostedDisplayStageKDEPlan)
+		},
+	)
+	if stage := HostedDisplayFailureStage(err); stage !=
+		hostedDisplayStageKDEPlan {
+		t.Fatalf("KScreen apply failure stage = %q", stage)
+	}
+	if calls != 1 {
+		t.Fatalf("non-apply KScreen failure was retried %d times", calls)
+	}
+}
+
 func TestHostedDisplayFailureMarkerIsPrivacySafe(t *testing.T) {
 	t.Parallel()
 	failure := errors.Join(
