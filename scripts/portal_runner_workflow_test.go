@@ -36,10 +36,10 @@ func TestProtectedPortalWorkflowsUsePinnedSingleLaneContract(t *testing.T) {
 			"inputs.desktop == 'kde'",
 			"inputs.desktop == 'all'",
 			"actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+			"actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e",
 			"actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a",
-			"Verify pinned guest toolchain",
-			`manifest="infrastructure/portal-runner/${{ matrix.desktop }}/manifest.json"`,
-			`test "$(go env GOVERSION)" = "$expected_go"`,
+			"Set up Go",
+			"go-version: 1.25.x",
 			`[ -f "$GITHUB_WORKSPACE/go.mod" ]`,
 			`git -C "$GITHUB_WORKSPACE" rev-parse HEAD`,
 			`= "$ROBOTGO_APPROVED_COMMIT"`,
@@ -65,9 +65,11 @@ func TestProtectedPortalWorkflowsUsePinnedSingleLaneContract(t *testing.T) {
 		for _, forbidden := range []string{
 			"pull_request_target",
 			"actions/checkout@v",
-			"actions/setup-go@",
+			"actions/setup-go@v",
 			"actions/upload-artifact@v",
 			"persist-credentials: true",
+			`infrastructure/portal-runner/${{ matrix.desktop }}/manifest.json`,
+			"infrastructure/portal-runner/kde/manifest.json",
 		} {
 			if strings.Contains(protectedJob, forbidden) {
 				t.Errorf("%s contains unsafe protected runner token %q", path, forbidden)

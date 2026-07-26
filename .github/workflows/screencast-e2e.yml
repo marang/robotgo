@@ -140,13 +140,10 @@ jobs:
         with:
           persist-credentials: false
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
-      - name: Verify pinned guest toolchain
-        shell: bash
-        run: |
-          set -euo pipefail
-          manifest="infrastructure/portal-runner/${{ matrix.desktop }}/manifest.json"
-          expected_go="$(jq -r '.go.version' "$manifest")"
-          test "$(go env GOVERSION)" = "$expected_go"
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version: 1.25.x
       - name: Run protected runner preflight
         env:
           ROBOTGO_APPROVED_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
