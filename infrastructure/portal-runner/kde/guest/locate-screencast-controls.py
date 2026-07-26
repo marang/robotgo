@@ -56,7 +56,7 @@ def extents(accessible):
 
 
 def controls(root):
-    output_cards = []
+    large_rectangles = {}
     disabled_buttons = []
     for accessible in descendants(root):
         rectangle = extents(accessible)
@@ -69,17 +69,34 @@ def controls(root):
         if (
             rectangle.width >= MINIMUM_CARD_EXTENT
             and rectangle.height >= MINIMUM_CARD_EXTENT
-            and candidate_action is not None
+            and state_contains(accessible, pyatspi.STATE_SENSITIVE)
         ):
-            output_cards.append((rectangle.y, rectangle.x, accessible))
+            key = (
+                rectangle.x,
+                rectangle.y,
+                rectangle.width,
+                rectangle.height,
+            )
+            large_rectangles.setdefault(key, accessible)
         if (
             role == pyatspi.ROLE_PUSH_BUTTON
             and candidate_action is not None
             and not state_contains(accessible, pyatspi.STATE_SENSITIVE)
         ):
             disabled_buttons.append(accessible)
-    output_cards.sort(key=lambda item: (item[0], item[1]))
-    return output_cards, disabled_buttons
+    rows = {}
+    for rectangle, accessible in large_rectangles.items():
+        x, y, width, height = rectangle
+        rows.setdefault((y, width, height), []).append((x, accessible))
+    pairs = [
+        (width * height, y, sorted(items))
+        for (y, width, height), items in rows.items()
+        if len(items) == 2 and items[0][0] != items[1][0]
+    ]
+    if not pairs:
+        return [], disabled_buttons
+    pairs.sort(key=lambda item: (item[0], item[1]), reverse=True)
+    return pairs[0][2], disabled_buttons
 
 
 def snapshot():
@@ -143,7 +160,7 @@ def main():
     cards, confirmation = wait_for_controls(
         time.monotonic() + TIMEOUT_SECONDS
     )
-    card_x, card_y = center(cards[1][2])
+    card_x, card_y = center(cards[1][1])
     button_x, button_y = center(confirmation)
     print("ok", card_x, card_y, button_x, button_y)
 
