@@ -406,6 +406,17 @@ cat >/home/robotgo/.config/environment.d/90-robotgo-accessibility.conf <<'EOF'
 QT_ACCESSIBILITY=1
 QT_LINUX_ACCESSIBILITY_ALWAYS_ON=1
 EOF
+install -d -m 0700 -o robotgo -g robotgo \
+  /home/robotgo/.config/systemd/user/plasma-xdg-desktop-portal-kde.service.d
+cat >/home/robotgo/.config/systemd/user/plasma-xdg-desktop-portal-kde.service.d/10-robotgo-accessibility.conf <<'EOF'
+[Unit]
+Requires=at-spi-dbus-bus.service
+After=at-spi-dbus-bus.service
+
+[Service]
+Environment=QT_ACCESSIBILITY=1
+Environment=QT_LINUX_ACCESSIBILITY_ALWAYS_ON=1
+EOF
 cat >/home/robotgo/.config/kscreenlockerrc <<'EOF'
 [Daemon]
 Autolock=false
@@ -426,10 +437,12 @@ suspendType=0
 EOF
 chown robotgo:robotgo \
   /home/robotgo/.config/environment.d/90-robotgo-accessibility.conf \
+  /home/robotgo/.config/systemd/user/plasma-xdg-desktop-portal-kde.service.d/10-robotgo-accessibility.conf \
   /home/robotgo/.config/kscreenlockerrc \
   /home/robotgo/.config/powermanagementprofilesrc
 chmod 0600 \
   /home/robotgo/.config/environment.d/90-robotgo-accessibility.conf \
+  /home/robotgo/.config/systemd/user/plasma-xdg-desktop-portal-kde.service.d/10-robotgo-accessibility.conf \
   /home/robotgo/.config/kscreenlockerrc \
   /home/robotgo/.config/powermanagementprofilesrc
 

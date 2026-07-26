@@ -12,12 +12,23 @@ portal_ping() {
     >/dev/null 2>&1
 }
 
+accessibility_ping() {
+  busctl --address=unix:path=/run/user/1100/bus \
+    --no-pager call \
+    org.a11y.Bus \
+    /org/a11y/bus \
+    org.a11y.Bus \
+    GetAddress \
+    >/dev/null 2>&1
+}
+
 deadline=$((SECONDS + 120))
 while ((SECONDS < deadline)); do
   if [[ -S /run/user/1100/wayland-0 &&
         -S /run/user/1100/bus ]] &&
     pgrep -u robotgo -x kwin_wayland >/dev/null 2>&1 &&
     pgrep -u robotgo -x plasmashell >/dev/null 2>&1 &&
+    accessibility_ping &&
     portal_ping org.freedesktop.portal.Desktop &&
     portal_ping org.freedesktop.impl.portal.desktop.kde; then
     exit 0
@@ -38,6 +49,8 @@ elif ! pgrep -u robotgo -x kwin_wayland >/dev/null 2>&1; then
   stage=compositor
 elif ! pgrep -u robotgo -x plasmashell >/dev/null 2>&1; then
   stage=desktop-shell
+elif ! accessibility_ping; then
+  stage=accessibility
 elif ! portal_ping org.freedesktop.portal.Desktop; then
   stage=portal
 elif ! portal_ping org.freedesktop.impl.portal.desktop.kde; then

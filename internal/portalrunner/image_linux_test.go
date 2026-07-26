@@ -423,6 +423,9 @@ func TestRepositoryKDEGuestActivatesPortalFrontendAndBackend(t *testing.T) {
 	for _, required := range []string{
 		"busctl --address=unix:path=/run/user/1100/bus",
 		"--no-pager call",
+		"org.a11y.Bus",
+		"/org/a11y/bus",
+		"GetAddress",
 		"org.freedesktop.portal.Desktop",
 		"org.freedesktop.impl.portal.desktop.kde",
 		"org.freedesktop.DBus.Peer",
@@ -443,6 +446,8 @@ func TestRepositoryKDEGuestActivatesPortalFrontendAndBackend(t *testing.T) {
 		"/usr/local/libexec/robotgo-runner-locate-screencast",
 		"QT_ACCESSIBILITY=1",
 		"QT_LINUX_ACCESSIBILITY_ALWAYS_ON=1",
+		"Requires=at-spi-dbus-bus.service",
+		"After=at-spi-dbus-bus.service",
 		"len(cards) == 2",
 		"card_rectangle = extents(cards[1][2])",
 		"len(disabled) == 1",
