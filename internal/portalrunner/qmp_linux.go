@@ -19,12 +19,9 @@ const (
 	qmpChordInterval   = 250 * time.Millisecond
 
 	qmpKeyAlt    = "alt"
-	qmpKeyDown   = "down"
 	qmpKeyE      = "e"
-	qmpKeyHome   = "home"
 	qmpKeyI      = "i"
 	qmpKeyReturn = "ret"
-	qmpKeyRight  = "right"
 	qmpKeyS      = "s"
 	qmpKeySpace  = "spc"
 	qmpKeyTab    = "tab"
@@ -35,13 +32,15 @@ const (
 	qmpMouseSetCommand     = "mouse_set"
 	qmpUSBTabletName       = "QEMU HID Tablet"
 
-	qmpEventAbsolute = "abs"
-	qmpEventButton   = "btn"
-	qmpPointerAxisX  = "x"
-	qmpPointerAxisY  = "y"
-	qmpPointerLeft   = "left"
+	qmpEventAbsolute    = "abs"
+	qmpEventButton      = "btn"
+	qmpPointerAxisX     = "x"
+	qmpPointerAxisY     = "y"
+	qmpPointerLeft      = "left"
+	qmpPointerWheelDown = "wheel-down"
 
 	qmpAbsoluteMaximum  = 0x7fff
+	qmpKDEScrollNotches = 4
 	hostedDisplayWidth  = 1280
 	hostedDisplayHeight = 720
 
@@ -331,9 +330,16 @@ func (client *qmpClient) approvePortal(
 			}
 		} else if topology == HostedTopologyMulti {
 			// The ScreenCast dialog has no RemoteDesktop interaction switch
-			// to anchor keyboard focus. Focus its monitor-page mnemonic before
-			// traversing the physical monitor buttons.
+			// to anchor keyboard focus. Its monitor-page mnemonic focuses the
+			// one-page ViewSwitcher; advance once to the monitor container
+			// before traversing its physical monitor buttons.
 			if err := client.sendChord(ctx, qmpKeyAlt, qmpKeyE); err != nil {
+				return err
+			}
+			if err := waitQMPChord(ctx); err != nil {
+				return err
+			}
+			if err := client.sendChord(ctx, qmpKeyTab); err != nil {
 				return err
 			}
 			if err := waitQMPChord(ctx); err != nil {
@@ -374,18 +380,21 @@ func (client *qmpClient) selectGNOMEPhysicalOutputs(
 	return nil
 }
 
-func (client *qmpClient) selectKDEPhysicalOutputs(
+func (client *qmpClient) scrollKDEPhysicalOutputs(
 	ctx context.Context,
 ) error {
-	for _, key := range []string{
-		qmpKeyHome,
-		qmpKeyDown,
-		qmpKeySpace,
-		qmpKeyRight,
-		qmpKeySpace,
-	} {
-		if err := client.sendChord(ctx, key); err != nil {
-			return err
+	for range qmpKDEScrollNotches {
+		for _, down := range []bool{true, false} {
+			if err := client.execute(ctx, qmpCommandInputEvent, map[string]any{
+				"events": []qmpInputEvent{{
+					Type: qmpEventButton,
+					Data: qmpButtonEventData{
+						Down: down, Button: qmpPointerWheelDown,
+					},
+				}},
+			}); err != nil {
+				return err
+			}
 		}
 		if err := waitQMPChord(ctx); err != nil {
 			return err

@@ -39,6 +39,7 @@ func TestQMPPortalApprovalUsesIndependentKeyboardChords(t *testing.T) {
 			want: [][]string{
 				{"alt", "e"},
 				{"tab"},
+				{"tab"},
 				{"spc"},
 				{"tab"},
 				{"spc"},
@@ -142,7 +143,7 @@ func recordQMPCommands(
 	return got
 }
 
-func TestQMPKDEPhysicalOutputSelectionSkipsSyntheticCards(t *testing.T) {
+func TestQMPKDEPhysicalOutputScrollUsesIndependentWheelNotches(t *testing.T) {
 	t.Parallel()
 	socket := filepath.Join(t.TempDir(), "qmp.sock")
 	listener, err := net.Listen("unix", socket)
@@ -151,7 +152,8 @@ func TestQMPKDEPhysicalOutputSelectionSkipsSyntheticCards(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = listener.Close() })
 
-	commands := make(chan qmpCommand, 6)
+	commandCount := 1 + qmpKDEScrollNotches*2
+	commands := make(chan qmpCommand, commandCount)
 	serverDone := make(chan error, 1)
 	go func() {
 		connection, err := listener.Accept()
@@ -168,7 +170,7 @@ func TestQMPKDEPhysicalOutputSelectionSkipsSyntheticCards(t *testing.T) {
 		}
 		decoder := json.NewDecoder(bufio.NewReader(connection))
 		encoder := json.NewEncoder(connection)
-		for range 6 {
+		for range commandCount {
 			var command qmpCommand
 			if err := decoder.Decode(&command); err != nil {
 				serverDone <- err
@@ -193,25 +195,28 @@ func TestQMPKDEPhysicalOutputSelectionSkipsSyntheticCards(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { _ = client.close() }()
-	if err := client.selectKDEPhysicalOutputs(ctx); err != nil {
+	if err := client.scrollKDEPhysicalOutputs(ctx); err != nil {
 		t.Fatal(err)
 	}
 	if err := <-serverDone; err != nil {
 		t.Fatal(err)
 	}
 	close(commands)
-	got := make([]qmpCommand, 0, 6)
+	got := make([]qmpCommand, 0, commandCount)
 	for command := range commands {
 		got = append(got, command)
 	}
 	if got[0].Execute != "qmp_capabilities" {
 		t.Fatalf("first QMP command = %q", got[0].Execute)
 	}
-	assertQMPChord(t, got[1], []string{"home"})
-	assertQMPChord(t, got[2], []string{"down"})
-	assertQMPChord(t, got[3], []string{"spc"})
-	assertQMPChord(t, got[4], []string{"right"})
-	assertQMPChord(t, got[5], []string{"spc"})
+	for index := 1; index < len(got); index++ {
+		assertQMPButton(
+			t,
+			got[index],
+			qmpPointerWheelDown,
+			index%2 == 1,
+		)
+	}
 }
 
 func TestQMPAbsoluteClickUsesRuntimeDisplayGeometry(t *testing.T) {
@@ -322,8 +327,8 @@ func TestQMPAbsoluteClickUsesRuntimeDisplayGeometry(t *testing.T) {
 		t.Fatalf("pointer verification command = %q", got[3].Execute)
 	}
 	assertQMPMove(t, got[4], 400, 300, 1600, 900)
-	assertQMPButton(t, got[5], true)
-	assertQMPButton(t, got[6], false)
+	assertQMPButton(t, got[5], qmpPointerLeft, true)
+	assertQMPButton(t, got[6], qmpPointerLeft, false)
 }
 
 func TestQMPAbsoluteClickRejectsAmbiguousPointerHandlers(t *testing.T) {
@@ -608,7 +613,12 @@ func assertQMPMove(
 	assertQMPPointerEvent(t, rawEvents[1], "abs", "y", wantY, false)
 }
 
-func assertQMPButton(t *testing.T, command qmpCommand, down bool) {
+func assertQMPButton(
+	t *testing.T,
+	command qmpCommand,
+	button string,
+	down bool,
+) {
 	t.Helper()
 	if command.Execute != "input-send-event" {
 		t.Fatalf("QMP button command = %q", command.Execute)
@@ -621,7 +631,7 @@ func assertQMPButton(t *testing.T, command qmpCommand, down bool) {
 	if !ok || len(rawEvents) != 1 {
 		t.Fatalf("QMP button events = %#v", arguments["events"])
 	}
-	assertQMPPointerEvent(t, rawEvents[0], "btn", "left", 0, down)
+	assertQMPPointerEvent(t, rawEvents[0], "btn", button, 0, down)
 }
 
 func assertQMPMouseSet(t *testing.T, command qmpCommand, index int) {

@@ -1093,8 +1093,8 @@ func approveHostedPortal(
 		if approvalError == nil && topology == HostedTopologyMulti {
 			// Plasma 5.27 orders Full Workspace, New Virtual Output, then
 			// physical outputs in a two-column CardsGridView. Toggle the
-			// calibrated card back off, then use Home as a deterministic grid
-			// anchor before selecting indices 2 and 3.
+			// calibrated card back off, scroll its private view to the second
+			// row, then click both physical cards at digest-bound positions.
 			approvalError = qmp.clickAbsolute(
 				ctx,
 				card.x,
@@ -1106,7 +1106,27 @@ func approveHostedPortal(
 				approvalError = waitQMPChord(ctx)
 			}
 			if approvalError == nil {
-				approvalError = qmp.selectKDEPhysicalOutputs(ctx)
+				approvalError = qmp.scrollKDEPhysicalOutputs(ctx)
+			}
+			if approvalError == nil {
+				var targets [2]hostedPortalPoint
+				targets, approvalError =
+					kdePortalPhysicalCardTargets(geometry)
+				for _, target := range targets {
+					if approvalError != nil {
+						break
+					}
+					approvalError = qmp.clickAbsolute(
+						ctx,
+						target.x,
+						target.y,
+						geometry.width,
+						geometry.height,
+					)
+					if approvalError == nil {
+						approvalError = waitQMPChord(ctx)
+					}
+				}
 			}
 		}
 		if approvalError == nil {
@@ -1211,13 +1231,58 @@ func locateHostedKDEScreenCast(
 }
 
 const (
-	kdeCardXNumerator   = 3
-	kdeCardXDenominator = 4
-	kdeCardYNumerator   = 1
-	kdeCardYDenominator = 2
+	kdeCardLeftXNumerator  = 1
+	kdeCardRightXNumerator = 3
+	kdeCardXNumerator      = 3
+	kdeCardXDenominator    = 4
+	kdeCardYNumerator      = 1
+	kdeCardYDenominator    = 2
 
 	kdePointerTolerance = 4
 )
+
+func kdePortalPhysicalCardTargets(
+	geometry hostedPortalGeometry,
+) ([2]hostedPortalPoint, error) {
+	targets := [2]hostedPortalPoint{
+		{
+			x: kdePortalRelativeCoordinate(
+				geometry.dialogX,
+				geometry.dialogWidth,
+				kdeCardLeftXNumerator,
+				kdeCardXDenominator,
+			),
+			y: kdePortalRelativeCoordinate(
+				geometry.dialogY,
+				geometry.dialogHeight,
+				kdeCardYNumerator,
+				kdeCardYDenominator,
+			),
+		},
+		{
+			x: kdePortalRelativeCoordinate(
+				geometry.dialogX,
+				geometry.dialogWidth,
+				kdeCardRightXNumerator,
+				kdeCardXDenominator,
+			),
+			y: kdePortalRelativeCoordinate(
+				geometry.dialogY,
+				geometry.dialogHeight,
+				kdeCardYNumerator,
+				kdeCardYDenominator,
+			),
+		},
+	}
+	for _, target := range targets {
+		if !kdePortalPointInsideDialog(target, geometry) {
+			return [2]hostedPortalPoint{}, errors.New(
+				"hosted KDE ScreenCast physical target is outside the active dialog",
+			)
+		}
+	}
+	return targets, nil
+}
 
 func kdePortalCardTarget(
 	geometry hostedPortalGeometry,

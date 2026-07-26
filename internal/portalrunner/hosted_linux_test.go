@@ -553,6 +553,16 @@ func TestKDEPortalCardTargetUsesRuntimeDialogGeometry(t *testing.T) {
 	if card != (hostedPortalPoint{x: 779, y: 337}) {
 		t.Fatalf("KDE physical card target = %+v", card)
 	}
+	physical, err := kdePortalPhysicalCardTargets(geometry)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if physical != ([2]hostedPortalPoint{
+		{x: 501, y: 337},
+		{x: 779, y: 337},
+	}) {
+		t.Fatalf("KDE physical card targets = %+v", physical)
+	}
 }
 
 func TestKDEPortalPointerCalibration(t *testing.T) {
