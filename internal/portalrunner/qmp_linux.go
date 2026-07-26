@@ -18,9 +18,10 @@ const (
 	qmpMaximumResponse = 1024 * 1024
 	qmpChordInterval   = 250 * time.Millisecond
 
-	qmpKeyAlt = "alt"
-	qmpKeyI   = "i"
-	qmpKeyS   = "s"
+	qmpKeyAlt    = "alt"
+	qmpKeyI      = "i"
+	qmpKeyReturn = "ret"
+	qmpKeyS      = "s"
 
 	qmpEventAbsolute = "abs"
 	qmpEventButton   = "btn"
@@ -166,7 +167,7 @@ func (client *qmpClient) clickAbsolute(
 	if err != nil {
 		return err
 	}
-	return client.execute(ctx, "input-send-event", map[string]any{
+	if err := client.execute(ctx, "input-send-event", map[string]any{
 		"events": []qmpInputEvent{
 			{
 				Type: qmpEventAbsolute,
@@ -180,6 +181,15 @@ func (client *qmpClient) clickAbsolute(
 					Axis: qmpPointerAxisY, Value: absoluteY,
 				},
 			},
+		},
+	}); err != nil {
+		return err
+	}
+	if err := waitQMPChord(ctx); err != nil {
+		return err
+	}
+	return client.execute(ctx, "input-send-event", map[string]any{
+		"events": []qmpInputEvent{
 			{
 				Type: qmpEventButton,
 				Data: qmpButtonEventData{

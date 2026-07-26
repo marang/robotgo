@@ -858,7 +858,7 @@ func approveHostedPortal(
 		if err != nil {
 			return err
 		}
-		card, button, err := kdePortalTargets(geometry)
+		card, err := kdePortalCardTarget(geometry)
 		if err != nil {
 			return errors.Join(err, qmp.close())
 		}
@@ -894,13 +894,9 @@ func approveHostedPortal(
 			)
 		}
 		if approvalError == nil {
-			approvalError = qmp.clickAbsolute(
-				ctx,
-				button.x,
-				button.y,
-				geometry.width,
-				geometry.height,
-			)
+			// Plasma 5.27 SystemDialog handles Return at the focused loader and
+			// accepts only after the selected source enables its OK button.
+			approvalError = qmp.sendChord(ctx, qmpKeyReturn)
 		}
 		return errors.Join(approvalError, qmp.close())
 	}
@@ -1001,17 +997,12 @@ const (
 	kdeCardYNumerator   = 1
 	kdeCardYDenominator = 2
 
-	kdeShareXNumerator   = 17
-	kdeShareXDenominator = 20
-	kdeShareYNumerator   = 19
-	kdeShareYDenominator = 20
-
 	kdePointerTolerance = 4
 )
 
-func kdePortalTargets(
+func kdePortalCardTarget(
 	geometry hostedPortalGeometry,
-) (hostedPortalPoint, hostedPortalPoint, error) {
+) (hostedPortalPoint, error) {
 	card := hostedPortalPoint{
 		x: kdePortalRelativeCoordinate(
 			geometry.dialogX,
@@ -1026,27 +1017,12 @@ func kdePortalTargets(
 			kdeCardYDenominator,
 		),
 	}
-	button := hostedPortalPoint{
-		x: kdePortalRelativeCoordinate(
-			geometry.dialogX,
-			geometry.dialogWidth,
-			kdeShareXNumerator,
-			kdeShareXDenominator,
-		),
-		y: kdePortalRelativeCoordinate(
-			geometry.dialogY,
-			geometry.dialogHeight,
-			kdeShareYNumerator,
-			kdeShareYDenominator,
-		),
-	}
-	if !kdePortalPointInsideDialog(card, geometry) ||
-		!kdePortalPointInsideDialog(button, geometry) {
-		return hostedPortalPoint{}, hostedPortalPoint{}, errors.New(
+	if !kdePortalPointInsideDialog(card, geometry) {
+		return hostedPortalPoint{}, errors.New(
 			"hosted KDE ScreenCast target is outside the active dialog",
 		)
 	}
-	return card, button, nil
+	return card, nil
 }
 
 func kdePortalRelativeCoordinate(

@@ -97,7 +97,7 @@ func TestQMPAbsoluteClickUsesRuntimeDisplayGeometry(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = listener.Close() })
 
-	commands := make(chan qmpCommand, 2)
+	commands := make(chan qmpCommand, 3)
 	serverDone := make(chan error, 1)
 	go func() {
 		connection, err := listener.Accept()
@@ -114,7 +114,7 @@ func TestQMPAbsoluteClickUsesRuntimeDisplayGeometry(t *testing.T) {
 		}
 		decoder := json.NewDecoder(bufio.NewReader(connection))
 		encoder := json.NewEncoder(connection)
-		for range 2 {
+		for range 3 {
 			var command qmpCommand
 			if err := decoder.Decode(&command); err != nil {
 				serverDone <- err
@@ -146,14 +146,15 @@ func TestQMPAbsoluteClickUsesRuntimeDisplayGeometry(t *testing.T) {
 		t.Fatal(err)
 	}
 	close(commands)
-	got := make([]qmpCommand, 0, 2)
+	got := make([]qmpCommand, 0, 3)
 	for command := range commands {
 		got = append(got, command)
 	}
 	if got[0].Execute != "qmp_capabilities" {
 		t.Fatalf("first QMP command = %q", got[0].Execute)
 	}
-	assertQMPClick(t, got[1], 400, 300, 1600, 900)
+	assertQMPMove(t, got[1], 400, 300, 1600, 900)
+	assertQMPLeftClick(t, got[2])
 }
 
 func TestQMPAbsoluteCoordinateRejectsOutsideDisplay(t *testing.T) {
@@ -287,7 +288,7 @@ func TestHostedQEMUIsHeadlessPrivateAndControllable(t *testing.T) {
 	}
 }
 
-func assertQMPClick(
+func assertQMPMove(
 	t *testing.T,
 	command qmpCommand,
 	x,
@@ -297,15 +298,15 @@ func assertQMPClick(
 ) {
 	t.Helper()
 	if command.Execute != "input-send-event" {
-		t.Fatalf("QMP click command = %q", command.Execute)
+		t.Fatalf("QMP move command = %q", command.Execute)
 	}
 	arguments, ok := command.Arguments.(map[string]any)
 	if !ok {
-		t.Fatalf("QMP click arguments type = %T", command.Arguments)
+		t.Fatalf("QMP move arguments type = %T", command.Arguments)
 	}
 	rawEvents, ok := arguments["events"].([]any)
-	if !ok || len(rawEvents) != 4 {
-		t.Fatalf("QMP click events = %#v", arguments["events"])
+	if !ok || len(rawEvents) != 2 {
+		t.Fatalf("QMP move events = %#v", arguments["events"])
 	}
 	wantX, err := qmpAbsoluteCoordinate(x, width)
 	if err != nil {
@@ -317,8 +318,23 @@ func assertQMPClick(
 	}
 	assertQMPPointerEvent(t, rawEvents[0], "abs", "x", wantX, false)
 	assertQMPPointerEvent(t, rawEvents[1], "abs", "y", wantY, false)
-	assertQMPPointerEvent(t, rawEvents[2], "btn", "left", 0, true)
-	assertQMPPointerEvent(t, rawEvents[3], "btn", "left", 0, false)
+}
+
+func assertQMPLeftClick(t *testing.T, command qmpCommand) {
+	t.Helper()
+	if command.Execute != "input-send-event" {
+		t.Fatalf("QMP click command = %q", command.Execute)
+	}
+	arguments, ok := command.Arguments.(map[string]any)
+	if !ok {
+		t.Fatalf("QMP click arguments type = %T", command.Arguments)
+	}
+	rawEvents, ok := arguments["events"].([]any)
+	if !ok || len(rawEvents) != 2 {
+		t.Fatalf("QMP click events = %#v", arguments["events"])
+	}
+	assertQMPPointerEvent(t, rawEvents[0], "btn", "left", 0, true)
+	assertQMPPointerEvent(t, rawEvents[1], "btn", "left", 0, false)
 }
 
 func assertQMPPointerEvent(

@@ -41,9 +41,10 @@ The host transfers the exact clean tree without credentials and enforces an
 active nftables output chain with `policy drop` before the transfer. A private
 host-side controller asks KWin only for virtual-screen and active-dialog
 geometry through a short-lived private D-Bus receiver. The host selects the
-digest-bound physical-monitor target, asks KWin only for the resulting cursor
-position to prove QMP reached that point, and then confirms Share. No window
-names, accessibility data, screen pixels, or dialog content leave the guest.
+digest-bound physical-monitor target with a bounded move/click handoff, asks
+KWin only for the resulting cursor position to prove QMP reached that point,
+and then uses the portal's standard Return path. No window names, accessibility
+data, screen pixels, or dialog content leave the guest.
 RobotGo does not
 approve its own request, patch the portal backend, or pre-authorize the
 application.
