@@ -108,20 +108,11 @@ install -m 0755 "$(dirname "$0")/wait-session.sh" \
   /usr/local/libexec/robotgo-runner-wait-session
 install -m 0755 "$(dirname "$0")/locate-screencast.sh" \
   /usr/local/libexec/robotgo-runner-locate-screencast
-install -m 0755 "$(dirname "$0")/locate-screencast-controls.py" \
-  /usr/local/libexec/robotgo-runner-locate-screencast-controls
 install -m 0755 "$(dirname "$0")/report-screencast-geometry.py" \
   /usr/local/libexec/robotgo-runner-report-screencast-geometry
 install -d -m 0755 /usr/local/share/robotgo
 install -m 0444 "$(dirname "$0")/report-screencast-geometry.js" \
   /usr/local/share/robotgo/report-screencast-geometry.js
-install -d -m 0755 \
-  /etc/systemd/user/plasma-xdg-desktop-portal-kde.service.d
-cat >/etc/systemd/user/plasma-xdg-desktop-portal-kde.service.d/robotgo-accessibility.conf <<'EOF'
-[Service]
-Environment=QT_ACCESSIBILITY=1
-Environment=QT_LINUX_ACCESSIBILITY_ALWAYS_ON=1
-EOF
 install -m 0755 "$(dirname "$0")/configure-egress.sh" \
   /usr/local/sbin/robotgo-runner-configure-egress
 install -m 0755 "$(dirname "$0")/register.sh" \

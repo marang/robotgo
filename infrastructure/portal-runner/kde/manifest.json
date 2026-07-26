@@ -49,7 +49,6 @@
     "plasma-workspace-wayland",
     "python3-dbus",
     "python3-gi",
-    "python3-pyatspi",
     "sddm",
     "sudo",
     "wireplumber",

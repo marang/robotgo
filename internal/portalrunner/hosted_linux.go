@@ -39,17 +39,9 @@ var sessionFailureStagePattern = regexp.MustCompile(
 )
 
 var kdeLocatorFailureStages = map[string]struct{}{
-	"accessibility-unavailable": {},
-	"bridge-unavailable":        {},
-	"buttons-0":                 {},
-	"buttons-many":              {},
-	"cards-0":                   {},
-	"cards-1":                   {},
-	"cards-many":                {},
-	"compositor-unavailable":    {},
-	"controls-unavailable":      {},
-	"dialog-ambiguous":          {},
-	"window-unavailable":        {},
+	"bridge-unavailable":     {},
+	"compositor-unavailable": {},
+	"window-unavailable":     {},
 }
 
 // HostedRuntimeOptions identifies one credential-free portal test in a
@@ -78,10 +70,8 @@ type hostedPortalGeometry struct {
 	dialogY      int
 	dialogWidth  int
 	dialogHeight int
-	cardX        int
-	cardY        int
-	buttonX      int
-	buttonY      int
+	cursorX      int
+	cursorY      int
 }
 
 type hostedPortalPoint struct {
@@ -883,6 +873,27 @@ func approveHostedPortal(
 			approvalError = waitQMPChord(ctx)
 		}
 		if approvalError == nil {
+			var observed hostedPortalGeometry
+			observed, approvalError = locateHostedKDEScreenCast(
+				ctx,
+				commands,
+				sshArguments,
+			)
+			if approvalError == nil &&
+				(!kdePortalSameDialog(geometry, observed) ||
+					!kdePortalPointerAt(card, observed)) {
+				approvalError = errors.New(
+					"hosted KDE QMP pointer calibration failed",
+				)
+			}
+		}
+		if approvalError == nil {
+			approvalError = writeStatus(
+				output,
+				"hosted KDE QMP pointer calibration passed\n",
+			)
+		}
+		if approvalError == nil {
 			approvalError = qmp.clickAbsolute(
 				ctx,
 				button.x,
@@ -940,7 +951,7 @@ func locateHostedKDEScreenCast(
 			"locate hosted KDE ScreenCast controls",
 		)
 	}
-	if len(fields) != 11 || fields[0] != "ok" {
+	if len(fields) != 9 || fields[0] != "ok" {
 		return hostedPortalGeometry{}, errors.New(
 			"hosted KDE ScreenCast geometry is invalid",
 		)
@@ -959,8 +970,7 @@ func locateHostedKDEScreenCast(
 		width: values[0], height: values[1],
 		dialogX: values[2], dialogY: values[3],
 		dialogWidth: values[4], dialogHeight: values[5],
-		cardX: values[6], cardY: values[7],
-		buttonX: values[8], buttonY: values[9],
+		cursorX: values[6], cursorY: values[7],
 	}
 	if geometry.width < 640 ||
 		geometry.width > 8192 ||
@@ -974,14 +984,10 @@ func locateHostedKDEScreenCast(
 		geometry.dialogHeight < 240 ||
 		geometry.dialogWidth > geometry.width-geometry.dialogX ||
 		geometry.dialogHeight > geometry.height-geometry.dialogY ||
-		!kdePortalPointInsideDialog(
-			hostedPortalPoint{x: geometry.cardX, y: geometry.cardY},
-			geometry,
-		) ||
-		!kdePortalPointInsideDialog(
-			hostedPortalPoint{x: geometry.buttonX, y: geometry.buttonY},
-			geometry,
-		) {
+		geometry.cursorX < 0 ||
+		geometry.cursorX >= geometry.width ||
+		geometry.cursorY < 0 ||
+		geometry.cursorY >= geometry.height {
 		return hostedPortalGeometry{}, errors.New(
 			"hosted KDE ScreenCast geometry is invalid",
 		)
@@ -989,16 +995,50 @@ func locateHostedKDEScreenCast(
 	return geometry, nil
 }
 
+const (
+	kdeCardXNumerator   = 3
+	kdeCardXDenominator = 4
+	kdeCardYNumerator   = 1
+	kdeCardYDenominator = 2
+
+	kdeShareXNumerator   = 17
+	kdeShareXDenominator = 20
+	kdeShareYNumerator   = 19
+	kdeShareYDenominator = 20
+
+	kdePointerTolerance = 4
+)
+
 func kdePortalTargets(
 	geometry hostedPortalGeometry,
 ) (hostedPortalPoint, hostedPortalPoint, error) {
 	card := hostedPortalPoint{
-		x: geometry.cardX,
-		y: geometry.cardY,
+		x: kdePortalRelativeCoordinate(
+			geometry.dialogX,
+			geometry.dialogWidth,
+			kdeCardXNumerator,
+			kdeCardXDenominator,
+		),
+		y: kdePortalRelativeCoordinate(
+			geometry.dialogY,
+			geometry.dialogHeight,
+			kdeCardYNumerator,
+			kdeCardYDenominator,
+		),
 	}
 	button := hostedPortalPoint{
-		x: geometry.buttonX,
-		y: geometry.buttonY,
+		x: kdePortalRelativeCoordinate(
+			geometry.dialogX,
+			geometry.dialogWidth,
+			kdeShareXNumerator,
+			kdeShareXDenominator,
+		),
+		y: kdePortalRelativeCoordinate(
+			geometry.dialogY,
+			geometry.dialogHeight,
+			kdeShareYNumerator,
+			kdeShareYDenominator,
+		),
 	}
 	if !kdePortalPointInsideDialog(card, geometry) ||
 		!kdePortalPointInsideDialog(button, geometry) {
@@ -1007,6 +1047,44 @@ func kdePortalTargets(
 		)
 	}
 	return card, button, nil
+}
+
+func kdePortalRelativeCoordinate(
+	start,
+	extent,
+	numerator,
+	denominator int,
+) int {
+	return start + extent*numerator/denominator
+}
+
+func kdePortalSameDialog(
+	expected,
+	observed hostedPortalGeometry,
+) bool {
+	return expected.width == observed.width &&
+		expected.height == observed.height &&
+		expected.dialogX == observed.dialogX &&
+		expected.dialogY == observed.dialogY &&
+		expected.dialogWidth == observed.dialogWidth &&
+		expected.dialogHeight == observed.dialogHeight
+}
+
+func kdePortalPointerAt(
+	expected hostedPortalPoint,
+	observed hostedPortalGeometry,
+) bool {
+	return absoluteDifference(expected.x, observed.cursorX) <=
+		kdePointerTolerance &&
+		absoluteDifference(expected.y, observed.cursorY) <=
+			kdePointerTolerance
+}
+
+func absoluteDifference(first, second int) int {
+	if first > second {
+		return first - second
+	}
+	return second - first
 }
 
 func kdePortalPointInsideDialog(

@@ -41,7 +41,6 @@ var guestImageFiles = []string{
 	"guest/install.sh",
 	"guest/job-completed.sh",
 	"guest/job-started.sh",
-	"guest/locate-screencast-controls.py",
 	"guest/locate-screencast.sh",
 	"guest/register.sh",
 	"guest/report-screencast-geometry.js",

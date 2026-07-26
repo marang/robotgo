@@ -4,6 +4,7 @@
     const iface = "io.github.marang.robotgo.KDEPortalGeometry";
     const screen = workspace.virtualScreenSize;
     const dialog = workspace.activeClient;
+    const cursor = workspace.cursorPos;
 
     if (!dialog) {
         callDBus(
@@ -17,7 +18,9 @@
                 -1,
                 -1,
                 -1,
-                -1
+                -1,
+                Math.round(cursor.x),
+                Math.round(cursor.y)
             ].join(" ")
         );
         return;
@@ -33,7 +36,9 @@
             Math.round(dialog.x),
             Math.round(dialog.y),
             Math.round(dialog.width),
-            Math.round(dialog.height)
+            Math.round(dialog.height),
+            Math.round(cursor.x),
+            Math.round(cursor.y)
         ].join(" ")
     );
 })();

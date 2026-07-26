@@ -6,10 +6,8 @@ readonly bus_name=io.github.marang.robotgo.KDEPortalGeometry
 readonly plugin_name=robotgo-kde-portal-geometry
 readonly report_script=/usr/local/libexec/robotgo-runner-report-screencast-geometry
 readonly kwin_script=/usr/local/share/robotgo/report-screencast-geometry.js
-readonly controls_script=/usr/local/libexec/robotgo-runner-locate-screencast-controls
 
 output=
-controls_output=
 receiver_pid=
 script_id=
 
@@ -27,9 +25,6 @@ cleanup() {
   fi
   if [[ -n $output ]]; then
     rm -f -- "$output"
-  fi
-  if [[ -n $controls_output ]]; then
-    rm -f -- "$controls_output"
   fi
   exit "$status"
 }
@@ -82,25 +77,7 @@ for _ in {1..50}; do
     wait "$receiver_pid" >/dev/null 2>&1 || true
     receiver_pid=
     test -s "$output" || fail bridge-unavailable
-    read -r display_width display_height \
-      dialog_x dialog_y dialog_width dialog_height <"$output" ||
-      fail window-unavailable
-    controls_output=$(
-      mktemp /run/user/1100/robotgo-kde-portal-controls.XXXXXX
-    )
-    chmod 0600 "$controls_output"
-    if ! "$controls_script" >"$controls_output" 2>/dev/null; then
-      test -s "$controls_output" || fail accessibility-unavailable
-      cat "$controls_output"
-      exit 1
-    fi
-    read -r controls_status card_x card_y button_x button_y \
-      <"$controls_output" || fail accessibility-unavailable
-    [[ $controls_status == ok ]] || fail accessibility-unavailable
-    printf 'ok %s %s %s %s %s %s %s %s %s %s\n' \
-      "$display_width" "$display_height" \
-      "$dialog_x" "$dialog_y" "$dialog_width" "$dialog_height" \
-      "$card_x" "$card_y" "$button_x" "$button_y"
+    cat "$output"
     exit 0
   fi
   sleep 0.1

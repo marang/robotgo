@@ -97,12 +97,10 @@ private, non-sensitive marker immediately before its portal call. After a
 bounded dialog settle interval, the GNOME host injects the required keyboard
 input through QMP. For KDE ScreenCast, a digest-bound KWin helper reports only
 virtual-screen and active-dialog geometry through a short-lived private D-Bus
-receiver. A second digest-bound helper reads only accessibility roles, states,
-actions, and rectangles; it reports the physical-card and disabled
-Share-button centres without reading labels or content. The host verifies both
-targets inside the active dialog, then selects the physical monitor and
-confirms Share through QMP pointer input. Window names, accessibility labels or
-trees, pixels, and dialog content never leave the guest. KDE's native
+receiver. It also reports the cursor position after the host selects the
+physical-monitor target, proving QMP reached the intended dialog coordinate
+before Share is confirmed. Window names, accessibility data, pixels, and dialog
+content never leave the guest. KDE's native
 non-sandboxed RemoteDesktop backend follows the upstream
 notification policy and presents no modal approval dialog. RobotGo cannot
 access the private QMP socket, does not patch the portal backend, and does not

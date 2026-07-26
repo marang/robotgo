@@ -513,11 +513,10 @@ short poll for a fresh frame and then returns an owned copy of the latest frame.
 `.github/workflows/screencast-e2e.yml` runs GNOME and KDE in the same
 disposable GitHub-hosted nested-QEMU model. Both run on `main` pushes and on
 manual `gnome|kde|all` dispatches. KDE's pinned KWin helper reports only
-virtual-screen and active-dialog geometry through private D-Bus. A second
-digest-bound helper reports only the physical-card and disabled Share-button
-centres from the portal's accessibility tree; it never reads labels or window
-content. The host validates both controls inside the active dialog, operates
-them through QMP, and the integration test rejects a virtual-output stream.
+virtual-screen, active-dialog, and pointer geometry through private D-Bus. The
+host validates a plausible dialog, selects the physical monitor through a
+digest-bound relative target, verifies that QMP reached that target, confirms
+Share the same way, and the integration test rejects a virtual-output stream.
 wlroots does not count as a ScreenCast pass and is promoted separately under
 P005.
 

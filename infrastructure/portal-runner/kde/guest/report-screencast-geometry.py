@@ -22,7 +22,7 @@ class GeometryReceiver(dbus.service.Object):
     @dbus.service.method(INTERFACE, in_signature="s", out_signature="")
     def Report(self, payload):
         fields = str(payload).split()
-        if len(fields) != 6:
+        if len(fields) != 8:
             print("error bridge-unavailable", flush=True)
             self.loop.quit()
             return
@@ -32,7 +32,7 @@ class GeometryReceiver(dbus.service.Object):
             print("error bridge-unavailable", flush=True)
             self.loop.quit()
             return
-        if values[2:] == [-1, -1, -1, -1]:
+        if values[2:6] == [-1, -1, -1, -1]:
             print("error window-unavailable", flush=True)
         else:
             print("ok", *values, flush=True)
