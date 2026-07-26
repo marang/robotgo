@@ -5,6 +5,16 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      desktop:
+        description: Protected desktop lane to run
+        required: true
+        default: gnome
+        type: choice
+        options:
+          - gnome
+          - kde
+          - all
 
 concurrency:
   group: screencast-e2e-${{ github.ref }}
@@ -17,7 +27,7 @@ jobs:
   portal-capture:
     if: >-
       github.event_name == 'workflow_dispatch' ||
-      (vars.ROBOTGO_SCREENCAST_E2E == '1' &&
+      (contains(fromJSON('["gnome","kde","all"]'), vars.ROBOTGO_SCREENCAST_E2E) &&
       (github.event_name == 'push' ||
       github.event.pull_request.head.repo.full_name == github.repository))
     name: ${{ matrix.desktop }} persistent capture
@@ -25,18 +35,31 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        desktop: [gnome, kde]
-    runs-on: [self-hosted, linux, wayland, "${{ matrix.desktop }}"]
+        desktop: >-
+          ${{
+            fromJSON(
+              github.event_name == 'workflow_dispatch' && inputs.desktop == 'gnome' && '["gnome"]' ||
+              github.event_name == 'workflow_dispatch' && inputs.desktop == 'kde' && '["kde"]' ||
+              github.event_name == 'workflow_dispatch' && inputs.desktop == 'all' && '["gnome","kde"]' ||
+              vars.ROBOTGO_SCREENCAST_E2E == 'gnome' && '["gnome"]' ||
+              vars.ROBOTGO_SCREENCAST_E2E == 'kde' && '["kde"]' ||
+              '["gnome","kde"]'
+            )
+          }}
+    runs-on: [self-hosted, linux, wayland, "${{ matrix.desktop }}", robotgo-screencast]
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
-      - name: Set up Go
-        uses: actions/setup-go@v7
-        with:
-          go-version: 1.25.x
+      - name: Verify pinned guest toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          manifest="infrastructure/portal-runner/${{ matrix.desktop }}/manifest.json"
+          expected_go="$(jq -r '.go.version' "$manifest")"
+          test "$(go env GOVERSION)" = "$expected_go"
       - name: Run protected runner preflight
         env:
           ROBOTGO_APPROVED_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
@@ -103,7 +126,7 @@ jobs:
             -run-attempt "$GITHUB_RUN_ATTEMPT"
           cat "$output/summary.md" >> "$GITHUB_STEP_SUMMARY"
       - name: Upload compatibility evidence
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: screencast-${{ matrix.desktop }}
           path: |
