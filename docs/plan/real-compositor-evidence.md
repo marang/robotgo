@@ -1,6 +1,6 @@
 # Protected Real-Compositor Evidence Plan
 
-Status: Hosted wlroots delivered; hosted GNOME portal harness implemented and runtime evidence pending
+Status: Hosted wlroots and GNOME single-output portal evidence delivered; KDE and GNOME multi-output remain
 
 Linear project:
 [RobotGo | P005 | Protected Compositor Evidence](https://linear.app/riotbox/project/robotgo-or-p005-or-protected-compositor-evidence-d66467e3b5ee)
@@ -121,7 +121,8 @@ before RobotGo reads frames or injects input:
 5. PipeWire development/runtime availability for persistent capture
 6. lane-specific native tools and capabilities used by window/input evidence
 7. declared output count and multi-output requirement for geometry cells
-8. operator-console readiness for interactive GNOME/KDE portal cells
+8. independent QMP consent readiness for hosted GNOME or operator-console
+   readiness for other interactive portal cells
 9. writable runner-temporary evidence directory with cleanup registered
 
 The preflight returns a non-zero status for missing or mismatched requirements.
@@ -228,15 +229,18 @@ green.
    negative origin, scale, transform, exact logical per-output bounds,
    aggregate bounds, and induced-failure cleanup evidence. Retained evidence:
    [`Sway E2E` run 29861058126](https://github.com/marang/robotgo/actions/runs/29861058126).
-4. **Hosted GNOME harness implemented:** the pinned nested-KVM image, exact
+4. **Hosted GNOME single-output proof delivered:** the pinned nested-KVM image, exact
    clean-tree transfer, real session, independent QMP consent, bounded test,
    egress, process-group shutdown, and artifact cleanup contracts are wired
-   into both portal workflows. Promotion still requires retained successful
-   RemoteDesktop and ScreenCast runs on the exact commit.
+   into both portal workflows. Retained exact-commit evidence:
+   [`RemoteDesktop E2E` run 30199452053](https://github.com/marang/robotgo/actions/runs/30199452053)
+   and [`ScreenCast E2E` run 30199195890](https://github.com/marang/robotgo/actions/runs/30199195890).
+   Multi-output geometry and release-gate promotion remain open.
 5. Provision and prove KDE RemoteDesktop and ScreenCast under the same gate.
 6. **Implemented for hosted wlroots:** require all six stable Sway checks for
-   the exact release commit and in branch protection. Extend the same promotion
-   to GNOME/KDE only after their protected runner and consent paths are proven.
+   the exact release commit and in branch protection. Extend promotion to GNOME
+   after wiring its passing jobs into exact-release evidence, and to KDE only
+   after its protected runner and consent path are proven.
 
 Create Linear issues only when the next slice has concrete runner ownership and
 acceptance evidence. Do not create speculative implementation tickets for

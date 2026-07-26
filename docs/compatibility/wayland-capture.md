@@ -10,14 +10,13 @@ passing result.
 | 2026-07-11 | Hermetic Linux | ScreenCast/PipeWire | `cgo,pipewire` | pass | Session/request cleanup, FD duplication, repeated consumer lifecycle, crop/fractional scaling, eight transforms, pixel buffer validation, race and lint gates |
 | 2026-07-21 | Sway 1.9, nested headless Ubuntu 24.04 | Native wl_shm screencopy | `cgo,wayland,swayintegration` | pass | [`Sway E2E` run 29857289675](https://github.com/marang/robotgo/actions/runs/29857289675), `native-capture`, artifact `sway-native-capture`; exact synthetic color and 1280x720 geometry remained in memory; no image artifact |
 | 2026-07-21 | Sway 1.9, nested headless Ubuntu 24.04 | Native logical output geometry | `cgo,wayland,swayintegration` | pass | [`Sway E2E` run 29861058126](https://github.com/marang/robotgo/actions/runs/29861058126), `native-output-multi`, artifact `sway-native-output-multi`; exact per-output and aggregate bounds with negative origin, scale 2, and transform 90; no pixels captured |
-| pending | GNOME | ScreenCast/PipeWire | `cgo,pipewire,integration` | no runner | Protected runner label `gnome`; workflow artifact `screencast-gnome` |
+| 2026-07-26 | GNOME 46, nested Ubuntu 24.04 | ScreenCast/PipeWire | `cgo,pipewire,integration` | pass, single output | [`ScreenCast E2E` run 30199195890](https://github.com/marang/robotgo/actions/runs/30199195890), exact commit `ac3c6683817b4740219becba9b5242eed4fed7b7`; two non-empty captures from one real consent session, including unchanged-frame reuse, close, and transient-artifact rejection; no frame/log artifact retained |
 | pending | KDE Plasma | ScreenCast/PipeWire | `cgo,pipewire,integration` | no runner | Protected runner label `kde`; workflow artifact `screencast-kde` |
 
-The protected GNOME/KDE matrix is defined in
-`.github/workflows/screencast-e2e.yml`. It captures two frames through one
-consent session and uploads only the schema-v1 evidence manifest, canonical
-sanitized test log, and summary. Sway/wlroots native capture and explicit portal
+The GNOME/KDE matrix is defined in `.github/workflows/screencast-e2e.yml`.
+GNOME runs in a credential-free nested guest, captures two frames through one
+consent session, and retains no pixels or raw logs. KDE keeps the protected
+self-hosted evidence path. Sway/wlroots native capture and explicit portal
 availability run separately in `.github/workflows/sway-e2e.yml`; a wlroots
 environment is not counted as a ScreenCast portal pass unless a compatible
-portal backend is independently preflighted and promoted in a future workflow
-change.
+portal backend is independently preflighted and promoted in a future workflow.
