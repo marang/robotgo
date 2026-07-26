@@ -43,6 +43,9 @@ func ProbeImage(
 	if err != nil {
 		return err
 	}
+	if manifest.Lane != portalLaneGNOME {
+		return errors.New("interactive image probe supports only the GNOME lane")
+	}
 	if options.Output == nil {
 		options.Output = io.Discard
 	}

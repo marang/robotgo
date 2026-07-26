@@ -129,23 +129,45 @@ func (client *qmpClient) sendChord(ctx context.Context, keys ...string) error {
 
 func (client *qmpClient) approvePortal(
 	ctx context.Context,
+	lane,
 	cell string,
 ) error {
-	switch cell {
-	case "remote-desktop":
-		if err := client.sendChord(ctx, "alt", "i"); err != nil {
-			return err
-		}
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case <-time.After(qmpChordInterval):
-		}
-	case "screencast":
-	default:
+	if cell != "remote-desktop" && cell != "screencast" {
 		return errors.New("QMP portal approval cell is invalid")
 	}
-	return client.sendChord(ctx, "alt", "s")
+	switch lane {
+	case portalLaneGNOME:
+		if cell == "remote-desktop" {
+			if err := client.sendChord(ctx, "alt", "i"); err != nil {
+				return err
+			}
+			if err := waitQMPChord(ctx); err != nil {
+				return err
+			}
+		}
+		return client.sendChord(ctx, "alt", "s")
+	case portalLaneKDE:
+		// Plasma's source chooser starts with its monitor entry focused.
+		// Space selects it and Alt+S activates the real Share action.
+		if err := client.sendChord(ctx, "spc"); err != nil {
+			return err
+		}
+		if err := waitQMPChord(ctx); err != nil {
+			return err
+		}
+		return client.sendChord(ctx, "alt", "s")
+	default:
+		return errors.New("QMP portal approval lane is invalid")
+	}
+}
+
+func waitQMPChord(ctx context.Context) error {
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-time.After(qmpChordInterval):
+		return nil
+	}
 }
 
 func (client *qmpClient) execute(

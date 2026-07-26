@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-func TestHostedGNOMEProofUsesEphemeralGitHubKVM(t *testing.T) {
+func TestHostedPortalProofUsesEphemeralGitHubKVM(t *testing.T) {
 	t.Parallel()
 	for path, cell := range map[string]string{
 		"../.github/workflows/remote-desktop-e2e.yml": "remote-desktop",
@@ -20,18 +20,15 @@ func TestHostedGNOMEProofUsesEphemeralGitHubKVM(t *testing.T) {
 		// text before asserting YAML fragments so this policy test remains
 		// independent of the runner's checkout line endings.
 		workflow := normalizeWorkflowText(data)
-		start := strings.Index(workflow, "  hosted-gnome:")
+		start := strings.Index(workflow, "  hosted-portal:")
 		if start < 0 {
-			t.Fatalf("%s does not isolate the hosted GNOME job", path)
+			t.Fatalf("%s does not isolate the hosted portal job", path)
 		}
-		end := strings.Index(workflow[start:], "\n  portal-")
-		if end <= 0 {
-			t.Fatalf("%s does not terminate the hosted GNOME job", path)
-		}
-		hostedJob := workflow[start : start+end]
+		hostedJob := workflow[start:]
 		for _, required := range []string{
 			"github.event_name == 'push'",
-			"inputs.desktop == 'gnome'",
+			`'["gnome","kde"]'`,
+			"inputs.desktop == 'kde'",
 			"inputs.desktop == 'all'",
 			"runs-on: ubuntu-24.04",
 			"actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
@@ -41,7 +38,9 @@ func TestHostedGNOMEProofUsesEphemeralGitHubKVM(t *testing.T) {
 			`test "$(git rev-parse HEAD)" = "$GITHUB_SHA"`,
 			"test -c /dev/kvm",
 			"qemu-system-x86",
-			`state_root="$RUNNER_TEMP/robotgo-portal-runner"`,
+			`manifest="infrastructure/portal-runner/${{ matrix.desktop }}/manifest.json"`,
+			`state_root="$RUNNER_TEMP/robotgo-${{ matrix.desktop }}-portal-runner"`,
+			`-manifest "$manifest"`,
 			"go run ./internal/cmd/portalrunner build",
 			"go run ./internal/cmd/portalrunner hosted-run",
 			`-commit "$GITHUB_SHA"`,
@@ -50,7 +49,7 @@ func TestHostedGNOMEProofUsesEphemeralGitHubKVM(t *testing.T) {
 			`find "$state_root" -maxdepth 1 -type d -name 'run-*'`,
 		} {
 			if !strings.Contains(hostedJob, required) {
-				t.Errorf("%s hosted GNOME job omits %q", path, required)
+				t.Errorf("%s hosted portal job omits %q", path, required)
 			}
 		}
 		if !strings.Contains(workflow, "permissions:\n  contents: read") {
@@ -70,7 +69,7 @@ func TestHostedGNOMEProofUsesEphemeralGitHubKVM(t *testing.T) {
 		} {
 			if strings.Contains(hostedJob, forbidden) {
 				t.Errorf(
-					"%s hosted GNOME job contains unsafe token %q",
+					"%s hosted portal job contains unsafe token %q",
 					path,
 					forbidden,
 				)

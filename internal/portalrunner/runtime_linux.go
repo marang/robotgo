@@ -54,6 +54,9 @@ func RunProtectedGNOME(
 	if err != nil {
 		return err
 	}
+	if manifest.Lane != portalLaneGNOME {
+		return errors.New("interactive protected runner supports only the GNOME lane")
+	}
 	if options.Identity.Repository == "" {
 		options.Identity.Repository = manifest.Repository
 	}

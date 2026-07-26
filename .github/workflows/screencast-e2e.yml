@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       desktop:
-        description: Protected desktop lane to run
+        description: Hosted desktop lane to run
         required: true
         default: gnome
         type: choice
@@ -24,14 +24,23 @@ permissions:
   contents: read
 
 jobs:
-  hosted-gnome:
-    if: >-
-      github.event_name == 'push' ||
-      (github.event_name == 'workflow_dispatch' &&
-      (inputs.desktop == 'gnome' || inputs.desktop == 'all'))
-    name: GitHub-hosted GNOME persistent capture
+  hosted-portal:
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    name: GitHub-hosted ${{ matrix.desktop }} persistent capture
     runs-on: ubuntu-24.04
     timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        desktop: >-
+          ${{
+            fromJSON(
+              github.event_name == 'push' && '["gnome","kde"]' ||
+              inputs.desktop == 'all' && '["gnome","kde"]' ||
+              inputs.desktop == 'kde' && '["kde"]' ||
+              '["gnome"]'
+            )
+          }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -72,7 +81,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          manifest=infrastructure/portal-runner/gnome/manifest.json
+          manifest="infrastructure/portal-runner/${{ matrix.desktop }}/manifest.json"
           required_cpus="$(jq -r '.vm.cpus' "$manifest")"
           required_memory_kib="$(( $(jq -r '.vm.memory_mib' "$manifest") * 1024 ))"
           available_memory_kib="$(awk '/^MemTotal:/ {print $2}' /proc/meminfo)"
@@ -81,19 +90,23 @@ jobs:
           test "$(nproc)" -ge "$required_cpus"
           test "$available_memory_kib" -ge "$required_memory_kib"
           test "$available_bytes" -ge "$minimum_free_bytes"
-      - name: Build and test nested GNOME
+      - name: Build and test nested portal desktop
         shell: bash
         run: |
           set -euo pipefail
           umask 077
-          state_root="$RUNNER_TEMP/robotgo-portal-runner"
+          state_root="$RUNNER_TEMP/robotgo-${{ matrix.desktop }}-portal-runner"
+          manifest="infrastructure/portal-runner/${{ matrix.desktop }}/manifest.json"
           go run ./internal/cmd/portalrunner validate \
+            -manifest "$manifest" \
             -repository-root "$GITHUB_WORKSPACE" \
             -state-root "$state_root"
           go run ./internal/cmd/portalrunner build \
+            -manifest "$manifest" \
             -repository-root "$GITHUB_WORKSPACE" \
             -state-root "$state_root"
           go run ./internal/cmd/portalrunner hosted-run \
+            -manifest "$manifest" \
             -repository-root "$GITHUB_WORKSPACE" \
             -state-root "$state_root" \
             -commit "$GITHUB_SHA" \
@@ -103,142 +116,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          state_root="$RUNNER_TEMP/robotgo-portal-runner"
+          state_root="$RUNNER_TEMP/robotgo-${{ matrix.desktop }}-portal-runner"
           if [ -d "$state_root" ]; then
             leftover="$(
               find "$state_root" -maxdepth 1 -type d -name 'run-*' -print -quit
             )"
             test -z "$leftover"
-          fi
-
-  portal-capture:
-    if: >-
-      (github.event_name == 'workflow_dispatch' &&
-      (inputs.desktop == 'kde' || inputs.desktop == 'all')) ||
-      (contains(fromJSON('["kde","all"]'), vars.ROBOTGO_SCREENCAST_E2E) &&
-      (github.event_name == 'push' ||
-      github.event.pull_request.head.repo.full_name == github.repository))
-    name: ${{ matrix.desktop }} persistent capture
-    environment: screencast-e2e
-    strategy:
-      fail-fast: false
-      matrix:
-        desktop: >-
-          ${{
-            fromJSON(
-              github.event_name == 'workflow_dispatch' && inputs.desktop == 'kde' && '["kde"]' ||
-              github.event_name == 'workflow_dispatch' && inputs.desktop == 'all' && '["kde"]' ||
-              vars.ROBOTGO_SCREENCAST_E2E == 'kde' && '["kde"]' ||
-              vars.ROBOTGO_SCREENCAST_E2E == 'all' && '["kde"]' ||
-              '["kde"]'
-            )
-          }}
-    runs-on: [self-hosted, linux, wayland, "${{ matrix.desktop }}", robotgo-screencast]
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-        with:
-          persist-credentials: false
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
-      - name: Set up Go
-        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
-        with:
-          go-version: 1.25.x
-      - name: Run protected runner preflight
-        env:
-          ROBOTGO_APPROVED_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          umask 077
-          : "${ROBOTGO_COMPOSITOR_OUTPUT_COUNT:?runner must declare output count}"
-          : "${ROBOTGO_COMPOSITOR_OPERATOR_READY_FILE:?runner must provide operator readiness attestation}"
-          output="$RUNNER_TEMP/screencast-report"
-          commit="$(git rev-parse HEAD)"
-          test "$commit" = "$ROBOTGO_APPROVED_COMMIT"
-          if [ "$GITHUB_EVENT_NAME" = pull_request ]; then
-            evidence_ref="refs/heads/$GITHUB_HEAD_REF"
-          else
-            evidence_ref="$GITHUB_REF"
-          fi
-          go run ./internal/cmd/compositorevidence preflight \
-            -lane "${{ matrix.desktop }}" \
-            -cell screencast \
-            -runner-temp "$RUNNER_TEMP" \
-            -output-dir "$output" \
-            -commit "$commit" \
-            -expected-commit "$ROBOTGO_APPROVED_COMMIT" \
-            -ref "$evidence_ref" \
-            -workflow "$GITHUB_WORKFLOW" \
-            -run-id "$GITHUB_RUN_ID" \
-            -run-attempt "$GITHUB_RUN_ATTEMPT" \
-            -output-count "$ROBOTGO_COMPOSITOR_OUTPUT_COUNT" \
-            -operator-ready-file "$ROBOTGO_COMPOSITOR_OPERATOR_READY_FILE"
-      - name: Run real persistent ScreenCast test
-        env:
-          ROBOTGO_SCREENCAST_E2E: "1"
-          ROBOTGO_APPROVED_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          umask 077
-          output="$RUNNER_TEMP/screencast-report"
-          set +e
-          go test -count=1 -timeout=3m -tags=pipewire,integration ./screen/portal \
-            -run '^TestPipeWireCapturePersistentSessionIntegration$' -v \
-            > "$output/raw-test.log" 2>&1
-          test_status=$?
-          set -e
-          go run ./internal/cmd/compositorevidence finalize \
-            -lane "${{ matrix.desktop }}" \
-            -cell screencast \
-            -runner-temp "$RUNNER_TEMP" \
-            -output-dir "$output" \
-            -expected-commit "$ROBOTGO_APPROVED_COMMIT" \
-            -workflow "$GITHUB_WORKFLOW" \
-            -run-id "$GITHUB_RUN_ID" \
-            -run-attempt "$GITHUB_RUN_ATTEMPT" \
-            -test-exit-code "$test_status"
-          go run ./internal/cmd/compositorevidence verify \
-            -lane "${{ matrix.desktop }}" \
-            -cell screencast \
-            -runner-temp "$RUNNER_TEMP" \
-            -output-dir "$output" \
-            -expected-commit "$ROBOTGO_APPROVED_COMMIT" \
-            -workflow "$GITHUB_WORKFLOW" \
-            -run-id "$GITHUB_RUN_ID" \
-            -run-attempt "$GITHUB_RUN_ATTEMPT"
-          cat "$output/summary.md" >> "$GITHUB_STEP_SUMMARY"
-      - name: Upload compatibility evidence
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
-        with:
-          name: screencast-${{ matrix.desktop }}
-          path: |
-            ${{ runner.temp }}/screencast-report/evidence.json
-            ${{ runner.temp }}/screencast-report/test.log
-            ${{ runner.temp }}/screencast-report/summary.md
-          if-no-files-found: error
-          retention-days: 90
-      - name: Remove compositor evidence workspace
-        if: always()
-        env:
-          ROBOTGO_APPROVED_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          umask 077
-          rm -f -- \
-            "$RUNNER_TEMP/screencast-report/raw-test.log" \
-            "$RUNNER_TEMP/screencast-report/.preflight.json" || true
-          output="$RUNNER_TEMP/screencast-report"
-          if [ -f "$GITHUB_WORKSPACE/go.mod" ] &&
-            [ -f "$GITHUB_WORKSPACE/internal/cmd/compositorevidence/main.go" ] &&
-            [ "$(git -C "$GITHUB_WORKSPACE" rev-parse HEAD 2>/dev/null || true)" = "$ROBOTGO_APPROVED_COMMIT" ]; then
-            cd "$GITHUB_WORKSPACE"
-            go run ./internal/cmd/compositorevidence cleanup \
-              -runner-temp "$RUNNER_TEMP" \
-              -output-dir "$output"
-          elif [ -e "$output" ] || [ -L "$output" ]; then
-            echo "evidence workspace exists without a trusted checkout" >&2
-            exit 1
           fi

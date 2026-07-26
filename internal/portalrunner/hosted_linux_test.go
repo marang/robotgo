@@ -94,6 +94,7 @@ func TestHostedPortalCommandsAreCredentialFreeAndCellSpecific(t *testing.T) {
 		},
 	} {
 		command := hostedPortalTestCommand(
+			portalLaneGNOME,
 			test.cell,
 			"/run/user/1100/robotgo-portal-consent-"+test.cell+".ready",
 		)
@@ -119,6 +120,51 @@ func TestHostedPortalCommandsAreCredentialFreeAndCellSpecific(t *testing.T) {
 				t.Errorf("%s command contains %q", test.cell, forbidden)
 			}
 		}
+	}
+}
+
+func TestHostedPortalCommandsSelectDesktopLane(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		lane      string
+		current   string
+		session   string
+		forbidden string
+	}{
+		{
+			lane:      portalLaneGNOME,
+			current:   "XDG_CURRENT_DESKTOP=GNOME",
+			session:   "XDG_SESSION_DESKTOP=gnome",
+			forbidden: "XDG_CURRENT_DESKTOP=KDE",
+		},
+		{
+			lane:      portalLaneKDE,
+			current:   "XDG_CURRENT_DESKTOP=KDE",
+			session:   "XDG_SESSION_DESKTOP=plasmawayland",
+			forbidden: "XDG_CURRENT_DESKTOP=GNOME",
+		},
+	}
+	for _, test := range tests {
+		command := hostedPortalTestCommand(
+			test.lane,
+			"remote-desktop",
+			"/run/user/1100/robotgo-portal-consent-remote-desktop.ready",
+		)
+		for _, required := range []string{test.current, test.session} {
+			if !strings.Contains(command, required) {
+				t.Errorf("%s command omits %q", test.lane, required)
+			}
+		}
+		if strings.Contains(command, test.forbidden) {
+			t.Errorf("%s command contains %q", test.lane, test.forbidden)
+		}
+	}
+	if command := hostedPortalTestCommand(
+		"other",
+		"remote-desktop",
+		"/run/user/1100/marker",
+	); command != "" {
+		t.Fatalf("unsupported lane command = %q", command)
 	}
 }
 

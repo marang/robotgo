@@ -65,7 +65,11 @@ func TestQMPPortalApprovalUsesIndependentKeyboardChords(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { _ = client.close() }()
-	if err := client.approvePortal(ctx, "remote-desktop"); err != nil {
+	if err := client.approvePortal(
+		ctx,
+		portalLaneGNOME,
+		"remote-desktop",
+	); err != nil {
 		t.Fatal(err)
 	}
 	if err := <-serverDone; err != nil {
@@ -81,6 +85,80 @@ func TestQMPPortalApprovalUsesIndependentKeyboardChords(t *testing.T) {
 		t.Fatalf("first QMP command = %q", got[0].Execute)
 	}
 	assertQMPChord(t, got[1], []string{"alt", "i"})
+	assertQMPChord(t, got[2], []string{"alt", "s"})
+}
+
+func TestQMPKDEPortalApprovalSelectsMonitorAndShares(t *testing.T) {
+	t.Parallel()
+	socket := filepath.Join(t.TempDir(), "qmp.sock")
+	listener, err := net.Listen("unix", socket)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = listener.Close() })
+
+	commands := make(chan qmpCommand, 3)
+	serverDone := make(chan error, 1)
+	go func() {
+		connection, err := listener.Accept()
+		if err != nil {
+			serverDone <- err
+			return
+		}
+		defer func() { _ = connection.Close() }()
+		if _, err := connection.Write([]byte(
+			`{"QMP":{"version":{"qemu":{"major":11}},"capabilities":[]}}` + "\n",
+		)); err != nil {
+			serverDone <- err
+			return
+		}
+		decoder := json.NewDecoder(bufio.NewReader(connection))
+		encoder := json.NewEncoder(connection)
+		for range 3 {
+			var command qmpCommand
+			if err := decoder.Decode(&command); err != nil {
+				serverDone <- err
+				return
+			}
+			commands <- command
+			if err := encoder.Encode(map[string]any{
+				"return": map[string]any{},
+				"id":     command.ID,
+			}); err != nil {
+				serverDone <- err
+				return
+			}
+		}
+		serverDone <- nil
+	}()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	client, err := connectQMP(ctx, socket)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = client.close() }()
+	if err := client.approvePortal(
+		ctx,
+		portalLaneKDE,
+		"screencast",
+	); err != nil {
+		t.Fatal(err)
+	}
+	if err := <-serverDone; err != nil {
+		t.Fatal(err)
+	}
+
+	got := make([]qmpCommand, 0, 3)
+	close(commands)
+	for command := range commands {
+		got = append(got, command)
+	}
+	if got[0].Execute != "qmp_capabilities" {
+		t.Fatalf("first QMP command = %q", got[0].Execute)
+	}
+	assertQMPChord(t, got[1], []string{"spc"})
 	assertQMPChord(t, got[2], []string{"alt", "s"})
 }
 

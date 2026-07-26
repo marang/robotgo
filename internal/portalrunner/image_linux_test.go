@@ -96,12 +96,16 @@ func TestRemoveStaleImagesKeepsOnlyCurrentAttestedPair(t *testing.T) {
 	currentMetadata := currentImage + ".build.json"
 	staleImage := filepath.Join(directory, "gnome-"+staleDigest+".qcow2")
 	staleMetadata := staleImage + ".build.json"
+	kdeImage := filepath.Join(directory, "kde-"+staleDigest+".qcow2")
+	kdeMetadata := kdeImage + ".build.json"
 	baseImage := filepath.Join(directory, "ubuntu-base.qcow2")
 	for _, path := range []string{
 		currentImage,
 		currentMetadata,
 		staleImage,
 		staleMetadata,
+		kdeImage,
+		kdeMetadata,
 		baseImage,
 	} {
 		if err := os.WriteFile(path, []byte("fixture"), 0o600); err != nil {
@@ -110,12 +114,19 @@ func TestRemoveStaleImagesKeepsOnlyCurrentAttestedPair(t *testing.T) {
 	}
 	if err := removeStaleImages(
 		directory,
+		portalLaneGNOME,
 		currentImage,
 		currentMetadata,
 	); err != nil {
 		t.Fatalf("removeStaleImages: %v", err)
 	}
-	for _, path := range []string{currentImage, currentMetadata, baseImage} {
+	for _, path := range []string{
+		currentImage,
+		currentMetadata,
+		kdeImage,
+		kdeMetadata,
+		baseImage,
+	} {
 		if _, err := os.Stat(path); err != nil {
 			t.Fatalf("expected retained image %q: %v", path, err)
 		}
@@ -123,6 +134,34 @@ func TestRemoveStaleImagesKeepsOnlyCurrentAttestedPair(t *testing.T) {
 	for _, path := range []string{staleImage, staleMetadata} {
 		if _, err := os.Stat(path); !os.IsNotExist(err) {
 			t.Fatalf("stale image %q still exists: %v", path, err)
+		}
+	}
+}
+
+func TestRepositoryKDEGuestFilesAreCompleteAndExecutable(t *testing.T) {
+	t.Parallel()
+	path, err := filepath.Abs(
+		filepath.Join(
+			"..",
+			"..",
+			"infrastructure",
+			"portal-runner",
+			"kde",
+		),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := validateGuestFiles(path); err != nil {
+		t.Fatalf("validateGuestFiles: %v", err)
+	}
+	for _, relative := range guestImageFiles {
+		info, err := os.Stat(filepath.Join(path, relative))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if info.Mode().Perm() != 0o755 {
+			t.Errorf("%s mode = %o, want 755", relative, info.Mode().Perm())
 		}
 	}
 }

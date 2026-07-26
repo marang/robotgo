@@ -105,7 +105,7 @@ func (systemCommandExecutor) Run(
 	return nil
 }
 
-// ImageBuildOptions defines one immutable GNOME image build.
+// ImageBuildOptions defines one immutable portal-runner image build.
 type ImageBuildOptions struct {
 	ManifestPath   string
 	RepositoryRoot string
@@ -196,10 +196,18 @@ func BuildImage(
 		return "", err
 	}
 
-	finalImage := filepath.Join(imagesDirectory, "gnome-"+imageID+".qcow2")
+	finalImage := filepath.Join(
+		imagesDirectory,
+		manifest.Lane+"-"+imageID+".qcow2",
+	)
 	finalManifest := finalImage + ".build.json"
 	if reusableImage(finalImage, finalManifest, buildMetadata) {
-		if err := removeStaleImages(imagesDirectory, finalImage, finalManifest); err != nil {
+		if err := removeStaleImages(
+			imagesDirectory,
+			manifest.Lane,
+			finalImage,
+			finalManifest,
+		); err != nil {
 			return "", err
 		}
 		if err := writeStatus(
@@ -245,7 +253,7 @@ func BuildImage(
 	if err := writeStatus(options.Output, "image overlay create\n"); err != nil {
 		return "", err
 	}
-	overlay := filepath.Join(runDirectory, "gnome.qcow2")
+	overlay := filepath.Join(runDirectory, manifest.Lane+".qcow2")
 	if err := options.Commands.Run(
 		buildContext,
 		"qemu-img",
@@ -298,7 +306,10 @@ func BuildImage(
 	}
 	if err := os.WriteFile(
 		metaData,
-		[]byte("instance-id: "+instanceID+"\nlocal-hostname: robotgo-gnome-build\n"),
+		[]byte(
+			"instance-id: "+instanceID+
+				"\nlocal-hostname: robotgo-"+manifest.Lane+"-build\n",
+		),
 		0o600,
 	); err != nil {
 		return "", fmt.Errorf("write portal runner build metadata: %w", err)
@@ -457,7 +468,12 @@ func BuildImage(
 		_ = os.Remove(finalImage)
 		return "", err
 	}
-	if err := removeStaleImages(imagesDirectory, finalImage, finalManifest); err != nil {
+	if err := removeStaleImages(
+		imagesDirectory,
+		manifest.Lane,
+		finalImage,
+		finalManifest,
+	); err != nil {
 		return "", err
 	}
 	if err := writeStatus(
@@ -477,19 +493,28 @@ func writeStatus(output io.Writer, format string, arguments ...any) error {
 	return nil
 }
 
-func removeStaleImages(directory, currentImage, currentMetadata string) error {
+func removeStaleImages(
+	directory,
+	lane,
+	currentImage,
+	currentMetadata string,
+) error {
+	if lane != portalLaneGNOME && lane != portalLaneKDE {
+		return errors.New("portal runner stale-image lane is invalid")
+	}
 	entries, err := os.ReadDir(directory)
 	if err != nil {
 		return fmt.Errorf("list portal runner images: %w", err)
 	}
 	for _, entry := range entries {
 		name := entry.Name()
-		if !strings.HasPrefix(name, "gnome-") ||
+		prefix := lane + "-"
+		if !strings.HasPrefix(name, prefix) ||
 			(!strings.HasSuffix(name, ".qcow2") &&
 				!strings.HasSuffix(name, ".qcow2.build.json")) {
 			continue
 		}
-		digest := strings.TrimPrefix(name, "gnome-")
+		digest := strings.TrimPrefix(name, prefix)
 		digest = strings.TrimSuffix(digest, ".build.json")
 		digest = strings.TrimSuffix(digest, ".qcow2")
 		decoded, decodeErr := hex.DecodeString(digest)

@@ -37,6 +37,33 @@ func TestValidateRepositoryManifest(t *testing.T) {
 	}
 }
 
+func TestValidateRepositoryKDEManifest(t *testing.T) {
+	t.Parallel()
+	var stdout, stderr bytes.Buffer
+	repositoryRoot := filepath.Join("..", "..", "..")
+	manifest := filepath.Join(
+		repositoryRoot,
+		"infrastructure",
+		"portal-runner",
+		"kde",
+		"manifest.json",
+	)
+	if err := run(
+		[]string{
+			"validate",
+			"-manifest", manifest,
+			"-repository-root", repositoryRoot,
+		},
+		&stdout,
+		&stderr,
+	); err != nil {
+		t.Fatalf("validate: %v\nstderr: %s", err, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "valid lane=kde repository=marang/robotgo") {
+		t.Fatalf("validate output = %q", stdout.String())
+	}
+}
+
 func TestValidatePreparesExternalPrivateState(t *testing.T) {
 	t.Parallel()
 	var stdout, stderr bytes.Buffer

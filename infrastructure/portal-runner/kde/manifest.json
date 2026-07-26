@@ -1,0 +1,71 @@
+{
+  "schema_version": "1",
+  "lane": "kde",
+  "repository": "marang/robotgo",
+  "labels": [
+    "self-hosted",
+    "linux",
+    "wayland",
+    "kde"
+  ],
+  "base_image": {
+    "version": "ubuntu-24.04-20260705",
+    "url": "https://cloud-images.ubuntu.com/noble/20260705/noble-server-cloudimg-amd64.img",
+    "sha256": "ffe6203da54deeb6db5d2a98a83f9ec8e55f149d3f7ba622e1abe5fa966ee3d6"
+  },
+  "apt_snapshot": "https://snapshot.ubuntu.com/ubuntu/20260705T000000Z/",
+  "go": {
+    "version": "go1.25.12",
+    "url": "https://go.dev/dl/go1.25.12.linux-amd64.tar.gz",
+    "sha256": "234828b7a89e0e303d2556310ee549fbcf253d28de937bac3da13d6294262ac1"
+  },
+  "actions_runner": {
+    "version": "2.336.0",
+    "url": "https://github.com/actions/runner/releases/download/v2.336.0/actions-runner-linux-x64-2.336.0.tar.gz",
+    "sha256": "04cf0be1aff4c3ec3554466c39124ca250e3effd8873bb7e8d68535aa9505d5d"
+  },
+  "vm": {
+    "cpus": 4,
+    "memory_mib": 8192,
+    "disk_gib": 40,
+    "kernel_release": "6.8.0-134-generic",
+    "maximum_lifetime": "30m"
+  },
+  "packages": [
+    "ca-certificates",
+    "curl",
+    "dbus-user-session",
+    "gcc",
+    "git",
+    "jq",
+    "kwin-wayland",
+    "libpipewire-0.3-dev",
+    "linux-modules-extra-6.8.0-134-generic",
+    "nftables",
+    "openssh-server",
+    "pipewire",
+    "pkg-config",
+    "plasma-desktop",
+    "plasma-workspace-wayland",
+    "sddm",
+    "sudo",
+    "wireplumber",
+    "xdg-desktop-portal",
+    "xdg-desktop-portal-kde",
+    "xserver-xorg-core"
+  ],
+  "network": {
+    "proxy_port": 3128,
+    "allowed_hosts": [
+      "*.actions.githubusercontent.com",
+      "*.blob.core.windows.net",
+      "*.github.com",
+      "*.githubusercontent.com",
+      "api.github.com",
+      "github.com",
+      "proxy.golang.org",
+      "storage.googleapis.com",
+      "sum.golang.org"
+    ]
+  }
+}

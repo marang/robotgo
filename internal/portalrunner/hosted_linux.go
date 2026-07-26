@@ -33,7 +33,7 @@ var portalFailureStagePattern = regexp.MustCompile(
 )
 
 // HostedRuntimeOptions identifies one credential-free portal test in a
-// disposable GNOME guest running inside a GitHub-hosted Linux runner.
+// disposable desktop guest running inside a GitHub-hosted Linux runner.
 type HostedRuntimeOptions struct {
 	ManifestPath   string
 	RepositoryRoot string
@@ -51,10 +51,10 @@ type hostedProcessResult struct {
 	err  error
 }
 
-// RunHostedGNOME transfers the exact clean commit into a disposable guest,
-// runs one portal integration cell, and drives GNOME consent independently
+// RunHostedPortal transfers the exact clean commit into a disposable guest,
+// runs one portal integration cell, and drives desktop consent independently
 // through QMP. It does not register a GitHub Actions runner or consume tokens.
-func RunHostedGNOME(
+func RunHostedPortal(
 	ctx context.Context,
 	options HostedRuntimeOptions,
 ) (returnError error) {
@@ -121,10 +121,10 @@ func RunHostedGNOME(
 	imagePath := filepath.Join(
 		options.StateRoot,
 		"images",
-		"gnome-"+imageID+".qcow2",
+		manifest.Lane+"-"+imageID+".qcow2",
 	)
 	if !reusableImage(imagePath, imagePath+".build.json", buildMetadata) {
-		return errors.New("hosted GNOME image is unavailable or stale")
+		return fmt.Errorf("hosted %s image is unavailable or stale", manifest.Lane)
 	}
 
 	runDirectory, err := CreateRun(options.StateRoot)
@@ -212,8 +212,11 @@ func RunHostedGNOME(
 		return err
 	}
 	for path, data := range map[string][]byte{
-		userData:    []byte(cloudConfig),
-		metaData:    []byte("instance-id: " + instanceID + "\nlocal-hostname: robotgo-gnome-hosted\n"),
+		userData: []byte(cloudConfig),
+		metaData: []byte(
+			"instance-id: " + instanceID +
+				"\nlocal-hostname: robotgo-" + manifest.Lane + "-hosted\n",
+		),
 		networkData: []byte(runtimeNetworkConfig()),
 	} {
 		if err := os.WriteFile(path, data, 0o600); err != nil {
@@ -272,7 +275,7 @@ func RunHostedGNOME(
 	qemuCommand.Stderr = logWriter
 	configureHostedProcess(qemuCommand)
 	if err := qemuCommand.Start(); err != nil {
-		return errors.New("start hosted GNOME VM")
+		return fmt.Errorf("start hosted %s VM", manifest.Lane)
 	}
 	vmResult := &hostedProcessResult{done: make(chan struct{})}
 	go func() {
@@ -315,7 +318,7 @@ func RunHostedGNOME(
 		sshArguments,
 		logWriter,
 	); err != nil {
-		return fmt.Errorf("wait for hosted GNOME VM: %w", err)
+		return fmt.Errorf("wait for hosted %s VM: %w", manifest.Lane, err)
 	}
 	if err := enforceHostedEgressBoundary(
 		guestContext,
@@ -331,11 +334,12 @@ func RunHostedGNOME(
 		sshArguments,
 		logWriter,
 	); err != nil {
-		collectGNOMEDiagnostics(
+		collectHostedDiagnostics(
 			guestContext,
 			options.Commands,
 			sshArguments,
 			logWriter,
+			manifest.Lane,
 		)
 		return err
 	}
@@ -377,7 +381,7 @@ func RunHostedGNOME(
 		append(
 			append([]string{}, sshArguments...),
 			"root@127.0.0.1",
-			hostedPortalTestCommand(options.Cell, marker),
+			hostedPortalTestCommand(manifest.Lane, options.Cell, marker),
 		)...,
 	)
 	testOutput := io.MultiWriter(logWriter, testLogWriter)
@@ -409,7 +413,11 @@ func RunHostedGNOME(
 		stopProcessGroup(testCommand, testResult.done)
 		return err
 	}
-	if err := qmp.approvePortal(guestContext, options.Cell); err != nil {
+	if err := qmp.approvePortal(
+		guestContext,
+		manifest.Lane,
+		options.Cell,
+	); err != nil {
 		stopProcessGroup(testCommand, testResult.done)
 		return err
 	}
@@ -449,7 +457,7 @@ func RunHostedGNOME(
 	case <-vmResult.done:
 		vmExited = true
 		if vmResult.err != nil {
-			return errors.New("hosted GNOME VM exited unsuccessfully")
+			return fmt.Errorf("hosted %s VM exited unsuccessfully", manifest.Lane)
 		}
 	case <-runtimeContext.Done():
 		return fmt.Errorf("hosted portal lifetime ended: %w", runtimeContext.Err())
@@ -596,7 +604,7 @@ func waitForHostedSession(
 		nil,
 		output,
 	); err != nil {
-		return errors.New("wait for hosted GNOME portal session")
+		return errors.New("wait for hosted portal session")
 	}
 	return nil
 }
@@ -628,7 +636,7 @@ nft --json list chain inet robotgo_runner output |
 		nil,
 		output,
 	); err != nil {
-		return errors.New("enforce hosted GNOME egress boundary")
+		return errors.New("enforce hosted portal egress boundary")
 	}
 	return nil
 }
@@ -681,14 +689,18 @@ test -f /home/robotgo/robotgo/go.mod`
 	return nil
 }
 
-func hostedPortalTestCommand(cell, marker string) string {
+func hostedPortalTestCommand(lane, cell, marker string) string {
+	currentDesktop, sessionDesktop, err := hostedDesktopEnvironment(lane)
+	if err != nil {
+		return ""
+	}
 	environment := strings.Join([]string{
 		"HOME=/home/robotgo",
 		"XDG_RUNTIME_DIR=/run/user/1100",
 		"DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1100/bus",
 		"WAYLAND_DISPLAY=wayland-0",
-		"XDG_CURRENT_DESKTOP=GNOME",
-		"XDG_SESSION_DESKTOP=gnome",
+		"XDG_CURRENT_DESKTOP=" + currentDesktop,
+		"XDG_SESSION_DESKTOP=" + sessionDesktop,
 		"XDG_SESSION_TYPE=wayland",
 		"DISPLAY=:0",
 		"HTTP_PROXY=http://10.0.2.2:3128",
@@ -714,6 +726,52 @@ func hostedPortalTestCommand(cell, marker string) string {
 	guestCommand := "cd /home/robotgo/robotgo; exec " + test
 	return "set -euo pipefail; exec runuser -u robotgo -- env " +
 		environment + " bash -c " + shellQuote(guestCommand)
+}
+
+func hostedDesktopEnvironment(lane string) (current, session string, err error) {
+	switch lane {
+	case portalLaneGNOME:
+		return "GNOME", "gnome", nil
+	case portalLaneKDE:
+		return "KDE", "plasmawayland", nil
+	default:
+		return "", "", errors.New("hosted portal lane is invalid")
+	}
+}
+
+func collectHostedDiagnostics(
+	ctx context.Context,
+	commands CommandExecutor,
+	sshArguments []string,
+	output io.Writer,
+	lane string,
+) {
+	unit := "gdm3"
+	if lane == portalLaneKDE {
+		unit = "sddm"
+	}
+	diagnosticCommand := `set +e
+echo ROBOTGO_PORTAL_DIAGNOSTICS
+systemctl status ` + unit + ` --no-pager --full
+loginctl list-sessions --no-legend
+loginctl user-status robotgo --no-pager
+test -d /run/user/1100 && find /run/user/1100 -maxdepth 1 -type s -printf '%f\n'
+journalctl --boot --unit=` + unit + ` --no-pager --lines=120
+journalctl --boot _UID=1100 --no-pager --lines=120
+echo ROBOTGO_PORTAL_DIAGNOSTICS_END`
+	diagnosticContext, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+	_ = commands.Run(
+		diagnosticContext,
+		"ssh",
+		append(
+			append([]string{}, sshArguments...),
+			"root@127.0.0.1",
+			diagnosticCommand,
+		),
+		nil,
+		output,
+	)
 }
 
 func waitForConsentMarker(

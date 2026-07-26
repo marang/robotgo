@@ -82,6 +82,50 @@ func TestRepositoryGNOMEManifest(t *testing.T) {
 	}
 }
 
+func TestKDEManifestContract(t *testing.T) {
+	t.Parallel()
+	manifest := validManifest()
+	manifest.Lane = portalLaneKDE
+	manifest.Labels = []string{"self-hosted", "linux", "wayland", portalLaneKDE}
+	manifest.Packages = []string{
+		"kwin-wayland",
+		"libpipewire-0.3-dev",
+		"linux-modules-extra-6.8.0-134-generic",
+		"pipewire",
+		"plasma-desktop",
+		"plasma-workspace-wayland",
+		"sddm",
+		"wireplumber",
+		"xdg-desktop-portal",
+		"xdg-desktop-portal-kde",
+	}
+	if err := manifest.Validate(); err != nil {
+		t.Fatalf("KDE manifest rejected: %v", err)
+	}
+}
+
+func TestRepositoryKDEManifest(t *testing.T) {
+	t.Parallel()
+	path := filepath.Join(
+		"..",
+		"..",
+		"infrastructure",
+		"portal-runner",
+		"kde",
+		"manifest.json",
+	)
+	manifest, err := LoadManifest(path)
+	if err != nil {
+		t.Fatalf("LoadManifest: %v", err)
+	}
+	if manifest.Lane != portalLaneKDE {
+		t.Fatalf("lane = %q", manifest.Lane)
+	}
+	if manifest.MaximumLifetime() != 30*time.Minute {
+		t.Fatalf("maximum lifetime = %s", manifest.MaximumLifetime())
+	}
+}
+
 func TestManifestRejectsUnsafeContract(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
@@ -90,9 +134,9 @@ func TestManifestRejectsUnsafeContract(t *testing.T) {
 		want   string
 	}{
 		{
-			name: "wrong lane",
+			name: "unsupported lane",
 			change: func(manifest *Manifest) {
-				manifest.Lane = "kde"
+				manifest.Lane = "other"
 			},
 			want: "unsupported protected runner lane",
 		},
@@ -101,7 +145,7 @@ func TestManifestRejectsUnsafeContract(t *testing.T) {
 			change: func(manifest *Manifest) {
 				manifest.Labels = append(manifest.Labels, "personal-desktop")
 			},
-			want: "exact protected GNOME label set",
+			want: "exact protected lane label set",
 		},
 		{
 			name: "mutable image host",

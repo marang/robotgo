@@ -92,11 +92,15 @@ func runHosted(arguments []string, stdout, stderr io.Writer) error {
 	if err != nil {
 		return fmt.Errorf("resolve portal runner state: %w", err)
 	}
+	manifest, err := portalrunner.LoadManifest(absoluteManifest)
+	if err != nil {
+		return err
+	}
 	guestFiles := filepath.Join(
 		absoluteRepository,
 		"infrastructure",
 		"portal-runner",
-		"gnome",
+		manifest.Lane,
 	)
 	ctx, cancel := signal.NotifyContext(
 		context.Background(),
@@ -104,7 +108,7 @@ func runHosted(arguments []string, stdout, stderr io.Writer) error {
 		syscall.SIGTERM,
 	)
 	defer cancel()
-	return portalrunner.RunHostedGNOME(
+	return portalrunner.RunHostedPortal(
 		ctx,
 		portalrunner.HostedRuntimeOptions{
 			ManifestPath:   absoluteManifest,
@@ -277,11 +281,15 @@ func runBuild(arguments []string, stdout, stderr io.Writer) error {
 	if err != nil {
 		return fmt.Errorf("resolve portal runner state: %w", err)
 	}
+	manifest, err := portalrunner.LoadManifest(absoluteManifest)
+	if err != nil {
+		return err
+	}
 	guestFiles := filepath.Join(
 		absoluteRepository,
 		"infrastructure",
 		"portal-runner",
-		"gnome",
+		manifest.Lane,
 	)
 	ctx, cancel := signal.NotifyContext(
 		context.Background(),
