@@ -294,6 +294,25 @@ func TestHostedKDEScreenCastLocatorReportsOnlyAllowlistedStage(t *testing.T) {
 	}
 }
 
+func TestKDEPortalTargetsUseRuntimeDialogGeometry(t *testing.T) {
+	t.Parallel()
+	geometry := hostedPortalGeometry{
+		width: 1280, height: 720,
+		dialogX: 362, dialogY: 70,
+		dialogWidth: 556, dialogHeight: 535,
+	}
+	card, button, err := kdePortalTargets(geometry)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if card != (hostedPortalPoint{x: 779, y: 337}) {
+		t.Fatalf("KDE physical card target = %+v", card)
+	}
+	if button != (hostedPortalPoint{x: 834, y: 578}) {
+		t.Fatalf("KDE Share target = %+v", button)
+	}
+}
+
 func TestHostedSourceArchiveMovesOutOfRootBeforeExtraction(t *testing.T) {
 	t.Parallel()
 	executor := &scriptedCommandExecutor{}

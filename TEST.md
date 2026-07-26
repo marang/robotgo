@@ -515,8 +515,8 @@ disposable GitHub-hosted nested-QEMU model. Both run on `main` pushes and on
 manual `gnome|kde|all` dispatches. KDE's pinned KWin helper reports only
 virtual-screen and active-dialog geometry through private D-Bus; the host
 verifies a plausible dialog, selects the physical monitor through the pinned
-QMP keyboard focus order, and the integration test rejects a virtual-output
-stream.
+relative QMP pointer target, confirms Share the same way, and the integration
+test rejects a virtual-output stream.
 wlroots does not count as a ScreenCast pass and is promoted separately under
 P005.
 

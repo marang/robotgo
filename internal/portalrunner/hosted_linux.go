@@ -72,6 +72,11 @@ type hostedPortalGeometry struct {
 	dialogHeight int
 }
 
+type hostedPortalPoint struct {
+	x int
+	y int
+}
+
 // RunHostedPortal transfers the exact clean commit into a disposable guest,
 // runs one portal integration cell, and drives desktop consent independently
 // through QMP. It does not register a GitHub Actions runner or consume tokens.
@@ -851,7 +856,29 @@ func approveHostedPortal(
 		if err != nil {
 			return err
 		}
-		approvalError := qmp.confirmKDEPortal(ctx)
+		card, button, err := kdePortalTargets(geometry)
+		if err != nil {
+			return errors.Join(err, qmp.close())
+		}
+		approvalError := qmp.clickAbsolute(
+			ctx,
+			card.x,
+			card.y,
+			geometry.width,
+			geometry.height,
+		)
+		if approvalError == nil {
+			approvalError = waitQMPChord(ctx)
+		}
+		if approvalError == nil {
+			approvalError = qmp.clickAbsolute(
+				ctx,
+				button.x,
+				button.y,
+				geometry.width,
+				geometry.height,
+			)
+		}
 		return errors.Join(approvalError, qmp.close())
 	}
 	qmp, err := connectQMP(ctx, qmpSocket)
@@ -938,6 +965,77 @@ func locateHostedKDEScreenCast(
 		)
 	}
 	return geometry, nil
+}
+
+const (
+	kdeCardXNumerator   = 3
+	kdeCardXDenominator = 4
+	kdeCardYNumerator   = 1
+	kdeCardYDenominator = 2
+
+	kdeShareXNumerator   = 17
+	kdeShareXDenominator = 20
+	kdeShareYNumerator   = 19
+	kdeShareYDenominator = 20
+)
+
+func kdePortalTargets(
+	geometry hostedPortalGeometry,
+) (hostedPortalPoint, hostedPortalPoint, error) {
+	card := hostedPortalPoint{
+		x: kdePortalRelativeCoordinate(
+			geometry.dialogX,
+			geometry.dialogWidth,
+			kdeCardXNumerator,
+			kdeCardXDenominator,
+		),
+		y: kdePortalRelativeCoordinate(
+			geometry.dialogY,
+			geometry.dialogHeight,
+			kdeCardYNumerator,
+			kdeCardYDenominator,
+		),
+	}
+	button := hostedPortalPoint{
+		x: kdePortalRelativeCoordinate(
+			geometry.dialogX,
+			geometry.dialogWidth,
+			kdeShareXNumerator,
+			kdeShareXDenominator,
+		),
+		y: kdePortalRelativeCoordinate(
+			geometry.dialogY,
+			geometry.dialogHeight,
+			kdeShareYNumerator,
+			kdeShareYDenominator,
+		),
+	}
+	if !kdePortalPointInsideDialog(card, geometry) ||
+		!kdePortalPointInsideDialog(button, geometry) {
+		return hostedPortalPoint{}, hostedPortalPoint{}, errors.New(
+			"hosted KDE ScreenCast target is outside the active dialog",
+		)
+	}
+	return card, button, nil
+}
+
+func kdePortalRelativeCoordinate(
+	start,
+	extent,
+	numerator,
+	denominator int,
+) int {
+	return start + extent*numerator/denominator
+}
+
+func kdePortalPointInsideDialog(
+	point hostedPortalPoint,
+	geometry hostedPortalGeometry,
+) bool {
+	return point.x >= geometry.dialogX &&
+		point.x < geometry.dialogX+geometry.dialogWidth &&
+		point.y >= geometry.dialogY &&
+		point.y < geometry.dialogY+geometry.dialogHeight
 }
 
 func collectHostedDiagnostics(

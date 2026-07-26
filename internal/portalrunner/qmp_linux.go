@@ -18,11 +18,9 @@ const (
 	qmpMaximumResponse = 1024 * 1024
 	qmpChordInterval   = 250 * time.Millisecond
 
-	qmpKeyAlt   = "alt"
-	qmpKeyI     = "i"
-	qmpKeyS     = "s"
-	qmpKeySpace = "spc"
-	qmpKeyTab   = "tab"
+	qmpKeyAlt = "alt"
+	qmpKeyI   = "i"
+	qmpKeyS   = "s"
 
 	qmpEventAbsolute = "abs"
 	qmpEventButton   = "btn"
@@ -196,26 +194,6 @@ func (client *qmpClient) clickAbsolute(
 			},
 		},
 	})
-}
-
-func (client *qmpClient) confirmKDEPortal(ctx context.Context) error {
-	// Plasma 5.27 starts before the two output cards. The first trip selects
-	// the physical card; the next focus stop is the now-enabled Share button.
-	for _, key := range []string{
-		qmpKeyTab,
-		qmpKeyTab,
-		qmpKeySpace,
-		qmpKeyTab,
-		qmpKeySpace,
-	} {
-		if err := client.sendChord(ctx, key); err != nil {
-			return err
-		}
-		if err := waitQMPChord(ctx); err != nil {
-			return err
-		}
-	}
-	return nil
 }
 
 func qmpAbsoluteCoordinate(pixel, dimension int) (int, error) {
