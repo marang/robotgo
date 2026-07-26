@@ -35,9 +35,7 @@ func TestPipeWireCapturePersistentSessionIntegration(t *testing.T) {
 	)
 	cancelOpen()
 	if err != nil {
-		if classified := screenCastPortalFailureStage(err); classified != "" {
-			stage = classified
-		}
+		stage = screenCastOpenFailureStage(stage, err)
 		t.Fatalf("OpenPipeWireCapture error: %v", err)
 	}
 	defer func() {
@@ -84,6 +82,16 @@ func screenCastPortalFailureStage(err error) string {
 	}
 }
 
+func screenCastOpenFailureStage(current string, err error) string {
+	if current != "portal-open" {
+		return current
+	}
+	if classified := screenCastPortalFailureStage(err); classified != "" {
+		return classified
+	}
+	return current
+}
+
 func TestScreenCastPortalFailureStage(t *testing.T) {
 	t.Parallel()
 	for _, test := range []struct {
@@ -102,6 +110,56 @@ func TestScreenCastPortalFailureStage(t *testing.T) {
 			t.Parallel()
 			if got := screenCastPortalFailureStage(test.err); got != test.want {
 				t.Fatalf("screenCastPortalFailureStage() = %q, want %q", got, test.want)
+			}
+		})
+	}
+}
+
+func TestScreenCastOpenFailureStagePreservesBackendPhase(t *testing.T) {
+	t.Parallel()
+	for _, test := range []struct {
+		name    string
+		current string
+		err     error
+		want    string
+	}{
+		{
+			name:    "portal timeout",
+			current: "portal-open",
+			err:     context.DeadlineExceeded,
+			want:    "portal-timeout",
+		},
+		{
+			name:    "PipeWire startup timeout",
+			current: "pipewire-open",
+			err:     context.DeadlineExceeded,
+			want:    "pipewire-open",
+		},
+		{
+			name:    "stream selection cancellation",
+			current: "stream-select",
+			err:     ErrScreenCastCancelled,
+			want:    "stream-select",
+		},
+		{
+			name:    "unclassified portal failure",
+			current: "portal-open",
+			err:     errors.New("portal"),
+			want:    "portal-open",
+		},
+	} {
+		test := test
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			if got := screenCastOpenFailureStage(
+				test.current,
+				test.err,
+			); got != test.want {
+				t.Fatalf(
+					"screenCastOpenFailureStage() = %q, want %q",
+					got,
+					test.want,
+				)
 			}
 		})
 	}
