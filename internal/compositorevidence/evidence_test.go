@@ -217,6 +217,30 @@ func TestFinalizeAndVerifyCreateOnlySanitizedEvidence(t *testing.T) {
 	}
 }
 
+func TestFinalizeAllowsPublicRefContainingHostValue(t *testing.T) {
+	t.Parallel()
+
+	outputDirectory, config := prepareFinalization(t, LaneWlroots, CellNativeInput)
+	report := validReport(LaneWlroots, CellNativeInput)
+	report.Ref = "refs/heads/feature/lab-23-gnome-portal-runner"
+	data, err := marshalDocument(report)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(
+		filepath.Join(outputDirectory, preflightFileName),
+		data,
+		0o600,
+	); err != nil {
+		t.Fatal(err)
+	}
+	config.SensitiveValues = []string{"runner"}
+
+	if _, err := Finalize(config); err != nil {
+		t.Fatalf("Finalize rejected validated public ref: %v", err)
+	}
+}
+
 func TestFinalizeRejectsSensitiveRawLogAndRemovesIt(t *testing.T) {
 	t.Parallel()
 	outputDirectory, config := prepareFinalization(t, LaneGNOME, CellRemoteDesktop)
