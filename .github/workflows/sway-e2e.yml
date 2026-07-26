@@ -73,6 +73,12 @@ jobs:
           set -e
           rm -f -- "$supervisor_log"
           test "$status" -eq 86
+          reason_file="$RUNNER_TEMP/sway-native-output-multi-failure-reason"
+          reason="$(./scripts/read-sway-failure-reason.sh \
+            "$RUNNER_TEMP" "$reason_file")"
+          test "$reason" = \
+            'isolated Sway evidence failed at sanitized stage: induced-failure'
+          rm -f -- "$reason_file"
           if compgen -G "$RUNNER_TEMP/robotgo-sway-runtime.*" >/dev/null; then
             echo 'induced failure retained an isolated Sway runtime' >&2
             exit 1
@@ -91,6 +97,10 @@ jobs:
           set -e
           rm -f -- "$supervisor_log"
           if [ "$status" -ne 0 ]; then
+            reason_file="$RUNNER_TEMP/sway-${{ matrix.cell }}-failure-reason"
+            ./scripts/read-sway-failure-reason.sh \
+              "$RUNNER_TEMP" "$reason_file" ||
+              echo 'isolated Sway evidence failed at sanitized stage: unavailable' >&2
             echo 'isolated Sway evidence failed; private runtime output was removed' >&2
             exit "$status"
           fi
@@ -111,6 +121,7 @@ jobs:
           set -euo pipefail
           umask 077
           rm -f -- "$RUNNER_TEMP/sway-${{ matrix.cell }}-supervisor.log"
+          rm -f -- "$RUNNER_TEMP/sway-${{ matrix.cell }}-failure-reason"
           rm -f -- \
             "$RUNNER_TEMP/sway-e2e-${{ matrix.cell }}/raw-test.log" \
             "$RUNNER_TEMP/sway-e2e-${{ matrix.cell }}/.preflight.json" || true

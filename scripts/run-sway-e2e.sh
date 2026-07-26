@@ -52,6 +52,11 @@ if [[ ! "$RUNNER_TEMP" = /* || "$RUNNER_TEMP" == / ]]; then
 	printf 'RUNNER_TEMP must be a non-root absolute path\n' >&2
 	exit 2
 fi
+readonly failure_reason_file="$RUNNER_TEMP/sway-$cell-failure-reason"
+if [[ -e "$failure_reason_file" || -L "$failure_reason_file" ]]; then
+	printf 'Sway failure-reason path already exists\n' >&2
+	exit 2
+fi
 
 repo_root="$(git rev-parse --show-toplevel)"
 readonly repo_root
@@ -69,6 +74,7 @@ umask 077
 runtime_dir=''
 sway_pid=''
 test_pid=''
+failure_stage='compositor-start'
 
 terminate_group() {
 	local pid="$1"
@@ -91,6 +97,17 @@ cleanup() {
 	terminate_group "$sway_pid"
 	if [[ -n "$runtime_dir" && "$runtime_dir" == "$RUNNER_TEMP/$runtime_prefix".* ]]; then
 		rm -rf -- "$runtime_dir"
+	fi
+	if ((status != 0)); then
+		local temporary_reason=''
+		temporary_reason="$(mktemp "$RUNNER_TEMP/.sway-failure-reason.XXXXXX")" || true
+		if [[ -n "$temporary_reason" ]]; then
+			printf '%s\n' "$failure_stage" >"$temporary_reason" || true
+			chmod 600 "$temporary_reason" 2>/dev/null || true
+			if ! mv -fT -- "$temporary_reason" "$failure_reason_file" 2>/dev/null; then
+				rm -f -- "$temporary_reason"
+			fi
+		fi
 	fi
 	exit "$status"
 }
@@ -138,6 +155,7 @@ if [[ -z "${WAYLAND_DISPLAY:-}" || -z "${SWAYSOCK:-}" ]]; then
 	exit 1
 fi
 
+failure_stage='output-topology'
 if ((output_count == 2)); then
 	swaymsg create_output >/dev/null
 fi
@@ -211,6 +229,7 @@ fi
 # after the compositor is live, so the EXIT trap must terminate Sway and remove
 # its complete private runtime directory.
 if [[ "${ROBOTGO_SWAY_E2E_FAIL_AFTER_START:-}" == '1' ]]; then
+	failure_stage='induced-failure'
 	exit 86
 fi
 
@@ -223,6 +242,7 @@ fi
 readonly evidence_ref
 readonly output_dir="$RUNNER_TEMP/sway-e2e-$cell"
 
+failure_stage='preflight'
 go run ./internal/cmd/compositorevidence preflight \
 	-lane wlroots \
 	-cell "$cell" \
@@ -238,6 +258,7 @@ go run ./internal/cmd/compositorevidence preflight \
 	-minimum-outputs "$output_count" \
 	-require-headless-sway
 
+failure_stage='integration-test'
 setsid go test -count=1 -timeout=2m -tags=wayland,swayintegration . \
 	-run "^${test_name}$" -v >"$output_dir/raw-test.log" 2>&1 &
 test_pid=$!
@@ -249,6 +270,7 @@ fi
 terminate_group "$test_pid"
 test_pid=''
 
+failure_stage='finalize'
 go run ./internal/cmd/compositorevidence finalize \
 	-lane wlroots \
 	-cell "$cell" \
@@ -259,6 +281,7 @@ go run ./internal/cmd/compositorevidence finalize \
 	-run-id "$GITHUB_RUN_ID" \
 	-run-attempt "$GITHUB_RUN_ATTEMPT" \
 	-test-exit-code "$test_status"
+failure_stage='verify'
 go run ./internal/cmd/compositorevidence verify \
 	-lane wlroots \
 	-cell "$cell" \
@@ -268,4 +291,5 @@ go run ./internal/cmd/compositorevidence verify \
 	-workflow "$GITHUB_WORKFLOW" \
 	-run-id "$GITHUB_RUN_ID" \
 	-run-attempt "$GITHUB_RUN_ATTEMPT"
+failure_stage='summary'
 cat "$output_dir/summary.md" >>"$GITHUB_STEP_SUMMARY"
