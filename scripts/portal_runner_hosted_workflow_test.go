@@ -16,7 +16,10 @@ func TestHostedGNOMEProofUsesEphemeralGitHubKVM(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		workflow := string(data)
+		// Git may check workflow files out with CRLF on Windows. Normalize the
+		// text before asserting YAML fragments so this policy test remains
+		// independent of the runner's checkout line endings.
+		workflow := normalizeWorkflowText(data)
 		start := strings.Index(workflow, "  hosted-gnome:")
 		if start < 0 {
 			t.Fatalf("%s does not isolate the hosted GNOME job", path)
@@ -74,4 +77,17 @@ func TestHostedGNOMEProofUsesEphemeralGitHubKVM(t *testing.T) {
 			}
 		}
 	}
+}
+
+func TestNormalizeWorkflowTextHandlesWindowsCheckout(t *testing.T) {
+	t.Parallel()
+	got := normalizeWorkflowText([]byte("permissions:\r\n  contents: read\r\n"))
+	want := "permissions:\n  contents: read\n"
+	if got != want {
+		t.Fatalf("normalizeWorkflowText() = %q, want %q", got, want)
+	}
+}
+
+func normalizeWorkflowText(data []byte) string {
+	return strings.ReplaceAll(string(data), "\r\n", "\n")
 }
