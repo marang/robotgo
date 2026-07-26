@@ -206,7 +206,9 @@ func TestHostedKDEScreenCastLocatorUsesContentFreeKWinGeometry(
 ) {
 	t.Parallel()
 	executor := &scriptedCommandExecutor{
-		outputs: []string{"ok 1280 720 350 90 580 540\n"},
+		outputs: []string{
+			"ok 1280 720 350 90 580 540 775 330 840 575\n",
+		},
 	}
 	geometry, err := locateHostedKDEScreenCast(
 		context.Background(),
@@ -220,6 +222,8 @@ func TestHostedKDEScreenCastLocatorUsesContentFreeKWinGeometry(
 		width: 1280, height: 720,
 		dialogX: 350, dialogY: 90,
 		dialogWidth: 580, dialogHeight: 540,
+		cardX: 775, cardY: 330,
+		buttonX: 840, buttonY: 575,
 	}) {
 		t.Fatalf("KDE geometry = %+v", geometry)
 	}
@@ -253,11 +257,13 @@ func TestHostedKDEScreenCastLocatorRejectsUnsafeGeometry(t *testing.T) {
 	t.Parallel()
 	for _, output := range []string{
 		"",
-		"1280 720 350 90 580\n",
-		"ok 1280 720 350 90 580 540 extra\n",
-		"ok 1280 720 350 90 100 540\n",
-		"ok 1280 720 900 90 580 540\n",
-		"ok private 720 350 90 580 540\n",
+		"1280 720 350 90 580 540 775 330 840 575\n",
+		"ok 1280 720 350 90 580 540 775 330 840 575 extra\n",
+		"ok 1280 720 350 90 100 540 775 330 840 575\n",
+		"ok 1280 720 900 90 580 540 775 330 840 575\n",
+		"ok 1280 720 350 90 580 540 10 10 840 575\n",
+		"ok 1280 720 350 90 580 540 775 330 10 10\n",
+		"ok private 720 350 90 580 540 775 330 840 575\n",
 	} {
 		executor := &scriptedCommandExecutor{outputs: []string{output}}
 		if _, err := locateHostedKDEScreenCast(
@@ -300,6 +306,8 @@ func TestKDEPortalTargetsUseRuntimeDialogGeometry(t *testing.T) {
 		width: 1280, height: 720,
 		dialogX: 362, dialogY: 70,
 		dialogWidth: 556, dialogHeight: 535,
+		cardX: 779, cardY: 337,
+		buttonX: 834, buttonY: 578,
 	}
 	card, button, err := kdePortalTargets(geometry)
 	if err != nil {

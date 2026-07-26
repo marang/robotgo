@@ -40,11 +40,12 @@ Use `-cell screencast` for persistent PipeWire capture.
 The host transfers the exact clean tree without credentials and enforces an
 active nftables output chain with `policy drop` before the transfer. A private
 host-side controller asks KWin only for virtual-screen and active-dialog
-geometry through a short-lived private D-Bus receiver. It validates that the
-active window is a plausible on-screen dialog, then selects the digest-bound
-physical-monitor card and confirms Share through relative QMP pointer input.
-No window names, screen pixels, accessibility data, or dialog content leave
-the guest. RobotGo does not
+geometry through a short-lived private D-Bus receiver. A second digest-bound
+helper reads accessibility roles, states, actions, and rectangles only and
+reports the physical-card and disabled Share-button centres. The host validates
+both points inside the active dialog, then selects the monitor and confirms
+Share through QMP pointer input. No window names, accessibility labels or
+trees, screen pixels, or dialog content leave the guest. RobotGo does not
 approve its own request, patch the portal backend, or pre-authorize the
 application.
 

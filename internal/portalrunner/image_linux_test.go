@@ -450,8 +450,10 @@ func TestRepositoryKDEGuestActivatesPortalFrontendAndBackend(t *testing.T) {
 	}
 	for _, required := range []string{
 		"/usr/local/libexec/robotgo-runner-locate-screencast",
+		"/usr/local/libexec/robotgo-runner-locate-screencast-controls",
 		"/usr/local/libexec/robotgo-runner-report-screencast-geometry",
 		"/usr/local/share/robotgo/report-screencast-geometry.js",
+		"QT_LINUX_ACCESSIBILITY_ALWAYS_ON=1",
 	} {
 		if !strings.Contains(string(installScript), required) {
 			t.Errorf("KDE geometry approval omits %q", required)
@@ -461,13 +463,14 @@ func TestRepositoryKDEGuestActivatesPortalFrontendAndBackend(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, required := range []string{`"python3-dbus"`, `"python3-gi"`} {
+	for _, required := range []string{
+		`"python3-dbus"`,
+		`"python3-gi"`,
+		`"python3-pyatspi"`,
+	} {
 		if !strings.Contains(string(manifest), required) {
 			t.Fatalf("KDE manifest omits geometry bridge package %s", required)
 		}
-	}
-	if strings.Contains(string(manifest), `"python3-pyatspi"`) {
-		t.Fatal("KDE manifest still installs the ineffective AT-SPI bridge")
 	}
 
 	locator, err := os.ReadFile(filepath.Join(guestRoot, "locate-screencast.sh"))
@@ -480,6 +483,7 @@ func TestRepositoryKDEGuestActivatesPortalFrontendAndBackend(t *testing.T) {
 		"org.kde.kwin.Script run",
 		"unloadScript",
 		`rm -f -- "$output"`,
+		`rm -f -- "$controls_output"`,
 	} {
 		if !strings.Contains(string(locator), required) {
 			t.Errorf("KDE geometry locator omits %q", required)
@@ -488,6 +492,34 @@ func TestRepositoryKDEGuestActivatesPortalFrontendAndBackend(t *testing.T) {
 	for _, forbidden := range []string{"screendump", "journalctl", "title"} {
 		if strings.Contains(string(locator), forbidden) {
 			t.Errorf("KDE geometry locator contains %q", forbidden)
+		}
+	}
+
+	controls, err := os.ReadFile(
+		filepath.Join(guestRoot, "locate-screencast-controls.py"),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, required := range []string{
+		"pyatspi.STATE_SHOWING",
+		"pyatspi.STATE_SENSITIVE",
+		"pyatspi.ROLE_PUSH_BUTTON",
+		"len(cards) == 2",
+		"len(disabled) == 1",
+	} {
+		if !strings.Contains(string(controls), required) {
+			t.Errorf("KDE control locator omits %q", required)
+		}
+	}
+	for _, forbidden := range []string{
+		".name",
+		"getName",
+		"screenshot",
+		"journal",
+	} {
+		if strings.Contains(string(controls), forbidden) {
+			t.Errorf("KDE control locator contains %q", forbidden)
 		}
 	}
 
