@@ -18,9 +18,11 @@ const (
 	qmpMaximumResponse = 1024 * 1024
 	qmpChordInterval   = 250 * time.Millisecond
 
-	qmpKeyAlt = "alt"
-	qmpKeyI   = "i"
-	qmpKeyS   = "s"
+	qmpKeyAlt   = "alt"
+	qmpKeyI     = "i"
+	qmpKeyS     = "s"
+	qmpKeySpace = "spc"
+	qmpKeyTab   = "tab"
 
 	qmpEventAbsolute = "abs"
 	qmpEventButton   = "btn"
@@ -194,6 +196,22 @@ func (client *qmpClient) clickAbsolute(
 			},
 		},
 	})
+}
+
+func (client *qmpClient) confirmKDEPortal(ctx context.Context) error {
+	for _, key := range []string{
+		qmpKeyTab,
+		qmpKeyTab,
+		qmpKeySpace,
+	} {
+		if err := client.sendChord(ctx, key); err != nil {
+			return err
+		}
+		if err := waitQMPChord(ctx); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func qmpAbsoluteCoordinate(pixel, dimension int) (int, error) {

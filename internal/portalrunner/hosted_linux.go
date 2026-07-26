@@ -72,8 +72,6 @@ type hostedPortalGeometry struct {
 	dialogHeight int
 	cardX        int
 	cardY        int
-	buttonX      int
-	buttonY      int
 }
 
 // RunHostedPortal transfers the exact clean commit into a disposable guest,
@@ -852,13 +850,7 @@ func approveHostedPortal(
 			approvalError = waitQMPChord(ctx)
 		}
 		if approvalError == nil {
-			approvalError = qmp.clickAbsolute(
-				ctx,
-				geometry.buttonX,
-				geometry.buttonY,
-				geometry.width,
-				geometry.height,
-			)
+			approvalError = qmp.confirmKDEPortal(ctx)
 		}
 		return errors.Join(approvalError, qmp.close())
 	}
@@ -955,23 +947,9 @@ func locateHostedKDEScreenCast(
 		geometry.height,
 		hostedDisplayHeight,
 	)
-	geometry.buttonX = kdePortalReferenceCoordinate(
-		kdeShareButtonX,
-		geometry.width,
-		hostedDisplayWidth,
-	)
-	geometry.buttonY = kdePortalReferenceCoordinate(
-		kdeShareButtonY,
-		geometry.height,
-		hostedDisplayHeight,
-	)
 	if !kdePortalTargetInsideDialog(
 		geometry.cardX,
 		geometry.cardY,
-		geometry,
-	) || !kdePortalTargetInsideDialog(
-		geometry.buttonX,
-		geometry.buttonY,
 		geometry,
 	) {
 		return hostedPortalGeometry{}, errors.New(
@@ -984,8 +962,6 @@ func locateHostedKDEScreenCast(
 const (
 	kdePhysicalOutputX = 770
 	kdePhysicalOutputY = 337
-	kdeShareButtonX    = 835
-	kdeShareButtonY    = 607
 )
 
 func kdePortalReferenceCoordinate(reference, actual, baseline int) int {

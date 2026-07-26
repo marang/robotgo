@@ -156,6 +156,76 @@ func TestQMPAbsoluteClickUsesRuntimeDisplayGeometry(t *testing.T) {
 	assertQMPClick(t, got[1], 400, 300, 1600, 900)
 }
 
+func TestQMPKDEConfirmationMovesFromCardToShare(t *testing.T) {
+	t.Parallel()
+	socket := filepath.Join(t.TempDir(), "qmp.sock")
+	listener, err := net.Listen("unix", socket)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = listener.Close() })
+
+	commands := make(chan qmpCommand, 4)
+	serverDone := make(chan error, 1)
+	go func() {
+		connection, err := listener.Accept()
+		if err != nil {
+			serverDone <- err
+			return
+		}
+		defer func() { _ = connection.Close() }()
+		if _, err := connection.Write([]byte(
+			`{"QMP":{"version":{"qemu":{"major":11}},"capabilities":[]}}` + "\n",
+		)); err != nil {
+			serverDone <- err
+			return
+		}
+		decoder := json.NewDecoder(bufio.NewReader(connection))
+		encoder := json.NewEncoder(connection)
+		for range 4 {
+			var command qmpCommand
+			if err := decoder.Decode(&command); err != nil {
+				serverDone <- err
+				return
+			}
+			commands <- command
+			if err := encoder.Encode(map[string]any{
+				"return": map[string]any{},
+				"id":     command.ID,
+			}); err != nil {
+				serverDone <- err
+				return
+			}
+		}
+		serverDone <- nil
+	}()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	client, err := connectQMP(ctx, socket)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = client.close() }()
+	if err := client.confirmKDEPortal(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if err := <-serverDone; err != nil {
+		t.Fatal(err)
+	}
+	close(commands)
+	got := make([]qmpCommand, 0, 4)
+	for command := range commands {
+		got = append(got, command)
+	}
+	if got[0].Execute != "qmp_capabilities" {
+		t.Fatalf("first QMP command = %q", got[0].Execute)
+	}
+	assertQMPChord(t, got[1], []string{qmpKeyTab})
+	assertQMPChord(t, got[2], []string{qmpKeyTab})
+	assertQMPChord(t, got[3], []string{qmpKeySpace})
+}
+
 func TestQMPAbsoluteCoordinateRejectsOutsideDisplay(t *testing.T) {
 	t.Parallel()
 	for _, test := range []struct {

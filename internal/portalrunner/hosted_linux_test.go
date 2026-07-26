@@ -221,7 +221,6 @@ func TestHostedKDEScreenCastLocatorUsesContentFreeKWinGeometry(
 		dialogX: 350, dialogY: 90,
 		dialogWidth: 580, dialogHeight: 540,
 		cardX: 770, cardY: 337,
-		buttonX: 835, buttonY: 607,
 	}) {
 		t.Fatalf("KDE geometry = %+v", geometry)
 	}
@@ -260,7 +259,6 @@ func TestHostedKDEScreenCastLocatorRejectsUnsafeGeometry(t *testing.T) {
 		"ok 1280 720 350 90 100 540\n",
 		"ok 1280 720 900 90 580 540\n",
 		"ok 1280 720 0 0 320 240\n",
-		"ok 1280 720 350 90 580 500\n",
 		"ok private 720 350 90 580 540\n",
 	} {
 		executor := &scriptedCommandExecutor{outputs: []string{output}}
