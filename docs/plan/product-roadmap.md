@@ -29,24 +29,26 @@ The July 2026 hardening work establishes the foundation for this roadmap:
 - CI covers lint, default tests on Linux/macOS/Windows, non-CGO, Wayland, portal,
   Weston integration, race, vet, and native sanitizer/leak variants.
 
-## Execution Status (2026-07-23)
+## Execution Status (2026-07-26)
 
 | Area | Status | Delivered | Exit criteria still open |
 |---|---|---|---|
 | Current baseline | Complete in main | Native screencopy, screenshot portal fallback, bounded waits, cleanup, live capability probes, error APIs, non-CGO contract, dedicated race/vet/sanitizer jobs, protected stable CI checks | Keep required jobs green |
-| 1. Wayland input | Implementation complete; runtime validation partial | Native virtual keyboard/pointer, consent-aware RemoteDesktop fallback, shared ScreenCast stream mapping, absolute pointer/touch, restore tokens, diagnostics, protected portal harness, and isolated hosted Sway native/availability plus multi-output matrix | Register GNOME/KDE portal runners and collect their multi-output evidence |
-| 2. Capture | Hermetic implementation complete; runtime validation partial | Reliable one-shot paths plus one consent-aware ScreenCast session, reusable PipeWire frames, logical region crop, raw pixel conversion, metadata/restore tokens, cleanup, integration harness, non-skipping geometry/transform CI, sanitizer-backed native ownership gates, and isolated hosted Sway native/multi-output evidence | Real GNOME/KDE portal and multi-output evidence |
+| 1. Wayland input | Implementation complete; runtime validation partial | Native virtual keyboard/pointer, consent-aware RemoteDesktop fallback, shared ScreenCast stream mapping, absolute pointer/touch, restore tokens, diagnostics, hosted GNOME nested-KVM harness with independent QMP consent, and isolated hosted Sway native/availability plus multi-output matrix | Retain passing GNOME/KDE portal and multi-output evidence |
+| 2. Capture | Hermetic implementation complete; runtime validation partial | Reliable one-shot paths plus one consent-aware ScreenCast session, reusable PipeWire frames, logical region crop, raw pixel conversion, metadata/restore tokens, cleanup, hosted GNOME persistent-capture harness, non-skipping geometry/transform CI, sanitizer-backed native ownership gates, and isolated hosted Sway native/multi-output evidence | Retain passing GNOME/KDE portal and multi-output evidence |
 | 3. Pure-Go | X11 complete; Windows input/window CI-evidenced; macOS capture/display/input and window implementation delivered; Wayland logical output enumeration plus Weston and hosted Sway multi-output evidence delivered; broader phase partial | Build and feature-level introspection; non-CGO macOS CoreGraphics capture/display, Quartz input, and Accessibility window inspection/control with explicit gaps; Windows capture, `SendInput` keyboard/pointer, and Win32 window control with blocking runtime probes; X11 capture, XGB/XTEST input, and X11/EWMH window introspection/control; Wayland portal capture/input plus bounded native `wl_output`/`xdg-output` geometry; permission/error contracts; shared behavioral parity; reproducible balanced benchmark tooling; optimized guardian-path decision evidence; explicit decision to retain native CGO as the X11 default; race-testable internal X11 core; re-exec guardian with application-`SIGKILL` recovery; protected three-OS CI | Collect opt-in real macOS input and self-owned-window evidence, protected GNOME/KDE multi-output Wayland evidence, and assess further backends selectively |
 | 4. API/compositor gaps | Parity surface delivered; runtime support partial | Window-state, geometry, and active-identity error APIs, bitmap string helpers, `FindColorCS`, hook/event capability reporting, Sway/Hyprland/wlroots resolver, Sway active node/client geometry and PID, Hyprland active compositor-reported geometry/PID, provider-aware Hyprland 0.55+ Lua window dispatch, bounded process-group-owned compositor helpers with lifecycle evidence | Further trustworthy compositor-backed state/geometry operations and cross-platform/runtime matrix coverage |
-| 5. Reliability product | Partial | Capability APIs, versioned sanitized runtime diagnostics/example, compatibility matrix v1, expanded CI variants, blocking ASan/LeakSanitizer ownership gates, six-cell checksummed release-evidence pipeline, fail-closed real-compositor preflight/evidence contract, promoted six-cell hosted Sway release/branch gate, and the published [`v1.0.0-beta.1`](https://github.com/marang/robotgo/releases/tag/v1.0.0-beta.1) evidence bundle | Provision and promote dedicated GNOME/KDE portal jobs |
+| 5. Reliability product | Partial | Capability APIs, versioned sanitized runtime diagnostics/example, compatibility matrix v1, expanded CI variants, blocking ASan/LeakSanitizer ownership gates, six-cell checksummed release-evidence pipeline, fail-closed real-compositor contracts, promoted six-cell hosted Sway gate, credential-free hosted GNOME portal jobs, and the published [`v1.0.0-beta.1`](https://github.com/marang/robotgo/releases/tag/v1.0.0-beta.1) evidence bundle | Prove/promote GNOME and provision KDE portal jobs |
 
 No delivery phase is complete until all of its exit criteria are blocking and
 green. Phase 1 implementation is merged; its real-compositor evidence remains
 an infrastructure blocker. The bounded cross-platform reliability-hardening
 project P002 is complete, while roadmap Phase 5 remains partial. The active
 [Protected Real-Compositor Evidence Plan](real-compositor-evidence.md) now
-provides the shared preflight and sanitized evidence contract; protected runner
-provisioning and promotion now remain for GNOME/KDE portal gates. The hosted
+provides the shared evidence contract. Credential-free hosted GNOME jobs are
+implemented with exact-tree transfer and independent QMP consent; retained
+runtime proof and promotion remain open, as does KDE runner provisioning. The
+hosted
 single-output Sway/wlroots native and portal-availability matrix is passing on
 Ubuntu 24.04 with retained exact-commit evidence;
 the separate hosted Sway multi-output cell is passing with retained
@@ -83,9 +85,9 @@ permission diagnostics, including explicit cancellation and timeout states, are
 available without opening a consent dialog. Portal-backed mouse timing is
 consistent in CGO and non-CGO builds. Isolated hosted Sway now covers the
 single-output native input and explicit portal-availability contracts. The
-remaining Phase 1 blocker is real GNOME/KDE portal and multi-output evidence;
-the hosted Sway multi-output cell now passes, while this repository currently
-has no registered self-hosted portal runners.
+remaining Phase 1 blocker is retained real GNOME/KDE portal and multi-output
+evidence. The hosted Sway multi-output cell passes; GNOME no longer depends on
+a registered self-hosted runner, while KDE provisioning remains open.
 
 Exit criteria:
 

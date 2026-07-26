@@ -24,10 +24,98 @@ permissions:
   contents: read
 
 jobs:
+  hosted-gnome:
+    if: >-
+      github.event_name == 'push' ||
+      (github.event_name == 'workflow_dispatch' &&
+      (inputs.desktop == 'gnome' || inputs.desktop == 'all'))
+    name: GitHub-hosted GNOME persistent capture
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+          ref: ${{ github.sha }}
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version: 1.25.x
+      - name: Verify exact hosted source
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test -z "$(git status --porcelain --untracked-files=all)"
+      - name: Enable hosted KVM
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -c /dev/kvm
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' |
+            sudo tee /etc/udev/rules.d/99-robotgo-kvm.rules >/dev/null
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+          test -r /dev/kvm
+          test -w /dev/kvm
+      - name: Install hosted QEMU dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y \
+            cloud-image-utils \
+            openssh-client \
+            qemu-system-x86 \
+            qemu-utils
+      - name: Verify hosted capacity
+        shell: bash
+        run: |
+          set -euo pipefail
+          manifest=infrastructure/portal-runner/gnome/manifest.json
+          required_cpus="$(jq -r '.vm.cpus' "$manifest")"
+          required_memory_kib="$(( $(jq -r '.vm.memory_mib' "$manifest") * 1024 ))"
+          available_memory_kib="$(awk '/^MemTotal:/ {print $2}' /proc/meminfo)"
+          minimum_free_bytes="$(( 8 * 1024 * 1024 * 1024 ))"
+          available_bytes="$(df --output=avail -B1 "$RUNNER_TEMP" | tail -n 1)"
+          test "$(nproc)" -ge "$required_cpus"
+          test "$available_memory_kib" -ge "$required_memory_kib"
+          test "$available_bytes" -ge "$minimum_free_bytes"
+      - name: Build and test nested GNOME
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          state_root="$RUNNER_TEMP/robotgo-portal-runner"
+          go run ./internal/cmd/portalrunner validate \
+            -repository-root "$GITHUB_WORKSPACE" \
+            -state-root "$state_root"
+          go run ./internal/cmd/portalrunner build \
+            -repository-root "$GITHUB_WORKSPACE" \
+            -state-root "$state_root"
+          go run ./internal/cmd/portalrunner hosted-run \
+            -repository-root "$GITHUB_WORKSPACE" \
+            -state-root "$state_root" \
+            -commit "$GITHUB_SHA" \
+            -cell screencast
+      - name: Reject transient runner artifacts
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          state_root="$RUNNER_TEMP/robotgo-portal-runner"
+          if [ -d "$state_root" ]; then
+            leftover="$(
+              find "$state_root" -maxdepth 1 -type d -name 'run-*' -print -quit
+            )"
+            test -z "$leftover"
+          fi
+
   portal-capture:
     if: >-
-      github.event_name == 'workflow_dispatch' ||
-      (contains(fromJSON('["gnome","kde","all"]'), vars.ROBOTGO_SCREENCAST_E2E) &&
+      (github.event_name == 'workflow_dispatch' &&
+      (inputs.desktop == 'kde' || inputs.desktop == 'all')) ||
+      (contains(fromJSON('["kde","all"]'), vars.ROBOTGO_SCREENCAST_E2E) &&
       (github.event_name == 'push' ||
       github.event.pull_request.head.repo.full_name == github.repository))
     name: ${{ matrix.desktop }} persistent capture
@@ -38,12 +126,11 @@ jobs:
         desktop: >-
           ${{
             fromJSON(
-              github.event_name == 'workflow_dispatch' && inputs.desktop == 'gnome' && '["gnome"]' ||
               github.event_name == 'workflow_dispatch' && inputs.desktop == 'kde' && '["kde"]' ||
-              github.event_name == 'workflow_dispatch' && inputs.desktop == 'all' && '["gnome","kde"]' ||
-              vars.ROBOTGO_SCREENCAST_E2E == 'gnome' && '["gnome"]' ||
+              github.event_name == 'workflow_dispatch' && inputs.desktop == 'all' && '["kde"]' ||
               vars.ROBOTGO_SCREENCAST_E2E == 'kde' && '["kde"]' ||
-              '["gnome","kde"]'
+              vars.ROBOTGO_SCREENCAST_E2E == 'all' && '["kde"]' ||
+              '["kde"]'
             )
           }}
     runs-on: [self-hosted, linux, wayland, "${{ matrix.desktop }}", robotgo-screencast]

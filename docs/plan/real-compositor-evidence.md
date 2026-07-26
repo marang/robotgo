@@ -1,6 +1,6 @@
 # Protected Real-Compositor Evidence Plan
 
-Status: Hosted wlroots and local protected-GNOME proof delivered; real GNOME portal evidence is next
+Status: Hosted wlroots delivered; hosted GNOME portal harness implemented and runtime evidence pending
 
 Linear project:
 [RobotGo | P005 | Protected Compositor Evidence](https://linear.app/riotbox/project/robotgo-or-p005-or-protected-compositor-evidence-d66467e3b5ee)
@@ -22,21 +22,22 @@ not actually demonstrate.
 ## Trust and runner model
 
 The P005 target design requires every matrix job to use a clean, ephemeral
-Linux runner that accepts one job and is destroyed afterward. Persistent
-personal desktop sessions are not eligible. Runner groups and labels must be
-restricted to this repository, and runner registration credentials must remain
-outside the repository and workflow logs.
+Linux environment that is destroyed afterward. Persistent personal desktop
+sessions are not eligible. GNOME runs as a nested guest on a fresh
+GitHub-hosted runner without self-hosted registration credentials. KDE still
+requires a restricted ephemeral runner group until an equivalent hosted path
+exists.
 
 Before the protected workflows are enabled, their implementation must enforce
 these boundaries:
 
-- trusted repository refs only; fork pull requests never run on these runners,
-  and same-repository pull requests require explicit maintainer/Environment
-  approval of the exact head commit
+- hosted GNOME runs only on trusted `main` pushes or explicit manual dispatch;
+  fork and ordinary pull-request events never boot the GNOME guest
 - read-only GitHub permissions and checkout credentials disabled
-- a protected GitHub Environment with a maintainer approval boundary
-- no long-lived repository, cloud, or personal credentials inside the desktop
-  session; the unavoidable job-scoped `GITHUB_TOKEN` remains read-only
+- a protected GitHub Environment with a maintainer approval boundary for
+  remaining self-hosted lanes
+- no repository, cloud, personal, checkout, or runner-registration credential
+  inside the GNOME desktop session
 - outbound network access limited to GitHub endpoints and pinned package/image
   sources required to run the job
 - runner application and system logs forwarded outside the disposable VM for
@@ -78,14 +79,13 @@ private nested compositor with `WLR_BACKENDS=headless`, `WLR_RENDERER=pixman`,
 to physical devices or a host desktop. It does not satisfy the still-open
 multi-output or GNOME/KDE portal evidence requirements.
 
-Each protected GNOME/KDE session starts before runner registration and
-provides:
+Each GNOME/KDE session provides:
 
 - a real Wayland socket and user D-Bus session
 - the expected compositor and `XDG_CURRENT_DESKTOP`
 - `xdg-desktop-portal` plus the desktop-specific backend
 - a running PipeWire/WirePlumber user session for ScreenCast cells
-- an operator-visible consent surface for portal cells
+- a real desktop consent surface for portal cells
 - a deterministic test application/window and declared output topology; the
   desktop image contains no personal files, accounts, browser sessions, or
   unrelated application state
@@ -93,30 +93,16 @@ provides:
 Portal consent remains real. The workflow does not patch the backend to
 auto-approve requests and does not persist restore tokens between jobs.
 
-### Operator consent handoff
+### Consent handoff
 
-Environment approval authorizes provisioning but does not satisfy a portal
-dialog. Before a GNOME or KDE portal cell can be promoted, the runner
-orchestrator must provide this out-of-band handoff:
-
-1. Provisioning creates a per-job graphical console in the infrastructure
-   control plane and places the job in a private operator queue. The console is
-   never exposed as a public runner port, and its access credential is never
-   passed to repository code or GitHub logs.
-2. A maintainer authenticated to the control plane with SSO and MFA opens the
-   console from that queue. The console shows only the fixed, disposable test
-   desktop; recording, clipboard synchronization, and file transfer are
-   disabled.
-3. The orchestrator signals console readiness before the harness makes the
-   portal request. The operator verifies the requested RemoteDesktop or
-   ScreenCast device type and accepts the real desktop dialog within a bounded
-   120-second consent window.
-4. Missing readiness, rejection, disconnect, or timeout fails the cell. The
-   workflow must not convert it to a skip or retry it with automatic consent.
-5. The orchestrator revokes console access immediately after the final dialog
-   or timeout and destroys the runner on every completion path. Audit records
-   contain operator identity, job identifier, timestamps, and outcome only;
-   they contain no console frames or desktop content.
+GNOME uses an independent host-side QMP controller. The test writes a private,
+non-sensitive marker immediately before its portal call; after a bounded dialog
+settle interval, the host injects only GNOME's dialog mnemonics through QEMU's
+virtual keyboard. RobotGo cannot access the private QMP socket, does not patch
+the portal backend, and does not call its own input API to grant permission.
+Missing readiness, early test exit, denial, timeout, or a surviving marker fails
+the cell. KDE retains the operator-console handoff until it has an equally
+isolated automation contract.
 
 This handoff must be proven operational for the lane before its portal cells
 become required. GitHub Environment instructions may link to the private
@@ -242,11 +228,11 @@ green.
    negative origin, scale, transform, exact logical per-output bounds,
    aggregate bounds, and induced-failure cleanup evidence. Retained evidence:
    [`Sway E2E` run 29861058126](https://github.com/marang/robotgo/actions/runs/29861058126).
-4. **Local provisioning proof implemented:** the pinned, ephemeral GNOME
-   runner passes its reproducible image, real session, portal availability,
-   PipeWire, attestation, egress, and cleanup probes. Promotion still requires
-   retained real RemoteDesktop and ScreenCast workflow evidence with operator
-   consent on the exact commit.
+4. **Hosted GNOME harness implemented:** the pinned nested-KVM image, exact
+   clean-tree transfer, real session, independent QMP consent, bounded test,
+   egress, process-group shutdown, and artifact cleanup contracts are wired
+   into both portal workflows. Promotion still requires retained successful
+   RemoteDesktop and ScreenCast runs on the exact commit.
 5. Provision and prove KDE RemoteDesktop and ScreenCast under the same gate.
 6. **Implemented for hosted wlroots:** require all six stable Sway checks for
    the exact release commit and in branch protection. Extend the same promotion

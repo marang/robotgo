@@ -18,21 +18,21 @@ func TestProtectedPortalWorkflowsUsePinnedSingleLaneContract(t *testing.T) {
 			t.Fatalf("read %s: %v", path, err)
 		}
 		workflow := string(data)
-		protectedJob := workflow
-		if path == "../.github/workflows/remote-desktop-e2e.yml" {
-			start := strings.Index(workflow, "\n  portal-input:")
-			if start < 0 {
-				t.Fatalf("%s omits protected portal-input job", path)
-			}
-			protectedJob = workflow[start:]
+		jobName := "\n  portal-input:"
+		if path == "../.github/workflows/screencast-e2e.yml" {
+			jobName = "\n  portal-capture:"
 		}
+		start := strings.Index(workflow, jobName)
+		if start < 0 {
+			t.Fatalf("%s omits legacy KDE portal job", path)
+		}
+		protectedJob := workflow[start:]
 		for _, required := range []string{
 			"desktop:",
 			"default: gnome",
 			"- gnome",
 			"- kde",
 			"- all",
-			"inputs.desktop == 'gnome'",
 			"inputs.desktop == 'kde'",
 			"inputs.desktop == 'all'",
 			"actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
@@ -51,7 +51,14 @@ func TestProtectedPortalWorkflowsUsePinnedSingleLaneContract(t *testing.T) {
 			"runs-on: [self-hosted, linux, wayland, \"${{ matrix.desktop }}\", " +
 				cellLabel + "]",
 		} {
-			if !strings.Contains(workflow, required) {
+			target := workflow
+			if required == "inputs.desktop == 'kde'" ||
+				required == "inputs.desktop == 'all'" ||
+				strings.HasPrefix(required, "runs-on:") ||
+				required == "environment:" {
+				target = protectedJob
+			}
+			if !strings.Contains(target, required) {
 				t.Errorf("%s omits protected runner contract %q", path, required)
 			}
 		}

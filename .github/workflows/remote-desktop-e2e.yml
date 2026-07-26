@@ -24,11 +24,14 @@ permissions:
   contents: read
 
 jobs:
-  hosted-image-and-session:
-    if: github.event_name == 'workflow_dispatch' && inputs.desktop == 'gnome'
-    name: GitHub-hosted nested KVM image and session
+  hosted-gnome:
+    if: >-
+      github.event_name == 'push' ||
+      (github.event_name == 'workflow_dispatch' &&
+      (inputs.desktop == 'gnome' || inputs.desktop == 'all'))
+    name: GitHub-hosted GNOME portal input
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -38,7 +41,7 @@ jobs:
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
           go-version: 1.25.x
-      - name: Verify exact hosted proof source
+      - name: Verify exact hosted source
         shell: bash
         run: |
           set -euo pipefail
@@ -78,7 +81,7 @@ jobs:
           test "$(nproc)" -ge "$required_cpus"
           test "$available_memory_kib" -ge "$required_memory_kib"
           test "$available_bytes" -ge "$minimum_free_bytes"
-      - name: Build and probe nested GNOME
+      - name: Build and test nested GNOME
         shell: bash
         run: |
           set -euo pipefail
@@ -90,9 +93,11 @@ jobs:
           go run ./internal/cmd/portalrunner build \
             -repository-root "$GITHUB_WORKSPACE" \
             -state-root "$state_root"
-          go run ./internal/cmd/portalrunner probe \
+          go run ./internal/cmd/portalrunner hosted-run \
             -repository-root "$GITHUB_WORKSPACE" \
-            -state-root "$state_root"
+            -state-root "$state_root" \
+            -commit "$GITHUB_SHA" \
+            -cell remote-desktop
       - name: Reject transient runner artifacts
         if: always()
         shell: bash
@@ -108,8 +113,9 @@ jobs:
 
   portal-input:
     if: >-
-      (github.event_name == 'workflow_dispatch' && inputs.desktop != 'gnome') ||
-      (contains(fromJSON('["gnome","kde","all"]'), vars.ROBOTGO_REMOTE_DESKTOP_E2E) &&
+      (github.event_name == 'workflow_dispatch' &&
+      (inputs.desktop == 'kde' || inputs.desktop == 'all')) ||
+      (contains(fromJSON('["kde","all"]'), vars.ROBOTGO_REMOTE_DESKTOP_E2E) &&
       (github.event_name == 'push' ||
       github.event.pull_request.head.repo.full_name == github.repository))
     name: ${{ matrix.desktop }} portal input
@@ -120,12 +126,11 @@ jobs:
         desktop: >-
           ${{
             fromJSON(
-              github.event_name == 'workflow_dispatch' && inputs.desktop == 'gnome' && '["gnome"]' ||
               github.event_name == 'workflow_dispatch' && inputs.desktop == 'kde' && '["kde"]' ||
-              github.event_name == 'workflow_dispatch' && inputs.desktop == 'all' && '["gnome","kde"]' ||
-              vars.ROBOTGO_REMOTE_DESKTOP_E2E == 'gnome' && '["gnome"]' ||
+              github.event_name == 'workflow_dispatch' && inputs.desktop == 'all' && '["kde"]' ||
               vars.ROBOTGO_REMOTE_DESKTOP_E2E == 'kde' && '["kde"]' ||
-              '["gnome","kde"]'
+              vars.ROBOTGO_REMOTE_DESKTOP_E2E == 'all' && '["kde"]' ||
+              '["kde"]'
             )
           }}
     runs-on: [self-hosted, linux, wayland, "${{ matrix.desktop }}", robotgo-remote-desktop]

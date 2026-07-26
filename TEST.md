@@ -457,25 +457,19 @@ ROBOTGO_REMOTE_DESKTOP_E2E=1 go test -tags "integration" ./input/portal -run Tes
 The test opens the lower-level portal session directly and exercises relative
 and absolute pointer input, a modifier press/release, optional touch, and
 deterministic close. It intentionally does not use the high-level fallback APIs,
-so an available native Wayland backend cannot mask a broken portal path. Default
-hosted CI only compile-checks this harness because it has no real desktop consent
-session. `.github/workflows/remote-desktop-e2e.yml` runs the test without skipping
-on explicitly provisioned protected, ephemeral GNOME and KDE Wayland runners,
-once per desktop. wlroots native and portal-availability evidence is promoted
-through the separate P005 runner path and is not a RemoteDesktop pass. The portal
-client is pure Go and therefore independent of the
-root package's CGO setting; CGO and non-CGO high-level fallback dispatch remains
-covered by the hermetic root tests. The workflow can be triggered manually for
-`gnome`, `kde`, or both. After a lane's protected runner and consent path are
-proven, set the repository variable `ROBOTGO_REMOTE_DESKTOP_E2E` to `gnome`,
-`kde`, or `all` to run that matrix on same-repository pull requests and pushes
-to `main`, where it can be configured as a required check. Fork pull requests
-are intentionally excluded because untrusted code must never execute on
-protected self-hosted desktop runners. Configure the `remote-desktop-e2e`
-GitHub Environment with required reviewers and use ephemeral, network-isolated
-runners. The workflow uses read-only permissions, does not persist checkout
-credentials, and runs the shared fail-closed desktop, D-Bus, portal,
-operator-readiness, and exact-commit preflight before injecting input.
+so an available native Wayland backend cannot mask a broken portal path.
+Default CI compile-checks this harness without opening a consent session.
+`.github/workflows/remote-desktop-e2e.yml` runs GNOME inside a disposable
+nested-QEMU guest on GitHub-hosted Ubuntu and keeps KDE on an explicitly
+provisioned protected runner. wlroots native and portal-availability evidence
+is promoted through the separate P005 runner path and is not a RemoteDesktop
+pass. The portal client is pure Go and therefore independent of the root
+package's CGO setting; CGO and non-CGO high-level fallback dispatch remains
+covered by the hermetic root tests. GNOME runs automatically for pushes to
+`main` and manually for `gnome` or `all`; pull requests do not boot the nested
+GNOME VM. KDE remains controlled by
+`ROBOTGO_REMOTE_DESKTOP_E2E=kde|all` and a protected Environment. Both paths
+use read-only workflow permissions and do not persist checkout credentials.
 
 Runtime outcomes and missing infrastructure are recorded in
 `docs/compatibility/wayland-input.md`; an unavailable runner is not counted as a
@@ -515,12 +509,11 @@ ROBOTGO_SCREENCAST_E2E=1 go test -tags "pipewire integration" ./screen/portal -r
 Run it from a graphical Wayland session. It displays the portal consent UI,
 captures two frames from the same session, validates non-empty output, and
 closes the PipeWire consumer before the portal session.
-`.github/workflows/screencast-e2e.yml` runs the same harness on protected,
-ephemeral self-hosted GNOME and KDE runners. It can be dispatched manually for
-`gnome`, `kde`, or both. After a lane is proven, set the repository variable
-`ROBOTGO_SCREENCAST_E2E` to `gnome`, `kde`, or `all` to run its matrix on
-trusted pull requests and pushes. wlroots does not count as a ScreenCast pass
-and is promoted separately under P005.
+`.github/workflows/screencast-e2e.yml` runs GNOME in the same disposable
+GitHub-hosted nested-QEMU model and retains a protected self-hosted KDE lane.
+GNOME runs on `main` pushes and manual `gnome|all` dispatches. KDE remains
+controlled by `ROBOTGO_SCREENCAST_E2E=kde|all`. wlroots does not count as a
+ScreenCast pass and is promoted separately under P005.
 
 ### `waylandint` (Keyboard integration harness)
 
@@ -842,30 +835,26 @@ success and failure. The hosted Sway job is safe for fork pull requests because
 it has read-only permissions, no credentials, no physical input devices, and no
 access to a developer or self-hosted desktop.
 
-The `RemoteDesktop E2E` and `ScreenCast E2E` workflows run only on protected,
-ephemeral GNOME and KDE fixture runners. They check out the explicitly approved
-pull-request head, run the shared fail-closed Go preflight, redirect raw runtime
-output into runner-temporary storage, and upload only a schema-v1 manifest,
-canonical allowlisted test log, and matching sanitized summary after repository
-validation. The raw log and private preflight report are deleted before upload;
-an `always()` cleanup step removes the complete owned workspace after success
-or failure. VM destruction remains the final cancellation/timeout cleanup
-boundary.
+The GNOME jobs build a pinned image on a fresh GitHub-hosted Ubuntu runner,
+transfer only the exact clean commit through `git archive`, and execute inside
+a disposable guest with a live Wayland/user-bus session. A private readiness
+marker is created immediately before the real portal request. The independent
+host-side QMP controller then operates GNOME's actual consent dialog through a
+virtual keyboard; RobotGo does not approve its own request or patch the portal.
+No Actions token, checkout credential, `.git` directory, untracked file,
+screen frame, restore token, or raw log enters retained guest state.
 
-The workflows require the runner to provide a live Wayland/user-bus session,
-the expected desktop and portal packages, the applicable portal interfaces,
-PipeWire/WirePlumber for ScreenCast, a fixed positive output count, and the
-out-of-band operator-console readiness attestation. Missing infrastructure,
-consent readiness, an exact-commit match, or a non-skipping test pass fails the
-cell. Raw output is never streamed through `tee` or uploaded on failure.
+Missing KVM capacity, portal/session readiness, consent, exact-commit match,
+test pass, or cleanup fails the cell. VM destruction is the final
+cancellation/timeout boundary, and an `always()` workflow step rejects leftover
+sentinel-owned `run-*` directories. The legacy KDE jobs retain the protected
+Environment, sanitized evidence, and operator-readiness contract.
 
-The reproducible GNOME image, host-side supervisor, build/probe commands,
-operator-consent handoff, and mandatory cleanup checks are documented in
+The reproducible GNOME image, hosted supervisor, independent QMP consent
+driver, exact-tree transfer, and mandatory cleanup checks are documented in
 [Protected GNOME Portal Runner](infrastructure/portal-runner/gnome/README.md).
-The image must pass `validate`, `build`, and `probe` before an exact workflow
-attempt is approved. Each `run` invocation registers one ephemeral runner for
-one `remote-desktop` or `screencast` cell and requires the operator to attest
-the visible private console with the exact input `READY`.
+`probe` remains an infrastructure diagnostic; `hosted-run` is the automated,
+credential-free GNOME test path.
 
 wlroots is intentionally not treated as a RemoteDesktop/ScreenCast pass in
 these portal workflows. Its hosted native and explicit portal-availability

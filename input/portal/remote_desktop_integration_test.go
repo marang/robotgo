@@ -4,7 +4,9 @@ package portal_test
 
 import (
 	"context"
+	"errors"
 	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -12,6 +14,7 @@ import (
 )
 
 const envRemoteDesktopE2E = "ROBOTGO_REMOTE_DESKTOP_E2E"
+const envPortalConsentReadyFile = "ROBOTGO_PORTAL_CONSENT_READY_FILE"
 
 func TestRemoteDesktopPortalRuntime(t *testing.T) {
 	if os.Getenv(envRemoteDesktopE2E) == "" {
@@ -44,6 +47,7 @@ func TestRemoteDesktopPortalRuntime(t *testing.T) {
 		Devices: devices, Sources: portalinput.SourceMonitor,
 		CursorMode: portalinput.CursorHidden,
 	}
+	signalPortalConsentReady(t, "remote-desktop")
 	session, err := portalinput.OpenWithOptions(ctx, options)
 	if err != nil {
 		t.Fatalf("OpenWithOptions error: %v", err)
@@ -91,6 +95,69 @@ func TestRemoteDesktopPortalRuntime(t *testing.T) {
 		t.Fatalf("portal session Close error: %v", err)
 	}
 	closed = true
+}
+
+func TestRemoteDesktopConsentMarkerCleanup(t *testing.T) {
+	runtimeDirectory := t.TempDir()
+	marker := filepath.Join(
+		runtimeDirectory,
+		"robotgo-portal-consent-remote-desktop.ready",
+	)
+	t.Setenv("XDG_RUNTIME_DIR", runtimeDirectory)
+	t.Setenv(envPortalConsentReadyFile, marker)
+	t.Run("lifecycle", func(t *testing.T) {
+		signalPortalConsentReady(t, "remote-desktop")
+		info, err := os.Lstat(marker)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !info.Mode().IsRegular() || info.Mode().Perm() != 0o600 {
+			t.Fatalf("consent marker mode = %v", info.Mode())
+		}
+		content, err := os.ReadFile(marker)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if string(content) != "remote-desktop\n" {
+			t.Fatalf("consent marker content = %q", content)
+		}
+	})
+	if _, err := os.Lstat(marker); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("consent marker survived test cleanup: %v", err)
+	}
+}
+
+func signalPortalConsentReady(t *testing.T, cell string) {
+	t.Helper()
+	path := os.Getenv(envPortalConsentReadyFile)
+	if path == "" {
+		return
+	}
+	runtimeDirectory := filepath.Clean(os.Getenv("XDG_RUNTIME_DIR"))
+	if !filepath.IsAbs(path) ||
+		filepath.Clean(path) != path ||
+		filepath.Dir(path) != runtimeDirectory ||
+		filepath.Base(path) != "robotgo-portal-consent-"+cell+".ready" {
+		t.Fatal("portal consent readiness path is outside the private runtime directory")
+	}
+	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+	if err != nil {
+		t.Fatalf("create portal consent readiness marker: %v", err)
+	}
+	if _, err := file.WriteString(cell + "\n"); err != nil {
+		_ = file.Close()
+		_ = os.Remove(path)
+		t.Fatalf("write portal consent readiness marker: %v", err)
+	}
+	if err := file.Close(); err != nil {
+		_ = os.Remove(path)
+		t.Fatalf("close portal consent readiness marker: %v", err)
+	}
+	t.Cleanup(func() {
+		if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
+			t.Errorf("remove portal consent readiness marker: %v", err)
+		}
+	})
 }
 
 func runPortalEvent(t *testing.T, action string, event func(context.Context) error) {

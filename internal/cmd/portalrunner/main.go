@@ -29,7 +29,7 @@ func main() {
 
 func run(arguments []string, stdout, stderr io.Writer) error {
 	if len(arguments) == 0 {
-		return errors.New("usage: portalrunner <validate|build|probe|run|proxy>")
+		return errors.New("usage: portalrunner <validate|build|probe|hosted-run|run|proxy>")
 	}
 	switch arguments[0] {
 	case "validate":
@@ -38,6 +38,8 @@ func run(arguments []string, stdout, stderr io.Writer) error {
 		return runBuild(arguments[1:], stdout, stderr)
 	case "probe":
 		return runProbe(arguments[1:], stdout, stderr)
+	case "hosted-run":
+		return runHosted(arguments[1:], stdout, stderr)
 	case "run":
 		return runProtected(arguments[1:], stdout, stderr)
 	case "proxy":
@@ -45,6 +47,76 @@ func run(arguments []string, stdout, stderr io.Writer) error {
 	default:
 		return fmt.Errorf("unknown portalrunner command %q", arguments[0])
 	}
+}
+
+func runHosted(arguments []string, stdout, stderr io.Writer) error {
+	flags := flag.NewFlagSet("hosted-run", flag.ContinueOnError)
+	flags.SetOutput(stderr)
+	manifestPath := flags.String("manifest", defaultManifest, "runner manifest path")
+	repositoryRoot := flags.String("repository-root", ".", "repository root")
+	stateRoot := flags.String("state-root", "", "external private runner state root")
+	sshPort := flags.Int("ssh-port", 22222, "loopback runtime SSH port")
+	commit := flags.String("commit", "", "exact clean 40-character commit")
+	cell := flags.String(
+		"cell",
+		"",
+		"hosted test cell: remote-desktop or screencast",
+	)
+	if err := flags.Parse(arguments); err != nil {
+		return err
+	}
+	if flags.NArg() != 0 {
+		return errors.New("hosted-run accepts no positional arguments")
+	}
+	absoluteRepository, err := filepath.Abs(*repositoryRoot)
+	if err != nil {
+		return fmt.Errorf("resolve repository root: %w", err)
+	}
+	absoluteManifest, err := filepath.Abs(*manifestPath)
+	if err != nil {
+		return fmt.Errorf("resolve portal runner manifest: %w", err)
+	}
+	if *stateRoot == "" {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return fmt.Errorf("resolve portal runner state home: %w", err)
+		}
+		*stateRoot = filepath.Join(
+			home,
+			".local",
+			"share",
+			"robotgo-portal-runner",
+		)
+	}
+	absoluteState, err := filepath.Abs(*stateRoot)
+	if err != nil {
+		return fmt.Errorf("resolve portal runner state: %w", err)
+	}
+	guestFiles := filepath.Join(
+		absoluteRepository,
+		"infrastructure",
+		"portal-runner",
+		"gnome",
+	)
+	ctx, cancel := signal.NotifyContext(
+		context.Background(),
+		os.Interrupt,
+		syscall.SIGTERM,
+	)
+	defer cancel()
+	return portalrunner.RunHostedGNOME(
+		ctx,
+		portalrunner.HostedRuntimeOptions{
+			ManifestPath:   absoluteManifest,
+			RepositoryRoot: absoluteRepository,
+			StateRoot:      absoluteState,
+			GuestFiles:     guestFiles,
+			SSHPort:        *sshPort,
+			Commit:         *commit,
+			Cell:           *cell,
+			Output:         stdout,
+		},
+	)
 }
 
 func runProtected(arguments []string, stdout, stderr io.Writer) error {
