@@ -8,6 +8,11 @@ import (
 
 func TestPortalWorkflowsUseHostedPinnedLaneContract(t *testing.T) {
 	t.Parallel()
+	scriptData, err := os.ReadFile("run_hosted_portal_e2e.sh")
+	if err != nil {
+		t.Fatal(err)
+	}
+	script := normalizeWorkflowText(scriptData)
 	workflows := []string{
 		"../.github/workflows/remote-desktop-e2e.yml",
 		"../.github/workflows/screencast-e2e.yml",
@@ -18,6 +23,7 @@ func TestPortalWorkflowsUseHostedPinnedLaneContract(t *testing.T) {
 			t.Fatalf("read %s: %v", path, err)
 		}
 		workflow := normalizeWorkflowText(data)
+		contract := workflow + "\n" + script
 		for _, required := range []string{
 			"desktop:",
 			"default: gnome",
@@ -38,9 +44,9 @@ func TestPortalWorkflowsUseHostedPinnedLaneContract(t *testing.T) {
 			"runs-on: ubuntu-24.04",
 			`infrastructure/portal-runner/${{ matrix.desktop }}/manifest.json`,
 			`robotgo-${{ matrix.desktop }}-${{ matrix.topology }}-portal-runner`,
-			`-topology "${{ matrix.topology }}"`,
+			`-topology "$topology"`,
 		} {
-			if !strings.Contains(workflow, required) {
+			if !strings.Contains(contract, required) {
 				t.Errorf("%s omits protected runner contract %q", path, required)
 			}
 		}

@@ -124,41 +124,50 @@ jobs:
           umask 077
           state_root="$RUNNER_TEMP/robotgo-${{ matrix.desktop }}-${{ matrix.topology }}-portal-runner"
           manifest="infrastructure/portal-runner/${{ matrix.desktop }}/manifest.json"
-          go run ./internal/cmd/portalrunner validate \
-            -manifest "$manifest" \
-            -repository-root "$GITHUB_WORKSPACE" \
-            -state-root "$state_root"
-          go run ./internal/cmd/portalrunner build \
-            -manifest "$manifest" \
-            -repository-root "$GITHUB_WORKSPACE" \
-            -state-root "$state_root"
-          hosted_run=(go run ./internal/cmd/portalrunner hosted-run \
-            -manifest "$manifest" \
-            -repository-root "$GITHUB_WORKSPACE" \
-            -state-root "$state_root" \
-            -commit "$GITHUB_SHA" \
-            -cell remote-desktop \
-            -topology "${{ matrix.topology }}")
-          if [[ "${{ matrix.topology }}" == "multi-output" ]]; then
-            xvfb-run -a \
-              -s '-screen 0 1280x800x24 -nolisten tcp -noreset' \
-              env ROBOTGO_HOSTED_XVFB=1 "${hosted_run[@]}"
-          else
-            "${hosted_run[@]}"
-          fi
+          portal_runner="$RUNNER_TEMP/robotgo-portalrunner"
+          go build -o "$portal_runner" ./internal/cmd/portalrunner
+          test -x "$portal_runner"
+          exec timeout --preserve-status \
+            --signal=TERM --kill-after=2m 20m \
+            bash scripts/run_hosted_portal_e2e.sh \
+              "$portal_runner" "$manifest" "$GITHUB_WORKSPACE" \
+              "$state_root" "$GITHUB_SHA" remote-desktop \
+              "${{ matrix.topology }}"
       - name: Reject transient runner artifacts
         if: always()
         shell: bash
         run: |
           set -euo pipefail
           state_root="$RUNNER_TEMP/robotgo-${{ matrix.desktop }}-${{ matrix.topology }}-portal-runner"
+          portal_runner="$RUNNER_TEMP/robotgo-portalrunner"
+          trap 'rm -f -- "$portal_runner"' EXIT INT TERM
           if [ -d "$state_root" ]; then
             test "$(git -C "$GITHUB_WORKSPACE" rev-parse HEAD)" = "$GITHUB_SHA"
-            go run ./internal/cmd/portalrunner cleanup \
-              -repository-root "$GITHUB_WORKSPACE" \
-              -state-root "$state_root"
+            test -x "$portal_runner"
+            deadline=$((SECONDS + 120))
+            while :; do
+              if cleanup_error="$(
+                "$portal_runner" cleanup \
+                  -repository-root "$GITHUB_WORKSPACE" \
+                  -state-root "$state_root" 2>&1
+              )"; then
+                break
+              fi
+              if [ "$cleanup_error" != "portal runner state is already in use" ]; then
+                echo "$cleanup_error" >&2
+                exit 1
+              fi
+              if [ "$SECONDS" -ge "$deadline" ]; then
+                echo "timed out waiting for portal runner cleanup ownership" >&2
+                exit 1
+              fi
+              sleep 1
+            done
             leftover="$(
               find "$state_root" -maxdepth 1 -type d -name 'run-*' -print -quit
             )"
             test -z "$leftover"
           fi
+          rm -f -- "$portal_runner"
+          trap - EXIT INT TERM
+          test ! -e "$portal_runner"

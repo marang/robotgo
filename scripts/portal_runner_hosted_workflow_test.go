@@ -8,6 +8,11 @@ import (
 
 func TestHostedPortalProofUsesEphemeralGitHubKVM(t *testing.T) {
 	t.Parallel()
+	scriptData, err := os.ReadFile("run_hosted_portal_e2e.sh")
+	if err != nil {
+		t.Fatal(err)
+	}
+	script := normalizeWorkflowText(scriptData)
 	for path, cell := range map[string]string{
 		"../.github/workflows/remote-desktop-e2e.yml": "remote-desktop",
 		"../.github/workflows/screencast-e2e.yml":     "screencast",
@@ -25,6 +30,7 @@ func TestHostedPortalProofUsesEphemeralGitHubKVM(t *testing.T) {
 			t.Fatalf("%s does not isolate the hosted portal job", path)
 		}
 		hostedJob := workflow[start:]
+		hostedContract := hostedJob + "\n" + script
 		for _, required := range []string{
 			"github.event_name == 'push'",
 			`'["gnome","kde"]'`,
@@ -49,23 +55,34 @@ func TestHostedPortalProofUsesEphemeralGitHubKVM(t *testing.T) {
 			"qemu-system-x86",
 			"packages+=(qemu-system-gui xauth xvfb)",
 			`if [[ "${{ matrix.topology }}" == "multi-output" ]]`,
+			`go build -o "$portal_runner" ./internal/cmd/portalrunner`,
+			"exec timeout --preserve-status",
+			"--signal=TERM --kill-after=2m 20m",
+			"scripts/run_hosted_portal_e2e.sh",
 			"xvfb-run -a",
 			"-screen 0 1280x800x24 -nolisten tcp -noreset",
 			`env ROBOTGO_HOSTED_XVFB=1 "${hosted_run[@]}"`,
 			`manifest="infrastructure/portal-runner/${{ matrix.desktop }}/manifest.json"`,
 			`state_root="$RUNNER_TEMP/robotgo-${{ matrix.desktop }}-${{ matrix.topology }}-portal-runner"`,
 			`-manifest "$manifest"`,
-			"go run ./internal/cmd/portalrunner build",
-			"go run ./internal/cmd/portalrunner hosted-run",
-			`-commit "$GITHUB_SHA"`,
-			"-cell " + cell,
-			`-topology "${{ matrix.topology }}"`,
+			`"$portal_runner" build`,
+			`"$portal_runner" hosted-run`,
+			`-commit "$commit"`,
+			`-cell "$cell"`,
+			`-topology "$topology"`,
+			cell,
 			"Reject transient runner artifacts",
-			"go run ./internal/cmd/portalrunner cleanup",
+			`"$portal_runner" cleanup`,
+			`cleanup_error`,
+			"portal runner state is already in use",
+			"timed out waiting for portal runner cleanup ownership",
+			`trap 'rm -f -- "$portal_runner"' EXIT INT TERM`,
+			`rm -f -- "$portal_runner"`,
+			"trap - EXIT INT TERM",
 			`git -C "$GITHUB_WORKSPACE" rev-parse HEAD`,
 			`find "$state_root" -maxdepth 1 -type d -name 'run-*'`,
 		} {
-			if !strings.Contains(hostedJob, required) {
+			if !strings.Contains(hostedContract, required) {
 				t.Errorf("%s hosted portal job omits %q", path, required)
 			}
 		}
