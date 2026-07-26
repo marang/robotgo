@@ -2,6 +2,11 @@
 
 set -euo pipefail
 
+script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
+readonly script_dir
+# shellcheck source=sway-failure-stages.sh
+source "$script_dir/sway-failure-stages.sh"
+
 readonly runtime_prefix='robotgo-sway-runtime'
 readonly required_width=1280
 readonly required_height=720
@@ -74,7 +79,7 @@ umask 077
 runtime_dir=''
 sway_pid=''
 test_pid=''
-failure_stage='compositor-start'
+failure_stage="$ROBOTGO_SWAY_FAILURE_STAGE_COMPOSITOR_START"
 
 terminate_group() {
 	local pid="$1"
@@ -100,6 +105,9 @@ cleanup() {
 	fi
 	if ((status != 0)); then
 		local temporary_reason=''
+		if ! robotgo_sway_failure_stage_is_allowed "$failure_stage"; then
+			exit "$status"
+		fi
 		temporary_reason="$(mktemp "$RUNNER_TEMP/.sway-failure-reason.XXXXXX")" || true
 		if [[ -n "$temporary_reason" ]]; then
 			printf '%s\n' "$failure_stage" >"$temporary_reason" || true
@@ -155,7 +163,7 @@ if [[ -z "${WAYLAND_DISPLAY:-}" || -z "${SWAYSOCK:-}" ]]; then
 	exit 1
 fi
 
-failure_stage='output-topology'
+failure_stage="$ROBOTGO_SWAY_FAILURE_STAGE_OUTPUT_TOPOLOGY"
 if ((output_count == 2)); then
 	swaymsg create_output >/dev/null
 fi
@@ -229,7 +237,7 @@ fi
 # after the compositor is live, so the EXIT trap must terminate Sway and remove
 # its complete private runtime directory.
 if [[ "${ROBOTGO_SWAY_E2E_FAIL_AFTER_START:-}" == '1' ]]; then
-	failure_stage='induced-failure'
+	failure_stage="$ROBOTGO_SWAY_FAILURE_STAGE_INDUCED_FAILURE"
 	exit 86
 fi
 
@@ -242,7 +250,7 @@ fi
 readonly evidence_ref
 readonly output_dir="$RUNNER_TEMP/sway-e2e-$cell"
 
-failure_stage='preflight'
+failure_stage="$ROBOTGO_SWAY_FAILURE_STAGE_PREFLIGHT"
 go run ./internal/cmd/compositorevidence preflight \
 	-lane wlroots \
 	-cell "$cell" \
@@ -258,7 +266,7 @@ go run ./internal/cmd/compositorevidence preflight \
 	-minimum-outputs "$output_count" \
 	-require-headless-sway
 
-failure_stage='integration-test'
+failure_stage="$ROBOTGO_SWAY_FAILURE_STAGE_INTEGRATION_TEST"
 setsid go test -count=1 -timeout=2m -tags=wayland,swayintegration . \
 	-run "^${test_name}$" -v >"$output_dir/raw-test.log" 2>&1 &
 test_pid=$!
@@ -271,7 +279,7 @@ terminate_group "$test_pid"
 test_pid=''
 
 if ((test_status == 0)); then
-	failure_stage='finalize'
+	failure_stage="$ROBOTGO_SWAY_FAILURE_STAGE_FINALIZE"
 fi
 go run ./internal/cmd/compositorevidence finalize \
 	-lane wlroots \
@@ -283,7 +291,7 @@ go run ./internal/cmd/compositorevidence finalize \
 	-run-id "$GITHUB_RUN_ID" \
 	-run-attempt "$GITHUB_RUN_ATTEMPT" \
 	-test-exit-code "$test_status"
-failure_stage='verify'
+failure_stage="$ROBOTGO_SWAY_FAILURE_STAGE_VERIFY"
 go run ./internal/cmd/compositorevidence verify \
 	-lane wlroots \
 	-cell "$cell" \
@@ -293,5 +301,5 @@ go run ./internal/cmd/compositorevidence verify \
 	-workflow "$GITHUB_WORKFLOW" \
 	-run-id "$GITHUB_RUN_ID" \
 	-run-attempt "$GITHUB_RUN_ATTEMPT"
-failure_stage='summary'
+failure_stage="$ROBOTGO_SWAY_FAILURE_STAGE_SUMMARY"
 cat "$output_dir/summary.md" >>"$GITHUB_STEP_SUMMARY"

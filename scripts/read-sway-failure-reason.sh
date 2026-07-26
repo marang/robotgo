@@ -2,6 +2,11 @@
 
 set -euo pipefail
 
+script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
+readonly script_dir
+# shellcheck source=sway-failure-stages.sh
+source "$script_dir/sway-failure-stages.sh"
+
 if (($# != 2)); then
 	printf 'usage: %s <runner-temp> <failure-reason-file>\n' "$0" >&2
 	exit 2
@@ -31,19 +36,19 @@ if [[ "$owner" != "$(id -u)" || "$mode" != 600 ||
 	exit 1
 fi
 
+if [[ "$(od -An -v -t x1 -- "$reason_file")" == *' 00'* ]]; then
+	printf 'Sway failure-reason content is invalid\n' >&2
+	exit 1
+fi
 mapfile -t lines <"$reason_file"
 if ((${#lines[@]} != 1)); then
 	printf 'Sway failure-reason content is invalid\n' >&2
 	exit 1
 fi
 readonly reason="${lines[0]}"
-case "$reason" in
-	compositor-start|output-topology|induced-failure|preflight|\
-integration-test|finalize|verify|summary) ;;
-	*)
-		printf 'Sway failure-reason content is invalid\n' >&2
-		exit 1
-		;;
-esac
+if ! robotgo_sway_failure_stage_is_allowed "$reason"; then
+	printf 'Sway failure-reason content is invalid\n' >&2
+	exit 1
+fi
 
 printf 'isolated Sway evidence failed at sanitized stage: %s\n' "$reason"

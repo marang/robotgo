@@ -39,6 +39,7 @@ func TestSwayFailureReasonReaderRejectsUnsafeInput(t *testing.T) {
 	}{
 		{name: "unknown", content: "private detail\n", mode: 0o600},
 		{name: "multiple lines", content: "preflight\nsummary\n", mode: 0o600},
+		{name: "nul byte", content: "preflight\x00private detail\n", mode: 0o600},
 		{name: "world readable", content: "preflight\n", mode: 0o644},
 		{
 			name: "symlink",
