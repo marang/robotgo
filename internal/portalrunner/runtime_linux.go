@@ -54,6 +54,9 @@ func RunProtectedGNOME(
 	if err != nil {
 		return err
 	}
+	if manifest.Lane != portalLaneGNOME {
+		return errors.New("interactive protected runner supports only the GNOME lane")
+	}
 	if options.Identity.Repository == "" {
 		options.Identity.Repository = manifest.Repository
 	}
@@ -86,7 +89,7 @@ func RunProtectedGNOME(
 		return err
 	}
 	defer func() { _ = stateLock.Close() }()
-	if err := validateGuestFiles(options.GuestFiles); err != nil {
+	if err := validateGuestFiles(options.GuestFiles, manifest.Lane); err != nil {
 		return err
 	}
 	for _, executable := range []string{
@@ -108,6 +111,7 @@ func RunProtectedGNOME(
 		options.ManifestPath,
 		options.RepositoryRoot,
 		options.GuestFiles,
+		manifest.Lane,
 	)
 	if err != nil {
 		return err

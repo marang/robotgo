@@ -17,6 +17,8 @@ type pipeWireFrameSource interface {
 	close() error
 }
 
+type pipeWireOpenStageReporter func(string)
+
 // PipeWireCapture owns one ScreenCast portal session and a reusable PipeWire
 // consumer for a selected stream.
 type PipeWireCapture struct {
@@ -52,6 +54,15 @@ func (c *PipeWireCapture) Ready() error {
 // OpenPipeWireCapture presents the ScreenCast consent dialog once and creates
 // a reusable frame consumer for streamIndex.
 func OpenPipeWireCapture(ctx context.Context, options ScreenCastOptions, streamIndex int) (*PipeWireCapture, error) {
+	return openPipeWireCapture(ctx, options, streamIndex, nil)
+}
+
+func openPipeWireCapture(
+	ctx context.Context,
+	options ScreenCastOptions,
+	streamIndex int,
+	reportStage pipeWireOpenStageReporter,
+) (*PipeWireCapture, error) {
 	if streamIndex < 0 {
 		return nil, fmt.Errorf("%w: stream index=%d", ErrScreenCastNoStreams, streamIndex)
 	}
@@ -61,20 +72,29 @@ func OpenPipeWireCapture(ctx context.Context, options ScreenCastOptions, streamI
 	if !pipeWireCaptureCompiled() {
 		return nil, ErrPipeWireUnavailable
 	}
+	reportPipeWireOpenStage(reportStage, "portal-open")
 	session, err := OpenScreenCast(ctx, options)
 	if err != nil {
 		return nil, err
 	}
+	reportPipeWireOpenStage(reportStage, "stream-select")
 	streams := session.Streams()
 	if streamIndex < 0 || streamIndex >= len(streams) {
 		_ = session.Close()
 		return nil, fmt.Errorf("%w: stream index=%d streams=%d", ErrScreenCastNoStreams, streamIndex, len(streams))
 	}
+	reportPipeWireOpenStage(reportStage, "pipewire-open")
 	backend, err := newPipeWireFrameSource(ctx, session, streams[streamIndex])
 	if err != nil {
 		return nil, errors.Join(err, session.Close())
 	}
 	return &PipeWireCapture{session: session, stream: streams[streamIndex], backend: backend}, nil
+}
+
+func reportPipeWireOpenStage(reportStage pipeWireOpenStageReporter, stage string) {
+	if reportStage != nil {
+		reportStage(stage)
+	}
 }
 
 // PipeWireCaptureCompiled reports whether this build includes libpipewire frame

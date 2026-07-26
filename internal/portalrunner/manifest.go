@@ -24,6 +24,9 @@ const (
 	// ManifestSchemaVersion identifies the protected runner definition format.
 	ManifestSchemaVersion = "1"
 
+	portalLaneGNOME = "gnome"
+	portalLaneKDE   = "kde"
+
 	maxManifestBytes = 64 * 1024
 	minimumCPUs      = 2
 	maximumCPUs      = 32
@@ -126,7 +129,7 @@ func (manifest Manifest) Validate() error {
 	if manifest.SchemaVersion != ManifestSchemaVersion {
 		return fmt.Errorf("unsupported portal runner manifest schema %q", manifest.SchemaVersion)
 	}
-	if manifest.Lane != "gnome" {
+	if manifest.Lane != portalLaneGNOME && manifest.Lane != portalLaneKDE {
 		return fmt.Errorf("unsupported protected runner lane %q", manifest.Lane)
 	}
 	if !repositoryPattern.MatchString(manifest.Repository) {
@@ -136,7 +139,7 @@ func (manifest Manifest) Validate() error {
 		manifest.Labels,
 		[]string{"self-hosted", "linux", "wayland", manifest.Lane},
 	) {
-		return errors.New("portal runner labels must be the exact protected GNOME label set")
+		return errors.New("portal runner labels must be the exact protected lane label set")
 	}
 
 	if err := validateArtifact(
@@ -208,17 +211,31 @@ func (manifest Manifest) Validate() error {
 			return fmt.Errorf("portal runner package %q is duplicated", packageName)
 		}
 	}
-	for _, required := range []string{
-		"gdm3",
-		"gnome-shell",
-		"libpam-gnome-keyring",
+	requiredPackages := []string{
 		"libpipewire-0.3-dev",
 		"linux-modules-extra-" + manifest.VM.KernelRelease,
 		"pipewire",
 		"wireplumber",
 		"xdg-desktop-portal",
-		"xdg-desktop-portal-gnome",
-	} {
+	}
+	switch manifest.Lane {
+	case portalLaneGNOME:
+		requiredPackages = append(requiredPackages,
+			"gdm3",
+			"gnome-shell",
+			"libpam-gnome-keyring",
+			"xdg-desktop-portal-gnome",
+		)
+	case portalLaneKDE:
+		requiredPackages = append(requiredPackages,
+			"kwin-wayland",
+			"plasma-desktop",
+			"plasma-workspace-wayland",
+			"sddm",
+			"xdg-desktop-portal-kde",
+		)
+	}
+	for _, required := range requiredPackages {
 		if !slices.Contains(manifest.Packages, required) {
 			return fmt.Errorf("portal runner package set omits %q", required)
 		}

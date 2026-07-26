@@ -11,21 +11,31 @@ import (
 	"time"
 )
 
+const envScreenCastRequireMonitor = "ROBOTGO_SCREENCAST_REQUIRE_MONITOR"
+
 func TestPipeWireCapturePersistentSessionIntegration(t *testing.T) {
 	if os.Getenv("ROBOTGO_SCREENCAST_E2E") == "" {
 		t.Skip("set ROBOTGO_SCREENCAST_E2E=1 in a graphical Wayland session")
 	}
-	stage := "open"
+	stage := "preflight"
 	defer reportScreenCastStageOnFailure(t, &stage)
 	signalScreenCastConsentReady(t)
 	openCtx, cancelOpen := context.WithTimeout(context.Background(), 2*time.Minute)
-	capture, err := OpenPipeWireCapture(openCtx, ScreenCastOptions{
-		Sources: ScreenCastSourceMonitor,
-		Cursor:  ScreenCastCursorEmbedded,
-		Persist: ScreenCastPersistApplication,
-	}, 0)
+	capture, err := openPipeWireCapture(
+		openCtx,
+		ScreenCastOptions{
+			Sources: ScreenCastSourceMonitor,
+			Cursor:  ScreenCastCursorEmbedded,
+			Persist: ScreenCastPersistApplication,
+		},
+		0,
+		func(current string) {
+			stage = current
+		},
+	)
 	cancelOpen()
 	if err != nil {
+		stage = screenCastOpenFailureStage(stage, err)
 		t.Fatalf("OpenPipeWireCapture error: %v", err)
 	}
 	defer func() {
@@ -34,6 +44,14 @@ func TestPipeWireCapturePersistentSessionIntegration(t *testing.T) {
 			t.Errorf("Close error: %v", err)
 		}
 	}()
+	stage = "stream-metadata"
+	if os.Getenv(envScreenCastRequireMonitor) != "" &&
+		capture.SelectedStream().SourceType != ScreenCastSourceMonitor {
+		t.Fatalf(
+			"selected source type = %d, want physical monitor",
+			capture.SelectedStream().SourceType,
+		)
+	}
 
 	for frameNumber := 1; frameNumber <= 2; frameNumber++ {
 		stage = []string{"capture-1", "capture-2"}[frameNumber-1]
@@ -46,6 +64,104 @@ func TestPipeWireCapturePersistentSessionIntegration(t *testing.T) {
 		if frame.Bounds().Empty() {
 			t.Fatalf("frame %d is empty", frameNumber)
 		}
+	}
+}
+
+func screenCastPortalFailureStage(err error) string {
+	switch {
+	case errors.Is(err, context.DeadlineExceeded):
+		return "portal-timeout"
+	case errors.Is(err, ErrScreenCastCancelled):
+		return "portal-cancelled"
+	case errors.Is(err, ErrScreenCastRejected):
+		return "portal-rejected"
+	case errors.Is(err, ErrScreenCastUnavailable):
+		return "portal-unavailable"
+	default:
+		return ""
+	}
+}
+
+func screenCastOpenFailureStage(current string, err error) string {
+	if current != "portal-open" {
+		return current
+	}
+	if classified := screenCastPortalFailureStage(err); classified != "" {
+		return classified
+	}
+	return current
+}
+
+func TestScreenCastPortalFailureStage(t *testing.T) {
+	t.Parallel()
+	for _, test := range []struct {
+		name string
+		err  error
+		want string
+	}{
+		{name: "timeout", err: context.DeadlineExceeded, want: "portal-timeout"},
+		{name: "cancelled", err: ErrScreenCastCancelled, want: "portal-cancelled"},
+		{name: "rejected", err: ErrScreenCastRejected, want: "portal-rejected"},
+		{name: "unavailable", err: ErrScreenCastUnavailable, want: "portal-unavailable"},
+		{name: "detailed callback stage retained", err: errors.New("pipewire"), want: ""},
+	} {
+		test := test
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			if got := screenCastPortalFailureStage(test.err); got != test.want {
+				t.Fatalf("screenCastPortalFailureStage() = %q, want %q", got, test.want)
+			}
+		})
+	}
+}
+
+func TestScreenCastOpenFailureStagePreservesBackendPhase(t *testing.T) {
+	t.Parallel()
+	for _, test := range []struct {
+		name    string
+		current string
+		err     error
+		want    string
+	}{
+		{
+			name:    "portal timeout",
+			current: "portal-open",
+			err:     context.DeadlineExceeded,
+			want:    "portal-timeout",
+		},
+		{
+			name:    "PipeWire startup timeout",
+			current: "pipewire-open",
+			err:     context.DeadlineExceeded,
+			want:    "pipewire-open",
+		},
+		{
+			name:    "stream selection cancellation",
+			current: "stream-select",
+			err:     ErrScreenCastCancelled,
+			want:    "stream-select",
+		},
+		{
+			name:    "unclassified portal failure",
+			current: "portal-open",
+			err:     errors.New("portal"),
+			want:    "portal-open",
+		},
+	} {
+		test := test
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			if got := screenCastOpenFailureStage(
+				test.current,
+				test.err,
+			); got != test.want {
+				t.Fatalf(
+					"screenCastOpenFailureStage() = %q, want %q",
+					got,
+					test.want,
+				)
+			}
+		})
 	}
 }
 

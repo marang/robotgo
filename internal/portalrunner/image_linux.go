@@ -36,13 +36,19 @@ const (
 	imageIdentitySchema  = "1"
 )
 
-var guestImageFiles = []string{
+var commonGuestImageFiles = []string{
 	"guest/configure-egress.sh",
 	"guest/install.sh",
 	"guest/job-completed.sh",
 	"guest/job-started.sh",
 	"guest/register.sh",
 	"guest/wait-session.sh",
+}
+
+var kdeGuestImageFiles = []string{
+	"guest/locate-screencast.sh",
+	"guest/report-screencast-geometry.js",
+	"guest/report-screencast-geometry.py",
 }
 
 type imageBuildInput struct {
@@ -105,7 +111,7 @@ func (systemCommandExecutor) Run(
 	return nil
 }
 
-// ImageBuildOptions defines one immutable GNOME image build.
+// ImageBuildOptions defines one immutable portal-runner image build.
 type ImageBuildOptions struct {
 	ManifestPath   string
 	RepositoryRoot string
@@ -147,7 +153,7 @@ func BuildImage(
 		return "", err
 	}
 	defer func() { _ = stateLock.Close() }()
-	if err := validateGuestFiles(options.GuestFiles); err != nil {
+	if err := validateGuestFiles(options.GuestFiles, manifest.Lane); err != nil {
 		return "", err
 	}
 	for _, executable := range []string{
@@ -167,6 +173,7 @@ func BuildImage(
 		options.ManifestPath,
 		options.RepositoryRoot,
 		options.GuestFiles,
+		manifest.Lane,
 	)
 	if err != nil {
 		return "", err
@@ -196,10 +203,18 @@ func BuildImage(
 		return "", err
 	}
 
-	finalImage := filepath.Join(imagesDirectory, "gnome-"+imageID+".qcow2")
+	finalImage := filepath.Join(
+		imagesDirectory,
+		manifest.Lane+"-"+imageID+".qcow2",
+	)
 	finalManifest := finalImage + ".build.json"
 	if reusableImage(finalImage, finalManifest, buildMetadata) {
-		if err := removeStaleImages(imagesDirectory, finalImage, finalManifest); err != nil {
+		if err := removeStaleImages(
+			imagesDirectory,
+			manifest.Lane,
+			finalImage,
+			finalManifest,
+		); err != nil {
 			return "", err
 		}
 		if err := writeStatus(
@@ -245,7 +260,7 @@ func BuildImage(
 	if err := writeStatus(options.Output, "image overlay create\n"); err != nil {
 		return "", err
 	}
-	overlay := filepath.Join(runDirectory, "gnome.qcow2")
+	overlay := filepath.Join(runDirectory, manifest.Lane+".qcow2")
 	if err := options.Commands.Run(
 		buildContext,
 		"qemu-img",
@@ -298,7 +313,10 @@ func BuildImage(
 	}
 	if err := os.WriteFile(
 		metaData,
-		[]byte("instance-id: "+instanceID+"\nlocal-hostname: robotgo-gnome-build\n"),
+		[]byte(
+			"instance-id: "+instanceID+
+				"\nlocal-hostname: robotgo-"+manifest.Lane+"-build\n",
+		),
 		0o600,
 	); err != nil {
 		return "", fmt.Errorf("write portal runner build metadata: %w", err)
@@ -457,7 +475,12 @@ func BuildImage(
 		_ = os.Remove(finalImage)
 		return "", err
 	}
-	if err := removeStaleImages(imagesDirectory, finalImage, finalManifest); err != nil {
+	if err := removeStaleImages(
+		imagesDirectory,
+		manifest.Lane,
+		finalImage,
+		finalManifest,
+	); err != nil {
 		return "", err
 	}
 	if err := writeStatus(
@@ -477,19 +500,28 @@ func writeStatus(output io.Writer, format string, arguments ...any) error {
 	return nil
 }
 
-func removeStaleImages(directory, currentImage, currentMetadata string) error {
+func removeStaleImages(
+	directory,
+	lane,
+	currentImage,
+	currentMetadata string,
+) error {
+	if lane != portalLaneGNOME && lane != portalLaneKDE {
+		return errors.New("portal runner stale-image lane is invalid")
+	}
 	entries, err := os.ReadDir(directory)
 	if err != nil {
 		return fmt.Errorf("list portal runner images: %w", err)
 	}
 	for _, entry := range entries {
 		name := entry.Name()
-		if !strings.HasPrefix(name, "gnome-") ||
+		prefix := lane + "-"
+		if !strings.HasPrefix(name, prefix) ||
 			(!strings.HasSuffix(name, ".qcow2") &&
 				!strings.HasSuffix(name, ".qcow2.build.json")) {
 			continue
 		}
-		digest := strings.TrimPrefix(name, "gnome-")
+		digest := strings.TrimPrefix(name, prefix)
 		digest = strings.TrimSuffix(digest, ".build.json")
 		digest = strings.TrimSuffix(digest, ".qcow2")
 		decoded, decodeErr := hex.DecodeString(digest)
@@ -642,13 +674,29 @@ func preparePersistentDirectory(path string) error {
 	return validatePrivateDirectory(path)
 }
 
-func validateGuestFiles(path string) error {
+func guestImageFilesForLane(lane string) ([]string, error) {
+	switch lane {
+	case portalLaneGNOME:
+		return append([]string{}, commonGuestImageFiles...), nil
+	case portalLaneKDE:
+		files := append([]string{}, commonGuestImageFiles...)
+		return append(files, kdeGuestImageFiles...), nil
+	default:
+		return nil, errors.New("portal runner guest lane is unsupported")
+	}
+}
+
+func validateGuestFiles(path, lane string) error {
 	if err := validateCleanAbsolutePath("portal runner guest files", path); err != nil {
 		return err
 	}
 	evaluated, err := filepath.EvalSymlinks(path)
 	if err != nil || evaluated != path {
 		return errors.New("portal runner guest files must be a real absolute directory")
+	}
+	guestImageFiles, err := guestImageFilesForLane(lane)
+	if err != nil {
+		return err
 	}
 	expected := make(map[string]bool, len(guestImageFiles))
 	for _, relative := range guestImageFiles {
@@ -712,7 +760,8 @@ func validateGuestFiles(path string) error {
 func computeImageIdentity(
 	manifestPath,
 	repositoryRoot,
-	guestFiles string,
+	guestFiles,
+	lane string,
 ) (string, []byte, []byte, error) {
 	manifestData, err := os.ReadFile(manifestPath)
 	if err != nil {
@@ -725,6 +774,10 @@ func computeImageIdentity(
 		return "", nil, nil, errors.New("portal runner manifest exceeds size limit")
 	}
 	manifestDigest := sha256.Sum256(manifestData)
+	guestImageFiles, err := guestImageFilesForLane(lane)
+	if err != nil {
+		return "", nil, nil, err
+	}
 	inputPaths := append(
 		[]string{"internal/portalrunner/image_linux.go"},
 		guestImageFiles...,

@@ -154,20 +154,18 @@ PID/handle-specific control remains unsupported for all listed Wayland
 backends.
 
 - Priority Backlog (1-7):
-  - 1. Register protected GNOME/KDE portal runners and validate the complete
-    RemoteDesktop high-level matrix in hermetic CGO and non-CGO builds. Track
+  - 1. Extend the delivered hosted GNOME/KDE single-output RemoteDesktop
+    execution with multi-output evidence and exact-release promotion. Track
     Sway/wlroots native input and explicit portal availability in the delivered
-    passing isolated hosted lanes.
-    Shared ScreenCast
-    mapping, absolute pointer/touch, consent, denial, cancellation, timeout,
-    restore metadata, teardown, and high-level dispatch have hermetic coverage.
+    passing isolated hosted lanes. Shared ScreenCast mapping, absolute
+    pointer/touch, consent, denial, cancellation, timeout, restore metadata,
+    teardown, and high-level dispatch have hermetic coverage.
     `[new vs robotgo-pro]`
-  - 2. Validate the reusable ScreenCast/PipeWire backend on protected real
-    GNOME/KDE portal runners and promote its leak/timeout tests to release
-    gates. The isolated hosted Sway native-capture and portal-availability lanes
-    pass separately; hosted Sway multi-output proof is delivered and
-    GNOME/KDE multi-output proof remains open. The
-    implementation and opt-in integration harness are present.
+  - 2. Extend the hosted real GNOME/KDE ScreenCast/PipeWire execution with
+    multi-output evidence and promote its leak/timeout tests to release gates.
+    The isolated hosted Sway native-capture and portal-availability lanes pass
+    separately; hosted Sway multi-output proof is delivered and GNOME/KDE
+    multi-output proof remains open.
     `[new vs robotgo-pro]`
   - 3. Continue window state/query operations beyond the delivered Hyprland
     maximize slice where a compositor exposes equally trustworthy state.
@@ -203,8 +201,8 @@ backends.
     Evidence v1 binds that report and test-log digests to exact source across
     the six native/Pure-Go hosted platform cells.
   - 7. Keep race/vet and the manifest-checked native ASan/LeakSanitizer ownership
-    suites blocking. The isolated hosted Sway single-output matrix is defined;
-    provision the remaining GNOME/KDE and protected multi-output jobs.
+    suites blocking. Hosted Sway and GNOME/KDE single-output jobs are defined;
+    provision the remaining GNOME/KDE multi-output and release-promotion jobs.
 
 - Recently completed parity work:
   - Window state/query APIs expose `IsTopMostE`, `IsMinimizedE`,
@@ -227,9 +225,10 @@ backends.
 - Portal Path:
   - Expand troubleshooting for xdg-desktop-portal backend selection and consent prompts.
   - Validate the existing high-level RemoteDesktop input fallback on GNOME/KDE.
-  - Validate the persistent ScreenCast/PipeWire stream path and repeated-frame
-    behavior across GNOME/KDE portal backends. Keep Sway/wlroots native capture
-    and portal-availability evidence separate unless a compatible portal backend
+  - GNOME/KDE single-output persistent ScreenCast/PipeWire and repeated-frame
+    behavior are validated in hosted guests. Extend the same contract to
+    multi-output portal selection. Keep Sway/wlroots native capture and
+    portal-availability evidence separate unless a compatible portal backend
     is explicitly promoted.
 - Keyboard Input:
   - Keep the delivered native Wayland exact-Unicode keysym path covered,
@@ -283,8 +282,9 @@ backends.
     guardian-backed application-`SIGKILL` recovery in the non-skipping Xvfb
     manifest; guardian/host/X-server loss and X11 transport stalls beyond the
     cleanup deadline remain outside that scoped guarantee.
-  - Provision the existing dedicated GNOME and KDE portal workflows. The six
-    hosted wlroots/Sway checks are promoted into branch and release gates.
+  - Keep the dedicated credential-free hosted GNOME and KDE portal workflows
+    green. The six hosted wlroots/Sway checks are promoted into branch and
+    release gates; portal promotion remains open.
   - Keep the race/vet and native ASan/LeakSanitizer CI jobs green and protected.
     The sanitizer gate covers the default CGO suite plus hermetic screencopy
     allocation/free, bounded timeout cleanup, and FD ownership paths.

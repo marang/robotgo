@@ -21,19 +21,31 @@ import (
 )
 
 const (
-	maximumSourceArchive = 128 * 1024 * 1024
-	portalDialogSettle   = 2 * time.Second
-	consentPollInterval  = 250 * time.Millisecond
-	hostedTestTimeout    = 4 * time.Minute
-	hostedTestLogLimit   = 2 * 1024 * 1024
+	maximumSourceArchive    = 128 * 1024 * 1024
+	gnomePortalDialogSettle = 2 * time.Second
+	kdePortalDialogSettle   = 5 * time.Second
+	consentPollInterval     = 250 * time.Millisecond
+	hostedTestTimeout       = 4 * time.Minute
+	hostedTestLogLimit      = 2 * 1024 * 1024
+	maximumPortalGeometry   = 256
 )
 
 var portalFailureStagePattern = regexp.MustCompile(
 	`ROBOTGO_PORTAL_STAGE=([a-z0-9-]{1,32})`,
 )
 
+var sessionFailureStagePattern = regexp.MustCompile(
+	`ROBOTGO_SESSION_STAGE=([a-z0-9-]{1,32})`,
+)
+
+var kdeLocatorFailureStages = map[string]struct{}{
+	"bridge-unavailable":     {},
+	"compositor-unavailable": {},
+	"window-unavailable":     {},
+}
+
 // HostedRuntimeOptions identifies one credential-free portal test in a
-// disposable GNOME guest running inside a GitHub-hosted Linux runner.
+// disposable desktop guest running inside a GitHub-hosted Linux runner.
 type HostedRuntimeOptions struct {
 	ManifestPath   string
 	RepositoryRoot string
@@ -51,10 +63,26 @@ type hostedProcessResult struct {
 	err  error
 }
 
-// RunHostedGNOME transfers the exact clean commit into a disposable guest,
-// runs one portal integration cell, and drives GNOME consent independently
+type hostedPortalGeometry struct {
+	width        int
+	height       int
+	dialogX      int
+	dialogY      int
+	dialogWidth  int
+	dialogHeight int
+	cursorX      int
+	cursorY      int
+}
+
+type hostedPortalPoint struct {
+	x int
+	y int
+}
+
+// RunHostedPortal transfers the exact clean commit into a disposable guest,
+// runs one portal integration cell, and drives desktop consent independently
 // through QMP. It does not register a GitHub Actions runner or consume tokens.
-func RunHostedGNOME(
+func RunHostedPortal(
 	ctx context.Context,
 	options HostedRuntimeOptions,
 ) (returnError error) {
@@ -82,7 +110,7 @@ func RunHostedGNOME(
 		return err
 	}
 	defer func() { _ = stateLock.Close() }()
-	if err := validateGuestFiles(options.GuestFiles); err != nil {
+	if err := validateGuestFiles(options.GuestFiles, manifest.Lane); err != nil {
 		return err
 	}
 	for _, executable := range []string{
@@ -114,6 +142,7 @@ func RunHostedGNOME(
 		options.ManifestPath,
 		options.RepositoryRoot,
 		options.GuestFiles,
+		manifest.Lane,
 	)
 	if err != nil {
 		return err
@@ -121,10 +150,10 @@ func RunHostedGNOME(
 	imagePath := filepath.Join(
 		options.StateRoot,
 		"images",
-		"gnome-"+imageID+".qcow2",
+		manifest.Lane+"-"+imageID+".qcow2",
 	)
 	if !reusableImage(imagePath, imagePath+".build.json", buildMetadata) {
-		return errors.New("hosted GNOME image is unavailable or stale")
+		return fmt.Errorf("hosted %s image is unavailable or stale", manifest.Lane)
 	}
 
 	runDirectory, err := CreateRun(options.StateRoot)
@@ -212,8 +241,11 @@ func RunHostedGNOME(
 		return err
 	}
 	for path, data := range map[string][]byte{
-		userData:    []byte(cloudConfig),
-		metaData:    []byte("instance-id: " + instanceID + "\nlocal-hostname: robotgo-gnome-hosted\n"),
+		userData: []byte(cloudConfig),
+		metaData: []byte(
+			"instance-id: " + instanceID +
+				"\nlocal-hostname: robotgo-" + manifest.Lane + "-hosted\n",
+		),
 		networkData: []byte(runtimeNetworkConfig()),
 	} {
 		if err := os.WriteFile(path, data, 0o600); err != nil {
@@ -272,7 +304,7 @@ func RunHostedGNOME(
 	qemuCommand.Stderr = logWriter
 	configureHostedProcess(qemuCommand)
 	if err := qemuCommand.Start(); err != nil {
-		return errors.New("start hosted GNOME VM")
+		return fmt.Errorf("start hosted %s VM", manifest.Lane)
 	}
 	vmResult := &hostedProcessResult{done: make(chan struct{})}
 	go func() {
@@ -315,7 +347,7 @@ func RunHostedGNOME(
 		sshArguments,
 		logWriter,
 	); err != nil {
-		return fmt.Errorf("wait for hosted GNOME VM: %w", err)
+		return fmt.Errorf("wait for hosted %s VM: %w", manifest.Lane, err)
 	}
 	if err := enforceHostedEgressBoundary(
 		guestContext,
@@ -331,11 +363,12 @@ func RunHostedGNOME(
 		sshArguments,
 		logWriter,
 	); err != nil {
-		collectGNOMEDiagnostics(
+		collectHostedDiagnostics(
 			guestContext,
 			options.Commands,
 			sshArguments,
 			logWriter,
+			manifest.Lane,
 		)
 		return err
 	}
@@ -348,12 +381,6 @@ func RunHostedGNOME(
 	); err != nil {
 		return err
 	}
-
-	qmp, err := connectQMP(guestContext, qmpSocket)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = qmp.close() }()
 
 	marker := "/run/user/1100/robotgo-portal-consent-" +
 		options.Cell + ".ready"
@@ -377,7 +404,7 @@ func RunHostedGNOME(
 		append(
 			append([]string{}, sshArguments...),
 			"root@127.0.0.1",
-			hostedPortalTestCommand(options.Cell, marker),
+			hostedPortalTestCommand(manifest.Lane, options.Cell, marker),
 		)...,
 	)
 	testOutput := io.MultiWriter(logWriter, testLogWriter)
@@ -393,25 +420,39 @@ func RunHostedGNOME(
 		close(testResult.done)
 	}()
 
-	if err := waitForConsentMarker(
-		guestContext,
-		options.Commands,
-		sshArguments,
-		marker,
-		options.Cell,
-		logWriter,
-		testResult.done,
-	); err != nil {
-		stopProcessGroup(testCommand, testResult.done)
-		return err
-	}
-	if err := waitForPortalDialog(guestContext, testResult.done); err != nil {
-		stopProcessGroup(testCommand, testResult.done)
-		return err
-	}
-	if err := qmp.approvePortal(guestContext, options.Cell); err != nil {
-		stopProcessGroup(testCommand, testResult.done)
-		return err
+	if hostedPortalApprovalRequired(manifest.Lane, options.Cell) {
+		if err := waitForConsentMarker(
+			guestContext,
+			options.Commands,
+			sshArguments,
+			marker,
+			options.Cell,
+			logWriter,
+			testResult.done,
+		); err != nil {
+			stopProcessGroup(testCommand, testResult.done)
+			return err
+		}
+		if err := waitForPortalDialog(
+			guestContext,
+			testResult.done,
+			portalDialogSettle(manifest.Lane),
+		); err != nil {
+			stopProcessGroup(testCommand, testResult.done)
+			return err
+		}
+		if err := approveHostedPortal(
+			guestContext,
+			options.Commands,
+			sshArguments,
+			qmpSocket,
+			manifest.Lane,
+			options.Cell,
+			options.Output,
+		); err != nil {
+			stopProcessGroup(testCommand, testResult.done)
+			return err
+		}
 	}
 	<-testResult.done
 	testError := testResult.err
@@ -449,7 +490,7 @@ func RunHostedGNOME(
 	case <-vmResult.done:
 		vmExited = true
 		if vmResult.err != nil {
-			return errors.New("hosted GNOME VM exited unsuccessfully")
+			return fmt.Errorf("hosted %s VM exited unsuccessfully", manifest.Lane)
 		}
 	case <-runtimeContext.Done():
 		return fmt.Errorf("hosted portal lifetime ended: %w", runtimeContext.Err())
@@ -581,6 +622,11 @@ func waitForHostedSession(
 	sshArguments []string,
 	output io.Writer,
 ) error {
+	var diagnostic bytes.Buffer
+	diagnosticWriter := &truncatingWriter{
+		destination: &diagnostic,
+		remaining:   maximumBuildInput,
+	}
 	command := "set -euo pipefail; runuser -u robotgo -- env " +
 		"XDG_RUNTIME_DIR=/run/user/1100 " +
 		"DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1100/bus " +
@@ -594,11 +640,53 @@ func waitForHostedSession(
 			command,
 		),
 		nil,
-		output,
+		io.MultiWriter(output, diagnosticWriter),
 	); err != nil {
-		return errors.New("wait for hosted GNOME portal session")
+		if stage := readSessionFailureStage(diagnostic.Bytes()); stage != "" {
+			return fmt.Errorf(
+				"wait for hosted portal session at stage %q",
+				stage,
+			)
+		}
+		return errors.New("wait for hosted portal session")
 	}
 	return nil
+}
+
+func readSessionFailureStage(data []byte) string {
+	if len(data) > maximumBuildInput {
+		return ""
+	}
+	matches := sessionFailureStagePattern.FindAllSubmatch(data, -1)
+	if len(matches) == 0 {
+		return ""
+	}
+	return string(matches[len(matches)-1][1])
+}
+
+type truncatingWriter struct {
+	destination io.Writer
+	remaining   int64
+}
+
+func (writer *truncatingWriter) Write(data []byte) (int, error) {
+	inputLength := len(data)
+	if writer.remaining <= 0 {
+		return inputLength, nil
+	}
+	if int64(len(data)) > writer.remaining {
+		data = data[:writer.remaining]
+	}
+	captureLength := len(data)
+	written, err := writer.destination.Write(data)
+	writer.remaining -= int64(written)
+	if err != nil {
+		return written, err
+	}
+	if written != captureLength {
+		return written, io.ErrShortWrite
+	}
+	return inputLength, nil
 }
 
 func enforceHostedEgressBoundary(
@@ -628,7 +716,7 @@ nft --json list chain inet robotgo_runner output |
 		nil,
 		output,
 	); err != nil {
-		return errors.New("enforce hosted GNOME egress boundary")
+		return errors.New("enforce hosted portal egress boundary")
 	}
 	return nil
 }
@@ -681,14 +769,18 @@ test -f /home/robotgo/robotgo/go.mod`
 	return nil
 }
 
-func hostedPortalTestCommand(cell, marker string) string {
+func hostedPortalTestCommand(lane, cell, marker string) string {
+	currentDesktop, sessionDesktop, err := hostedDesktopEnvironment(lane)
+	if err != nil {
+		return ""
+	}
 	environment := strings.Join([]string{
 		"HOME=/home/robotgo",
 		"XDG_RUNTIME_DIR=/run/user/1100",
 		"DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1100/bus",
 		"WAYLAND_DISPLAY=wayland-0",
-		"XDG_CURRENT_DESKTOP=GNOME",
-		"XDG_SESSION_DESKTOP=gnome",
+		"XDG_CURRENT_DESKTOP=" + currentDesktop,
+		"XDG_SESSION_DESKTOP=" + sessionDesktop,
 		"XDG_SESSION_TYPE=wayland",
 		"DISPLAY=:0",
 		"HTTP_PROXY=http://10.0.2.2:3128",
@@ -701,7 +793,8 @@ func hostedPortalTestCommand(cell, marker string) string {
 	}, " ")
 	var test string
 	if cell == "screencast" {
-		environment += " ROBOTGO_SCREENCAST_E2E=1"
+		environment += " ROBOTGO_SCREENCAST_E2E=1" +
+			" ROBOTGO_SCREENCAST_REQUIRE_MONITOR=1"
 		test = "go test -count=1 -timeout=3m -tags=pipewire,integration " +
 			"./screen/portal " +
 			"-run '^TestPipeWireCapturePersistentSessionIntegration$' -v"
@@ -714,6 +807,306 @@ func hostedPortalTestCommand(cell, marker string) string {
 	guestCommand := "cd /home/robotgo/robotgo; exec " + test
 	return "set -euo pipefail; exec runuser -u robotgo -- env " +
 		environment + " bash -c " + shellQuote(guestCommand)
+}
+
+func hostedDesktopEnvironment(lane string) (current, session string, err error) {
+	switch lane {
+	case portalLaneGNOME:
+		return "GNOME", "gnome", nil
+	case portalLaneKDE:
+		return "KDE", "plasmawayland", nil
+	default:
+		return "", "", errors.New("hosted portal lane is invalid")
+	}
+}
+
+func hostedPortalApprovalRequired(lane, cell string) bool {
+	return lane == portalLaneGNOME ||
+		(lane == portalLaneKDE && cell == "screencast")
+}
+
+func approveHostedPortal(
+	ctx context.Context,
+	commands CommandExecutor,
+	sshArguments []string,
+	qmpSocket,
+	lane,
+	cell string,
+	output io.Writer,
+) error {
+	if lane == portalLaneKDE && cell == "screencast" {
+		geometry, err := locateHostedKDEScreenCast(
+			ctx,
+			commands,
+			sshArguments,
+		)
+		if err != nil {
+			return err
+		}
+		if err := writeStatus(
+			output,
+			"hosted KDE dialog geometry display=%dx%d dialog=%d,%d,%dx%d\n",
+			geometry.width,
+			geometry.height,
+			geometry.dialogX,
+			geometry.dialogY,
+			geometry.dialogWidth,
+			geometry.dialogHeight,
+		); err != nil {
+			return err
+		}
+		qmp, err := connectQMP(ctx, qmpSocket)
+		if err != nil {
+			return err
+		}
+		card, err := kdePortalCardTarget(geometry)
+		if err != nil {
+			return errors.Join(err, qmp.close())
+		}
+		approvalError := qmp.clickAbsolute(
+			ctx,
+			card.x,
+			card.y,
+			geometry.width,
+			geometry.height,
+		)
+		if approvalError == nil {
+			approvalError = waitQMPChord(ctx)
+		}
+		if approvalError == nil {
+			var observed hostedPortalGeometry
+			observed, approvalError = locateHostedKDEScreenCast(
+				ctx,
+				commands,
+				sshArguments,
+			)
+			if approvalError == nil &&
+				(!kdePortalSameDialog(geometry, observed) ||
+					!kdePortalPointerAt(card, observed)) {
+				approvalError = errors.New(
+					"hosted KDE QMP pointer calibration failed",
+				)
+			}
+		}
+		if approvalError == nil {
+			approvalError = writeStatus(
+				output,
+				"hosted KDE QMP pointer calibration passed\n",
+			)
+		}
+		if approvalError == nil {
+			// Plasma 5.27 SystemDialog handles Return at the focused loader and
+			// accepts only after the selected source enables its OK button.
+			approvalError = qmp.sendChord(ctx, qmpKeyReturn)
+		}
+		return errors.Join(approvalError, qmp.close())
+	}
+	qmp, err := connectQMP(ctx, qmpSocket)
+	if err != nil {
+		return err
+	}
+	return errors.Join(qmp.approvePortal(ctx, lane, cell), qmp.close())
+}
+
+func locateHostedKDEScreenCast(
+	ctx context.Context,
+	commands CommandExecutor,
+	sshArguments []string,
+) (hostedPortalGeometry, error) {
+	approvalContext, cancel := context.WithTimeout(ctx, 45*time.Second)
+	defer cancel()
+	command := "exec runuser -u robotgo -- env " +
+		"XDG_RUNTIME_DIR=/run/user/1100 " +
+		"DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1100/bus " +
+		"/usr/local/libexec/robotgo-runner-locate-screencast"
+	var geometryOutput bytes.Buffer
+	runError := commands.Run(
+		approvalContext,
+		"ssh",
+		append(
+			append([]string{}, sshArguments...),
+			"root@127.0.0.1",
+			command,
+		),
+		nil,
+		&boundedWriter{
+			destination: &geometryOutput,
+			remaining:   maximumPortalGeometry,
+		},
+	)
+	fields := strings.Fields(geometryOutput.String())
+	if len(fields) == 2 && fields[0] == "error" {
+		if _, allowed := kdeLocatorFailureStages[fields[1]]; allowed {
+			return hostedPortalGeometry{}, fmt.Errorf(
+				"locate hosted KDE ScreenCast controls at stage %q",
+				fields[1],
+			)
+		}
+	}
+	if runError != nil {
+		return hostedPortalGeometry{}, errors.New(
+			"locate hosted KDE ScreenCast controls",
+		)
+	}
+	if len(fields) != 9 || fields[0] != "ok" {
+		return hostedPortalGeometry{}, errors.New(
+			"hosted KDE ScreenCast geometry is invalid",
+		)
+	}
+	values := make([]int, len(fields)-1)
+	for index, field := range fields[1:] {
+		value, err := strconv.Atoi(field)
+		if err != nil {
+			return hostedPortalGeometry{}, errors.New(
+				"hosted KDE ScreenCast geometry is invalid",
+			)
+		}
+		values[index] = value
+	}
+	geometry := hostedPortalGeometry{
+		width: values[0], height: values[1],
+		dialogX: values[2], dialogY: values[3],
+		dialogWidth: values[4], dialogHeight: values[5],
+		cursorX: values[6], cursorY: values[7],
+	}
+	if geometry.width < 640 ||
+		geometry.width > 8192 ||
+		geometry.height < 480 ||
+		geometry.height > 8192 ||
+		geometry.dialogX < 0 ||
+		geometry.dialogX >= geometry.width ||
+		geometry.dialogY < 0 ||
+		geometry.dialogY >= geometry.height ||
+		geometry.dialogWidth < 320 ||
+		geometry.dialogHeight < 240 ||
+		geometry.dialogWidth > geometry.width-geometry.dialogX ||
+		geometry.dialogHeight > geometry.height-geometry.dialogY ||
+		geometry.cursorX < 0 ||
+		geometry.cursorX >= geometry.width ||
+		geometry.cursorY < 0 ||
+		geometry.cursorY >= geometry.height {
+		return hostedPortalGeometry{}, errors.New(
+			"hosted KDE ScreenCast geometry is invalid",
+		)
+	}
+	return geometry, nil
+}
+
+const (
+	kdeCardXNumerator   = 3
+	kdeCardXDenominator = 4
+	kdeCardYNumerator   = 1
+	kdeCardYDenominator = 2
+
+	kdePointerTolerance = 4
+)
+
+func kdePortalCardTarget(
+	geometry hostedPortalGeometry,
+) (hostedPortalPoint, error) {
+	card := hostedPortalPoint{
+		x: kdePortalRelativeCoordinate(
+			geometry.dialogX,
+			geometry.dialogWidth,
+			kdeCardXNumerator,
+			kdeCardXDenominator,
+		),
+		y: kdePortalRelativeCoordinate(
+			geometry.dialogY,
+			geometry.dialogHeight,
+			kdeCardYNumerator,
+			kdeCardYDenominator,
+		),
+	}
+	if !kdePortalPointInsideDialog(card, geometry) {
+		return hostedPortalPoint{}, errors.New(
+			"hosted KDE ScreenCast target is outside the active dialog",
+		)
+	}
+	return card, nil
+}
+
+func kdePortalRelativeCoordinate(
+	start,
+	extent,
+	numerator,
+	denominator int,
+) int {
+	return start + extent*numerator/denominator
+}
+
+func kdePortalSameDialog(
+	expected,
+	observed hostedPortalGeometry,
+) bool {
+	return expected.width == observed.width &&
+		expected.height == observed.height &&
+		expected.dialogX == observed.dialogX &&
+		expected.dialogY == observed.dialogY &&
+		expected.dialogWidth == observed.dialogWidth &&
+		expected.dialogHeight == observed.dialogHeight
+}
+
+func kdePortalPointerAt(
+	expected hostedPortalPoint,
+	observed hostedPortalGeometry,
+) bool {
+	return absoluteDifference(expected.x, observed.cursorX) <=
+		kdePointerTolerance &&
+		absoluteDifference(expected.y, observed.cursorY) <=
+			kdePointerTolerance
+}
+
+func absoluteDifference(first, second int) int {
+	if first > second {
+		return first - second
+	}
+	return second - first
+}
+
+func kdePortalPointInsideDialog(
+	point hostedPortalPoint,
+	geometry hostedPortalGeometry,
+) bool {
+	return point.x >= geometry.dialogX &&
+		point.x < geometry.dialogX+geometry.dialogWidth &&
+		point.y >= geometry.dialogY &&
+		point.y < geometry.dialogY+geometry.dialogHeight
+}
+
+func collectHostedDiagnostics(
+	ctx context.Context,
+	commands CommandExecutor,
+	sshArguments []string,
+	output io.Writer,
+	lane string,
+) {
+	unit := "gdm3"
+	if lane == portalLaneKDE {
+		unit = "sddm"
+	}
+	diagnosticCommand := `set +e
+echo ROBOTGO_PORTAL_DIAGNOSTICS
+systemctl status ` + unit + ` --no-pager --full
+loginctl list-sessions --no-legend
+loginctl user-status robotgo --no-pager
+test -d /run/user/1100 && find /run/user/1100 -maxdepth 1 -type s -printf '%f\n'
+journalctl --boot --unit=` + unit + ` --no-pager --lines=120
+journalctl --boot _UID=1100 --no-pager --lines=120
+echo ROBOTGO_PORTAL_DIAGNOSTICS_END`
+	diagnosticContext, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+	_ = commands.Run(
+		diagnosticContext,
+		"ssh",
+		append(
+			append([]string{}, sshArguments...),
+			"root@127.0.0.1",
+			diagnosticCommand,
+		),
+		nil,
+		output,
+	)
 }
 
 func waitForConsentMarker(
@@ -775,8 +1168,19 @@ func waitForConsentMarker(
 	}
 }
 
-func waitForPortalDialog(ctx context.Context, testDone <-chan struct{}) error {
-	timer := time.NewTimer(portalDialogSettle)
+func portalDialogSettle(lane string) time.Duration {
+	if lane == portalLaneKDE {
+		return kdePortalDialogSettle
+	}
+	return gnomePortalDialogSettle
+}
+
+func waitForPortalDialog(
+	ctx context.Context,
+	testDone <-chan struct{},
+	settle time.Duration,
+) error {
+	timer := time.NewTimer(settle)
 	defer timer.Stop()
 	select {
 	case <-ctx.Done():

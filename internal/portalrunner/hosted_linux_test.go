@@ -80,6 +80,7 @@ func TestHostedPortalCommandsAreCredentialFreeAndCellSpecific(t *testing.T) {
 	for _, test := range []struct {
 		cell    string
 		env     string
+		extra   string
 		pattern string
 	}{
 		{
@@ -90,20 +91,26 @@ func TestHostedPortalCommandsAreCredentialFreeAndCellSpecific(t *testing.T) {
 		{
 			cell:    "screencast",
 			env:     "ROBOTGO_SCREENCAST_E2E=1",
+			extra:   "ROBOTGO_SCREENCAST_REQUIRE_MONITOR=1",
 			pattern: "^TestPipeWireCapturePersistentSessionIntegration$",
 		},
 	} {
 		command := hostedPortalTestCommand(
+			portalLaneGNOME,
 			test.cell,
 			"/run/user/1100/robotgo-portal-consent-"+test.cell+".ready",
 		)
 		for _, required := range []string{
 			"runuser -u robotgo",
 			test.env,
+			test.extra,
 			test.pattern,
 			"ROBOTGO_PORTAL_CONSENT_READY_FILE=/run/user/1100/",
 			"HTTP_PROXY=http://10.0.2.2:3128",
 		} {
+			if required == "" {
+				continue
+			}
 			if !strings.Contains(command, required) {
 				t.Errorf("%s command omits %q", test.cell, required)
 			}
@@ -119,6 +126,219 @@ func TestHostedPortalCommandsAreCredentialFreeAndCellSpecific(t *testing.T) {
 				t.Errorf("%s command contains %q", test.cell, forbidden)
 			}
 		}
+	}
+}
+
+func TestHostedPortalCommandsSelectDesktopLane(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		lane      string
+		current   string
+		session   string
+		forbidden string
+	}{
+		{
+			lane:      portalLaneGNOME,
+			current:   "XDG_CURRENT_DESKTOP=GNOME",
+			session:   "XDG_SESSION_DESKTOP=gnome",
+			forbidden: "XDG_CURRENT_DESKTOP=KDE",
+		},
+		{
+			lane:      portalLaneKDE,
+			current:   "XDG_CURRENT_DESKTOP=KDE",
+			session:   "XDG_SESSION_DESKTOP=plasmawayland",
+			forbidden: "XDG_CURRENT_DESKTOP=GNOME",
+		},
+	}
+	for _, test := range tests {
+		command := hostedPortalTestCommand(
+			test.lane,
+			"remote-desktop",
+			"/run/user/1100/robotgo-portal-consent-remote-desktop.ready",
+		)
+		for _, required := range []string{test.current, test.session} {
+			if !strings.Contains(command, required) {
+				t.Errorf("%s command omits %q", test.lane, required)
+			}
+		}
+		if strings.Contains(command, test.forbidden) {
+			t.Errorf("%s command contains %q", test.lane, test.forbidden)
+		}
+	}
+	if command := hostedPortalTestCommand(
+		"other",
+		"remote-desktop",
+		"/run/user/1100/marker",
+	); command != "" {
+		t.Fatalf("unsupported lane command = %q", command)
+	}
+}
+
+func TestHostedPortalApprovalPolicyMatchesDesktopBackend(t *testing.T) {
+	t.Parallel()
+	for _, test := range []struct {
+		lane string
+		cell string
+		want bool
+	}{
+		{lane: portalLaneGNOME, cell: "remote-desktop", want: true},
+		{lane: portalLaneGNOME, cell: "screencast", want: true},
+		{lane: portalLaneKDE, cell: "remote-desktop", want: false},
+		{lane: portalLaneKDE, cell: "screencast", want: true},
+	} {
+		if got := hostedPortalApprovalRequired(
+			test.lane,
+			test.cell,
+		); got != test.want {
+			t.Errorf(
+				"hostedPortalApprovalRequired(%q, %q) = %t, want %t",
+				test.lane,
+				test.cell,
+				got,
+				test.want,
+			)
+		}
+	}
+}
+
+func TestHostedKDEScreenCastLocatorUsesContentFreeKWinGeometry(
+	t *testing.T,
+) {
+	t.Parallel()
+	executor := &scriptedCommandExecutor{
+		outputs: []string{"ok 1280 720 350 90 580 540 640 360\n"},
+	}
+	geometry, err := locateHostedKDEScreenCast(
+		context.Background(),
+		executor,
+		[]string{"-p", "22222"},
+	)
+	if err != nil {
+		t.Fatalf("locateHostedKDEScreenCast: %v", err)
+	}
+	if geometry != (hostedPortalGeometry{
+		width: 1280, height: 720,
+		dialogX: 350, dialogY: 90,
+		dialogWidth: 580, dialogHeight: 540,
+		cursorX: 640, cursorY: 360,
+	}) {
+		t.Fatalf("KDE geometry = %+v", geometry)
+	}
+	if len(executor.calls) != 1 {
+		t.Fatalf("KDE approval calls = %v", executor.calls)
+	}
+	call := strings.Join(executor.calls[0], " ")
+	for _, required := range []string{
+		"ssh",
+		"root@127.0.0.1",
+		"runuser -u robotgo",
+		"XDG_RUNTIME_DIR=/run/user/1100",
+		"DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1100/bus",
+		"/usr/local/libexec/robotgo-runner-locate-screencast",
+	} {
+		if !strings.Contains(call, required) {
+			t.Errorf("KDE approval omits %q", required)
+		}
+	}
+	for _, forbidden := range []string{
+		"kdePhysicalOutput",
+		"GITHUB_TOKEN",
+	} {
+		if strings.Contains(call, forbidden) {
+			t.Errorf("KDE approval contains %q", forbidden)
+		}
+	}
+}
+
+func TestHostedKDEScreenCastLocatorRejectsUnsafeGeometry(t *testing.T) {
+	t.Parallel()
+	for _, output := range []string{
+		"",
+		"1280 720 350 90 580 540 640 360\n",
+		"ok 1280 720 350 90 580 540 640 360 extra\n",
+		"ok 1280 720 350 90 100 540 640 360\n",
+		"ok 1280 720 900 90 580 540 640 360\n",
+		"ok 1280 720 350 90 580 540 -1 360\n",
+		"ok 1280 720 350 90 580 540 640 720\n",
+		"ok private 720 350 90 580 540 640 360\n",
+	} {
+		executor := &scriptedCommandExecutor{outputs: []string{output}}
+		if _, err := locateHostedKDEScreenCast(
+			context.Background(),
+			executor,
+			[]string{"-p", "22222"},
+		); err == nil {
+			t.Fatalf("unsafe KDE geometry %q was accepted", output)
+		}
+	}
+}
+
+func TestHostedKDEScreenCastLocatorReportsOnlyAllowlistedStage(t *testing.T) {
+	t.Parallel()
+	executor := &scriptedCommandExecutor{
+		outputs: []string{"error window-unavailable\n"},
+		errors:  []error{errors.New("private failure")},
+	}
+	_, err := locateHostedKDEScreenCast(
+		context.Background(),
+		executor,
+		[]string{"-p", "22222"},
+	)
+	if err == nil || !strings.Contains(
+		err.Error(),
+		`stage "window-unavailable"`,
+	) {
+		t.Fatalf("KDE locator failure = %v", err)
+	}
+	for _, private := range []string{"private failure"} {
+		if strings.Contains(err.Error(), private) {
+			t.Fatalf("KDE locator failure leaks %q: %v", private, err)
+		}
+	}
+}
+
+func TestKDEPortalCardTargetUsesRuntimeDialogGeometry(t *testing.T) {
+	t.Parallel()
+	geometry := hostedPortalGeometry{
+		width: 1280, height: 720,
+		dialogX: 362, dialogY: 70,
+		dialogWidth: 556, dialogHeight: 535,
+		cursorX: 640, cursorY: 360,
+	}
+	card, err := kdePortalCardTarget(geometry)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if card != (hostedPortalPoint{x: 779, y: 337}) {
+		t.Fatalf("KDE physical card target = %+v", card)
+	}
+}
+
+func TestKDEPortalPointerCalibration(t *testing.T) {
+	t.Parallel()
+	geometry := hostedPortalGeometry{
+		width: 1280, height: 720,
+		dialogX: 362, dialogY: 70,
+		dialogWidth: 556, dialogHeight: 535,
+		cursorX: 782, cursorY: 333,
+	}
+	if !kdePortalPointerAt(
+		hostedPortalPoint{x: 779, y: 337},
+		geometry,
+	) {
+		t.Fatal("KDE pointer within tolerance was rejected")
+	}
+	geometry.cursorX = 784
+	if kdePortalPointerAt(
+		hostedPortalPoint{x: 779, y: 337},
+		geometry,
+	) {
+		t.Fatal("KDE pointer outside tolerance was accepted")
+	}
+	changed := geometry
+	changed.dialogWidth++
+	if kdePortalSameDialog(geometry, changed) {
+		t.Fatal("changed KDE dialog was accepted as stable")
 	}
 }
 
@@ -200,11 +420,28 @@ func TestPortalDialogWaitRejectsEarlyTestExit(t *testing.T) {
 	done := make(chan struct{})
 	close(done)
 	start := time.Now()
-	if err := waitForPortalDialog(context.Background(), done); err == nil {
+	if err := waitForPortalDialog(
+		context.Background(),
+		done,
+		kdePortalDialogSettle,
+	); err == nil {
 		t.Fatal("early hosted portal test exit was accepted")
 	}
 	if time.Since(start) > time.Second {
 		t.Fatal("early hosted portal test exit was not detected promptly")
+	}
+}
+
+func TestPortalDialogSettleUsesLongerKDEWindow(t *testing.T) {
+	t.Parallel()
+	if got := portalDialogSettle(portalLaneGNOME); got != gnomePortalDialogSettle {
+		t.Fatalf("GNOME portal dialog settle = %s", got)
+	}
+	if got := portalDialogSettle(portalLaneKDE); got != kdePortalDialogSettle {
+		t.Fatalf("KDE portal dialog settle = %s", got)
+	}
+	if kdePortalDialogSettle <= gnomePortalDialogSettle {
+		t.Fatal("KDE portal dialog settle must exceed GNOME settle")
 	}
 }
 
@@ -225,5 +462,52 @@ func TestPortalFailureStageParserReturnsOnlyAllowlistedMarker(t *testing.T) {
 	}
 	if got := readPortalFailureStage(path); got != "capture-2" {
 		t.Fatalf("failure stage = %q", got)
+	}
+}
+
+func TestHostedSessionFailureReportsOnlyAllowlistedStage(t *testing.T) {
+	t.Parallel()
+	executor := &scriptedCommandExecutor{
+		outputs: []string{
+			"private diagnostic ignored\n" +
+				"ROBOTGO_SESSION_STAGE=desktop-shell\n" +
+				"token=must-not-leak\n",
+		},
+		errors: []error{errors.New("exit status 1")},
+	}
+	err := waitForHostedSession(
+		context.Background(),
+		executor,
+		[]string{"-p", "22222"},
+		&strings.Builder{},
+	)
+	if err == nil ||
+		!strings.Contains(err.Error(), `stage "desktop-shell"`) {
+		t.Fatalf("session failure = %v", err)
+	}
+	for _, private := range []string{"private diagnostic", "token", "exit status"} {
+		if strings.Contains(err.Error(), private) {
+			t.Fatalf("session failure leaks %q: %v", private, err)
+		}
+	}
+}
+
+func TestTruncatingWriterRetainsPrefixWithoutShortWrite(t *testing.T) {
+	t.Parallel()
+	var destination strings.Builder
+	writer := &truncatingWriter{
+		destination: &destination,
+		remaining:   4,
+	}
+	data := []byte("private")
+	written, err := writer.Write(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if written != len(data) {
+		t.Fatalf("written = %d, want %d", written, len(data))
+	}
+	if got := destination.String(); got != "priv" {
+		t.Fatalf("captured prefix = %q", got)
 	}
 }

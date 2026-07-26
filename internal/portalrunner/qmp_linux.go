@@ -17,6 +17,27 @@ const (
 	qmpConnectInterval = 100 * time.Millisecond
 	qmpMaximumResponse = 1024 * 1024
 	qmpChordInterval   = 250 * time.Millisecond
+
+	qmpKeyAlt    = "alt"
+	qmpKeyI      = "i"
+	qmpKeyReturn = "ret"
+	qmpKeyS      = "s"
+
+	qmpCommandHumanMonitor = "human-monitor-command"
+	qmpCommandInputEvent   = "input-send-event"
+	qmpCommandQueryMice    = "query-mice"
+	qmpMouseSetCommand     = "mouse_set"
+	qmpUSBTabletName       = "QEMU HID Tablet"
+
+	qmpEventAbsolute = "abs"
+	qmpEventButton   = "btn"
+	qmpPointerAxisX  = "x"
+	qmpPointerAxisY  = "y"
+	qmpPointerLeft   = "left"
+
+	qmpAbsoluteMaximum  = 0x7fff
+	hostedDisplayWidth  = 1280
+	hostedDisplayHeight = 720
 )
 
 type qmpClient struct {
@@ -45,8 +66,8 @@ type qmpCommand struct {
 }
 
 type qmpInputEvent struct {
-	Type string          `json:"type"`
-	Data qmpKeyEventData `json:"data"`
+	Type string `json:"type"`
+	Data any    `json:"data"`
 }
 
 type qmpKeyEventData struct {
@@ -57,6 +78,23 @@ type qmpKeyEventData struct {
 type qmpKeyValue struct {
 	Type string `json:"type"`
 	Data string `json:"data"`
+}
+
+type qmpAbsoluteEventData struct {
+	Axis  string `json:"axis"`
+	Value int    `json:"value"`
+}
+
+type qmpButtonEventData struct {
+	Down   bool   `json:"down"`
+	Button string `json:"button"`
+}
+
+type qmpMouseInfo struct {
+	Name     string `json:"name"`
+	Index    int    `json:"index"`
+	Absolute bool   `json:"absolute"`
+	Current  bool   `json:"current"`
 }
 
 func connectQMP(ctx context.Context, socketPath string) (*qmpClient, error) {
@@ -122,30 +160,177 @@ func (client *qmpClient) sendChord(ctx context.Context, keys ...string) error {
 	for index := len(keys) - 1; index >= 0; index-- {
 		events = append(events, qmpKeyEvent(keys[index], false))
 	}
-	return client.execute(ctx, "input-send-event", map[string]any{
+	return client.execute(ctx, qmpCommandInputEvent, map[string]any{
 		"events": events,
 	})
 }
 
+func (client *qmpClient) clickAbsolute(
+	ctx context.Context,
+	x,
+	y,
+	width,
+	height int,
+) error {
+	absoluteX, err := qmpAbsoluteCoordinate(x, width)
+	if err != nil {
+		return err
+	}
+	absoluteY, err := qmpAbsoluteCoordinate(y, height)
+	if err != nil {
+		return err
+	}
+	if err := client.selectAbsolutePointer(ctx); err != nil {
+		return err
+	}
+	if err := client.execute(ctx, qmpCommandInputEvent, map[string]any{
+		"events": []qmpInputEvent{
+			{
+				Type: qmpEventAbsolute,
+				Data: qmpAbsoluteEventData{
+					Axis: qmpPointerAxisX, Value: absoluteX,
+				},
+			},
+			{
+				Type: qmpEventAbsolute,
+				Data: qmpAbsoluteEventData{
+					Axis: qmpPointerAxisY, Value: absoluteY,
+				},
+			},
+		},
+	}); err != nil {
+		return err
+	}
+	if err := waitQMPChord(ctx); err != nil {
+		return err
+	}
+	if err := client.execute(ctx, qmpCommandInputEvent, map[string]any{
+		"events": []qmpInputEvent{
+			{
+				Type: qmpEventButton,
+				Data: qmpButtonEventData{
+					Down: true, Button: qmpPointerLeft,
+				},
+			},
+		},
+	}); err != nil {
+		return err
+	}
+	return client.execute(ctx, qmpCommandInputEvent, map[string]any{
+		"events": []qmpInputEvent{
+			{
+				Type: qmpEventButton,
+				Data: qmpButtonEventData{
+					Down: false, Button: qmpPointerLeft,
+				},
+			},
+		},
+	})
+}
+
+func (client *qmpClient) selectAbsolutePointer(ctx context.Context) error {
+	mice, err := client.queryMice(ctx)
+	if err != nil {
+		return err
+	}
+	var tablet *qmpMouseInfo
+	for index := range mice {
+		if !mice[index].Absolute || mice[index].Name != qmpUSBTabletName {
+			continue
+		}
+		if tablet != nil {
+			return errors.New("QMP reported multiple USB tablet handlers")
+		}
+		tablet = &mice[index]
+	}
+	if tablet == nil {
+		return errors.New("QMP reported no USB tablet handler")
+	}
+	if tablet.Current {
+		return nil
+	}
+	if _, err := client.executeResult(
+		ctx,
+		qmpCommandHumanMonitor,
+		map[string]any{
+			"command-line": fmt.Sprintf(
+				"%s %d",
+				qmpMouseSetCommand,
+				tablet.Index,
+			),
+		},
+	); err != nil {
+		return err
+	}
+	mice, err = client.queryMice(ctx)
+	if err != nil {
+		return err
+	}
+	for index := range mice {
+		if mice[index].Index == tablet.Index &&
+			mice[index].Absolute &&
+			mice[index].Name == qmpUSBTabletName &&
+			mice[index].Current {
+			return nil
+		}
+	}
+	return errors.New("QMP absolute pointer handler did not become current")
+}
+
+func (client *qmpClient) queryMice(ctx context.Context) ([]qmpMouseInfo, error) {
+	raw, err := client.executeResult(ctx, qmpCommandQueryMice, nil)
+	if err != nil {
+		return nil, err
+	}
+	var mice []qmpMouseInfo
+	if err := json.Unmarshal(raw, &mice); err != nil {
+		return nil, errors.New("decode QMP pointer handlers")
+	}
+	return mice, nil
+}
+
+func qmpAbsoluteCoordinate(pixel, dimension int) (int, error) {
+	if dimension <= 1 || pixel < 0 || pixel >= dimension {
+		return 0, errors.New("QMP absolute pointer coordinate is invalid")
+	}
+	return pixel * qmpAbsoluteMaximum / (dimension - 1), nil
+}
+
 func (client *qmpClient) approvePortal(
 	ctx context.Context,
+	lane,
 	cell string,
 ) error {
-	switch cell {
-	case "remote-desktop":
-		if err := client.sendChord(ctx, "alt", "i"); err != nil {
-			return err
-		}
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case <-time.After(qmpChordInterval):
-		}
-	case "screencast":
-	default:
+	if cell != "remote-desktop" && cell != "screencast" {
 		return errors.New("QMP portal approval cell is invalid")
 	}
-	return client.sendChord(ctx, "alt", "s")
+	switch lane {
+	case portalLaneGNOME:
+		if cell == "remote-desktop" {
+			if err := client.sendChord(ctx, qmpKeyAlt, qmpKeyI); err != nil {
+				return err
+			}
+			if err := waitQMPChord(ctx); err != nil {
+				return err
+			}
+		}
+		return client.sendChord(ctx, qmpKeyAlt, qmpKeyS)
+	case portalLaneKDE:
+		return errors.New(
+			"KDE portal approval uses protected KWin dialog geometry",
+		)
+	default:
+		return errors.New("QMP portal approval lane is invalid")
+	}
+}
+
+func waitQMPChord(ctx context.Context) error {
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-time.After(qmpChordInterval):
+		return nil
+	}
 }
 
 func (client *qmpClient) execute(
@@ -153,11 +338,20 @@ func (client *qmpClient) execute(
 	command string,
 	arguments any,
 ) error {
+	_, err := client.executeResult(ctx, command, arguments)
+	return err
+}
+
+func (client *qmpClient) executeResult(
+	ctx context.Context,
+	command string,
+	arguments any,
+) (json.RawMessage, error) {
 	if command == "" {
-		return errors.New("QMP command is empty")
+		return nil, errors.New("QMP command is empty")
 	}
 	if err := client.applyDeadline(ctx); err != nil {
-		return err
+		return nil, err
 	}
 	client.nextID++
 	id := client.nextID
@@ -166,30 +360,36 @@ func (client *qmpClient) execute(
 		Arguments: arguments,
 		ID:        id,
 	}); err != nil {
-		return fmt.Errorf("send QMP command %q", command)
+		return nil, fmt.Errorf("send QMP command %q", command)
 	}
 	for {
 		var response qmpMessage
 		if err := client.decoder.Decode(&response); err != nil {
-			return fmt.Errorf("read QMP command %q response", command)
+			return nil, fmt.Errorf("read QMP command %q response", command)
 		}
 		if response.Event != "" {
 			continue
 		}
 		if response.ID != id {
-			return fmt.Errorf("QMP command %q response ID mismatch", command)
+			return nil, fmt.Errorf(
+				"QMP command %q response ID mismatch",
+				command,
+			)
 		}
 		if response.Error != nil {
-			return fmt.Errorf(
+			return nil, fmt.Errorf(
 				"QMP command %q failed with class %q",
 				command,
 				response.Error.Class,
 			)
 		}
 		if response.Return == nil {
-			return fmt.Errorf("QMP command %q response is invalid", command)
+			return nil, fmt.Errorf(
+				"QMP command %q response is invalid",
+				command,
+			)
 		}
-		return nil
+		return response.Return, nil
 	}
 }
 
@@ -242,17 +442,29 @@ func buildHostedQEMUArguments(
 		sshPort,
 		true,
 	)
-	arguments := make([]string, 0, len(base)+8)
-	for _, argument := range base {
-		if argument != "-daemonize" {
-			arguments = append(arguments, argument)
+	arguments := make([]string, 0, len(base)+10)
+	for index := 0; index < len(base); index++ {
+		if base[index] == "-daemonize" {
+			continue
 		}
+		if base[index] == "-device" &&
+			index+1 < len(base) &&
+			base[index+1] == "bochs-display" {
+			index++
+			continue
+		}
+		arguments = append(arguments, base[index])
 	}
 	return append(
 		arguments,
 		"-device", "qemu-xhci",
 		"-device", "usb-kbd",
 		"-device", "usb-tablet",
+		"-device", fmt.Sprintf(
+			"bochs-display,xres=%d,yres=%d",
+			hostedDisplayWidth,
+			hostedDisplayHeight,
+		),
 		"-qmp", "unix:"+qmpSocket+",server=on,wait=off",
 	)
 }
