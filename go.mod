@@ -17,6 +17,7 @@ require (
 	github.com/vcaesar/screenshot v0.11.1
 	github.com/vcaesar/tt v0.30.0
 	golang.org/x/sys v0.46.0
+	golang.org/x/tools v0.46.0
 )
 
 require (
@@ -34,7 +35,9 @@ require (
 	github.com/yusufpapurcu/wmi v1.2.4 // indirect
 	golang.org/x/exp v0.0.0-20260611194520-c48552f49976 // indirect
 	golang.org/x/image v0.43.0 // indirect
+	golang.org/x/mod v0.37.0 // indirect
 	golang.org/x/oauth2 v0.35.0 // indirect
+	golang.org/x/sync v0.21.0 // indirect
 )
 
 // replace golang.org/x/sys => github.com/golang/sys v0.0.0-20190109145017-48ac38b7c8cb

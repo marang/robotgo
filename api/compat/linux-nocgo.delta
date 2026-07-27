@@ -1,0 +1,65 @@
+# RobotGo public API delta v1
+base linux-cgo.api
+- github.com/marang/robotgo/base: const Unknown github.com/marang/robotgo/base.DisplayServer = 2
+- github.com/marang/robotgo/base: const Wayland github.com/marang/robotgo/base.DisplayServer = 0
+- github.com/marang/robotgo/base: const X11 github.com/marang/robotgo/base.DisplayServer = 1
+- github.com/marang/robotgo/base: type DisplayServer int
+- github.com/marang/robotgo/screen: func CaptureScreen(...int) (github.com/marang/robotgo._Ctype_MMBitmapRef, error)
+- github.com/marang/robotgo: func ByteToCBitmap([]byte) github.com/marang/robotgo._Ctype_MMBitmapRef
+- github.com/marang/robotgo: func ByteToCBitmapE([]byte) (github.com/marang/robotgo._Ctype_MMBitmapRef, error)
+- github.com/marang/robotgo: func CaptureScreen(...int) (github.com/marang/robotgo._Ctype_MMBitmapRef, error)
+- github.com/marang/robotgo: func CheckMouse(string) github.com/marang/robotgo._Ctype_uint
+- github.com/marang/robotgo: func FreeBitmap(github.com/marang/robotgo._Ctype_MMBitmapRef)
+- github.com/marang/robotgo: func FreeBitmapArr(...github.com/marang/robotgo._Ctype_MMBitmapRef)
+- github.com/marang/robotgo: func GetActiveC() github.com/marang/robotgo._Ctype_struct__MData
+- github.com/marang/robotgo: func GetHandByPidC(int, ...int) github.com/marang/robotgo._Ctype_struct__MData
+- github.com/marang/robotgo: func GetPxColor(int, int, ...int) (github.com/marang/robotgo._Ctype_uint, error)
+- github.com/marang/robotgo: func GetXid(*github.com/jezek/xgbutil.XUtil, int) (github.com/jezek/xgb/xproto.Window, error)
+- github.com/marang/robotgo: func GetXidByPid(*github.com/jezek/xgbutil.XUtil, int) (github.com/jezek/xgb/xproto.Window, error)
+- github.com/marang/robotgo: func GetXidFromPid(*github.com/jezek/xgbutil.XUtil, int) (github.com/jezek/xgb/xproto.Window, error)
+- github.com/marang/robotgo: func GoString(*github.com/marang/robotgo._Ctype_char) string
+- github.com/marang/robotgo: func HexToRgb(uint32) *github.com/marang/robotgo._Ctype_uchar
+- github.com/marang/robotgo: func ImgToCBitmap(image.Image) github.com/marang/robotgo._Ctype_MMBitmapRef
+- github.com/marang/robotgo: func ImgToCBitmapE(image.Image) (github.com/marang/robotgo._Ctype_MMBitmapRef, error)
+- github.com/marang/robotgo: func PadHex(github.com/marang/robotgo._Ctype_uint) string
+- github.com/marang/robotgo: func RgbToHex(uint8, uint8, uint8) github.com/marang/robotgo._Ctype_uint
+- github.com/marang/robotgo: func SetActiveC(github.com/marang/robotgo._Ctype_struct__MData)
+- github.com/marang/robotgo: func ToBitmap(github.com/marang/robotgo._Ctype_MMBitmapRef) github.com/marang/robotgo.Bitmap
+- github.com/marang/robotgo: func ToCBitmap(github.com/marang/robotgo.Bitmap) github.com/marang/robotgo._Ctype_MMBitmapRef
+- github.com/marang/robotgo: func ToCBitmapE(github.com/marang/robotgo.Bitmap) (github.com/marang/robotgo._Ctype_MMBitmapRef, error)
+- github.com/marang/robotgo: func ToImage(github.com/marang/robotgo._Ctype_MMBitmapRef) image.Image
+- github.com/marang/robotgo: func ToMMBitmapRef(github.com/marang/robotgo._Ctype_MMBitmapRef) github.com/marang/robotgo._Ctype_MMBitmapRef
+- github.com/marang/robotgo: func ToMMRGBHex(github.com/marang/robotgo.CHex) github.com/marang/robotgo._Ctype_uint
+- github.com/marang/robotgo: func ToRGBA(github.com/marang/robotgo._Ctype_MMBitmapRef) *image.RGBA
+- github.com/marang/robotgo: func ToRGBAE(github.com/marang/robotgo._Ctype_MMBitmapRef) (*image.RGBA, error)
+- github.com/marang/robotgo: func U32ToHex(github.com/marang/robotgo._Ctype_uint) github.com/marang/robotgo._Ctype_uint
+- github.com/marang/robotgo: func U8ToHex(*github.com/marang/robotgo._Ctype_uchar) github.com/marang/robotgo._Ctype_uint
+- github.com/marang/robotgo: type CBitmap = github.com/marang/robotgo._Ctype_MMBitmapRef
+- github.com/marang/robotgo: type Handle struct{XWin github.com/marang/robotgo._Ctype_ulong}
++ github.com/marang/robotgo/base: const Unknown github.com/marang/robotgo/base.DisplayServer = "unknown"
++ github.com/marang/robotgo/base: const Wayland github.com/marang/robotgo/base.DisplayServer = "wayland"
++ github.com/marang/robotgo/base: const X11 github.com/marang/robotgo/base.DisplayServer = "x11"
++ github.com/marang/robotgo/base: type DisplayServer string
++ github.com/marang/robotgo/screen: func CaptureScreen(...int) (*github.com/marang/robotgo.Bitmap, error)
++ github.com/marang/robotgo: func ByteToCBitmap([]byte) *github.com/marang/robotgo.Bitmap
++ github.com/marang/robotgo: func ByteToCBitmapE([]byte) (*github.com/marang/robotgo.Bitmap, error)
++ github.com/marang/robotgo: func CaptureScreen(...int) (*github.com/marang/robotgo.Bitmap, error)
++ github.com/marang/robotgo: func FindWindow(string) uintptr
++ github.com/marang/robotgo: func FreeBitmap(*github.com/marang/robotgo.Bitmap)
++ github.com/marang/robotgo: func FreeBitmapArr(...*github.com/marang/robotgo.Bitmap)
++ github.com/marang/robotgo: func GetPxColor(int, int, ...int) (uint32, error)
++ github.com/marang/robotgo: func HexToRgb(uint32) *uint8
++ github.com/marang/robotgo: func ImgToCBitmap(image.Image) *github.com/marang/robotgo.Bitmap
++ github.com/marang/robotgo: func ImgToCBitmapE(image.Image) (*github.com/marang/robotgo.Bitmap, error)
++ github.com/marang/robotgo: func PadHex(uint32) string
++ github.com/marang/robotgo: func RgbToHex(uint8, uint8, uint8) uint32
++ github.com/marang/robotgo: func ToBitmap(*github.com/marang/robotgo.Bitmap) github.com/marang/robotgo.Bitmap
++ github.com/marang/robotgo: func ToCBitmap(github.com/marang/robotgo.Bitmap) *github.com/marang/robotgo.Bitmap
++ github.com/marang/robotgo: func ToCBitmapE(github.com/marang/robotgo.Bitmap) (*github.com/marang/robotgo.Bitmap, error)
++ github.com/marang/robotgo: func ToImage(*github.com/marang/robotgo.Bitmap) image.Image
++ github.com/marang/robotgo: func ToRGBA(*github.com/marang/robotgo.Bitmap) *image.RGBA
++ github.com/marang/robotgo: func ToRGBAE(*github.com/marang/robotgo.Bitmap) (*image.RGBA, error)
++ github.com/marang/robotgo: func U32ToHex(uint32) uint32
++ github.com/marang/robotgo: func U8ToHex(*uint8) uint32
++ github.com/marang/robotgo: type CBitmap = *github.com/marang/robotgo.Bitmap
++ github.com/marang/robotgo: type Handle uintptr

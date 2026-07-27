@@ -205,12 +205,19 @@ func GetXid(xu *xgbutil.XUtil, pid int) (xproto.Window, error) {
 	if owned {
 		defer xu.Conn().Close()
 	}
-	xid, err := GetXidFromPid(xu, pid)
+	xid, err := GetXidByPid(xu, pid)
 	return xid, err
 }
 
+// Deprecated: use GetXidByPid.
+//
 // GetXidFromPid returns the XID for the given PID.
 func GetXidFromPid(xu *xgbutil.XUtil, pid int) (xproto.Window, error) {
+	return GetXidByPid(xu, pid)
+}
+
+// GetXidByPid returns the XID for the given PID.
+func GetXidByPid(xu *xgbutil.XUtil, pid int) (xproto.Window, error) {
 	windows, err := ewmh.ClientListGet(xu)
 	if err != nil {
 		return 0, err
