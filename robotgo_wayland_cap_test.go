@@ -58,6 +58,7 @@ func TestCaptureImgNativeIgnoresPortalOverrides(t *testing.T) {
 func resetWaylandBoundsCacheForTest() {
 	waylandBoundsMu.Lock()
 	waylandBoundsCached = Rect{}
+	waylandPrimaryCached = Rect{}
 	waylandBoundsValid = false
 	waylandBoundsProbed = false
 	waylandBoundsAt = time.Time{}
@@ -155,6 +156,37 @@ OUT
 `
 	if err := os.WriteFile(stub, []byte(content), 0o755); err != nil {
 		t.Fatalf("write wayland-info stub: %v", err)
+	}
+}
+
+func writeWaylandInfoMultiOutputStub(t *testing.T, dir string) {
+	t.Helper()
+	stub := filepath.Join(dir, "wayland-info")
+	content := `#!/bin/sh
+cat <<'OUT'
+interface: 'zxdg_output_manager_v1', version: 3, name: 8
+	xdg_output_v1
+		output: 58
+		logical_x: 0, logical_y: 0
+		logical_width: 1280, logical_height: 720
+	xdg_output_v1
+		output: 59
+		logical_x: 1280, logical_y: 0
+		logical_width: 1024, logical_height: 768
+interface: 'wl_output', version: 4, name: 58
+	x: 0, y: 0, scale: 1,
+	mode:
+		width: 1280 px, height: 720 px, refresh: 60.000 Hz,
+		flags: current
+interface: 'wl_output', version: 4, name: 59
+	x: 1280, y: 0, scale: 1,
+	mode:
+		width: 1024 px, height: 768 px, refresh: 60.000 Hz,
+		flags: current
+OUT
+`
+	if err := os.WriteFile(stub, []byte(content), 0o755); err != nil {
+		t.Fatalf("write multi-output wayland-info stub: %v", err)
 	}
 }
 
@@ -344,6 +376,48 @@ func TestWaylandScreenFallbackWithoutX11(t *testing.T) {
 	}
 	if widthE != 800 || heightE != 600 {
 		t.Fatalf("GetScreenSizeE fallback = %dx%d, want 800x600", widthE, heightE)
+	}
+}
+
+func TestWaylandMultiOutputScreenSizeFallbackUsesPrimary(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("linux only")
+	}
+
+	tmp := t.TempDir()
+	writeWaylandInfoMultiOutputStub(t, tmp)
+	t.Setenv(envPath, tmp+":"+os.Getenv(envPath))
+	t.Setenv(envWaylandDisplay, testWaylandDisplay)
+	t.Setenv(envDisplay, "")
+
+	resetWaylandBoundsCacheForTest()
+	defer resetWaylandBoundsCacheForTest()
+
+	width, height := GetScreenSize()
+	if width != 1280 || height != 720 {
+		t.Fatalf(
+			"GetScreenSize fallback = %dx%d, want primary 1280x720",
+			width,
+			height,
+		)
+	}
+	widthE, heightE, err := GetScreenSizeE()
+	if err != nil || widthE != width || heightE != height {
+		t.Fatalf(
+			"GetScreenSizeE fallback = %dx%d, %v, want %dx%d, nil",
+			widthE,
+			heightE,
+			err,
+			width,
+			height,
+		)
+	}
+	rect := GetScreenRect()
+	if rect != (Rect{
+		Point: Point{X: 0, Y: 0},
+		Size:  Size{W: 2304, H: 768},
+	}) {
+		t.Fatalf("GetScreenRect fallback = %+v, want aggregate 0,0 2304x768", rect)
 	}
 }
 
