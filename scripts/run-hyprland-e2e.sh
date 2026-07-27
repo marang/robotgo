@@ -139,8 +139,13 @@ drm_sysfs_path="$(
 	readlink -f "/sys/class/drm/${ROBOTGO_HYPRLAND_DRM_DEVICE##*/}"
 )"
 readonly drm_sysfs_path
-readonly expected_drm_sysfs_path="/sys/devices/platform/vkms/drm/${ROBOTGO_HYPRLAND_DRM_DEVICE##*/}"
-if [[ "$drm_sysfs_path" != "$expected_drm_sysfs_path" ]]; then
+if [[ ! -d /sys/module/vkms ]]; then
+	printf 'isolated Hyprland DRM device is not backed by vkms\n' >&2
+	exit 1
+fi
+readonly exact_drm_sysfs_path="/sys/devices/platform/vkms/drm/${ROBOTGO_HYPRLAND_DRM_DEVICE##*/}"
+if [[ "$drm_sysfs_path" != "$exact_drm_sysfs_path" &&
+	"$drm_sysfs_path" != /sys/devices/platform/vkms.*/drm/"${ROBOTGO_HYPRLAND_DRM_DEVICE##*/}" ]]; then
 	printf 'isolated Hyprland DRM device is not backed by vkms\n' >&2
 	exit 1
 fi

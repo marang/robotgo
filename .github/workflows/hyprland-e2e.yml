@@ -44,22 +44,31 @@ jobs:
             "linux-modules-extra-$(uname -r)"
           sudo modprobe vkms
           sudo udevadm settle
+          test -d /sys/module/vkms
           mapfile -t vkms_cards < <(
             for card in /sys/class/drm/card[0-9]*; do
               test -e "$card" || continue
               card_path="$(readlink -f "$card")"
-              if [[ "$card_path" == /sys/devices/platform/vkms/drm/card[0-9]* ]]; then
+              if [[ "$card_path" == /sys/devices/platform/vkms/drm/card[0-9]* ||
+                "$card_path" == /sys/devices/platform/vkms.*/drm/card[0-9]* ]]; then
                 printf '%s\n' "/dev/dri/${card##*/}"
               fi
             done
           )
-          test "${#vkms_cards[@]}" -eq 1
+          if [ "${#vkms_cards[@]}" -ne 1 ]; then
+            echo 'vkms did not expose exactly one DRM card' >&2
+            exit 1
+          fi
           vkms_device="${vkms_cards[0]}"
-          test -c "$vkms_device"
-          test ! -L "$vkms_device"
+          if [ ! -c "$vkms_device" ] || [ -L "$vkms_device" ]; then
+            echo 'vkms DRM node is unavailable or unsafe' >&2
+            exit 1
+          fi
           sudo chmod 0666 "$vkms_device"
-          test -r "$vkms_device"
-          test -w "$vkms_device"
+          if [ ! -r "$vkms_device" ] || [ ! -w "$vkms_device" ]; then
+            echo 'vkms DRM node is not accessible to the isolated runtime' >&2
+            exit 1
+          fi
           printf 'ROBOTGO_HYPRLAND_DRM_DEVICE=%s\n' "$vkms_device" >>"$GITHUB_ENV"
           printf 'ROBOTGO_HYPRLAND_DRM_DRIVER=vkms\n' >>"$GITHUB_ENV"
       - name: Build pinned Hyprland runner
