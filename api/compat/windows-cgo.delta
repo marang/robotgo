@@ -1,0 +1,28 @@
+# RobotGo public API delta v1
+base linux-cgo.api
+- github.com/marang/robotgo/base: const Unknown github.com/marang/robotgo/base.DisplayServer = 2
+- github.com/marang/robotgo/base: const Wayland github.com/marang/robotgo/base.DisplayServer = 0
+- github.com/marang/robotgo/base: const X11 github.com/marang/robotgo/base.DisplayServer = 1
+- github.com/marang/robotgo/base: func DetectDisplayServer() github.com/marang/robotgo/base.DisplayServer
+- github.com/marang/robotgo/base: type DisplayServer int
+- github.com/marang/robotgo/clipboard: var Primary bool
+- github.com/marang/robotgo/input/portal: type Session struct{<private fields present>}
+- github.com/marang/robotgo: func ActivePidC(int, ...int) error
+- github.com/marang/robotgo: func GetXid(*github.com/jezek/xgbutil.XUtil, int) (github.com/jezek/xgb/xproto.Window, error)
+- github.com/marang/robotgo: func GetXidByPid(*github.com/jezek/xgbutil.XUtil, int) (github.com/jezek/xgb/xproto.Window, error)
+- github.com/marang/robotgo: func GetXidFromPid(*github.com/jezek/xgbutil.XUtil, int) (github.com/jezek/xgb/xproto.Window, error)
+- github.com/marang/robotgo: type Handle struct{XWin github.com/marang/robotgo._Ctype_ulong}
++ github.com/marang/robotgo/input/portal: type Session struct{}
++ github.com/marang/robotgo: func FindWindow(string) github.com/tailscale/win.HWND
++ github.com/marang/robotgo: func GetDPI(github.com/tailscale/win.HWND) uint32
++ github.com/marang/robotgo: func GetDesktopWindow() github.com/tailscale/win.HWND
++ github.com/marang/robotgo: func GetHWND() github.com/tailscale/win.HWND
++ github.com/marang/robotgo: func GetMain() github.com/tailscale/win.HWND
++ github.com/marang/robotgo: func GetMainDPI() int
++ github.com/marang/robotgo: func GetSysDPI(int32, uint32) int32
++ github.com/marang/robotgo: func SendInput(uint32, Pointer, int32) uint32
++ github.com/marang/robotgo: func SendMsg(github.com/tailscale/win.HWND, uint32, uintptr, uintptr) uintptr
++ github.com/marang/robotgo: func SetActiveWindow(github.com/tailscale/win.HWND) github.com/tailscale/win.HWND
++ github.com/marang/robotgo: func SetFocus(github.com/tailscale/win.HWND) github.com/tailscale/win.HWND
++ github.com/marang/robotgo: func SetForeg(github.com/tailscale/win.HWND) bool
++ github.com/marang/robotgo: type Handle struct{HWnd github.com/marang/robotgo._Ctype_HWND; Title [512]github.com/marang/robotgo._Ctype_char}

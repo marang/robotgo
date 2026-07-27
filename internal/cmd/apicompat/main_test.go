@@ -50,6 +50,29 @@ func TestValidateBaselineWriteSelectionRequiresOwner(t *testing.T) {
 	}
 }
 
+func TestCheckedInBaselinesReconstruct(t *testing.T) {
+	t.Parallel()
+
+	configPath := filepath.Join("..", "..", "..", "api", "compat", "config.json")
+	cfg, err := apicompat.LoadConfig(configPath)
+	if err != nil {
+		t.Fatalf("LoadConfig: %v", err)
+	}
+	for _, variant := range cfg.Variants {
+		variant := variant
+		t.Run(variant.Name, func(t *testing.T) {
+			t.Parallel()
+			manifest, err := readExpectedManifest(configPath, variant)
+			if err != nil {
+				t.Fatalf("readExpectedManifest: %v", err)
+			}
+			if err := apicompat.Compare(manifest, manifest); err != nil {
+				t.Fatalf("reconstructed manifest is invalid: %v", err)
+			}
+		})
+	}
+}
+
 func assertNoTemporaryBaselines(t *testing.T, directory string) {
 	t.Helper()
 

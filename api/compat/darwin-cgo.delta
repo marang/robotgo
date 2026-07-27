@@ -1,0 +1,18 @@
+# RobotGo public API delta v1
+base linux-cgo.api
+- github.com/marang/robotgo/base: const Unknown github.com/marang/robotgo/base.DisplayServer = 2
+- github.com/marang/robotgo/base: const Wayland github.com/marang/robotgo/base.DisplayServer = 0
+- github.com/marang/robotgo/base: const X11 github.com/marang/robotgo/base.DisplayServer = 1
+- github.com/marang/robotgo/base: func DetectDisplayServer() github.com/marang/robotgo/base.DisplayServer
+- github.com/marang/robotgo/base: type DisplayServer int
+- github.com/marang/robotgo/clipboard: var Primary bool
+- github.com/marang/robotgo/input/portal: type Session struct{<private fields present>}
+- github.com/marang/robotgo: func ActivePidC(int, ...int) error
+- github.com/marang/robotgo: func CheckMouse(string) github.com/marang/robotgo._Ctype_uint
+- github.com/marang/robotgo: func GetXid(*github.com/jezek/xgbutil.XUtil, int) (github.com/jezek/xgb/xproto.Window, error)
+- github.com/marang/robotgo: func GetXidByPid(*github.com/jezek/xgbutil.XUtil, int) (github.com/jezek/xgb/xproto.Window, error)
+- github.com/marang/robotgo: func GetXidFromPid(*github.com/jezek/xgbutil.XUtil, int) (github.com/jezek/xgb/xproto.Window, error)
+- github.com/marang/robotgo: type Handle struct{XWin github.com/marang/robotgo._Ctype_ulong}
++ github.com/marang/robotgo/input/portal: type Session struct{}
++ github.com/marang/robotgo: func CheckMouse(string) github.com/marang/robotgo._Ctype_MMMouseButton
++ github.com/marang/robotgo: type Handle struct{CgID github.com/marang/robotgo._Ctype_uint; AxID github.com/marang/robotgo._Ctype_AXUIElementRef}

@@ -71,6 +71,33 @@ func TestApplyDeltaRejectsStaleEntries(t *testing.T) {
 	}
 }
 
+func TestManifestDeltaRoundTripPreservesPackageRename(t *testing.T) {
+	t.Parallel()
+
+	base := Manifest{Packages: []PackageAPI{{
+		Path:         "example.test/a",
+		Name:         "a",
+		Declarations: []string{"func Kept()"},
+	}}}
+	current := base
+	current.Packages = []PackageAPI{{
+		Path:         "example.test/a",
+		Name:         "renamed",
+		Declarations: []string{"func Kept()"},
+	}}
+	delta, err := ManifestDelta(base, current, "base.api")
+	if err != nil {
+		t.Fatalf("ManifestDelta: %v", err)
+	}
+	reconstructed, err := ApplyDelta(base, delta)
+	if err != nil {
+		t.Fatalf("ApplyDelta: %v", err)
+	}
+	if err := Compare(current, reconstructed); err != nil {
+		t.Fatalf("package rename round trip: %v", err)
+	}
+}
+
 func TestParseDeltaRejectsAmbiguousChanges(t *testing.T) {
 	t.Parallel()
 
