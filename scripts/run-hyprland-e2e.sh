@@ -89,6 +89,14 @@ classify_session_bus_failure() {
 		failure_stage="$ROBOTGO_HYPRLAND_FAILURE_STAGE_SESSION_BUS_MACHINE_ID"
 	elif grep -Eqi 'uid and gid|user[^[:alnum:]]+(does not exist|not found|unknown)' "$log_file"; then
 		failure_stage="$ROBOTGO_HYPRLAND_FAILURE_STAGE_SESSION_BUS_USER"
+	elif grep -Eqi 'failed to setup environment|environment[^[:alnum:]]+(invalid|unavailable)' "$log_file"; then
+		failure_stage="$ROBOTGO_HYPRLAND_FAILURE_STAGE_SESSION_BUS_ENVIRONMENT"
+	elif grep -Eqi 'failed to (open|read|write|close)[^[:alnum:]]' "$log_file"; then
+		failure_stage="$ROBOTGO_HYPRLAND_FAILURE_STAGE_SESSION_BUS_FILE"
+	elif grep -Eqi 'failed to (fork|create pipe|fdopen)|file descriptor|child pipe' "$log_file"; then
+		failure_stage="$ROBOTGO_HYPRLAND_FAILURE_STAGE_SESSION_BUS_PROCESS"
+	elif grep -Eqi 'fd limit|resource|out of memory|not enough memory|capabilit' "$log_file"; then
+		failure_stage="$ROBOTGO_HYPRLAND_FAILURE_STAGE_SESSION_BUS_RESOURCE"
 	elif grep -Eqi 'configuration file|error in file|failed to start message bus' "$log_file"; then
 		failure_stage="$ROBOTGO_HYPRLAND_FAILURE_STAGE_SESSION_BUS_CONFIGURATION"
 	fi
