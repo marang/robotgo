@@ -1,0 +1,149 @@
+{
+  "schema": 1,
+  "module": "github.com/marang/robotgo",
+  "excludedPackagePrefixes": [
+    "github.com/marang/robotgo/cmd",
+    "github.com/marang/robotgo/examples"
+  ],
+  "variants": [
+    {
+      "name": "linux-cgo",
+      "goos": "linux",
+      "goarch": "amd64",
+      "cgoEnabled": true,
+      "baseline": "linux-cgo.api",
+      "description": "Native Linux/X11 default build"
+    },
+    {
+      "name": "linux-cgo-wayland",
+      "goos": "linux",
+      "goarch": "amd64",
+      "cgoEnabled": true,
+      "tags": [
+        "wayland"
+      ],
+      "baseline": "linux-cgo.api",
+      "description": "Native Linux Wayland build with invariant public API"
+    },
+    {
+      "name": "linux-cgo-portal",
+      "goos": "linux",
+      "goarch": "amd64",
+      "cgoEnabled": true,
+      "tags": [
+        "portal"
+      ],
+      "baseline": "linux-cgo-portal.delta",
+      "base": "linux-cgo.api",
+      "description": "Native Linux portal package build"
+    },
+    {
+      "name": "linux-cgo-pipewire",
+      "goos": "linux",
+      "goarch": "amd64",
+      "cgoEnabled": true,
+      "tags": [
+        "pipewire"
+      ],
+      "baseline": "linux-cgo.api",
+      "description": "Native Linux PipeWire implementation with invariant public API"
+    },
+    {
+      "name": "linux-cgo-full",
+      "goos": "linux",
+      "goarch": "amd64",
+      "cgoEnabled": true,
+      "tags": [
+        "pipewire",
+        "portal",
+        "wayland"
+      ],
+      "baseline": "linux-cgo-portal.delta",
+      "base": "linux-cgo.api",
+      "description": "Native Linux full build with only the portal-tag public additions"
+    },
+    {
+      "name": "linux-cgo-ocr",
+      "goos": "linux",
+      "goarch": "amd64",
+      "cgoEnabled": true,
+      "tags": [
+        "ocr"
+      ],
+      "baseline": "linux-cgo.api",
+      "description": "Native OCR implementation with invariant public API"
+    },
+    {
+      "name": "windows-cgo",
+      "goos": "windows",
+      "goarch": "amd64",
+      "cgoEnabled": true,
+      "baseline": "windows-cgo.delta",
+      "base": "linux-cgo.api",
+      "description": "Native Windows AMD64 build"
+    },
+    {
+      "name": "darwin-cgo",
+      "goos": "darwin",
+      "goarch": "arm64",
+      "cgoEnabled": true,
+      "baseline": "darwin-cgo.delta",
+      "base": "linux-cgo.api",
+      "description": "Native macOS ARM64 build"
+    },
+    {
+      "name": "linux-nocgo",
+      "goos": "linux",
+      "goarch": "amd64",
+      "cgoEnabled": false,
+      "baseline": "linux-nocgo.delta",
+      "base": "linux-cgo.api",
+      "description": "Pure-Go Linux/X11 build"
+    },
+    {
+      "name": "linux-nocgo-arm64",
+      "goos": "linux",
+      "goarch": "arm64",
+      "cgoEnabled": false,
+      "baseline": "linux-nocgo.delta",
+      "base": "linux-cgo.api",
+      "description": "Pure-Go Linux ARM64 build with invariant Linux API"
+    },
+    {
+      "name": "windows-nocgo",
+      "goos": "windows",
+      "goarch": "amd64",
+      "cgoEnabled": false,
+      "baseline": "windows-nocgo.delta",
+      "base": "linux-cgo.api",
+      "description": "Pure-Go Windows build"
+    },
+    {
+      "name": "windows-nocgo-arm64",
+      "goos": "windows",
+      "goarch": "arm64",
+      "cgoEnabled": false,
+      "baseline": "windows-nocgo.delta",
+      "base": "linux-cgo.api",
+      "description": "Pure-Go Windows ARM64 build with invariant Windows API"
+    },
+    {
+      "name": "darwin-nocgo",
+      "goos": "darwin",
+      "goarch": "arm64",
+      "cgoEnabled": false,
+      "baseline": "darwin-nocgo.delta",
+      "base": "linux-cgo.api",
+      "description": "Pure-Go macOS build"
+    },
+    {
+      "name": "darwin-nocgo-amd64",
+      "goos": "darwin",
+      "goarch": "amd64",
+      "cgoEnabled": false,
+      "baseline": "darwin-nocgo.delta",
+      "base": "linux-cgo.api",
+      "description": "Pure-Go macOS AMD64 build with invariant macOS API"
+    }
+  ]
+}

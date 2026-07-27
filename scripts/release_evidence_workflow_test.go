@@ -13,6 +13,12 @@ func TestReleaseEvidenceRequiresEveryPromotedHostedCheck(t *testing.T) {
 		t.Fatalf("read release-evidence workflow: %v", err)
 	}
 	text := string(workflow)
+	if count := strings.Count(text, "api-compat"); count != 2 {
+		t.Fatalf(
+			"release evidence contains api-compat %d times, want collector and package allowlist",
+			count,
+		)
+	}
 	for _, check := range []string{
 		"native-capture",
 		"native-input",
@@ -46,7 +52,7 @@ func TestReleaseEvidenceRequiresEveryPromotedHostedCheck(t *testing.T) {
 			)
 		}
 	}
-	if !strings.Contains(text, "(.checks | length) == 28") {
+	if !strings.Contains(text, "(.checks | length) == 29") {
 		t.Fatal("release evidence does not require the expanded exact check count")
 	}
 	if !strings.Contains(text, "then .provider == \"github-actions\"") {

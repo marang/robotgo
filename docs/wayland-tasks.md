@@ -301,7 +301,8 @@ backends.
     both GNOME/KDE bounds lanes green as exact-release gates.
   - Keep the consent-free hosted GNOME/KDE bounds workflow independent from
     portal consent and pixel/input paths. Both desktop lanes pass on the same
-    exact commit and are included in the current 28-check candidate manifest.
+    exact commit and are included with the public API compatibility gate in the
+    current 29-check candidate manifest.
   - Keep the race/vet and native ASan/LeakSanitizer CI jobs green and protected.
     The sanitizer gate covers the default CGO suite plus hermetic screencopy
     allocation/free, bounded timeout cleanup, and FD ownership paths.

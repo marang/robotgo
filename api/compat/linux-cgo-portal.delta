@@ -1,0 +1,4 @@
+# RobotGo public API delta v1
+base linux-cgo.api
++ github.com/marang/robotgo/screen/portal: func Capture(context.Context, int, int, int, int) (github.com/marang/robotgo/screen/portal._Ctype_MMBitmapRef, error)
++ github.com/marang/robotgo/screen/portal: type CBitmap = github.com/marang/robotgo/screen/portal._Ctype_MMBitmapRef

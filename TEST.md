@@ -12,6 +12,34 @@ go test ./...
 
 This is the baseline suite used for regular development and should stay green.
 
+The stable public Go API is an exact, blocking contract across native Linux,
+Wayland/portal/PipeWire, Pure-Go Linux, Windows, and macOS. Run the locally
+supported matrix with:
+
+```bash
+go run ./internal/cmd/apicompat \
+  -variant linux-cgo \
+  -variant linux-cgo-wayland \
+  -variant linux-cgo-portal \
+  -variant linux-cgo-pipewire \
+  -variant linux-cgo-full \
+  -variant linux-nocgo \
+  -variant linux-nocgo-arm64 \
+  -variant windows-nocgo \
+  -variant windows-nocgo-arm64 \
+  -variant darwin-nocgo \
+  -variant darwin-nocgo-amd64
+```
+
+The OCR CI job separately checks `linux-cgo-ocr` after installing Tesseract
+and Leptonica development files. The protected native macOS and Windows
+default-build jobs separately check `darwin-cgo` and `windows-cgo` on matching
+hosted runners. Any package-name, exported API, or newly discovered public
+library-package drift fails until the affected generated manifest is updated
+and reviewed. See
+[Public Go API Compatibility](docs/compatibility/public-api.md) for scope,
+exclusions, and the update command.
+
 The non-CGO contract is also part of CI:
 
 ```bash
@@ -255,9 +283,9 @@ every balanced-comparison benchmark once. The same job starts a reachable Xvfb w
 and verifies that native readiness rejects it without injecting input. Missing
 runtime prerequisites fail instead of turning these checks into successful
 skips. Performance numbers are report-only; correctness is blocking. Repository
-branch protection requires the stable three-OS, lint, vet, race, sanitizer,
-Wayland, and X11 evidence checks. The hosted Sway, GNOME, and KDE compositor
-jobs are documented below; permission-granted macOS and optional
+branch protection requires the public API gate, stable three-OS, lint, vet,
+race, sanitizer, Wayland, and X11 evidence checks. The hosted Sway, GNOME, and
+KDE compositor jobs are documented below; permission-granted macOS and optional
 operator-driven compositor jobs remain outside the default gate.
 
 The additive `X11 default suite` workflow runs the complete CGO default suite
@@ -984,9 +1012,9 @@ multi-output GNOME and KDE RemoteDesktop and ScreenCast jobs for the same
 candidate SHA. Missing, skipped, stale, or failed portal evidence therefore
 also blocks packaging and publication. The consent-free GNOME and KDE
 multi-output bounds jobs and isolated Hyprland window-geometry cell are invoked
-for that exact candidate and are likewise required before the 28-check manifest
+for that exact candidate and are likewise required before the 29-check manifest
 can be packaged.
-The complete contract passes on exact merged `main` in
+The last pre-API-freeze 28-check contract passes on exact merged `main` in
 [`Release Evidence` run 30272753885](https://github.com/marang/robotgo/actions/runs/30272753885).
 
 On a clean Linux native checkout, reproduce the generator/verifier path with:
