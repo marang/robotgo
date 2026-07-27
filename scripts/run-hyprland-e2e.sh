@@ -12,6 +12,7 @@ readonly required_width=1280
 readonly required_height=720
 readonly cell='hyprland-window'
 readonly test_name='TestHyprlandWindowRuntime'
+readonly session_bus_socket='/tmp/robotgo-hyprland-session-bus'
 
 if (($# != 0)); then
 	printf 'usage: %s\n' "$0" >&2
@@ -81,6 +82,7 @@ cleanup() {
 	terminate_group "$hyprland_pid"
 	terminate_group "$seatd_pid"
 	terminate_group "$dbus_pid"
+	rm -f -- "$session_bus_socket"
 	if [[ -n "$runtime_dir" && "$runtime_dir" == "$RUNNER_TEMP/$runtime_prefix".* ]]; then
 		rm -rf -- "$runtime_dir"
 	fi
@@ -159,7 +161,7 @@ export AQ_NO_MODIFIERS='1'
 export LIBSEAT_BACKEND='seatd'
 export SEATD_SOCK="$runtime_dir/seatd.sock"
 export SEATD_VTBOUND='0'
-export DBUS_SESSION_BUS_ADDRESS="unix:path=$runtime_dir/session-bus"
+export DBUS_SESSION_BUS_ADDRESS="unix:path=$session_bus_socket"
 unset DISPLAY WAYLAND_DISPLAY HYPRLAND_INSTANCE_SIGNATURE SWAYSOCK
 
 failure_stage="$ROBOTGO_HYPRLAND_FAILURE_STAGE_MACHINE_IDENTITY"
@@ -184,11 +186,11 @@ setsid dbus-daemon \
 	>"$runtime_dir/dbus.log" 2>&1 &
 dbus_pid=$!
 for _ in {1..100}; do
-	[[ -S "$runtime_dir/session-bus" ]] && break
+	[[ -S "$session_bus_socket" ]] && break
 	kill -0 "$dbus_pid" 2>/dev/null || break
 	sleep 0.05
 done
-if [[ ! -S "$runtime_dir/session-bus" ]]; then
+if [[ ! -S "$session_bus_socket" ]]; then
 	printf 'isolated session bus did not become ready\n' >&2
 	exit 1
 fi

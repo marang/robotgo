@@ -63,6 +63,7 @@ func TestHyprlandWorkflowUsesOnlyVerifiedVKMSDevice(t *testing.T) {
 		"/usr/bin/bash",
 		"dbus-daemon",
 		"DBUS_SESSION_BUS_ADDRESS",
+		"/tmp/robotgo-hyprland-session-bus",
 		"device-contract",
 		"machine-identity",
 		"session-bus",
