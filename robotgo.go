@@ -592,6 +592,7 @@ var (
 	waylandBoundsProbeMu sync.Mutex
 	waylandBoundsMu      sync.Mutex
 	waylandBoundsCached  Rect
+	waylandPrimaryCached Rect
 	waylandBoundsValid   bool
 	waylandBoundsProbed  bool
 	waylandBoundsAt      time.Time
@@ -610,6 +611,7 @@ func InvalidateScreenBoundsCache() {
 	defer waylandBoundsProbeMu.Unlock()
 	waylandBoundsMu.Lock()
 	waylandBoundsCached = Rect{}
+	waylandPrimaryCached = Rect{}
 	waylandBoundsValid = false
 	waylandBoundsProbed = false
 	waylandBoundsAt = time.Time{}
@@ -617,6 +619,14 @@ func InvalidateScreenBoundsCache() {
 }
 
 func waylandScreenBoundsFallback() (Rect, bool) {
+	return waylandBoundsFallback(false)
+}
+
+func waylandPrimaryBoundsFallback() (Rect, bool) {
+	return waylandBoundsFallback(true)
+}
+
+func waylandBoundsFallback(primary bool) (Rect, bool) {
 	if !isWaylandSession() {
 		return Rect{}, false
 	}
@@ -630,9 +640,13 @@ func waylandScreenBoundsFallback() (Rect, bool) {
 			ttl = waylandBoundsSuccessTTL
 		}
 		if waylandBoundsNow().Sub(waylandBoundsAt) < ttl {
-			r, ok := waylandBoundsCached, waylandBoundsValid
+			rect := waylandBoundsCached
+			if primary {
+				rect = waylandPrimaryCached
+			}
+			ok := waylandBoundsValid
 			waylandBoundsMu.Unlock()
-			return r, ok
+			return rect, ok
 		}
 	}
 	waylandBoundsMu.Unlock()
@@ -660,20 +674,45 @@ func waylandScreenBoundsFallback() (Rect, bool) {
 		return Rect{}, false
 	}
 
-	rect, ok := parseWaylandInfoBounds(string(out))
+	rect, primaryRect, ok := parseWaylandInfoGeometry(string(out))
 	waylandBoundsMu.Lock()
 	waylandBoundsProbed = true
 	waylandBoundsValid = ok
 	waylandBoundsAt = waylandBoundsNow()
 	if ok {
 		waylandBoundsCached = rect
+		waylandPrimaryCached = primaryRect
 	}
 	waylandBoundsMu.Unlock()
 
+	if primary {
+		return primaryRect, ok
+	}
 	return rect, ok
 }
 
 func parseWaylandInfoBounds(raw string) (Rect, bool) {
+	aggregate, _, ok := parseWaylandInfoGeometry(raw)
+	return aggregate, ok
+}
+
+func parseWaylandInfoGeometry(raw string) (Rect, Rect, bool) {
+	bounds, ok := parseWaylandInfoOutputBounds(raw)
+	if !ok {
+		return Rect{}, Rect{}, false
+	}
+	aggregate, ok := aggregateWaylandOutputBounds(bounds)
+	if !ok {
+		return Rect{}, Rect{}, false
+	}
+	primary, ok := primaryWaylandOutputBounds(bounds)
+	if !ok {
+		return Rect{}, Rect{}, false
+	}
+	return aggregate, primary, true
+}
+
+func parseWaylandInfoOutputBounds(raw string) ([]waylandOutputBounds, bool) {
 	type xdgState struct {
 		outputID      int
 		hasID         bool
@@ -726,6 +765,10 @@ func parseWaylandInfoBounds(raw string) (Rect, bool) {
 			w: xs.logicalW,
 			h: xs.logicalH,
 		}
+		if xs.hasID {
+			bounds.name = xs.outputID
+			bounds.named = true
+		}
 		logicalBounds = append(logicalBounds, bounds)
 		if xs.hasID {
 			xdgBounds[xs.outputID] = bounds
@@ -765,10 +808,12 @@ func parseWaylandInfoBounds(raw string) (Rect, bool) {
 			return
 		}
 		wlBounds = append(wlBounds, waylandOutputBounds{
-			x: ws.x,
-			y: ws.y,
-			w: w,
-			h: h,
+			x:     ws.x,
+			y:     ws.y,
+			w:     w,
+			h:     h,
+			name:  ws.outputID,
+			named: ws.hasID,
 		})
 	}
 
@@ -899,7 +944,7 @@ func parseWaylandInfoBounds(raw string) (Rect, bool) {
 		}
 	}
 	if sc.Err() != nil {
-		return Rect{}, false
+		return nil, false
 	}
 
 	if inXDG {
@@ -911,9 +956,9 @@ func parseWaylandInfoBounds(raw string) (Rect, bool) {
 
 	if len(logicalBounds) > 0 &&
 		(len(wlBounds) == 0 || len(logicalBounds) == len(wlBounds)) {
-		return aggregateWaylandOutputBounds(logicalBounds)
+		return logicalBounds, true
 	}
-	return aggregateWaylandOutputBounds(wlBounds)
+	return wlBounds, len(wlBounds) > 0
 }
 
 func captureDebugf(format string, args ...interface{}) {
@@ -1247,7 +1292,7 @@ func GetScreenSize() (int, int) {
 	if w > 0 && h > 0 {
 		return w, h
 	}
-	if rect, ok := waylandScreenBoundsFallback(); ok {
+	if rect, ok := waylandPrimaryBoundsFallback(); ok {
 		return rect.W, rect.H
 	}
 	return w, h

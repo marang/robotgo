@@ -1,8 +1,10 @@
 package robotgo
 
 type waylandOutputBounds struct {
-	x, y int
-	w, h int
+	x, y  int
+	w, h  int
+	name  int
+	named bool
 }
 
 func aggregateWaylandOutputBounds(bounds []waylandOutputBounds) (Rect, bool) {
@@ -67,4 +69,59 @@ func aggregateWaylandOutputBounds(bounds []waylandOutputBounds) (Rect, bool) {
 		Point{X: int(minX), Y: int(minY)},
 		Size{W: int(width), H: int(height)},
 	}, true
+}
+
+func primaryWaylandOutputBounds(bounds []waylandOutputBounds) (Rect, bool) {
+	if len(bounds) == 0 {
+		return Rect{}, false
+	}
+	var primary Rect
+	var primaryOutput waylandOutputBounds
+	primaryContainsOrigin := false
+	for index, output := range bounds {
+		rect, ok := aggregateWaylandOutputBounds([]waylandOutputBounds{output})
+		if !ok {
+			return Rect{}, false
+		}
+		right := int64(rect.X) + int64(rect.W)
+		bottom := int64(rect.Y) + int64(rect.H)
+		containsOrigin := rect.X <= 0 && right > 0 &&
+			rect.Y <= 0 && bottom > 0
+		if index == 0 || preferWaylandPrimary(
+			rect,
+			output,
+			containsOrigin,
+			primary,
+			primaryOutput,
+			primaryContainsOrigin,
+		) {
+			primary = rect
+			primaryOutput = output
+			primaryContainsOrigin = containsOrigin
+		}
+	}
+	return primary, true
+}
+
+func preferWaylandPrimary(
+	candidate Rect,
+	candidateOutput waylandOutputBounds,
+	candidateContainsOrigin bool,
+	current Rect,
+	currentOutput waylandOutputBounds,
+	currentContainsOrigin bool,
+) bool {
+	if candidateContainsOrigin != currentContainsOrigin {
+		return candidateContainsOrigin
+	}
+	if candidate.Y != current.Y {
+		return candidate.Y < current.Y
+	}
+	if candidate.X != current.X {
+		return candidate.X < current.X
+	}
+	if candidateOutput.named != currentOutput.named {
+		return candidateOutput.named
+	}
+	return candidateOutput.named && candidateOutput.name < currentOutput.name
 }
