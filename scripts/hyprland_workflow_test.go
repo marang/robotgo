@@ -70,6 +70,9 @@ func TestHyprlandWorkflowUsesOnlyVerifiedVKMSDevice(t *testing.T) {
 		"ROBOTGO_HYPRLAND_E2E_FAIL_AFTER_START=1",
 		"hyprland-hyprland-window-failure-reason",
 		"container-runtime",
+		"trap 'exit 130' INT",
+		"trap 'exit 143' TERM",
+		"trap 'exit 129' HUP",
 		"isolated Hyprland evidence failed at sanitized stage: unavailable",
 		"induced failure retained an isolated Hyprland runtime",
 		"evidence.json",
@@ -100,6 +103,14 @@ func TestHyprlandWorkflowUsesOnlyVerifiedVKMSDevice(t *testing.T) {
 		if strings.Contains(contract, forbidden) {
 			t.Errorf("Hyprland evidence contract contains unsafe token %q", forbidden)
 		}
+	}
+	containerStop := strings.LastIndex(string(workflowData), "docker rm -f")
+	evidenceCleanup := strings.LastIndex(
+		string(workflowData),
+		"go run ./internal/cmd/compositorevidence cleanup",
+	)
+	if containerStop < 0 || evidenceCleanup < 0 || containerStop > evidenceCleanup {
+		t.Fatal("Hyprland fallback cleanup does not stop containers before deleting evidence")
 	}
 }
 

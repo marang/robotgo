@@ -61,7 +61,10 @@ readonly failure_reason_file="$RUNNER_TEMP/hyprland-hyprland-window-failure-reas
 cleanup() {
 	docker rm -f "$container_name" >/dev/null 2>&1 || true
 }
-trap cleanup EXIT INT TERM HUP
+trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
+trap 'exit 129' HUP
 
 arguments=(
 	run

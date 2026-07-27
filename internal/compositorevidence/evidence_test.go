@@ -84,7 +84,8 @@ func TestHyprlandWindowCellHasFixedEvidenceIdentity(t *testing.T) {
 	}
 	if spec.Package != swayPackage ||
 		spec.Name != hyprlandWindowTestName ||
-		spec.Command != hyprlandCommandPrefix+hyprlandWindowTestName+swayCommandSuffix {
+		spec.Command != hyprlandCommandPrefix+hyprlandWindowTestName+swayCommandSuffix ||
+		!strings.HasPrefix(spec.Command, "go test -asan ") {
 		t.Fatalf("Hyprland test spec = %+v", spec)
 	}
 	if err := validateWorkflow(CellHyprlandWindow, "Hyprland E2E"); err != nil {

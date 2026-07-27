@@ -602,7 +602,8 @@ func assertSocketInRuntime(t *testing.T, runtimeDirectory, value string) {
 	}
 	clean := filepath.Clean(path)
 	relative, err := filepath.Rel(runtimeDirectory, clean)
-	if err != nil || relative == "." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
+	if err != nil || relative == "." || relative == ".." ||
+		strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
 		t.Fatal("isolated Sway socket escapes its private runtime directory")
 	}
 	info, err := os.Lstat(clean)

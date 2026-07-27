@@ -299,7 +299,7 @@ func assertHyprlandSocketInRuntime(t *testing.T, runtimeDirectory, value string)
 	}
 	clean := filepath.Clean(path)
 	relative, err := filepath.Rel(runtimeDirectory, clean)
-	if err != nil || relative == "." ||
+	if err != nil || relative == "." || relative == ".." ||
 		strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
 		t.Fatal("isolated Hyprland socket escapes its private runtime directory")
 	}

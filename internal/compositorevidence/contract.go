@@ -63,7 +63,7 @@ const (
 	swayOutputTestName      = "TestSwayNativeOutputRuntime"
 	swayOutputMultiTestName = "TestSwayNativeOutputMultiRuntime"
 	swayPortalTestName      = "TestSwayPortalAvailabilityRuntime"
-	hyprlandCommandPrefix   = "go test -count=1 -timeout=2m -tags=wayland,hyprlandintegration . -run ^"
+	hyprlandCommandPrefix   = "go test -asan -count=1 -timeout=2m -tags=wayland,hyprlandintegration . -run ^"
 )
 
 var (

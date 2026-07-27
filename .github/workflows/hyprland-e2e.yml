@@ -162,16 +162,6 @@ jobs:
         run: |
           set -euo pipefail
           umask 077
-          rm -f -- \
-            "$RUNNER_TEMP/hyprland-cleanup-supervisor.log" \
-            "$RUNNER_TEMP/hyprland-supervisor.log" \
-            "$RUNNER_TEMP/hyprland-hyprland-window-failure-reason"
-          rm -f -- \
-            "$RUNNER_TEMP/hyprland-e2e-hyprland-window/raw-test.log" \
-            "$RUNNER_TEMP/hyprland-e2e-hyprland-window/.preflight.json" || true
-          go run ./internal/cmd/compositorevidence cleanup \
-            -runner-temp "$RUNNER_TEMP" \
-            -output-dir "$RUNNER_TEMP/hyprland-e2e-hyprland-window"
           docker rm -f \
             "robotgo-hyprland-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-normal" \
             "robotgo-hyprland-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-induced-failure" \
@@ -186,6 +176,16 @@ jobs:
             echo 'induced-failure Hyprland evidence container survived cleanup' >&2
             exit 1
           fi
+          rm -f -- \
+            "$RUNNER_TEMP/hyprland-cleanup-supervisor.log" \
+            "$RUNNER_TEMP/hyprland-supervisor.log" \
+            "$RUNNER_TEMP/hyprland-hyprland-window-failure-reason"
+          rm -f -- \
+            "$RUNNER_TEMP/hyprland-e2e-hyprland-window/raw-test.log" \
+            "$RUNNER_TEMP/hyprland-e2e-hyprland-window/.preflight.json" || true
+          go run ./internal/cmd/compositorevidence cleanup \
+            -runner-temp "$RUNNER_TEMP" \
+            -output-dir "$RUNNER_TEMP/hyprland-e2e-hyprland-window"
           find "$RUNNER_TEMP" -mindepth 1 -maxdepth 1 -type d \
             -name 'robotgo-hyprland-runtime.*' -exec rm -rf -- {} +
           test -z "$(find "$RUNNER_TEMP" -mindepth 1 -maxdepth 1 -type d \
