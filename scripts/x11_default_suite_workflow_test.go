@@ -57,3 +57,15 @@ func TestX11DefaultSuiteWorkflowContract(t *testing.T) {
 		}
 	}
 }
+
+func TestCircleCIConfigurationRemoved(t *testing.T) {
+	t.Parallel()
+	for _, path := range []string{
+		"../.circleci/config.yml",
+		"../.circleci/images/primary/Dockerfile",
+	} {
+		if _, err := os.Stat(path); !os.IsNotExist(err) {
+			t.Errorf("obsolete CircleCI path %q still exists or is unreadable: %v", path, err)
+		}
+	}
+}
