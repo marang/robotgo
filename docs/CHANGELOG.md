@@ -1,5 +1,14 @@
 # CHANGELOG
 
+## Unreleased
+
+- Added protected, sanitizer-backed Hyprland active-window geometry evidence
+  on one isolated GitHub-hosted `vkms` display, with no physical input/GPU
+  devices and mandatory private-runtime cleanup.
+- Promoted the Hyprland window cell into the exact-candidate release gate,
+  expanding the current workflow manifest from 25 to 26 checks while retaining
+  the published beta.2 evidence unchanged.
+
 ## RobotGo v1.0.0-beta.2 — 2026-07-27
 
 This second pre-release adds a policy-gated agent automation layer and local

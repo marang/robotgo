@@ -1,0 +1,43 @@
+FROM docker.io/library/archlinux@sha256:592e11bd99ab579f933a0cb77a8f66e2f3ae57f5eafacf13aea44a6e98ef21ae
+
+COPY infrastructure/hyprland-runner/mirrorlist /etc/pacman.d/mirrorlist
+
+RUN pacman -Syu --noconfirm --needed \
+        base-devel \
+        coreutils \
+        git \
+        go \
+        hyprland \
+        jq \
+        libdrm \
+        libx11 \
+        libxkbcommon \
+        libxtst \
+        mesa \
+        pkgconf \
+        seatd \
+        wayland \
+        wev \
+    && pacman -Scc --noconfirm
+
+RUN for command in \
+        /usr/bin/bash \
+        /usr/bin/git \
+        /usr/bin/go \
+        /usr/bin/Hyprland \
+        /usr/bin/hyprctl \
+        /usr/bin/jq \
+        /usr/bin/seatd \
+        /usr/bin/setsid \
+        /usr/bin/stdbuf \
+        /usr/bin/wev; \
+    do \
+        test -x "$command"; \
+    done
+
+ENV GOMODCACHE=/go/pkg/mod
+WORKDIR /tmp/robotgo-mod
+COPY go.mod go.sum ./
+RUN go mod download
+
+WORKDIR /workspace

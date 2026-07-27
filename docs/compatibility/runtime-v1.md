@@ -1,7 +1,7 @@
 # Runtime Compatibility Matrix v1
 
 Matrix version: **1**
-Published: **2026-07-26**
+Published: **2026-07-27**
 
 This matrix separates implemented behavior from blocking runtime evidence.
 `supported` means the applicable build and behavioral contract is blocking in
@@ -16,6 +16,7 @@ available. A pending row is not a passing row.
 | Linux/X11 | Native CGO | supported | Default Linux tests, race/vet/lint, ASan/LeakSanitizer ownership gate, Xvfb/XTEST public contract, XTEST-disabled negative contract |
 | Linux/X11 | Pure Go | supported | Non-CGO Linux tests plus non-skipping Xvfb/XTEST input, capture, bounds, cleanup, and crash-guardian contracts |
 | Linux/Wayland/wlroots | Native CGO, `wayland` | supported for advertised protocols | Weston integration plus hermetic tests and retained [`Sway E2E` run 29861058126](https://github.com/marang/robotgo/actions/runs/29861058126) for native input/capture/window, single- and multi-output geometry, portal availability, and induced-failure cleanup; compositor-specific protocols remain capability-gated |
+| Hyprland/Wayland | Native CGO, `wayland` | supported active-window subset | Retained exact-commit [`Hyprland E2E` run 30257300794](https://github.com/marang/robotgo/actions/runs/30257300794) uses one verified GitHub-hosted `vkms` card and a self-owned fixture to prove title, PID, exact active bounds, legacy parity, explicit unsupported portable-handle/client/PID-target contracts, sanitizer execution, and induced-failure cleanup; broader foreign-window state/control remains capability-gated |
 | Linux/Wayland | Pure Go | supported subset | Non-CGO portal capture/input plus bounded native `wl_output`/`xdg-output` logical bounds; shared helpers refuse implicit Xwayland; capture/input still require user consent and portal backend availability where no native path exists |
 | GNOME/Wayland | CGO and Pure Go portal paths | supported for single- and multi-output portal input/capture | Retained exact-commit single-output [`RemoteDesktop`](https://github.com/marang/robotgo/actions/runs/30199452053) and [`ScreenCast`](https://github.com/marang/robotgo/actions/runs/30199195890), plus multi-output [`RemoteDesktop`](https://github.com/marang/robotgo/actions/runs/30220551561) and [`ScreenCast`](https://github.com/marang/robotgo/actions/runs/30222315257) nested-GNOME evidence; the multi-output jobs are exact-release gates, while compositor-wide window control remains a gap |
 | KDE Plasma/Wayland | CGO and Pure Go portal paths | supported for single- and multi-output portal input/capture | Retained exact-commit single-output [`RemoteDesktop`](https://github.com/marang/robotgo/actions/runs/30204553569) and [`ScreenCast`](https://github.com/marang/robotgo/actions/runs/30214614314), plus multi-output [`RemoteDesktop`](https://github.com/marang/robotgo/actions/runs/30220551561) and [`ScreenCast`](https://github.com/marang/robotgo/actions/runs/30221893077) nested-KDE evidence; the multi-output jobs are exact-release gates, while compositor-wide window control remains a gap |

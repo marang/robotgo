@@ -40,6 +40,7 @@ const (
 	CellNativeInput        Cell = "native-input"
 	CellNativeCapture      Cell = "native-capture"
 	CellNativeWindow       Cell = "native-window"
+	CellHyprlandWindow     Cell = "hyprland-window"
 	CellNativeOutput       Cell = "native-output"
 	CellNativeOutputMulti  Cell = "native-output-multi"
 	CellPortalAvailability Cell = "portal-availability"
@@ -58,9 +59,11 @@ const (
 	swayInputTestName       = "TestSwayNativeInputRuntime"
 	swayCaptureTestName     = "TestSwayNativeCaptureRuntime"
 	swayWindowTestName      = "TestSwayNativeWindowRuntime"
+	hyprlandWindowTestName  = "TestHyprlandWindowRuntime"
 	swayOutputTestName      = "TestSwayNativeOutputRuntime"
 	swayOutputMultiTestName = "TestSwayNativeOutputMultiRuntime"
 	swayPortalTestName      = "TestSwayPortalAvailabilityRuntime"
+	hyprlandCommandPrefix   = "go test -asan -count=1 -timeout=2m -tags=wayland,hyprlandintegration . -run ^"
 )
 
 var (
@@ -95,7 +98,7 @@ func ParseCell(value string) (Cell, error) {
 	cell := Cell(strings.ToLower(strings.TrimSpace(value)))
 	switch cell {
 	case CellRemoteDesktop, CellScreenCast, CellNativeInput,
-		CellNativeCapture, CellNativeWindow, CellNativeOutput,
+		CellNativeCapture, CellNativeWindow, CellHyprlandWindow, CellNativeOutput,
 		CellNativeOutputMulti,
 		CellPortalAvailability:
 		return cell, nil
@@ -131,7 +134,7 @@ func (cell Cell) ConsentRequired() bool {
 // NativeRequired reports whether the cell proves wlroots-native behavior.
 func (cell Cell) NativeRequired() bool {
 	switch cell {
-	case CellNativeInput, CellNativeCapture, CellNativeWindow, CellNativeOutput,
+	case CellNativeInput, CellNativeCapture, CellNativeWindow, CellHyprlandWindow, CellNativeOutput,
 		CellNativeOutputMulti:
 		return true
 	default:
@@ -160,6 +163,12 @@ func (cell Cell) TestSpec() (TestSpec, error) {
 		return swayTestSpec(swayCaptureTestName), nil
 	case CellNativeWindow:
 		return swayTestSpec(swayWindowTestName), nil
+	case CellHyprlandWindow:
+		return TestSpec{
+			Package: swayPackage,
+			Name:    hyprlandWindowTestName,
+			Command: hyprlandCommandPrefix + hyprlandWindowTestName + swayCommandSuffix,
+		}, nil
 	case CellNativeOutput:
 		return swayTestSpec(swayOutputTestName), nil
 	case CellNativeOutputMulti:
@@ -188,6 +197,8 @@ func (cell Cell) expectedWorkflow() string {
 	case CellNativeInput, CellNativeCapture, CellNativeWindow,
 		CellNativeOutput, CellNativeOutputMulti, CellPortalAvailability:
 		return "Sway E2E"
+	case CellHyprlandWindow:
+		return "Hyprland E2E"
 	default:
 		return ""
 	}
