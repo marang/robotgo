@@ -79,11 +79,11 @@ classify_session_bus_failure() {
 	local log_file="$runtime_dir/dbus.log"
 	if [[ ! -f "$log_file" ]]; then
 		failure_stage="$ROBOTGO_HYPRLAND_FAILURE_STAGE_SESSION_BUS_REDIRECTION"
-	elif grep -Eqi 'permission denied|operation not permitted' "$log_file"; then
+	elif grep -Eqi 'permission denied|operation not permitted|read-only file system' "$log_file"; then
 		failure_stage="$ROBOTGO_HYPRLAND_FAILURE_STAGE_SESSION_BUS_PERMISSION"
 	elif grep -Eqi 'failed to bind socket|address already in use' "$log_file"; then
 		failure_stage="$ROBOTGO_HYPRLAND_FAILURE_STAGE_SESSION_BUS_BIND"
-	elif grep -Eqi 'invalid option|unknown option|usage:' "$log_file"; then
+	elif grep -Eqi 'invalid option|unknown option|invalid argument|usage:' "$log_file"; then
 		failure_stage="$ROBOTGO_HYPRLAND_FAILURE_STAGE_SESSION_BUS_INVOCATION"
 	elif grep -Eqi 'machine[- ]id|machine uuid' "$log_file"; then
 		failure_stage="$ROBOTGO_HYPRLAND_FAILURE_STAGE_SESSION_BUS_MACHINE_ID"
@@ -91,11 +91,11 @@ classify_session_bus_failure() {
 		failure_stage="$ROBOTGO_HYPRLAND_FAILURE_STAGE_SESSION_BUS_USER"
 	elif grep -Eqi 'failed to setup environment|environment[^[:alnum:]]+(invalid|unavailable)' "$log_file"; then
 		failure_stage="$ROBOTGO_HYPRLAND_FAILURE_STAGE_SESSION_BUS_ENVIRONMENT"
-	elif grep -Eqi 'failed to (open|read|write|close)[^[:alnum:]]' "$log_file"; then
+	elif grep -Eqi 'failed to (open|read|write|close)[^[:alnum:]]|no such file|not a directory' "$log_file"; then
 		failure_stage="$ROBOTGO_HYPRLAND_FAILURE_STAGE_SESSION_BUS_FILE"
 	elif grep -Eqi 'failed to (fork|create pipe|fdopen)|file descriptor|child pipe' "$log_file"; then
 		failure_stage="$ROBOTGO_HYPRLAND_FAILURE_STAGE_SESSION_BUS_PROCESS"
-	elif grep -Eqi 'fd limit|resource|out of memory|not enough memory|capabilit' "$log_file"; then
+	elif grep -Eqi 'fd limit|resource|out of memory|not enough memory|capabilit|too many open files|temporarily unavailable' "$log_file"; then
 		failure_stage="$ROBOTGO_HYPRLAND_FAILURE_STAGE_SESSION_BUS_RESOURCE"
 	elif grep -Eqi 'configuration file|error in file|failed to start message bus' "$log_file"; then
 		failure_stage="$ROBOTGO_HYPRLAND_FAILURE_STAGE_SESSION_BUS_CONFIGURATION"
