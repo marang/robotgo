@@ -982,9 +982,10 @@ missing, pending, skipped, neutral, cancelled, timed-out, or failed Sway check
 blocks the release bundle. It additionally invokes and requires the
 multi-output GNOME and KDE RemoteDesktop and ScreenCast jobs for the same
 candidate SHA. Missing, skipped, stale, or failed portal evidence therefore
-also blocks packaging and publication. The isolated Hyprland window-geometry
-cell is invoked for that exact candidate and is likewise required before the
-26-check manifest can be packaged.
+also blocks packaging and publication. The consent-free GNOME and KDE
+multi-output bounds jobs and isolated Hyprland window-geometry cell are invoked
+for that exact candidate and are likewise required before the 28-check manifest
+can be packaged.
 
 On a clean Linux native checkout, reproduce the generator/verifier path with:
 
