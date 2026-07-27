@@ -425,6 +425,36 @@ Prerequisites:
 - Linux
 - Wayland runtime available
 
+### Hosted GNOME/KDE display bounds
+
+Purpose:
+
+- Exercise the public native-CGO and Pure-Go Wayland output APIs against the
+  same real two-output GNOME or KDE compositor session.
+- Require exact per-output bounds, aggregate desktop bounds, primary size,
+  display count/main index, invalid-index behavior, and legacy/error API parity.
+- Prove the test process is Wayland-only (`DISPLAY` unset) and does not open a
+  RemoteDesktop, ScreenCast, screenshot, input, or consent session.
+
+`.github/workflows/display-bounds-e2e.yml` runs the proof in disposable
+GitHub-hosted nested-KVM guests. The manifest-bound topology is a 1280x720
+primary at `(0,0)` and a 1024x768 secondary at `(1280,0)`. Each desktop job
+first runs the CGO native client with `wayland,hostedboundsintegration`, then
+rebuilds the same public contract with `CGO_ENABLED=0`. Missing output
+protocols, an unexpected topology, X11 exposure, a skipped test, or surviving
+runner state fails the job. The workflow is credential-free inside the guest,
+uses no portal consent marker, captures no pixels, and removes its VM, source
+archive, logs, and runner binary on every completion path.
+
+The nested guests run automatically only on trusted `main` pushes or an
+explicit workflow dispatch; pull requests do not boot them. Local compile
+coverage for the two build variants is:
+
+```bash
+go test -run '^$' -tags "wayland hostedboundsintegration" .
+CGO_ENABLED=0 go test -run '^$' -tags "hostedboundsintegration" .
+```
+
 ### RemoteDesktop portal input
 
 Purpose:
@@ -914,7 +944,8 @@ exact-tree transfer, and mandatory cleanup checks are documented in
 [GitHub-Hosted GNOME Portal Runner](infrastructure/portal-runner/gnome/README.md)
 and [GitHub-Hosted KDE Portal Runner](infrastructure/portal-runner/kde/README.md).
 `probe` remains an infrastructure diagnostic; `hosted-run` is the automated,
-credential-free portal test path.
+credential-free hosted integration path. Portal cells use the independent
+consent controller; the display-bounds cell is read-only and consent-free.
 
 wlroots is intentionally not treated as a RemoteDesktop/ScreenCast pass in
 these portal workflows. Its hosted native and explicit portal-availability

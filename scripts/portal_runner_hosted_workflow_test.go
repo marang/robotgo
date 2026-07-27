@@ -118,6 +118,92 @@ func TestHostedPortalProofUsesEphemeralGitHubKVM(t *testing.T) {
 	}
 }
 
+func TestHostedBoundsProofIsMultiOutputWaylandOnly(t *testing.T) {
+	t.Parallel()
+	workflowData, err := os.ReadFile(
+		"../.github/workflows/display-bounds-e2e.yml",
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	scriptData, err := os.ReadFile("run_hosted_portal_e2e.sh")
+	if err != nil {
+		t.Fatal(err)
+	}
+	workflow := normalizeWorkflowText(workflowData)
+	script := normalizeWorkflowText(scriptData)
+	start := strings.Index(workflow, "  hosted-bounds:")
+	if start < 0 {
+		t.Fatal("display bounds workflow does not isolate its hosted job")
+	}
+	hostedJob := workflow[start:]
+	contract := hostedJob + "\n" + script
+	for _, required := range []string{
+		"github.event_name == 'release'",
+		"github.event_name == 'push'",
+		`'["gnome","kde"]'`,
+		"inputs.desktop == 'kde'",
+		"inputs.desktop == 'all'",
+		"runs-on: ubuntu-24.04",
+		"actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+		"actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e",
+		"persist-credentials: false",
+		`ref: ${{ github.sha }}`,
+		`test "$(git rev-parse HEAD)" = "$GITHUB_SHA"`,
+		"test -c /dev/kvm",
+		"sudo chmod 0666 /dev/kvm",
+		"qemu-system-gui",
+		"qemu-system-x86",
+		"xauth",
+		"xvfb",
+		`go build -o "$portal_runner" ./internal/cmd/portalrunner`,
+		"exec timeout --preserve-status",
+		"--signal=TERM --kill-after=2m 20m",
+		"scripts/run_hosted_portal_e2e.sh",
+		"display-bounds",
+		"multi-output",
+		"xvfb-run -a",
+		`env ROBOTGO_HOSTED_XVFB=1 "${hosted_run[@]}"`,
+		`manifest="infrastructure/portal-runner/${{ matrix.desktop }}/manifest.json"`,
+		`state_root="$RUNNER_TEMP/robotgo-${{ matrix.desktop }}-multi-output-bounds-runner"`,
+		`-cell "$cell"`,
+		`-topology "$topology"`,
+		"Reject transient runner artifacts",
+		`"$portal_runner" cleanup`,
+		`trap 'rm -f -- "$portal_runner"' EXIT INT TERM`,
+		`find "$state_root" -maxdepth 1 -type d -name 'run-*'`,
+	} {
+		if !strings.Contains(contract, required) {
+			t.Errorf("display bounds hosted contract omits %q", required)
+		}
+	}
+	if !strings.Contains(workflow, "permissions:\n  contents: read") {
+		t.Error("display bounds workflow omits read-only permissions")
+	}
+	if !strings.Contains(workflow, "  workflow_call:\n") {
+		t.Error("display bounds workflow cannot be reused as release evidence")
+	}
+	for _, forbidden := range []string{
+		"self-hosted",
+		"environment:",
+		"generate-jitconfig",
+		"registration-token",
+		"ROBOTGO_PORTAL_CONSENT_READY_FILE",
+		"ROBOTGO_REMOTE_DESKTOP_E2E",
+		"ROBOTGO_SCREENCAST_E2E",
+		"actions/checkout@v",
+		"actions/setup-go@v",
+		"persist-credentials: true",
+	} {
+		if strings.Contains(hostedJob, forbidden) {
+			t.Errorf(
+				"display bounds hosted job contains unsafe token %q",
+				forbidden,
+			)
+		}
+	}
+}
+
 func TestNormalizeWorkflowTextHandlesWindowsCheckout(t *testing.T) {
 	t.Parallel()
 	got := normalizeWorkflowText([]byte("permissions:\r\n  contents: read\r\n"))

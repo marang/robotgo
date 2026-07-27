@@ -372,7 +372,10 @@ The compatibility surface now includes:
   transforms. Display indices are deterministic and shared with screencopy;
   display count/main-index queries no longer depend on X11. Native builds retain
   the `wayland-info` fallback for compositors where direct geometry is
-  unavailable; Pure-Go uses bounded direct protocol enumeration.
+  unavailable; Pure-Go uses bounded direct protocol enumeration. A dedicated
+  hosted GNOME/KDE two-output workflow now runs both implementations against
+  the same exact compositor topology without X11, capture, input, or portal
+  consent.
 - Hook/event capability reporting on Wayland.
 
 Remaining work must improve runtime support without inventing misleading
@@ -385,9 +388,9 @@ cross-platform semantics:
   active-window contract is available.
 - Add protected real-desktop capture-helper evidence beyond the delivered
   hermetic native Wayland, portal, and cross-build backend contracts.
-- Collect protected GNOME/KDE/wlroots multi-output bounds evidence beyond the
-  delivered hermetic geometry matrix and single-/multi-output Weston
-  integration.
+- Retain a passing exact-commit run of the new GNOME/KDE multi-output bounds
+  workflow, then decide its branch/release promotion separately from portal
+  evidence. Keep the delivered Sway/wlroots and Weston geometry gates green.
 
 Every addition needs unit tests, an applicable runtime integration test, and a
 runnable example unless the environment makes one technically impossible.

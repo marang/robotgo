@@ -83,6 +83,8 @@ Respect current tag split and do not collapse platform boundaries:
 - `linux && portal`: explicit portal package path (`screen/portal`)
 - `linux && wayland && test`: tagged Wayland capture/DRM test paths
 - `linux && wayland && integration`: integration suites requiring compositor setup
+- `linux && hostedboundsintegration`: consent-free hosted GNOME/KDE output
+  contract (combined with `wayland` for the native-CGO variant)
 - `cgo && linux && waylandint`: keyboard integration harness
 - `linux && !cgo && x11integration`: Pure-Go X11/XTEST input integration suite
 

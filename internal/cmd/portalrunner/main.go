@@ -149,7 +149,7 @@ func runHosted(arguments []string, stdout, stderr io.Writer) error {
 	cell := flags.String(
 		"cell",
 		"",
-		"hosted test cell: remote-desktop or screencast",
+		"hosted test cell: remote-desktop, screencast, or display-bounds",
 	)
 	topology := flags.String(
 		"topology",
@@ -202,7 +202,7 @@ func runHosted(arguments []string, stdout, stderr io.Writer) error {
 		syscall.SIGTERM,
 	)
 	defer cancel()
-	return portalrunner.RunHostedPortal(
+	return portalrunner.RunHosted(
 		ctx,
 		portalrunner.HostedRuntimeOptions{
 			ManifestPath:   absoluteManifest,

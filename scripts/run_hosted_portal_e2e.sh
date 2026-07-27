@@ -16,7 +16,7 @@ cell="$6"
 topology="$7"
 
 case "$cell" in
-  remote-desktop|screencast) ;;
+  remote-desktop|screencast|display-bounds) ;;
   *) echo "unsupported hosted portal cell" >&2; exit 2 ;;
 esac
 case "$topology" in
