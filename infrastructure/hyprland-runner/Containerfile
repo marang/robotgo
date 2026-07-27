@@ -21,6 +21,23 @@ RUN pacman -Syu --noconfirm --needed \
         wev \
     && pacman -Scc --noconfirm
 
+RUN for command in \
+        /usr/bin/bash \
+        /usr/bin/dbus-daemon \
+        /usr/bin/dbus-run-session \
+        /usr/bin/git \
+        /usr/bin/go \
+        /usr/bin/Hyprland \
+        /usr/bin/hyprctl \
+        /usr/bin/jq \
+        /usr/bin/seatd \
+        /usr/bin/setsid \
+        /usr/bin/stdbuf \
+        /usr/bin/wev; \
+    do \
+        test -x "$command"; \
+    done
+
 ENV GOMODCACHE=/go/pkg/mod
 WORKDIR /tmp/robotgo-mod
 COPY go.mod go.sum ./

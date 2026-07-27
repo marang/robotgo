@@ -57,6 +57,7 @@ if [[ "$drm_sysfs_path" != "$faux_drm_sysfs_path" &&
 fi
 
 readonly container_name="robotgo-hyprland-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-${mode}"
+readonly failure_reason_file="$RUNNER_TEMP/hyprland-hyprland-window-failure-reason"
 cleanup() {
 	docker rm -f "$container_name" >/dev/null 2>&1 || true
 }
@@ -90,6 +91,7 @@ arguments=(
 	--env ROBOTGO_APPROVED_COMMIT
 	--env ROBOTGO_HYPRLAND_DRM_DEVICE
 	--env ROBOTGO_HYPRLAND_DRM_DRIVER
+	--env GIT_OPTIONAL_LOCKS=0
 	--env ASAN_OPTIONS=detect_leaks=1:halt_on_error=1:strict_string_checks=1
 )
 if [[ "$mode" == 'induced-failure' ]]; then
@@ -97,9 +99,22 @@ if [[ "$mode" == 'induced-failure' ]]; then
 fi
 arguments+=(
 	"$image"
-	dbus-run-session --
+	/usr/bin/dbus-run-session --
+	/usr/bin/bash
 	./scripts/run-hyprland-e2e.sh
 )
 
-docker "${arguments[@]}"
+if docker "${arguments[@]}"; then
+	status=0
+else
+	status=$?
+fi
+if ((status != 0)) &&
+	[[ ! -e "$failure_reason_file" && ! -L "$failure_reason_file" ]]; then
+	temporary_reason="$(mktemp "$RUNNER_TEMP/.hyprland-failure-reason.XXXXXX")"
+	printf '%s\n' 'container-runtime' >"$temporary_reason"
+	chmod 600 "$temporary_reason"
+	mv -T -- "$temporary_reason" "$failure_reason_file"
+fi
 trap - EXIT INT TERM HUP
+exit "$status"
