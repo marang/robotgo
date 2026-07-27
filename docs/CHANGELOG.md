@@ -1,5 +1,41 @@
 # CHANGELOG
 
+## RobotGo v1.0.0-beta.2 — 2026-07-27
+
+This second pre-release adds a policy-gated agent automation layer and local
+MCP adapter, completes scoped Wayland input/capture evidence on GNOME, KDE, and
+wlroots, expands trustworthy Wayland window contracts, and hardens cleanup and
+release validation across platforms.
+
+Highlights since `v1.0.0-beta.1`:
+
+- Added `agent.Session` with typed operations, dry-run/execute separation,
+  bounded policy and quotas, audit events, in-memory observations,
+  observe-act-verify lineage, and privacy-safe visual find/wait conditions.
+- Added the local stdio `robotgo-mcp` adapter with sanitized results,
+  explicit observation release, and no network listener.
+- Added protected real-compositor evidence for native Sway and real
+  GNOME/KDE RemoteDesktop and ScreenCast portals, including multi-output
+  absolute input and per-stream capture.
+- Added truthful Wayland active-window geometry and identity APIs, bounded
+  compositor helper lifecycle, and explicit unsupported behavior where the
+  compositor cannot prove state.
+- Hardened portal screenshot decoding, external-command teardown, clipboard,
+  OCR, alerts, Windows clipboard/paste integration, pointer tests, and
+  sensitive test-artifact cleanup.
+- Replaced CircleCI with a protected GitHub Actions X11 default-suite gate.
+- Expanded exact release evidence to 25 successful checks for the candidate
+  SHA, including four release-only GNOME/KDE portal jobs, plus the six-cell
+  Linux/macOS/Windows native/Pure-Go snapshot matrix.
+
+This remains a beta release. Wayland behavior is compositor- and
+permission-dependent, the agent session is intentionally process-global, and
+the MCP adapter is a local transport rather than a remote authorization
+service.
+
+See the [complete release notes](releases/v1.0.0-beta.2.md) for installation,
+upgrade guidance, compatibility limits, and evidence verification.
+
 ## RobotGo v1.0.0-beta.1 — 2026-07-19
 
 This is the first published pre-release of the independent
