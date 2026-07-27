@@ -15,10 +15,27 @@ const (
 	envHostedBoundsE2E         = "ROBOTGO_HOSTED_BOUNDS_E2E"
 	envHostedBoundsSessionType = "XDG_SESSION_TYPE"
 	hostedBoundsWaylandSession = "wayland"
+
+	hostedBoundsStageEnvironment  = "environment"
+	hostedBoundsStageTopology     = "topology"
+	hostedBoundsStageDisplayCount = "display-count"
+	hostedBoundsStageMainDisplay  = "main-display"
+	hostedBoundsStageDisplayZero  = "display-zero"
+	hostedBoundsStageDisplayOne   = "display-one"
+	hostedBoundsStageInvalidIndex = "invalid-index"
+	hostedBoundsStageAggregate    = "aggregate"
+	hostedBoundsStagePrimarySize  = "primary-size"
+	hostedBoundsStageComplete     = "complete"
 )
 
 func assertHostedWaylandBoundsRuntime(t *testing.T) {
 	t.Helper()
+	variant := os.Getenv(portalrunner.HostedBoundsVariantEnvKey)
+	if variant != portalrunner.HostedBoundsVariantNativeCGO &&
+		variant != portalrunner.HostedBoundsVariantPureGo {
+		t.Fatal("hosted bounds implementation variant is invalid")
+	}
+	reportHostedBoundsStage(t, variant, hostedBoundsStageEnvironment)
 	if os.Getenv(envHostedBoundsE2E) != "1" {
 		t.Fatalf("hosted bounds contract requires %s=1", envHostedBoundsE2E)
 	}
@@ -56,6 +73,7 @@ func assertHostedWaylandBoundsRuntime(t *testing.T) {
 	}
 	assertHostedWaylandSocket(t)
 
+	reportHostedBoundsStage(t, variant, hostedBoundsStageTopology)
 	expected, err := portalrunner.ParseHostedDisplay(
 		os.Getenv(portalrunner.HostedExpectedOutputsEnvKey),
 	)
@@ -69,6 +87,7 @@ func assertHostedWaylandBoundsRuntime(t *testing.T) {
 		)
 	}
 
+	reportHostedBoundsStage(t, variant, hostedBoundsStageDisplayCount)
 	count, err := DisplaysNumE()
 	if err != nil {
 		t.Fatalf("DisplaysNumE(): %v", err)
@@ -79,13 +98,20 @@ func assertHostedWaylandBoundsRuntime(t *testing.T) {
 	if legacy := DisplaysNum(); legacy != count {
 		t.Fatalf("DisplaysNum() = %d, error API returned %d", legacy, count)
 	}
+	reportHostedBoundsStage(t, variant, hostedBoundsStageMainDisplay)
 	if mainID := GetMainId(); mainID != 0 {
 		t.Fatalf("GetMainId() = %d, want primary output index 0", mainID)
 	}
 
 	for displayID, output := range expected.Outputs {
+		stage := hostedBoundsStageDisplayZero
+		if displayID == 1 {
+			stage = hostedBoundsStageDisplayOne
+		}
+		reportHostedBoundsStage(t, variant, stage)
 		assertHostedDisplayBounds(t, displayID, output)
 	}
+	reportHostedBoundsStage(t, variant, hostedBoundsStageInvalidIndex)
 	if _, _, _, _, err := GetDisplayBoundsE(count); err == nil {
 		t.Fatalf("GetDisplayBoundsE accepted inactive output index %d", count)
 	}
@@ -100,6 +126,7 @@ func assertHostedWaylandBoundsRuntime(t *testing.T) {
 		)
 	}
 
+	reportHostedBoundsStage(t, variant, hostedBoundsStageAggregate)
 	aggregate := hostedAggregateRect(expected.Outputs)
 	for _, displayID := range [][]int{nil, {-1}} {
 		rect, err := GetScreenRectE(displayID...)
@@ -124,6 +151,7 @@ func assertHostedWaylandBoundsRuntime(t *testing.T) {
 		}
 	}
 
+	reportHostedBoundsStage(t, variant, hostedBoundsStagePrimarySize)
 	width, height, err := GetScreenSizeE()
 	if err != nil {
 		t.Fatalf("GetScreenSizeE(): %v", err)
@@ -148,6 +176,12 @@ func assertHostedWaylandBoundsRuntime(t *testing.T) {
 			height,
 		)
 	}
+	reportHostedBoundsStage(t, variant, hostedBoundsStageComplete)
+}
+
+func reportHostedBoundsStage(t *testing.T, variant, stage string) {
+	t.Helper()
+	t.Logf("ROBOTGO_HOSTED_BOUNDS_STAGE=%s-%s", variant, stage)
 }
 
 func assertHostedWaylandSocket(t *testing.T) {
