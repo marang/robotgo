@@ -26,13 +26,13 @@ Each cell emits `evidence.json` and `test.log`. The JSON document records:
 - the sanitized Runtime Diagnostics v1 report.
 
 The bundle also contains `required-checks.json`. It records the successful
-protected status set for the exact commit: CircleCI, lint, vet, race,
-ASan/LeakSanitizer, OCR, all three default and Pure-Go platform legs, Wayland,
-X11 evidence, the release-evidence validator, and all six hosted Sway cells
-(native input, capture, window, single-/multi-output geometry, and portal
-availability). Missing, pending, skipped, neutral, cancelled, timed-out, or
-failed required checks abort snapshot publication. The current manifest has 21
-entries.
+protected status set for the exact commit: the X11 default suite, lint, vet,
+race, ASan/LeakSanitizer, OCR, all three default and Pure-Go platform legs,
+Wayland, targeted X11 evidence, the release-evidence validator, and all six
+hosted Sway cells (native input, capture, window, single-/multi-output geometry,
+and portal availability). Missing, pending, skipped, neutral, cancelled,
+timed-out, or failed required checks abort snapshot publication. The current
+manifest has 21 entries.
 
 The required-check manifest in the workflow and the `main` branch-protection
 contexts are one contract. Add, rename, or remove a stable check in both places

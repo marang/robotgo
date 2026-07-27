@@ -163,7 +163,6 @@ jobs:
     permissions:
       checks: read
       contents: read
-      statuses: read
     steps:
       - name: Record successful protected checks for exact commit
         shell: bash
@@ -178,9 +177,6 @@ jobs:
             gh api -H 'Accept: application/vnd.github+json' \
               "repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA/check-runs?per_page=100" \
               > "$output/check-runs-source.json"
-            gh api -H 'Accept: application/vnd.github+json' \
-              "repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA/status?per_page=100" \
-              > "$output/status-source.json"
             : > "$output/rows.jsonl"
             pending=0
             while IFS= read -r check_name; do
@@ -226,31 +222,8 @@ jobs:
           vet
           wayland-integration
           x11-backend-evidence
+          x11-default-suite
           EOF
-            status_row="$(jq -c '
-              [.statuses[] | select(.context == "ci/circleci: build")] |
-              sort_by(.created_at // "") |
-              last |
-              if . == null then empty else {
-                name: .context,
-                conclusion: .state,
-                provider: "circleci",
-                url: .target_url
-              } end
-            ' "$output/status-source.json")"
-            status_state="$(jq -r '.conclusion // ""' <<<"${status_row:-null}")"
-            case "$status_state" in
-              success)
-                printf '%s\n' "$status_row" >> "$output/rows.jsonl"
-                ;;
-              ""|pending)
-                pending=1
-                ;;
-              *)
-                echo "required status failed: ci/circleci: build ($status_state)" >&2
-                exit 1
-                ;;
-            esac
             if [ "$pending" -eq 0 ]; then
               break
             fi
@@ -266,8 +239,7 @@ jobs:
             commit: $commit,
             checks: sort_by(.name)
           }' "$output/rows.jsonl" > "$output/required-checks.json"
-          rm "$output/check-runs-source.json" \
-            "$output/status-source.json" "$output/rows.jsonl"
+          rm "$output/check-runs-source.json" "$output/rows.jsonl"
       - name: Upload protected-check evidence
         uses: actions/upload-artifact@v7
         with:
@@ -330,7 +302,6 @@ jobs:
             exit 1
           fi
           expected_checks="$(printf '%s\n' \
-            'ci/circleci: build' \
             lint \
             native-capture native-input native-output native-output-multi \
             native-window \
@@ -341,7 +312,8 @@ jobs:
             'test (macOS-latest)' \
             'test (ubuntu-latest)' \
             'test (windows-latest)' \
-            vet wayland-integration x11-backend-evidence | LC_ALL=C sort)"
+            vet wayland-integration x11-backend-evidence \
+            x11-default-suite | LC_ALL=C sort)"
           actual_checks="$(jq -r '.checks[].name' \
             required-checks/required-checks.json | LC_ALL=C sort)"
           if [ "$actual_checks" != "$expected_checks" ]; then
@@ -365,7 +337,8 @@ jobs:
                    .name == "native-output" or
                    .name == "native-output-multi" or
                    .name == "native-window" or
-                   .name == "portal-availability")
+                   .name == "portal-availability" or
+                   .name == "x11-default-suite")
                then .provider == "github-actions"
                else true
                end)

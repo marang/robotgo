@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-func TestReleaseEvidenceRequiresEveryHostedSwayCell(t *testing.T) {
+func TestReleaseEvidenceRequiresEveryPromotedHostedCheck(t *testing.T) {
 	t.Parallel()
 	workflow, err := os.ReadFile("../.github/workflows/release-evidence.yml")
 	if err != nil {
@@ -20,6 +20,7 @@ func TestReleaseEvidenceRequiresEveryHostedSwayCell(t *testing.T) {
 		"native-output-multi",
 		"native-window",
 		"portal-availability",
+		"x11-default-suite",
 	} {
 		count := 0
 		for _, field := range strings.Fields(text) {
@@ -39,6 +40,16 @@ func TestReleaseEvidenceRequiresEveryHostedSwayCell(t *testing.T) {
 		t.Fatal("release evidence does not require the expanded exact check count")
 	}
 	if !strings.Contains(text, "then .provider == \"github-actions\"") {
-		t.Fatal("release evidence does not bind hosted Sway checks to GitHub Actions")
+		t.Fatal("release evidence does not bind hosted checks to GitHub Actions")
+	}
+	for _, removed := range []string{
+		"ci/circleci: build",
+		`provider: "circleci"`,
+		"statuses: read",
+		"status-source.json",
+	} {
+		if strings.Contains(text, removed) {
+			t.Fatalf("release evidence retains CircleCI contract %q", removed)
+		}
 	}
 }

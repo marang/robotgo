@@ -409,8 +409,9 @@ Wayland ownership-test manifest and covers allocation/free, timeout cleanup,
 and descriptor ownership. Release Evidence v1 records exact commit/tree/ref,
 toolchain and runtime identity, sanitized diagnostics, the passed command, and
 the test-log SHA-256 for native/Pure-Go Linux, macOS, and Windows cells. It also
-requires and records the complete protected CircleCI/lint/vet/race/sanitizer/
-platform/Wayland/X11 and six-cell hosted Sway check set for the exact commit.
+requires and records the complete protected `x11-default-suite`, lint, vet,
+race, sanitizer, platform, Wayland, targeted X11, and six-cell hosted Sway
+check set for the exact commit.
 The first public
 pre-release, [`v1.0.0-beta.1`](https://github.com/marang/robotgo/releases/tag/v1.0.0-beta.1),
 publishes that verified six-cell bundle and checksum for exact commit
