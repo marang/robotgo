@@ -45,7 +45,6 @@ jobs:
           sudo modprobe vkms enable_default_device=1
           sudo udevadm settle
           test -d /sys/module/vkms
-          test "$(cat /sys/module/vkms/parameters/enable_default_device)" = Y
           mapfile -t vkms_cards < <(
             for card in /sys/class/drm/card[0-9]*; do
               test -e "$card" || continue

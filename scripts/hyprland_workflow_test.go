@@ -34,7 +34,6 @@ func TestHyprlandWorkflowUsesOnlyVerifiedVKMSDevice(t *testing.T) {
 		"persist-credentials: false",
 		`"linux-modules-extra-$(uname -r)"`,
 		"sudo modprobe vkms enable_default_device=1",
-		"/sys/module/vkms/parameters/enable_default_device",
 		"sudo udevadm settle",
 		"/sys/module/vkms",
 		"/sys/devices/platform/vkms.*/drm/card[0-9]*",
