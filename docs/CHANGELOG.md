@@ -2,10 +2,10 @@
 
 ## Unreleased
 
-- Selected `v1.1.0-rc.1` then `v1.1.0` as the independent module's stable
-  release line because immutable upstream `v1.0.0`-`v1.0.2` tags already
-  exist; corrected beta.2 `@latest` guidance and defined API/platform/evidence
-  qualification gates.
+- Selected `v1.0.0-rc.1` then `v1.0.0` as the independent module's stable
+  release line after verifying the authoritative origin contains only the fork
+  beta tags; documented safe handling of local upstream-derived tags and
+  defined API/platform/evidence qualification gates.
 - Added protected, sanitizer-backed Hyprland active-window geometry evidence
   on one isolated GitHub-hosted `vkms` display, with no physical input/GPU
   devices and mandatory private-runtime cleanup.

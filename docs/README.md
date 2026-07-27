@@ -7,7 +7,7 @@ Use the following documents as the primary entry points:
 - [Test guide](../TEST.md) for validation commands and runtime prerequisites.
 - [Product roadmap](plan/product-roadmap.md) for delivery phases.
 - [Stable release readiness](plan/stable-release-readiness.md) for the
-  `v1.1.0-rc.1` to `v1.1.0` decision, API freeze, platform claims, and
+  `v1.0.0-rc.1` to `v1.0.0` decision, API freeze, platform claims, and
   exact-evidence gates.
 - [Protected real-compositor evidence plan](plan/real-compositor-evidence.md)
   for ephemeral GNOME/KDE portal and Sway/wlroots native runner contracts,
