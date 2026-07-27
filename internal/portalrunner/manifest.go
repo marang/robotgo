@@ -29,6 +29,13 @@ const (
 	// HostedExpectedOutputsEnvKey carries the encoded logical topology for
 	// consent-free hosted display-bounds evidence.
 	HostedExpectedOutputsEnvKey = "ROBOTGO_HOSTED_EXPECTED_OUTPUTS"
+	// HostedBoundsVariantEnvKey identifies which public output implementation
+	// the hosted bounds contract is exercising.
+	HostedBoundsVariantEnvKey = "ROBOTGO_HOSTED_BOUNDS_VARIANT"
+	// HostedBoundsVariantNativeCGO identifies the native-CGO Wayland client.
+	HostedBoundsVariantNativeCGO = "native-cgo"
+	// HostedBoundsVariantPureGo identifies the Pure-Go Wayland client.
+	HostedBoundsVariantPureGo = "pure-go"
 	// PortalMultiOutputEnvKey enables the hosted multi-output portal contract.
 	PortalMultiOutputEnvKey = "ROBOTGO_PORTAL_MULTI_OUTPUT"
 	// PortalExpectedOutputsEnvKey carries the encoded hosted output topology.

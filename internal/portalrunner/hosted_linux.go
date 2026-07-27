@@ -29,6 +29,19 @@ const (
 	hostedTestLogLimit      = 2 * 1024 * 1024
 	maximumPortalGeometry   = 256
 	hostedXvfbEnvKey        = "ROBOTGO_HOSTED_XVFB"
+	hostedBoundsStageMarker = "ROBOTGO_HOSTED_BOUNDS_STAGE="
+
+	hostedBoundsStageBuild        = "build"
+	hostedBoundsStageEnvironment  = "environment"
+	hostedBoundsStageTopology     = "topology"
+	hostedBoundsStageDisplayCount = "display-count"
+	hostedBoundsStageMainDisplay  = "main-display"
+	hostedBoundsStageDisplayZero  = "display-zero"
+	hostedBoundsStageDisplayOne   = "display-one"
+	hostedBoundsStageInvalidIndex = "invalid-index"
+	hostedBoundsStageAggregate    = "aggregate"
+	hostedBoundsStagePrimarySize  = "primary-size"
+	hostedBoundsStageComplete     = "complete"
 
 	// HostedCellRemoteDesktop exercises portal-backed pointer and keyboard
 	// input in a disposable desktop guest.
@@ -49,6 +62,35 @@ const (
 var portalFailureStagePattern = regexp.MustCompile(
 	`ROBOTGO_PORTAL_STAGE=([a-z0-9-]{1,32})`,
 )
+
+var hostedBoundsFailureStagePattern = regexp.MustCompile(
+	hostedBoundsStageMarker + `([a-z0-9-]{1,48})`,
+)
+
+var hostedBoundsFailureStages = func() map[string]struct{} {
+	allowed := make(map[string]struct{})
+	for _, variant := range []string{
+		HostedBoundsVariantNativeCGO,
+		HostedBoundsVariantPureGo,
+	} {
+		for _, stage := range []string{
+			hostedBoundsStageBuild,
+			hostedBoundsStageEnvironment,
+			hostedBoundsStageTopology,
+			hostedBoundsStageDisplayCount,
+			hostedBoundsStageMainDisplay,
+			hostedBoundsStageDisplayZero,
+			hostedBoundsStageDisplayOne,
+			hostedBoundsStageInvalidIndex,
+			hostedBoundsStageAggregate,
+			hostedBoundsStagePrimarySize,
+			hostedBoundsStageComplete,
+		} {
+			allowed[variant+"-"+stage] = struct{}{}
+		}
+	}
+	return allowed
+}()
 
 var hostedDisplayFailureStagePattern = regexp.MustCompile(
 	hostedDisplayFailureMarker + `([a-z0-9-]{1,32})`,
@@ -553,9 +595,17 @@ func RunHosted(
 				)
 			}
 		} else {
-			testError = errors.New(
-				"hosted display-bounds integration test failed",
-			)
+			stage := readHostedBoundsFailureStage(testLogPath)
+			if stage == "" {
+				testError = errors.New(
+					"hosted display-bounds integration test failed",
+				)
+			} else {
+				testError = fmt.Errorf(
+					"hosted display-bounds integration test failed at stage %q",
+					stage,
+				)
+			}
 		}
 	}
 	if err := errors.Join(testError, cleanupError); err != nil {
@@ -701,6 +751,22 @@ func readPortalFailureStage(path string) string {
 		return ""
 	}
 	return string(matches[len(matches)-1][1])
+}
+
+func readHostedBoundsFailureStage(path string) string {
+	data, err := os.ReadFile(path)
+	if err != nil || len(data) > hostedTestLogLimit {
+		return ""
+	}
+	matches := hostedBoundsFailureStagePattern.FindAllSubmatch(data, -1)
+	if len(matches) == 0 {
+		return ""
+	}
+	stage := string(matches[len(matches)-1][1])
+	if _, allowed := hostedBoundsFailureStages[stage]; !allowed {
+		return ""
+	}
+	return stage
 }
 
 func validateHostedIdentity(commit, cell, topology string) error {
@@ -1064,10 +1130,20 @@ func hostedPortalTestCommandForTopology(
 	case HostedCellDisplayBounds:
 		environment += " ROBOTGO_HOSTED_BOUNDS_E2E=1"
 		boundsTests := strings.Join([]string{
-			"go test -count=1 -timeout=3m " +
+			"printf '%s\\n' '" + hostedBoundsStageMarker +
+				HostedBoundsVariantNativeCGO + "-" +
+				hostedBoundsStageBuild + "' && " +
+				HostedBoundsVariantEnvKey + "=" +
+				HostedBoundsVariantNativeCGO +
+				" go test -count=1 -timeout=3m " +
 				"-tags=wayland,hostedboundsintegration . " +
 				"-run '^TestHostedWaylandBoundsCGORuntime$' -v",
-			"CGO_ENABLED=0 go test -count=1 -timeout=3m " +
+			"printf '%s\\n' '" + hostedBoundsStageMarker +
+				HostedBoundsVariantPureGo + "-" +
+				hostedBoundsStageBuild + "' && " +
+				HostedBoundsVariantEnvKey + "=" +
+				HostedBoundsVariantPureGo +
+				" CGO_ENABLED=0 go test -count=1 -timeout=3m " +
 				"-tags=hostedboundsintegration . " +
 				"-run '^TestHostedWaylandBoundsPureGoRuntime$' -v",
 		}, " && ")

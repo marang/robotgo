@@ -304,7 +304,13 @@ func TestHostedDisplayBoundsCommandIsWaylandOnlyAndConsentFree(t *testing.T) {
 		"ROBOTGO_HOSTED_BOUNDS_E2E=1",
 		HostedExpectedOutputsEnvKey +
 			"='0,0,1280,720;1280,0,1024,768'",
+		hostedBoundsStageMarker + HostedBoundsVariantNativeCGO +
+			"-" + hostedBoundsStageBuild,
+		HostedBoundsVariantEnvKey + "=" + HostedBoundsVariantNativeCGO,
 		"TestHostedWaylandBoundsCGORuntime",
+		hostedBoundsStageMarker + HostedBoundsVariantPureGo +
+			"-" + hostedBoundsStageBuild,
+		HostedBoundsVariantEnvKey + "=" + HostedBoundsVariantPureGo,
 		"CGO_ENABLED=0",
 		"TestHostedWaylandBoundsPureGoRuntime",
 	} {
@@ -830,6 +836,39 @@ func TestPortalFailureStageParserReturnsOnlyAllowlistedMarker(t *testing.T) {
 	}
 	if got := readPortalFailureStage(path); got != "capture-2" {
 		t.Fatalf("failure stage = %q", got)
+	}
+}
+
+func TestHostedBoundsFailureStageParserReturnsOnlyAllowlistedMarker(
+	t *testing.T,
+) {
+	t.Parallel()
+	path := filepath.Join(t.TempDir(), "hosted-test.log")
+	if err := os.WriteFile(
+		path,
+		[]byte(
+			"private diagnostic ignored\n"+
+				hostedBoundsStageMarker+"native-cgo-environment\n"+
+				"token=must-not-leak\n"+
+				hostedBoundsStageMarker+"native-cgo-display-one\n",
+		),
+		0o600,
+	); err != nil {
+		t.Fatal(err)
+	}
+	if got := readHostedBoundsFailureStage(path); got !=
+		"native-cgo-display-one" {
+		t.Fatalf("hosted bounds failure stage = %q", got)
+	}
+	if err := os.WriteFile(
+		path,
+		[]byte(hostedBoundsStageMarker+"private-token\n"),
+		0o600,
+	); err != nil {
+		t.Fatal(err)
+	}
+	if got := readHostedBoundsFailureStage(path); got != "" {
+		t.Fatalf("unallowlisted hosted bounds stage escaped as %q", got)
 	}
 }
 
