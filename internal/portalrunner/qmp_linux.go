@@ -22,6 +22,8 @@ const (
 	qmpKeyI      = "i"
 	qmpKeyReturn = "ret"
 	qmpKeyS      = "s"
+	qmpKeySpace  = "spc"
+	qmpKeyTab    = "tab"
 
 	qmpCommandHumanMonitor = "human-monitor-command"
 	qmpCommandInputEvent   = "input-send-event"
@@ -29,15 +31,22 @@ const (
 	qmpMouseSetCommand     = "mouse_set"
 	qmpUSBTabletName       = "QEMU HID Tablet"
 
-	qmpEventAbsolute = "abs"
-	qmpEventButton   = "btn"
-	qmpPointerAxisX  = "x"
-	qmpPointerAxisY  = "y"
-	qmpPointerLeft   = "left"
+	qmpEventAbsolute    = "abs"
+	qmpEventButton      = "btn"
+	qmpPointerAxisX     = "x"
+	qmpPointerAxisY     = "y"
+	qmpPointerLeft      = "left"
+	qmpPointerWheelDown = "wheel-down"
 
 	qmpAbsoluteMaximum  = 0x7fff
+	qmpKDEScrollNotches = 4
 	hostedDisplayWidth  = 1280
 	hostedDisplayHeight = 720
+
+	hostedQEMUDisplayNone = "none"
+	hostedQEMUDisplayGTK  = "gtk,gl=off,show-cursor=off," +
+		"grab-on-hover=off,show-tabs=off,show-menubar=off," +
+		"zoom-to-fit=on,window-close=off"
 )
 
 type qmpClient struct {
@@ -299,18 +308,33 @@ func qmpAbsoluteCoordinate(pixel, dimension int) (int, error) {
 func (client *qmpClient) approvePortal(
 	ctx context.Context,
 	lane,
-	cell string,
+	cell,
+	topology string,
 ) error {
 	if cell != "remote-desktop" && cell != "screencast" {
 		return errors.New("QMP portal approval cell is invalid")
 	}
+	if topology != HostedTopologySingle &&
+		topology != HostedTopologyMulti {
+		return errors.New("QMP portal approval topology is invalid")
+	}
 	switch lane {
 	case portalLaneGNOME:
+		if cell == "screencast" && topology == HostedTopologyMulti {
+			return errors.New(
+				"GNOME multi-output ScreenCast approval requires pointer geometry",
+			)
+		}
 		if cell == "remote-desktop" {
 			if err := client.sendChord(ctx, qmpKeyAlt, qmpKeyI); err != nil {
 				return err
 			}
 			if err := waitQMPChord(ctx); err != nil {
+				return err
+			}
+		}
+		if topology == HostedTopologyMulti {
+			if err := client.selectGNOMEPhysicalOutputs(ctx); err != nil {
 				return err
 			}
 		}
@@ -322,6 +346,48 @@ func (client *qmpClient) approvePortal(
 	default:
 		return errors.New("QMP portal approval lane is invalid")
 	}
+}
+
+func (client *qmpClient) selectGNOMEPhysicalOutputs(
+	ctx context.Context,
+) error {
+	for _, key := range []string{
+		qmpKeyTab,
+		qmpKeySpace,
+		qmpKeyTab,
+		qmpKeySpace,
+	} {
+		if err := client.sendChord(ctx, key); err != nil {
+			return err
+		}
+		if err := waitQMPChord(ctx); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (client *qmpClient) scrollKDEPhysicalOutputs(
+	ctx context.Context,
+) error {
+	for range qmpKDEScrollNotches {
+		for _, down := range []bool{true, false} {
+			if err := client.execute(ctx, qmpCommandInputEvent, map[string]any{
+				"events": []qmpInputEvent{{
+					Type: qmpEventButton,
+					Data: qmpButtonEventData{
+						Down: down, Button: qmpPointerWheelDown,
+					},
+				}},
+			}); err != nil {
+				return err
+			}
+		}
+		if err := waitQMPChord(ctx); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func waitQMPChord(ctx context.Context) error {
@@ -432,6 +498,7 @@ func buildHostedQEMUArguments(
 	serialLog string,
 	sshPort int,
 	qmpSocket string,
+	topology string,
 ) []string {
 	base := buildQEMUArguments(
 		manifest,
@@ -453,18 +520,37 @@ func buildHostedQEMUArguments(
 			index++
 			continue
 		}
+		if base[index] == "-display" && index+1 < len(base) {
+			index++
+			continue
+		}
 		arguments = append(arguments, base[index])
+	}
+	displayDevice := fmt.Sprintf(
+		"bochs-display,xres=%d,yres=%d",
+		hostedDisplayWidth,
+		hostedDisplayHeight,
+	)
+	if topology == HostedTopologyMulti {
+		primary := manifest.HostedDisplay.Outputs[0]
+		displayDevice = fmt.Sprintf(
+			"virtio-vga,max_outputs=%d,edid=off,xres=%d,yres=%d",
+			len(manifest.HostedDisplay.Outputs),
+			primary.Width,
+			primary.Height,
+		)
+	}
+	displayBackend := hostedQEMUDisplayNone
+	if topology == HostedTopologyMulti {
+		displayBackend = hostedQEMUDisplayGTK
 	}
 	return append(
 		arguments,
 		"-device", "qemu-xhci",
 		"-device", "usb-kbd",
 		"-device", "usb-tablet",
-		"-device", fmt.Sprintf(
-			"bochs-display,xres=%d,yres=%d",
-			hostedDisplayWidth,
-			hostedDisplayHeight,
-		),
+		"-device", displayDevice,
+		"-display", displayBackend,
 		"-qmp", "unix:"+qmpSocket+",server=on,wait=off",
 	)
 }

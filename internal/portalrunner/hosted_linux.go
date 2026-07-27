@@ -28,14 +28,29 @@ const (
 	hostedTestTimeout       = 4 * time.Minute
 	hostedTestLogLimit      = 2 * 1024 * 1024
 	maximumPortalGeometry   = 256
+	hostedXvfbEnvKey        = "ROBOTGO_HOSTED_XVFB"
+
+	// HostedTopologySingle preserves the established one-output portal run.
+	HostedTopologySingle = "single-output"
+	// HostedTopologyMulti enables the manifest-bound two-output experiment.
+	HostedTopologyMulti = "multi-output"
 )
 
 var portalFailureStagePattern = regexp.MustCompile(
 	`ROBOTGO_PORTAL_STAGE=([a-z0-9-]{1,32})`,
 )
 
+var hostedDisplayFailureStagePattern = regexp.MustCompile(
+	hostedDisplayFailureMarker + `([a-z0-9-]{1,32})`,
+)
+var hostedXvfbDisplayPattern = regexp.MustCompile(`^:[0-9]{1,5}$`)
+
 var sessionFailureStagePattern = regexp.MustCompile(
 	`ROBOTGO_SESSION_STAGE=([a-z0-9-]{1,32})`,
+)
+
+var errHostedPortalTestExitedBeforeConsent = errors.New(
+	"hosted portal test exited before requesting consent",
 )
 
 var kdeLocatorFailureStages = map[string]struct{}{
@@ -54,6 +69,7 @@ type HostedRuntimeOptions struct {
 	SSHPort        int
 	Commit         string
 	Cell           string
+	Topology       string
 	Output         io.Writer
 	Commands       CommandExecutor
 }
@@ -90,7 +106,14 @@ func RunHostedPortal(
 	if err != nil {
 		return err
 	}
-	if err := validateHostedIdentity(options.Commit, options.Cell); err != nil {
+	if err := validateHostedIdentity(
+		options.Commit,
+		options.Cell,
+		options.Topology,
+	); err != nil {
+		return err
+	}
+	if err := validateHostedHostDisplay(options.Topology); err != nil {
 		return err
 	}
 	if options.Output == nil {
@@ -298,6 +321,7 @@ func RunHostedPortal(
 			serialLog,
 			options.SSHPort,
 			qmpSocket,
+			options.Topology,
 		)...,
 	)
 	qemuCommand.Stdout = logWriter
@@ -381,6 +405,17 @@ func RunHostedPortal(
 	); err != nil {
 		return err
 	}
+	if options.Topology == HostedTopologyMulti {
+		if err := configureHostedGuestDisplay(
+			guestContext,
+			options.Commands,
+			sshArguments,
+			manifest.Lane,
+			logWriter,
+		); err != nil {
+			return err
+		}
+	}
 
 	marker := "/run/user/1100/robotgo-portal-consent-" +
 		options.Cell + ".ready"
@@ -398,13 +433,23 @@ func RunHostedPortal(
 		destination: testLog,
 		remaining:   hostedTestLogLimit,
 	}
+	portalTestCommand, err := hostedPortalTestCommandForTopology(
+		manifest.Lane,
+		options.Cell,
+		marker,
+		options.Topology,
+		manifest.HostedDisplay,
+	)
+	if err != nil {
+		return err
+	}
 	testCommand := exec.CommandContext(
 		guestContext,
 		"ssh",
 		append(
 			append([]string{}, sshArguments...),
 			"root@127.0.0.1",
-			hostedPortalTestCommand(manifest.Lane, options.Cell, marker),
+			portalTestCommand,
 		)...,
 	)
 	testOutput := io.MultiWriter(logWriter, testLogWriter)
@@ -420,7 +465,11 @@ func RunHostedPortal(
 		close(testResult.done)
 	}()
 
-	if hostedPortalApprovalRequired(manifest.Lane, options.Cell) {
+	if hostedPortalApprovalRequired(
+		manifest.Lane,
+		options.Cell,
+		options.Topology,
+	) {
 		if err := waitForConsentMarker(
 			guestContext,
 			options.Commands,
@@ -431,6 +480,14 @@ func RunHostedPortal(
 			testResult.done,
 		); err != nil {
 			stopProcessGroup(testCommand, testResult.done)
+			if errors.Is(err, errHostedPortalTestExitedBeforeConsent) {
+				if stage := readPortalFailureStage(testLogPath); stage != "" {
+					return fmt.Errorf(
+						"hosted portal test exited before consent at stage %q",
+						stage,
+					)
+				}
+			}
 			return err
 		}
 		if err := waitForPortalDialog(
@@ -448,6 +505,8 @@ func RunHostedPortal(
 			qmpSocket,
 			manifest.Lane,
 			options.Cell,
+			options.Topology,
+			manifest.HostedDisplay,
 			options.Output,
 		); err != nil {
 			stopProcessGroup(testCommand, testResult.done)
@@ -503,6 +562,110 @@ func RunHostedPortal(
 	)
 }
 
+func validateHostedHostDisplay(topology string) error {
+	if topology == HostedTopologySingle {
+		return nil
+	}
+	if topology != HostedTopologyMulti ||
+		os.Getenv(hostedXvfbEnvKey) != "1" ||
+		!hostedXvfbDisplayPattern.MatchString(os.Getenv("DISPLAY")) {
+		return errors.New(
+			"hosted multi-output requires an isolated Xvfb display",
+		)
+	}
+	return nil
+}
+
+func configureHostedGuestDisplay(
+	ctx context.Context,
+	commands CommandExecutor,
+	sshArguments []string,
+	lane string,
+	output io.Writer,
+) error {
+	currentDesktop, sessionDesktop, err := hostedDesktopEnvironment(lane)
+	if err != nil {
+		return err
+	}
+	command := "cd /home/robotgo/robotgo; exec env " +
+		HostedGuestEnvKey + "=1 " +
+		"go run ./internal/cmd/portalrunner guest-display " +
+		"-manifest infrastructure/portal-runner/" + lane +
+		"/manifest.json"
+	var commandOutput bytes.Buffer
+	if err := commands.Run(
+		ctx,
+		"ssh",
+		append(
+			append([]string{}, sshArguments...),
+			"root@127.0.0.1",
+			"exec runuser -u robotgo -- env "+
+				"HOME=/home/robotgo "+
+				"XDG_RUNTIME_DIR=/run/user/1100 "+
+				"DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1100/bus "+
+				"WAYLAND_DISPLAY=wayland-0 "+
+				"XDG_CURRENT_DESKTOP="+currentDesktop+" "+
+				"XDG_SESSION_DESKTOP="+sessionDesktop+" "+
+				"XDG_SESSION_TYPE=wayland "+
+				"QT_QPA_PLATFORM=wayland "+
+				"DISPLAY=:0 "+
+				"HTTP_PROXY=http://10.0.2.2:3128 "+
+				"HTTPS_PROXY=http://10.0.2.2:3128 "+
+				"http_proxy=http://10.0.2.2:3128 "+
+				"https_proxy=http://10.0.2.2:3128 "+
+				"NO_PROXY=localhost,127.0.0.1 "+
+				"no_proxy=localhost,127.0.0.1 "+
+				"bash -c "+shellQuote(command),
+		),
+		nil,
+		&boundedWriter{
+			destination: &commandOutput,
+			remaining:   hostedTopologyOutput,
+		},
+	); err != nil {
+		if stage := parseHostedDisplayFailureStage(
+			commandOutput.Bytes(),
+		); stage != "" {
+			return fmt.Errorf(
+				"configure hosted display topology at stage %q",
+				stage,
+			)
+		}
+		return errors.New("configure hosted display topology")
+	}
+	return writeStatus(
+		output,
+		"hosted display topology configured lane=%s\n",
+		lane,
+	)
+}
+
+func parseHostedDisplayFailureStage(output []byte) string {
+	matches := hostedDisplayFailureStagePattern.FindAllSubmatch(output, -1)
+	if len(matches) != 1 {
+		return ""
+	}
+	stage := string(matches[0][1])
+	switch stage {
+	case hostedDisplayStageManifest,
+		hostedDisplayStageLane,
+		hostedDisplayStageStatus,
+		hostedDisplayStageGNOMEBus,
+		hostedDisplayStageGNOMEState,
+		hostedDisplayStageGNOMEPlan,
+		hostedDisplayStageGNOMEApply,
+		hostedDisplayStageGNOMESettle,
+		hostedDisplayStageKDEStateRun,
+		hostedDisplayStageKDEStateJSON,
+		hostedDisplayStageKDEPlan,
+		hostedDisplayStageKDEApply,
+		hostedDisplayStageKDESettle:
+		return stage
+	default:
+		return ""
+	}
+}
+
 func readPortalFailureStage(path string) string {
 	data, err := os.ReadFile(path)
 	if err != nil || len(data) > hostedTestLogLimit {
@@ -515,7 +678,7 @@ func readPortalFailureStage(path string) string {
 	return string(matches[len(matches)-1][1])
 }
 
-func validateHostedIdentity(commit, cell string) error {
+func validateHostedIdentity(commit, cell, topology string) error {
 	if len(commit) != 40 {
 		return errors.New("hosted portal commit is invalid")
 	}
@@ -525,6 +688,10 @@ func validateHostedIdentity(commit, cell string) error {
 	}
 	if cell != "remote-desktop" && cell != "screencast" {
 		return errors.New("hosted portal cell is invalid")
+	}
+	if topology != HostedTopologySingle &&
+		topology != HostedTopologyMulti {
+		return errors.New("hosted portal topology is invalid")
 	}
 	return nil
 }
@@ -770,9 +937,30 @@ test -f /home/robotgo/robotgo/go.mod`
 }
 
 func hostedPortalTestCommand(lane, cell, marker string) string {
+	command, _ := hostedPortalTestCommandForTopology(
+		lane,
+		cell,
+		marker,
+		HostedTopologySingle,
+		HostedDisplay{},
+	)
+	return command
+}
+
+func hostedPortalTestCommandForTopology(
+	lane,
+	cell,
+	marker,
+	topology string,
+	display HostedDisplay,
+) (string, error) {
 	currentDesktop, sessionDesktop, err := hostedDesktopEnvironment(lane)
 	if err != nil {
-		return ""
+		return "", err
+	}
+	if topology != HostedTopologySingle &&
+		topology != HostedTopologyMulti {
+		return "", errors.New("hosted portal topology is invalid")
 	}
 	environment := strings.Join([]string{
 		"HOME=/home/robotgo",
@@ -791,6 +979,14 @@ func hostedPortalTestCommand(lane, cell, marker string) string {
 		"no_proxy=localhost,127.0.0.1",
 		"ROBOTGO_PORTAL_CONSENT_READY_FILE=" + marker,
 	}, " ")
+	if topology == HostedTopologyMulti {
+		encoded, err := display.Encode()
+		if err != nil {
+			return "", err
+		}
+		environment += " " + PortalMultiOutputEnvKey + "=1" +
+			" " + PortalExpectedOutputsEnvKey + "=" + shellQuote(encoded)
+	}
 	var test string
 	if cell == "screencast" {
 		environment += " ROBOTGO_SCREENCAST_E2E=1" +
@@ -806,7 +1002,7 @@ func hostedPortalTestCommand(lane, cell, marker string) string {
 	}
 	guestCommand := "cd /home/robotgo/robotgo; exec " + test
 	return "set -euo pipefail; exec runuser -u robotgo -- env " +
-		environment + " bash -c " + shellQuote(guestCommand)
+		environment + " bash -c " + shellQuote(guestCommand), nil
 }
 
 func hostedDesktopEnvironment(lane string) (current, session string, err error) {
@@ -820,7 +1016,7 @@ func hostedDesktopEnvironment(lane string) (current, session string, err error) 
 	}
 }
 
-func hostedPortalApprovalRequired(lane, cell string) bool {
+func hostedPortalApprovalRequired(lane, cell, topology string) bool {
 	return lane == portalLaneGNOME ||
 		(lane == portalLaneKDE && cell == "screencast")
 }
@@ -831,9 +1027,44 @@ func approveHostedPortal(
 	sshArguments []string,
 	qmpSocket,
 	lane,
-	cell string,
+	cell,
+	topology string,
+	display HostedDisplay,
 	output io.Writer,
 ) error {
+	if lane == portalLaneGNOME &&
+		cell == "screencast" &&
+		topology == HostedTopologyMulti {
+		targets, err := gnomePortalPhysicalCardTargets(display)
+		if err != nil {
+			return err
+		}
+		qmp, err := connectQMP(ctx, qmpSocket)
+		if err != nil {
+			return err
+		}
+		var approvalError error
+		for _, target := range targets.points {
+			approvalError = qmp.clickAbsolute(
+				ctx,
+				target.x,
+				target.y,
+				target.width,
+				target.height,
+			)
+			if approvalError != nil {
+				break
+			}
+			approvalError = waitQMPChord(ctx)
+			if approvalError != nil {
+				break
+			}
+		}
+		if approvalError == nil {
+			approvalError = qmp.sendChord(ctx, qmpKeyAlt, qmpKeyS)
+		}
+		return errors.Join(approvalError, qmp.close())
+	}
 	if lane == portalLaneKDE && cell == "screencast" {
 		geometry, err := locateHostedKDEScreenCast(
 			ctx,
@@ -894,6 +1125,45 @@ func approveHostedPortal(
 				"hosted KDE QMP pointer calibration passed\n",
 			)
 		}
+		if approvalError == nil && topology == HostedTopologyMulti {
+			// Plasma 5.27 orders Full Workspace, New Virtual Output, then
+			// physical outputs in a two-column CardsGridView. Toggle the
+			// calibrated card back off, scroll its private view to the second
+			// row, then click both physical cards at digest-bound positions.
+			approvalError = qmp.clickAbsolute(
+				ctx,
+				card.x,
+				card.y,
+				geometry.width,
+				geometry.height,
+			)
+			if approvalError == nil {
+				approvalError = waitQMPChord(ctx)
+			}
+			if approvalError == nil {
+				approvalError = qmp.scrollKDEPhysicalOutputs(ctx)
+			}
+			if approvalError == nil {
+				var targets [2]hostedPortalPoint
+				targets, approvalError =
+					kdePortalPhysicalCardTargets(geometry)
+				for _, target := range targets {
+					if approvalError != nil {
+						break
+					}
+					approvalError = qmp.clickAbsolute(
+						ctx,
+						target.x,
+						target.y,
+						geometry.width,
+						geometry.height,
+					)
+					if approvalError == nil {
+						approvalError = waitQMPChord(ctx)
+					}
+				}
+			}
+		}
 		if approvalError == nil {
 			// Plasma 5.27 SystemDialog handles Return at the focused loader and
 			// accepts only after the selected source enables its OK button.
@@ -905,7 +1175,87 @@ func approveHostedPortal(
 	if err != nil {
 		return err
 	}
-	return errors.Join(qmp.approvePortal(ctx, lane, cell), qmp.close())
+	return errors.Join(
+		qmp.approvePortal(ctx, lane, cell, topology),
+		qmp.close(),
+	)
+}
+
+const (
+	gnomePortalDialogWidth        = 660
+	gnomePortalDialogHeight       = 500
+	gnomePortalHorizontalInset    = 43
+	gnomePortalTargetYNumerator   = 3
+	gnomePortalTargetYDenominator = 5
+)
+
+type hostedPortalTarget struct {
+	x      int
+	y      int
+	width  int
+	height int
+}
+
+type hostedPortalTargetSet struct {
+	points [2]hostedPortalTarget
+}
+
+func gnomePortalPhysicalCardTargets(
+	display HostedDisplay,
+) (hostedPortalTargetSet, error) {
+	if err := display.Validate(); err != nil {
+		return hostedPortalTargetSet{}, err
+	}
+	if len(display.Outputs) != 2 {
+		return hostedPortalTargetSet{}, errors.New(
+			"hosted GNOME ScreenCast requires exactly two outputs",
+		)
+	}
+	minX, minY := display.Outputs[0].X, display.Outputs[0].Y
+	maxX := minX + display.Outputs[0].Width
+	maxY := minY + display.Outputs[0].Height
+	for _, output := range display.Outputs[1:] {
+		minX = min(minX, output.X)
+		minY = min(minY, output.Y)
+		maxX = max(maxX, output.X+output.Width)
+		maxY = max(maxY, output.Y+output.Height)
+	}
+	width, height := maxX-minX, maxY-minY
+	primary := display.Outputs[0]
+	if primary.Width < gnomePortalDialogWidth ||
+		primary.Height < gnomePortalDialogHeight {
+		return hostedPortalTargetSet{}, errors.New(
+			"hosted GNOME primary output cannot contain the ScreenCast dialog",
+		)
+	}
+	dialogX := primary.X - minX +
+		(primary.Width-gnomePortalDialogWidth)/2
+	dialogY := primary.Y - minY +
+		(primary.Height-gnomePortalDialogHeight)/2
+	containerX := dialogX + gnomePortalHorizontalInset
+	containerWidth := gnomePortalDialogWidth -
+		2*gnomePortalHorizontalInset
+	targetY := dialogY +
+		gnomePortalDialogHeight*gnomePortalTargetYNumerator/
+			gnomePortalTargetYDenominator
+	var targets hostedPortalTargetSet
+	for index, output := range display.Outputs {
+		targetX := containerX +
+			(output.X-minX+output.Width/2)*containerWidth/width
+		if targetX < dialogX ||
+			targetX >= dialogX+gnomePortalDialogWidth ||
+			targetY < dialogY ||
+			targetY >= dialogY+gnomePortalDialogHeight {
+			return hostedPortalTargetSet{}, errors.New(
+				"hosted GNOME ScreenCast target is outside the expected dialog",
+			)
+		}
+		targets.points[index] = hostedPortalTarget{
+			x: targetX, y: targetY,
+			width: width, height: height,
+		}
+	}
+	return targets, nil
 }
 
 func locateHostedKDEScreenCast(
@@ -993,13 +1343,58 @@ func locateHostedKDEScreenCast(
 }
 
 const (
-	kdeCardXNumerator   = 3
-	kdeCardXDenominator = 4
-	kdeCardYNumerator   = 1
-	kdeCardYDenominator = 2
+	kdeCardLeftXNumerator  = 1
+	kdeCardRightXNumerator = 3
+	kdeCardXNumerator      = 3
+	kdeCardXDenominator    = 4
+	kdeCardYNumerator      = 1
+	kdeCardYDenominator    = 2
 
 	kdePointerTolerance = 4
 )
+
+func kdePortalPhysicalCardTargets(
+	geometry hostedPortalGeometry,
+) ([2]hostedPortalPoint, error) {
+	targets := [2]hostedPortalPoint{
+		{
+			x: kdePortalRelativeCoordinate(
+				geometry.dialogX,
+				geometry.dialogWidth,
+				kdeCardLeftXNumerator,
+				kdeCardXDenominator,
+			),
+			y: kdePortalRelativeCoordinate(
+				geometry.dialogY,
+				geometry.dialogHeight,
+				kdeCardYNumerator,
+				kdeCardYDenominator,
+			),
+		},
+		{
+			x: kdePortalRelativeCoordinate(
+				geometry.dialogX,
+				geometry.dialogWidth,
+				kdeCardRightXNumerator,
+				kdeCardXDenominator,
+			),
+			y: kdePortalRelativeCoordinate(
+				geometry.dialogY,
+				geometry.dialogHeight,
+				kdeCardYNumerator,
+				kdeCardYDenominator,
+			),
+		},
+	}
+	for _, target := range targets {
+		if !kdePortalPointInsideDialog(target, geometry) {
+			return [2]hostedPortalPoint{}, errors.New(
+				"hosted KDE ScreenCast physical target is outside the active dialog",
+			)
+		}
+	}
+	return targets, nil
+}
 
 func kdePortalCardTarget(
 	geometry hostedPortalGeometry,
@@ -1123,7 +1518,7 @@ func waitForConsentMarker(
 	for {
 		select {
 		case <-testDone:
-			return errors.New("hosted portal test exited before requesting consent")
+			return errHostedPortalTestExitedBeforeConsent
 		default:
 		}
 		var content bytes.Buffer
@@ -1162,7 +1557,7 @@ func waitForConsentMarker(
 		case <-ctx.Done():
 			return ctx.Err()
 		case <-testDone:
-			return errors.New("hosted portal test exited before requesting consent")
+			return errHostedPortalTestExitedBeforeConsent
 		case <-time.After(consentPollInterval):
 		}
 	}

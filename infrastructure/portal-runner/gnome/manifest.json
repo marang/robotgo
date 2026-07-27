@@ -31,6 +31,22 @@
     "kernel_release": "6.8.0-134-generic",
     "maximum_lifetime": "30m"
   },
+  "hosted_display": {
+    "outputs": [
+      {
+        "width": 1280,
+        "height": 720,
+        "x": 0,
+        "y": 0
+      },
+      {
+        "width": 1024,
+        "height": 768,
+        "x": 1280,
+        "y": 0
+      }
+    ]
+  },
   "packages": [
     "ca-certificates",
     "curl",

@@ -15,6 +15,15 @@ on:
           - gnome
           - kde
           - all
+      topology:
+        description: Hosted display topology to prove
+        required: true
+        default: single-output
+        type: choice
+        options:
+          - single-output
+          - multi-output
+          - all
 
 concurrency:
   group: screencast-e2e-${{ github.ref }}
@@ -26,7 +35,7 @@ permissions:
 jobs:
   hosted-portal:
     if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
-    name: GitHub-hosted ${{ matrix.desktop }} persistent capture
+    name: GitHub-hosted ${{ matrix.desktop }} ${{ matrix.topology }} persistent capture
     runs-on: ubuntu-24.04
     timeout-minutes: 25
     strategy:
@@ -39,6 +48,15 @@ jobs:
               inputs.desktop == 'all' && '["gnome","kde"]' ||
               inputs.desktop == 'kde' && '["kde"]' ||
               '["gnome"]'
+            )
+          }}
+        topology: >-
+          ${{
+            fromJSON(
+              github.event_name == 'push' && '["single-output"]' ||
+              inputs.topology == 'all' && '["single-output","multi-output"]' ||
+              inputs.topology == 'multi-output' && '["multi-output"]' ||
+              '["single-output"]'
             )
           }}
     steps:
@@ -68,12 +86,24 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          sudo apt-get update
-          sudo apt-get install --no-install-recommends -y \
-            cloud-image-utils \
-            openssh-client \
-            qemu-system-x86 \
+          test -r /etc/apt/sources.list.d/ubuntu.sources
+          apt_options=(
+            -o Dir::Etc::sourcelist=sources.list.d/ubuntu.sources
+            -o Dir::Etc::sourceparts=-
+            -o APT::Get::List-Cleanup=0
+          )
+          sudo apt-get "${apt_options[@]}" update
+          packages=(
+            cloud-image-utils
+            openssh-client
+            qemu-system-x86
             qemu-utils
+          )
+          if [[ "${{ matrix.topology }}" == "multi-output" ]]; then
+            packages+=(qemu-system-gui xauth xvfb)
+          fi
+          sudo apt-get "${apt_options[@]}" install \
+            --no-install-recommends -y "${packages[@]}"
       - name: Verify hosted capacity
         shell: bash
         run: |
@@ -92,35 +122,52 @@ jobs:
         run: |
           set -euo pipefail
           umask 077
-          state_root="$RUNNER_TEMP/robotgo-${{ matrix.desktop }}-portal-runner"
+          state_root="$RUNNER_TEMP/robotgo-${{ matrix.desktop }}-${{ matrix.topology }}-portal-runner"
           manifest="infrastructure/portal-runner/${{ matrix.desktop }}/manifest.json"
-          go run ./internal/cmd/portalrunner validate \
-            -manifest "$manifest" \
-            -repository-root "$GITHUB_WORKSPACE" \
-            -state-root "$state_root"
-          go run ./internal/cmd/portalrunner build \
-            -manifest "$manifest" \
-            -repository-root "$GITHUB_WORKSPACE" \
-            -state-root "$state_root"
-          go run ./internal/cmd/portalrunner hosted-run \
-            -manifest "$manifest" \
-            -repository-root "$GITHUB_WORKSPACE" \
-            -state-root "$state_root" \
-            -commit "$GITHUB_SHA" \
-            -cell screencast
+          portal_runner="$RUNNER_TEMP/robotgo-portalrunner"
+          go build -o "$portal_runner" ./internal/cmd/portalrunner
+          test -x "$portal_runner"
+          exec timeout --preserve-status \
+            --signal=TERM --kill-after=2m 20m \
+            bash scripts/run_hosted_portal_e2e.sh \
+              "$portal_runner" "$manifest" "$GITHUB_WORKSPACE" \
+              "$state_root" "$GITHUB_SHA" screencast \
+              "${{ matrix.topology }}"
       - name: Reject transient runner artifacts
         if: always()
         shell: bash
         run: |
           set -euo pipefail
-          state_root="$RUNNER_TEMP/robotgo-${{ matrix.desktop }}-portal-runner"
+          state_root="$RUNNER_TEMP/robotgo-${{ matrix.desktop }}-${{ matrix.topology }}-portal-runner"
+          portal_runner="$RUNNER_TEMP/robotgo-portalrunner"
+          trap 'rm -f -- "$portal_runner"' EXIT INT TERM
           if [ -d "$state_root" ]; then
             test "$(git -C "$GITHUB_WORKSPACE" rev-parse HEAD)" = "$GITHUB_SHA"
-            go run ./internal/cmd/portalrunner cleanup \
-              -repository-root "$GITHUB_WORKSPACE" \
-              -state-root "$state_root"
+            test -x "$portal_runner"
+            deadline=$((SECONDS + 120))
+            while :; do
+              if cleanup_error="$(
+                "$portal_runner" cleanup \
+                  -repository-root "$GITHUB_WORKSPACE" \
+                  -state-root "$state_root" 2>&1
+              )"; then
+                break
+              fi
+              if [ "$cleanup_error" != "portal runner state is already in use" ]; then
+                echo "$cleanup_error" >&2
+                exit 1
+              fi
+              if [ "$SECONDS" -ge "$deadline" ]; then
+                echo "timed out waiting for portal runner cleanup ownership" >&2
+                exit 1
+              fi
+              sleep 1
+            done
             leftover="$(
               find "$state_root" -maxdepth 1 -type d -name 'run-*' -print -quit
             )"
             test -z "$leftover"
           fi
+          rm -f -- "$portal_runner"
+          trap - EXIT INT TERM
+          test ! -e "$portal_runner"

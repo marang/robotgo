@@ -23,6 +23,13 @@ import (
 const (
 	// ManifestSchemaVersion identifies the protected runner definition format.
 	ManifestSchemaVersion = "1"
+	// HostedGuestEnvKey gates commands that may reconfigure the disposable
+	// hosted guest desktop.
+	HostedGuestEnvKey = "ROBOTGO_HOSTED_GUEST"
+	// PortalMultiOutputEnvKey enables the hosted multi-output portal contract.
+	PortalMultiOutputEnvKey = "ROBOTGO_PORTAL_MULTI_OUTPUT"
+	// PortalExpectedOutputsEnvKey carries the encoded hosted output topology.
+	PortalExpectedOutputsEnvKey = "ROBOTGO_PORTAL_EXPECTED_OUTPUTS"
 
 	portalLaneGNOME = "gnome"
 	portalLaneKDE   = "kde"
@@ -36,6 +43,10 @@ const (
 	maximumDiskGiB   = 256
 	minimumLifetime  = 10 * time.Minute
 	maximumLifetime  = time.Hour
+
+	minimumHostedOutputSize = 640
+	maximumHostedOutputSize = 8192
+	maximumHostedDesktop    = 8192
 )
 
 var (
@@ -62,6 +73,7 @@ type Manifest struct {
 	Go            Artifact      `json:"go"`
 	ActionsRunner Artifact      `json:"actions_runner"`
 	VM            VMConfig      `json:"vm"`
+	HostedDisplay HostedDisplay `json:"hosted_display"`
 	Packages      []string      `json:"packages"`
 	Network       NetworkConfig `json:"network"`
 }
@@ -80,6 +92,21 @@ type VMConfig struct {
 	DiskGiB         int    `json:"disk_gib"`
 	KernelRelease   string `json:"kernel_release"`
 	MaximumLifetime string `json:"maximum_lifetime"`
+}
+
+// HostedDisplay defines the exact logical monitor topology used by explicit
+// multi-output runs. Outputs are ordered by virtual scanout; the first output
+// is the primary display used for consent interaction.
+type HostedDisplay struct {
+	Outputs []HostedOutput `json:"outputs"`
+}
+
+// HostedOutput is one logical monitor rectangle in compositor coordinates.
+type HostedOutput struct {
+	Width  int `json:"width"`
+	Height int `json:"height"`
+	X      int `json:"x"`
+	Y      int `json:"y"`
 }
 
 // NetworkConfig is the sole guest egress path during untrusted job execution.
@@ -196,6 +223,9 @@ func (manifest Manifest) Validate() error {
 			maximumLifetime,
 		)
 	}
+	if err := manifest.HostedDisplay.Validate(); err != nil {
+		return err
+	}
 
 	if len(manifest.Packages) == 0 {
 		return errors.New("portal runner package set is empty")
@@ -229,6 +259,7 @@ func (manifest Manifest) Validate() error {
 	case portalLaneKDE:
 		requiredPackages = append(requiredPackages,
 			"kwin-wayland",
+			"libkf5screen-bin",
 			"plasma-desktop",
 			"plasma-workspace-wayland",
 			"sddm",
@@ -265,6 +296,137 @@ func (manifest Manifest) Validate() error {
 		}
 	}
 	return nil
+}
+
+// Validate rejects ambiguous, overlapping, or unbounded hosted topologies.
+func (display HostedDisplay) Validate() error {
+	if len(display.Outputs) != 2 {
+		return errors.New("hosted display must define exactly two outputs")
+	}
+	primary := display.Outputs[0]
+	if primary.X != 0 || primary.Y != 0 {
+		return errors.New("hosted display primary output must start at origin")
+	}
+	if err := validateHostedOutput(primary); err != nil {
+		return fmt.Errorf("hosted display output 0: %w", err)
+	}
+	secondary := display.Outputs[1]
+	if err := validateHostedOutput(secondary); err != nil {
+		return fmt.Errorf("hosted display output 1: %w", err)
+	}
+	if primary.Width == secondary.Width && primary.Height == secondary.Height {
+		return errors.New("hosted display outputs must have distinct sizes")
+	}
+	if secondary.X == 0 && secondary.Y == 0 {
+		return errors.New("hosted display secondary output must have a non-zero origin")
+	}
+	if hostedOutputsOverlap(primary, secondary) {
+		return errors.New("hosted display outputs must not overlap")
+	}
+	minX := min(primary.X, secondary.X)
+	minY := min(primary.Y, secondary.Y)
+	maxX := max(
+		int64(primary.X)+int64(primary.Width),
+		int64(secondary.X)+int64(secondary.Width),
+	)
+	maxY := max(
+		int64(primary.Y)+int64(primary.Height),
+		int64(secondary.Y)+int64(secondary.Height),
+	)
+	if maxX-int64(minX) > maximumHostedDesktop ||
+		maxY-int64(minY) > maximumHostedDesktop {
+		return errors.New("hosted display aggregate bounds exceed limit")
+	}
+	return nil
+}
+
+func validateHostedOutput(output HostedOutput) error {
+	if output.Width < minimumHostedOutputSize ||
+		output.Width > maximumHostedOutputSize ||
+		output.Height < minimumHostedOutputSize ||
+		output.Height > maximumHostedOutputSize {
+		return fmt.Errorf(
+			"size must be between %d and %d pixels per axis",
+			minimumHostedOutputSize,
+			maximumHostedOutputSize,
+		)
+	}
+	if output.X < -maximumHostedDesktop ||
+		output.X > maximumHostedDesktop ||
+		output.Y < -maximumHostedDesktop ||
+		output.Y > maximumHostedDesktop {
+		return errors.New("origin exceeds hosted desktop limit")
+	}
+	return nil
+}
+
+func hostedOutputsOverlap(first, second HostedOutput) bool {
+	firstRight := int64(first.X) + int64(first.Width)
+	firstBottom := int64(first.Y) + int64(first.Height)
+	secondRight := int64(second.X) + int64(second.Width)
+	secondBottom := int64(second.Y) + int64(second.Height)
+	return int64(first.X) < secondRight &&
+		int64(second.X) < firstRight &&
+		int64(first.Y) < secondBottom &&
+		int64(second.Y) < firstBottom
+}
+
+// Encode returns the canonical, non-sensitive environment representation of
+// the exact hosted logical topology.
+func (display HostedDisplay) Encode() (string, error) {
+	if err := display.Validate(); err != nil {
+		return "", err
+	}
+	encoded := make([]string, 0, len(display.Outputs))
+	for _, output := range display.Outputs {
+		encoded = append(encoded, strings.Join([]string{
+			strconv.Itoa(output.X),
+			strconv.Itoa(output.Y),
+			strconv.Itoa(output.Width),
+			strconv.Itoa(output.Height),
+		}, ","))
+	}
+	return strings.Join(encoded, ";"), nil
+}
+
+// ParseHostedDisplay decodes only the canonical representation emitted by
+// Encode and re-applies every topology safety bound.
+func ParseHostedDisplay(encoded string) (HostedDisplay, error) {
+	rawOutputs := strings.Split(encoded, ";")
+	outputs := make([]HostedOutput, 0, len(rawOutputs))
+	for _, rawOutput := range rawOutputs {
+		fields := strings.Split(rawOutput, ",")
+		if len(fields) != 4 {
+			return HostedDisplay{}, errors.New(
+				"hosted display encoding is invalid",
+			)
+		}
+		values := make([]int, len(fields))
+		for index, field := range fields {
+			value, err := strconv.Atoi(field)
+			if err != nil {
+				return HostedDisplay{}, errors.New(
+					"hosted display encoding is invalid",
+				)
+			}
+			values[index] = value
+		}
+		outputs = append(outputs, HostedOutput{
+			X: values[0], Y: values[1],
+			Width: values[2], Height: values[3],
+		})
+	}
+	display := HostedDisplay{Outputs: outputs}
+	canonical, err := display.Encode()
+	if err != nil {
+		return HostedDisplay{}, err
+	}
+	if canonical != encoded {
+		return HostedDisplay{}, errors.New(
+			"hosted display encoding is not canonical",
+		)
+	}
+	return display, nil
 }
 
 func validateArtifact(name string, artifact Artifact, expectedHost string) error {

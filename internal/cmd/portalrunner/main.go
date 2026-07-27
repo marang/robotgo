@@ -29,7 +29,7 @@ func main() {
 
 func run(arguments []string, stdout, stderr io.Writer) error {
 	if len(arguments) == 0 {
-		return errors.New("usage: portalrunner <validate|build|probe|hosted-run|run|cleanup|proxy>")
+		return errors.New("usage: portalrunner <validate|build|probe|hosted-run|guest-display|run|cleanup|proxy>")
 	}
 	switch arguments[0] {
 	case "validate":
@@ -40,6 +40,8 @@ func run(arguments []string, stdout, stderr io.Writer) error {
 		return runProbe(arguments[1:], stdout, stderr)
 	case "hosted-run":
 		return runHosted(arguments[1:], stdout, stderr)
+	case "guest-display":
+		return runGuestDisplay(arguments[1:], stdout, stderr)
 	case "run":
 		return runProtected(arguments[1:], stdout, stderr)
 	case "cleanup":
@@ -49,6 +51,50 @@ func run(arguments []string, stdout, stderr io.Writer) error {
 	default:
 		return fmt.Errorf("unknown portalrunner command %q", arguments[0])
 	}
+}
+
+func runGuestDisplay(
+	arguments []string,
+	stdout,
+	stderr io.Writer,
+) error {
+	flags := flag.NewFlagSet("guest-display", flag.ContinueOnError)
+	flags.SetOutput(stderr)
+	manifestPath := flags.String(
+		"manifest",
+		defaultManifest,
+		"runner manifest path",
+	)
+	if err := flags.Parse(arguments); err != nil {
+		return err
+	}
+	if flags.NArg() != 0 {
+		return errors.New("guest-display accepts no positional arguments")
+	}
+	if os.Getenv(portalrunner.HostedGuestEnvKey) != "1" {
+		return errors.New(
+			"guest-display is restricted to a disposable hosted guest",
+		)
+	}
+	manifest, err := portalrunner.LoadManifest(*manifestPath)
+	if err != nil {
+		return err
+	}
+	ctx, cancel := signal.NotifyContext(
+		context.Background(),
+		os.Interrupt,
+		syscall.SIGTERM,
+	)
+	defer cancel()
+	if err := portalrunner.ConfigureHostedDisplay(
+		ctx,
+		manifest,
+		stdout,
+	); err != nil {
+		_ = portalrunner.WriteHostedDisplayFailureMarker(stderr, err)
+		return errors.New("configure hosted display")
+	}
+	return nil
 }
 
 func runCleanup(arguments []string, stdout, stderr io.Writer) error {
@@ -104,6 +150,11 @@ func runHosted(arguments []string, stdout, stderr io.Writer) error {
 		"cell",
 		"",
 		"hosted test cell: remote-desktop or screencast",
+	)
+	topology := flags.String(
+		"topology",
+		portalrunner.HostedTopologySingle,
+		"hosted display topology: single-output or multi-output",
 	)
 	if err := flags.Parse(arguments); err != nil {
 		return err
@@ -161,6 +212,7 @@ func runHosted(arguments []string, stdout, stderr io.Writer) error {
 			SSHPort:        *sshPort,
 			Commit:         *commit,
 			Cell:           *cell,
+			Topology:       *topology,
 			Output:         stdout,
 		},
 	)

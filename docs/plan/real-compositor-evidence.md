@@ -1,7 +1,7 @@
 # Protected Real-Compositor Evidence Plan
 
-Status: Hosted wlroots and GNOME/KDE single-output portal execution delivered;
-GNOME/KDE multi-output and portal release promotion remain
+Status: Hosted wlroots and GNOME/KDE single-/multi-output portal execution
+delivered; portal release promotion remains
 
 Linear project:
 [RobotGo | P005 | Protected Compositor Evidence](https://linear.app/riotbox/project/robotgo-or-p005-or-protected-compositor-evidence-d66467e3b5ee)
@@ -73,8 +73,8 @@ The first wlroots definition uses `ubuntu-24.04` plus distribution Sway,
 private nested compositor with `WLR_BACKENDS=headless`, `WLR_RENDERER=pixman`,
 `WLR_LIBINPUT_NO_DEVICES=1`, no `DISPLAY`, and exactly one 1280x720
 `HEADLESS-*` output. This is real Sway/wlroots protocol evidence without access
-to physical devices or a host desktop. It does not satisfy the still-open
-multi-output or GNOME/KDE portal evidence requirements.
+to physical devices or a host desktop. Its single-output result does not
+replace the separately retained Sway multi-output or GNOME/KDE portal evidence.
 
 Each GNOME/KDE session provides:
 
@@ -94,8 +94,9 @@ auto-approve requests and does not persist restore tokens between jobs.
 
 GNOME and KDE use independent host-side consent controllers. The test writes a
 private, non-sensitive marker immediately before its portal call. After a
-bounded dialog settle interval, the GNOME host injects the required keyboard
-input through QMP. For KDE ScreenCast, a digest-bound KWin helper reports only
+bounded dialog settle interval, the GNOME host injects keyboard input for
+RemoteDesktop and manifest-bound pointer input for multi-output ScreenCast
+through QMP. For KDE ScreenCast, a digest-bound KWin helper reports only
 virtual-screen and active-dialog geometry through a short-lived private D-Bus
 receiver. It also reports the cursor position after the host selects the
 physical-monitor target, proving QMP reached the intended dialog coordinate
@@ -198,9 +199,11 @@ native backend cannot satisfy the test. It validates granted device types,
 relative and absolute pointer input, keyboard modifier release, optional touch,
 stream mapping, and deterministic session close.
 
-The ScreenCast cell opens one real consent session, obtains two non-empty frames
-from the same PipeWire stream, validates geometry and ownership, releases all
-buffers/file descriptors, and closes PipeWire before the portal session. The
+The ScreenCast cell opens one real consent session. Its single-output mode
+obtains two non-empty frames from one PipeWire stream; its multi-output mode
+requires two unique physical monitor streams and obtains one owned non-empty
+frame from each. Both validate metadata/ownership, release all buffers/file
+descriptors, and close PipeWire before the portal session. The
 contracts follow the official
 [RemoteDesktop](https://flatpak.github.io/xdg-desktop-portal/docs/doc-org.freedesktop.portal.RemoteDesktop.html)
 and
@@ -234,20 +237,26 @@ green.
    negative origin, scale, transform, exact logical per-output bounds,
    aggregate bounds, and induced-failure cleanup evidence. Retained evidence:
    [`Sway E2E` run 29861058126](https://github.com/marang/robotgo/actions/runs/29861058126).
-4. **Hosted GNOME single-output proof delivered:** the pinned nested-KVM image, exact
-   clean-tree transfer, real session, independent consent control, bounded test,
+4. **Hosted GNOME single- and multi-output proof delivered:** the pinned
+   nested-KVM image, exact clean-tree transfer, real session, independent
+   consent control, bounded test,
    egress, process-group shutdown, and artifact cleanup contracts are wired
    into both portal workflows. Retained exact-commit evidence:
    [`RemoteDesktop E2E` run 30199452053](https://github.com/marang/robotgo/actions/runs/30199452053)
    and [`ScreenCast E2E` run 30199195890](https://github.com/marang/robotgo/actions/runs/30199195890).
-   Multi-output geometry and release-gate promotion remain open.
-5. **Hosted KDE single-output proof delivered:** retained exact-commit
+   Multi-output proof is retained in
+   [`RemoteDesktop E2E` run 30220551561](https://github.com/marang/robotgo/actions/runs/30220551561)
+   and [`ScreenCast E2E` run 30222315257](https://github.com/marang/robotgo/actions/runs/30222315257).
+   Release-gate promotion remains open.
+5. **Hosted KDE single- and multi-output proof delivered:** retained exact-commit
    [`RemoteDesktop E2E` run 30204553569](https://github.com/marang/robotgo/actions/runs/30204553569)
    and
    [`ScreenCast E2E` run 30214614314](https://github.com/marang/robotgo/actions/runs/30214614314)
    prove the real portal backends, independent consent handling, bounded test
-   execution, and transient-artifact cleanup. Multi-output geometry and
-   release-gate promotion remain open.
+   execution, and transient-artifact cleanup. Multi-output proof is retained in
+   [`RemoteDesktop E2E` run 30220551561](https://github.com/marang/robotgo/actions/runs/30220551561)
+   and [`ScreenCast E2E` run 30221893077](https://github.com/marang/robotgo/actions/runs/30221893077).
+   Release-gate promotion remains open.
 6. **Implemented for hosted wlroots:** require all six stable Sway checks for
    the exact release commit and in branch protection. Extend promotion to GNOME
    after wiring its passing jobs into exact-release evidence, then extend the

@@ -467,7 +467,11 @@ and is not a RemoteDesktop pass. The portal client is pure Go and therefore
 independent of the root package's CGO setting; CGO and non-CGO high-level
 fallback dispatch remains covered by the hermetic root tests. Both desktop
 lanes run automatically for pushes to `main` and can be selected manually with
-`gnome`, `kde`, or `all`; pull requests do not boot the nested guests. The
+`gnome`, `kde`, or `all`; the manual `topology` input selects `single-output`,
+`multi-output`, or both. The two-output lane configures a 1280x720 primary at
+`(0,0)` and a 1024x768 secondary at `(1280,0)`, requires two unique physical
+monitor streams, and exercises absolute input against each stream. Pull
+requests do not boot the nested guests. The
 workflow uses read-only permissions, retains no checkout credentials, and
 registers no self-hosted runner.
 
@@ -511,14 +515,22 @@ captures two frames from the same session, validates non-empty output, and
 closes the PipeWire consumer before the portal session. The second capture
 also covers compositors that suppress unchanged frames: the backend waits one
 short poll for a fresh frame and then returns an owned copy of the latest frame.
+With `ROBOTGO_PORTAL_MULTI_OUTPUT=1` and the canonical expected-output manifest,
+the integration test instead requires two unique physical monitor streams and
+captures one owned, non-empty PipeWire frame from each stream.
 `.github/workflows/screencast-e2e.yml` runs GNOME and KDE in the same
 disposable GitHub-hosted nested-QEMU model. Both run on `main` pushes and on
-manual `gnome|kde|all` dispatches. KDE's pinned KWin helper reports only
+manual `gnome|kde|all` and single-/multi-output dispatches. KDE's pinned KWin
+helper reports only
 virtual-screen, active-dialog, and pointer geometry through private D-Bus. The
-host validates a plausible dialog, selects the physical monitor through a
-digest-bound relative target with a bounded move/click handoff, verifies that
-QMP reached that target, accepts through the portal's standard Return path, and
-the integration test rejects a virtual-output stream.
+host validates a plausible dialog, scrolls the pinned CardsGridView, selects
+both physical monitor cards through digest-bound targets, verifies that QMP
+reached the initial target, and accepts through the portal's standard Return
+path. GNOME's two monitor buttons are selected through manifest-bound QMP
+pointer coordinates derived from its pinned 46.2 dialog contract. The
+integration test rejects missing, duplicate, virtual, or unexpected streams;
+optional stream metadata is interpreted according to the negotiated ScreenCast
+interface version.
 wlroots does not count as a ScreenCast pass and is promoted separately under
 P005.
 
@@ -846,8 +858,9 @@ The GNOME and KDE jobs build pinned images on fresh GitHub-hosted Ubuntu
 runners, transfer only the exact clean commit through `git archive`, and
 execute inside disposable guests with live Wayland/user-bus sessions. A private
 readiness marker is created immediately before the real portal request. The
-independent host-side controller operates modal consent through QMP keyboard
-input on GNOME. For KDE ScreenCast, an immutable guest helper reports only
+independent host-side controller operates modal consent through QMP keyboard or
+manifest-bound pointer input on GNOME. For KDE ScreenCast, an immutable guest
+helper reports only
 control geometry and the host performs both actions through QMP's private
 pointer; KDE's native non-sandboxed RemoteDesktop backend uses its upstream
 notification policy and therefore has no modal approval to drive.
@@ -895,8 +908,9 @@ then verify and package all six evidence cells. Its exact-commit protected
 manifest also requires every hosted Sway cell: native input, capture, window,
 single-output geometry, multi-output geometry, and portal availability. A
 missing, pending, skipped, neutral, cancelled, timed-out, or failed Sway check
-blocks the release bundle; GNOME/KDE portal checks remain excluded until their
-protected runner and real-consent contract exists.
+blocks the release bundle; GNOME/KDE portal checks have real-consent,
+single-output, and multi-output evidence but remain excluded until their
+checks are promoted into the exact-release manifest.
 
 On a clean Linux native checkout, reproduce the generator/verifier path with:
 

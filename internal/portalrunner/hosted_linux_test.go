@@ -16,25 +16,87 @@ func TestHostedIdentityIsExact(t *testing.T) {
 	t.Parallel()
 	commit := strings.Repeat("a", 40)
 	for _, cell := range []string{"remote-desktop", "screencast"} {
-		if err := validateHostedIdentity(commit, cell); err != nil {
-			t.Fatalf("validateHostedIdentity(%q): %v", cell, err)
+		for _, topology := range []string{
+			HostedTopologySingle,
+			HostedTopologyMulti,
+		} {
+			if err := validateHostedIdentity(
+				commit,
+				cell,
+				topology,
+			); err != nil {
+				t.Fatalf(
+					"validateHostedIdentity(%q, %q): %v",
+					cell,
+					topology,
+					err,
+				)
+			}
 		}
 	}
 	for _, invalid := range []struct {
-		commit string
-		cell   string
+		commit   string
+		cell     string
+		topology string
 	}{
-		{commit: strings.Repeat("A", 40), cell: "remote-desktop"},
-		{commit: strings.Repeat("a", 39), cell: "remote-desktop"},
-		{commit: strings.Repeat("g", 40), cell: "remote-desktop"},
-		{commit: commit, cell: "other"},
+		{
+			commit: strings.Repeat("A", 40),
+			cell:   "remote-desktop", topology: HostedTopologySingle,
+		},
+		{
+			commit: strings.Repeat("a", 39),
+			cell:   "remote-desktop", topology: HostedTopologySingle,
+		},
+		{
+			commit: strings.Repeat("g", 40),
+			cell:   "remote-desktop", topology: HostedTopologySingle,
+		},
+		{
+			commit: commit, cell: "other",
+			topology: HostedTopologySingle,
+		},
+		{
+			commit: commit, cell: "remote-desktop",
+			topology: "other",
+		},
 	} {
 		if err := validateHostedIdentity(
 			invalid.commit,
 			invalid.cell,
+			invalid.topology,
 		); err == nil {
 			t.Fatalf("invalid hosted identity was accepted: %+v", invalid)
 		}
+	}
+}
+
+func TestHostedMultiOutputRequiresIsolatedXvfb(t *testing.T) {
+	if err := validateHostedHostDisplay(
+		HostedTopologySingle,
+	); err != nil {
+		t.Fatalf("single-output display validation: %v", err)
+	}
+	for _, display := range []string{"", ":0.0", "localhost:10", "private"} {
+		t.Setenv(hostedXvfbEnvKey, "1")
+		t.Setenv("DISPLAY", display)
+		if err := validateHostedHostDisplay(
+			HostedTopologyMulti,
+		); err == nil {
+			t.Fatalf("unsafe hosted display %q was accepted", display)
+		}
+	}
+	t.Setenv(hostedXvfbEnvKey, "")
+	t.Setenv("DISPLAY", ":99")
+	if err := validateHostedHostDisplay(
+		HostedTopologyMulti,
+	); err == nil {
+		t.Fatal("unmarked hosted Xvfb display was accepted")
+	}
+	t.Setenv(hostedXvfbEnvKey, "1")
+	if err := validateHostedHostDisplay(
+		HostedTopologyMulti,
+	); err != nil {
+		t.Fatalf("isolated hosted Xvfb display: %v", err)
 	}
 }
 
@@ -174,26 +236,205 @@ func TestHostedPortalCommandsSelectDesktopLane(t *testing.T) {
 	}
 }
 
+func TestHostedPortalMultiOutputCommandBindsCanonicalTopology(
+	t *testing.T,
+) {
+	t.Parallel()
+	command, err := hostedPortalTestCommandForTopology(
+		portalLaneGNOME,
+		"remote-desktop",
+		"/run/user/1100/robotgo-portal-consent-remote-desktop.ready",
+		HostedTopologyMulti,
+		validManifest().HostedDisplay,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, required := range []string{
+		PortalMultiOutputEnvKey + "=1",
+		PortalExpectedOutputsEnvKey + "=" +
+			"'0,0,1280,720;1280,0,1024,768'",
+	} {
+		if !strings.Contains(command, required) {
+			t.Errorf("multi-output command omits %q", required)
+		}
+	}
+	if _, err := hostedPortalTestCommandForTopology(
+		portalLaneGNOME,
+		"remote-desktop",
+		"/run/user/1100/marker",
+		HostedTopologyMulti,
+		HostedDisplay{},
+	); err == nil {
+		t.Fatal("multi-output command accepted an empty topology")
+	}
+}
+
+func TestHostedDisplayConfigurationIsGuestRestrictedAndCredentialFree(
+	t *testing.T,
+) {
+	t.Parallel()
+	for _, test := range []struct {
+		lane     string
+		desktop  string
+		session  string
+		manifest string
+	}{
+		{
+			lane: portalLaneGNOME, desktop: "GNOME", session: "gnome",
+			manifest: "gnome",
+		},
+		{
+			lane: portalLaneKDE, desktop: "KDE", session: "plasmawayland",
+			manifest: "kde",
+		},
+	} {
+		test := test
+		t.Run(test.lane, func(t *testing.T) {
+			t.Parallel()
+			executor := &scriptedCommandExecutor{}
+			if err := configureHostedGuestDisplay(
+				context.Background(),
+				executor,
+				[]string{"-p", "22222"},
+				test.lane,
+				&strings.Builder{},
+			); err != nil {
+				t.Fatal(err)
+			}
+			if len(executor.calls) != 1 {
+				t.Fatalf("guest display calls = %v", executor.calls)
+			}
+			command := strings.Join(executor.calls[0], " ")
+			for _, required := range []string{
+				"ssh",
+				"root@127.0.0.1",
+				"runuser -u robotgo",
+				"ROBOTGO_HOSTED_GUEST=1",
+				"guest-display",
+				"infrastructure/portal-runner/" + test.manifest +
+					"/manifest.json",
+				"XDG_CURRENT_DESKTOP=" + test.desktop,
+				"XDG_SESSION_DESKTOP=" + test.session,
+				"XDG_SESSION_TYPE=wayland",
+				"QT_QPA_PLATFORM=wayland",
+				"HTTP_PROXY=http://10.0.2.2:3128",
+				"HTTPS_PROXY=http://10.0.2.2:3128",
+				"NO_PROXY=localhost,127.0.0.1",
+			} {
+				if !strings.Contains(command, required) {
+					t.Errorf("guest display command omits %q", required)
+				}
+			}
+			for _, forbidden := range []string{
+				"GITHUB_TOKEN",
+				"ACTIONS_RUNTIME_TOKEN",
+				"sudo",
+			} {
+				if strings.Contains(command, forbidden) {
+					t.Errorf("guest display command contains %q", forbidden)
+				}
+			}
+		})
+	}
+	if err := configureHostedGuestDisplay(
+		context.Background(),
+		&scriptedCommandExecutor{},
+		nil,
+		"other",
+		&strings.Builder{},
+	); err == nil {
+		t.Fatal("unsupported guest display lane was accepted")
+	}
+}
+
+func TestHostedDisplayConfigurationReportsOnlyAllowlistedStage(
+	t *testing.T,
+) {
+	t.Parallel()
+	output := &strings.Builder{}
+	executor := &scriptedCommandExecutor{
+		outputs: []string{
+			hostedDisplayFailureMarker +
+				hostedDisplayStageKDEPlan + "\nprivate connector\n",
+		},
+		errors: []error{errors.New("private command failure")},
+	}
+	err := configureHostedGuestDisplay(
+		context.Background(),
+		executor,
+		[]string{"-p", "22222"},
+		portalLaneKDE,
+		output,
+	)
+	if err == nil || !strings.Contains(
+		err.Error(),
+		`stage "kde-plan"`,
+	) {
+		t.Fatalf("hosted display failure = %v", err)
+	}
+	for _, private := range []string{
+		"private connector",
+		"private command failure",
+	} {
+		if strings.Contains(err.Error(), private) ||
+			strings.Contains(output.String(), private) {
+			t.Fatalf("hosted display failure leaked %q", private)
+		}
+	}
+}
+
+func TestHostedDisplayFailureStageParserRejectsAmbiguousOutput(t *testing.T) {
+	t.Parallel()
+	for _, output := range []string{
+		hostedDisplayFailureMarker + "unknown\n",
+		hostedDisplayFailureMarker + hostedDisplayStageKDEPlan + "\n" +
+			hostedDisplayFailureMarker + hostedDisplayStageKDEApply + "\n",
+		"private\n",
+	} {
+		if stage := parseHostedDisplayFailureStage(
+			[]byte(output),
+		); stage != "" {
+			t.Fatalf("ambiguous display stage %q parsed as %q", output, stage)
+		}
+	}
+}
+
 func TestHostedPortalApprovalPolicyMatchesDesktopBackend(t *testing.T) {
 	t.Parallel()
 	for _, test := range []struct {
-		lane string
-		cell string
-		want bool
+		lane     string
+		cell     string
+		topology string
+		want     bool
 	}{
-		{lane: portalLaneGNOME, cell: "remote-desktop", want: true},
-		{lane: portalLaneGNOME, cell: "screencast", want: true},
-		{lane: portalLaneKDE, cell: "remote-desktop", want: false},
-		{lane: portalLaneKDE, cell: "screencast", want: true},
+		{
+			lane: portalLaneGNOME, cell: "remote-desktop",
+			topology: HostedTopologySingle, want: true,
+		},
+		{
+			lane: portalLaneGNOME, cell: "screencast",
+			topology: HostedTopologyMulti, want: true,
+		},
+		{
+			lane: portalLaneKDE, cell: "remote-desktop",
+			topology: HostedTopologyMulti, want: false,
+		},
+		{
+			lane: portalLaneKDE, cell: "screencast",
+			topology: HostedTopologyMulti, want: true,
+		},
 	} {
 		if got := hostedPortalApprovalRequired(
 			test.lane,
 			test.cell,
+			test.topology,
 		); got != test.want {
 			t.Errorf(
-				"hostedPortalApprovalRequired(%q, %q) = %t, want %t",
+				"hostedPortalApprovalRequired(%q, %q, %q) = %t, want %t",
 				test.lane,
 				test.cell,
+				test.topology,
 				got,
 				test.want,
 			)
@@ -312,6 +553,33 @@ func TestKDEPortalCardTargetUsesRuntimeDialogGeometry(t *testing.T) {
 	if card != (hostedPortalPoint{x: 779, y: 337}) {
 		t.Fatalf("KDE physical card target = %+v", card)
 	}
+	physical, err := kdePortalPhysicalCardTargets(geometry)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if physical != ([2]hostedPortalPoint{
+		{x: 501, y: 337},
+		{x: 779, y: 337},
+	}) {
+		t.Fatalf("KDE physical card targets = %+v", physical)
+	}
+}
+
+func TestGNOMEPortalPhysicalCardTargetsUseManifestGeometry(t *testing.T) {
+	t.Parallel()
+	targets, err := gnomePortalPhysicalCardTargets(
+		validManifest().HostedDisplay,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := hostedPortalTargetSet{points: [2]hostedPortalTarget{
+		{x: 512, y: 410, width: 2304, height: 768},
+		{x: 799, y: 410, width: 2304, height: 768},
+	}}
+	if targets != want {
+		t.Fatalf("GNOME physical card targets = %+v, want %+v", targets, want)
+	}
 }
 
 func TestKDEPortalPointerCalibration(t *testing.T) {
@@ -429,6 +697,24 @@ func TestPortalDialogWaitRejectsEarlyTestExit(t *testing.T) {
 	}
 	if time.Since(start) > time.Second {
 		t.Fatal("early hosted portal test exit was not detected promptly")
+	}
+}
+
+func TestConsentMarkerWaitClassifiesEarlyTestExit(t *testing.T) {
+	t.Parallel()
+	done := make(chan struct{})
+	close(done)
+	err := waitForConsentMarker(
+		context.Background(),
+		&scriptedCommandExecutor{},
+		nil,
+		"/run/user/1100/robotgo-portal-consent.ready",
+		"remote-desktop",
+		&strings.Builder{},
+		done,
+	)
+	if !errors.Is(err, errHostedPortalTestExitedBeforeConsent) {
+		t.Fatalf("early consent exit error = %v", err)
 	}
 }
 
