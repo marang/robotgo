@@ -89,7 +89,9 @@ sha256sum -c robotgo-release-evidence-*.tar.gz.sha256
 ```
 
 This six-cell release bundle does not replace real-compositor evidence. GNOME
-and KDE RemoteDesktop/ScreenCast portal rows remain pending protected runners.
-The separate hosted Sway/wlroots native, single-/multi-output, and explicit
-portal-availability rows are required by the release gate for the exact release
-commit and remain linked to their own sanitized compositor-evidence artifacts.
+and KDE single- and multi-output RemoteDesktop/ScreenCast checks run in
+disposable hosted guests but remain outside this bundle until exact-release
+promotion is complete. The separate hosted Sway/wlroots native,
+single-/multi-output, and explicit portal-availability rows are required by the
+release gate for the exact release commit and remain linked to their own
+sanitized compositor-evidence artifacts.

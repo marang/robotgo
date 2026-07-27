@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -37,6 +38,12 @@ func validManifest() Manifest {
 			DiskGiB:         40,
 			KernelRelease:   "6.8.0-134-generic",
 			MaximumLifetime: "30m",
+		},
+		HostedDisplay: HostedDisplay{
+			Outputs: []HostedOutput{
+				{Width: 1280, Height: 720, X: 0, Y: 0},
+				{Width: 1024, Height: 768, X: 1280, Y: 0},
+			},
 		},
 		Packages: []string{
 			"gdm3",
@@ -82,6 +89,81 @@ func TestRepositoryGNOMEManifest(t *testing.T) {
 	}
 }
 
+func TestKDEManifestContract(t *testing.T) {
+	t.Parallel()
+	manifest := validManifest()
+	manifest.Lane = portalLaneKDE
+	manifest.Labels = []string{"self-hosted", "linux", "wayland", portalLaneKDE}
+	manifest.Packages = []string{
+		"kwin-wayland",
+		"libkf5screen-bin",
+		"libpipewire-0.3-dev",
+		"linux-modules-extra-6.8.0-134-generic",
+		"pipewire",
+		"plasma-desktop",
+		"plasma-workspace-wayland",
+		"sddm",
+		"wireplumber",
+		"xdg-desktop-portal",
+		"xdg-desktop-portal-kde",
+	}
+	if err := manifest.Validate(); err != nil {
+		t.Fatalf("KDE manifest rejected: %v", err)
+	}
+}
+
+func TestRepositoryKDEManifest(t *testing.T) {
+	t.Parallel()
+	path := filepath.Join(
+		"..",
+		"..",
+		"infrastructure",
+		"portal-runner",
+		"kde",
+		"manifest.json",
+	)
+	manifest, err := LoadManifest(path)
+	if err != nil {
+		t.Fatalf("LoadManifest: %v", err)
+	}
+	if manifest.Lane != portalLaneKDE {
+		t.Fatalf("lane = %q", manifest.Lane)
+	}
+	if manifest.MaximumLifetime() != 30*time.Minute {
+		t.Fatalf("maximum lifetime = %s", manifest.MaximumLifetime())
+	}
+}
+
+func TestHostedDisplayEncodingIsCanonical(t *testing.T) {
+	t.Parallel()
+	display := validManifest().HostedDisplay
+	encoded, err := display.Encode()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if encoded != "0,0,1280,720;1280,0,1024,768" {
+		t.Fatalf("encoded topology = %q", encoded)
+	}
+	decoded, err := ParseHostedDisplay(encoded)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(decoded.Outputs, display.Outputs) {
+		t.Fatalf("decoded topology = %#v, want %#v", decoded, display)
+	}
+	for _, invalid := range []string{
+		"",
+		"0,0,1280",
+		"0,0,1280,720;01280,0,1024,768",
+		"0,0,1280,720;100,0,1024,768",
+		"private,0,1280,720;1280,0,1024,768",
+	} {
+		if _, err := ParseHostedDisplay(invalid); err == nil {
+			t.Fatalf("invalid topology encoding %q was accepted", invalid)
+		}
+	}
+}
+
 func TestManifestRejectsUnsafeContract(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
@@ -90,9 +172,9 @@ func TestManifestRejectsUnsafeContract(t *testing.T) {
 		want   string
 	}{
 		{
-			name: "wrong lane",
+			name: "unsupported lane",
 			change: func(manifest *Manifest) {
-				manifest.Lane = "kde"
+				manifest.Lane = "other"
 			},
 			want: "unsupported protected runner lane",
 		},
@@ -101,7 +183,7 @@ func TestManifestRejectsUnsafeContract(t *testing.T) {
 			change: func(manifest *Manifest) {
 				manifest.Labels = append(manifest.Labels, "personal-desktop")
 			},
-			want: "exact protected GNOME label set",
+			want: "exact protected lane label set",
 		},
 		{
 			name: "mutable image host",
@@ -137,6 +219,44 @@ func TestManifestRejectsUnsafeContract(t *testing.T) {
 				manifest.VM.MaximumLifetime = "24h"
 			},
 			want: "maximum lifetime must be between",
+		},
+		{
+			name: "missing hosted topology",
+			change: func(manifest *Manifest) {
+				manifest.HostedDisplay.Outputs = nil
+			},
+			want: "exactly two outputs",
+		},
+		{
+			name: "overlapping hosted topology",
+			change: func(manifest *Manifest) {
+				manifest.HostedDisplay.Outputs[1].X = 100
+			},
+			want: "must not overlap",
+		},
+		{
+			name: "duplicate hosted output size",
+			change: func(manifest *Manifest) {
+				manifest.HostedDisplay.Outputs[1] = HostedOutput{
+					Width: 1280, Height: 720, X: 1280, Y: 0,
+				}
+			},
+			want: "distinct sizes",
+		},
+		{
+			name: "zero secondary origin",
+			change: func(manifest *Manifest) {
+				manifest.HostedDisplay.Outputs[1].X = 0
+				manifest.HostedDisplay.Outputs[1].Y = 0
+			},
+			want: "non-zero origin",
+		},
+		{
+			name: "unbounded hosted output",
+			change: func(manifest *Manifest) {
+				manifest.HostedDisplay.Outputs[1].Width = maximumHostedOutputSize + 1
+			},
+			want: "size must be between",
 		},
 		{
 			name: "unsorted packages",

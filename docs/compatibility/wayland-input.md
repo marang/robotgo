@@ -12,13 +12,14 @@ pass.
 | 2026-07-21 | Sway 1.9, nested headless Ubuntu 24.04 | Native virtual keyboard/pointer | `cgo,wayland,swayintegration` | pass | [`Sway E2E` run 29857289675](https://github.com/marang/robotgo/actions/runs/29857289675), `native-input`, artifact `sway-native-input`; self-owned `wev` target, no physical devices or host desktop |
 | 2026-07-21 | Sway 1.9, nested headless Ubuntu 24.04 | Native logical output mapping used by absolute input | `cgo,wayland,swayintegration` | pass | [`Sway E2E` run 29861058126](https://github.com/marang/robotgo/actions/runs/29861058126), `native-output-multi`, artifact `sway-native-output-multi`; exact two-output negative-origin, scale-2, transform-90 topology |
 | 2026-07-26 | GNOME 46, nested Ubuntu 24.04 | RemoteDesktop + ScreenCast mapping | Pure-Go portal client | pass, single output | [`RemoteDesktop E2E` run 30199452053](https://github.com/marang/robotgo/actions/runs/30199452053), exact commit `ac3c6683817b4740219becba9b5242eed4fed7b7`; real portal consent, relative/absolute pointer, modifier key, optional touch, session close, and transient-artifact rejection |
-| pending | KDE Plasma | RemoteDesktop + ScreenCast mapping | Pure-Go portal client | no runner | Requires self-hosted runner label `kde` |
+| 2026-07-26 | KDE Plasma 5.27, nested Ubuntu 24.04 | RemoteDesktop + ScreenCast mapping | Pure-Go portal client | pass, single output | [`RemoteDesktop E2E` run 30204553569](https://github.com/marang/robotgo/actions/runs/30204553569), exact commit `5bae59335b82bb3ca0d22c7e39a029273b3f3ed8`; real portal backend, relative/absolute pointer, modifier key, optional touch, stream mapping, deterministic close, and transient-artifact rejection |
+| 2026-07-26 | GNOME 46, nested Ubuntu 24.04 | RemoteDesktop + two ScreenCast monitor mappings | Pure-Go portal client | pass, multi-output | [`RemoteDesktop E2E` run 30220551561](https://github.com/marang/robotgo/actions/runs/30220551561), exact commit `3ab8a785e3662af341c629377dccbdcaed3a69d6`; canonical 1280x720 + 1024x768 topology, two unique physical streams, relative and per-output absolute pointer input, modifier key, deterministic close, and transient-artifact rejection |
+| 2026-07-26 | KDE Plasma 5.27, nested Ubuntu 24.04 | RemoteDesktop + two ScreenCast monitor mappings | Pure-Go portal client | pass, multi-output | [`RemoteDesktop E2E` run 30220551561](https://github.com/marang/robotgo/actions/runs/30220551561), exact commit `3ab8a785e3662af341c629377dccbdcaed3a69d6`; canonical two-output topology, two unique physical streams with version-aware optional metadata, relative/per-output absolute pointer input, deterministic close, and transient-artifact rejection |
 
 ## Evidence workflow
 
 `.github/workflows/remote-desktop-e2e.yml` validates the CGO-independent pure-Go
-portal client in a credential-free nested GNOME guest and, when provisioned, a
-protected ephemeral KDE runner:
+portal client in credential-free nested GNOME and KDE guests:
 
 The harness calls the lower-level portal session methods directly, ensuring a
 native input backend cannot satisfy the checks instead of RemoteDesktop.
@@ -26,15 +27,15 @@ native input backend cannot satisfy the checks instead of RemoteDesktop.
 - RemoteDesktop and ScreenCast capability discovery
 - explicit consent and granted keyboard/pointer devices
 - relative and absolute pointer movement
-- stream geometry and node mapping
+- exact stream count plus version-aware geometry and node mapping
 - modifier-only keyboard injection
 - touchscreen down/up when advertised
 - deterministic close
 
-The GNOME job retains no desktop artifact or raw log. It runs automatically on
-trusted `main` pushes and can be manually dispatched; fork and ordinary
-pull-request events do not boot the guest. KDE remains gated by
-`ROBOTGO_REMOTE_DESKTOP_E2E=kde|all` and the protected self-hosted contract.
+The GNOME and KDE jobs retain no desktop artifact or raw log. They run
+automatically on trusted `main` pushes and can be manually dispatched; fork and
+ordinary pull-request events do not boot either guest. Manual dispatch selects
+`gnome`, `kde`, or `all`.
 Sway/wlroots native input and explicit portal-unavailability evidence use
 separate P005 lanes; they are not counted as RemoteDesktop portal passes.
 

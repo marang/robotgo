@@ -1,12 +1,12 @@
 {
   "schema_version": "1",
-  "lane": "gnome",
+  "lane": "kde",
   "repository": "marang/robotgo",
   "labels": [
     "self-hosted",
     "linux",
     "wayland",
-    "gnome"
+    "kde"
   ],
   "base_image": {
     "version": "ubuntu-24.04-20260705",
@@ -51,24 +51,27 @@
     "ca-certificates",
     "curl",
     "dbus-user-session",
-    "dconf-cli",
     "gcc",
-    "gdm3",
     "git",
-    "gnome-shell",
     "jq",
-    "libpam-gnome-keyring",
+    "kwin-wayland",
+    "libkf5screen-bin",
     "libpipewire-0.3-dev",
     "linux-modules-extra-6.8.0-134-generic",
     "nftables",
     "openssh-server",
     "pipewire",
     "pkg-config",
+    "plasma-desktop",
+    "plasma-workspace-wayland",
+    "python3-dbus",
+    "python3-gi",
+    "sddm",
     "sudo",
-    "ubuntu-desktop-minimal",
     "wireplumber",
     "xdg-desktop-portal",
-    "xdg-desktop-portal-gnome"
+    "xdg-desktop-portal-kde",
+    "xserver-xorg-core"
   ],
   "network": {
     "proxy_port": 3128,

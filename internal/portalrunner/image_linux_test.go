@@ -21,11 +21,12 @@ func TestComputeImageIdentityBindsEveryBuildInput(t *testing.T) {
 		manifestPath,
 		repositoryRoot,
 		guestRoot,
+		portalLaneGNOME,
 	)
 	if err != nil {
 		t.Fatalf("compute initial image identity: %v", err)
 	}
-	changedPath := filepath.Join(guestRoot, guestImageFiles[0])
+	changedPath := filepath.Join(guestRoot, commonGuestImageFiles[0])
 	if err := os.WriteFile(changedPath, []byte("#!/bin/sh\nexit 1\n"), 0o755); err != nil {
 		t.Fatalf("change guest input: %v", err)
 	}
@@ -33,6 +34,7 @@ func TestComputeImageIdentityBindsEveryBuildInput(t *testing.T) {
 		manifestPath,
 		repositoryRoot,
 		guestRoot,
+		portalLaneGNOME,
 	)
 	if err != nil {
 		t.Fatalf("compute changed image identity: %v", err)
@@ -52,6 +54,7 @@ func TestComputeImageIdentityBindsEveryBuildInput(t *testing.T) {
 		manifestPath,
 		repositoryRoot,
 		guestRoot,
+		portalLaneGNOME,
 	)
 	if err != nil {
 		t.Fatalf("compute builder-changed image identity: %v", err)
@@ -69,15 +72,25 @@ func TestComputeImageIdentityBindsExecutableMode(t *testing.T) {
 	writeImageIdentityFixture(t, repositoryRoot, guestRoot)
 	manifestPath := filepath.Join(guestRoot, "manifest.json")
 
-	firstID, _, _, err := computeImageIdentity(manifestPath, repositoryRoot, guestRoot)
+	firstID, _, _, err := computeImageIdentity(
+		manifestPath,
+		repositoryRoot,
+		guestRoot,
+		portalLaneGNOME,
+	)
 	if err != nil {
 		t.Fatalf("compute initial image identity: %v", err)
 	}
-	changedPath := filepath.Join(guestRoot, guestImageFiles[0])
+	changedPath := filepath.Join(guestRoot, commonGuestImageFiles[0])
 	if err := os.Chmod(changedPath, 0o700); err != nil {
 		t.Fatalf("change guest input mode: %v", err)
 	}
-	secondID, _, _, err := computeImageIdentity(manifestPath, repositoryRoot, guestRoot)
+	secondID, _, _, err := computeImageIdentity(
+		manifestPath,
+		repositoryRoot,
+		guestRoot,
+		portalLaneGNOME,
+	)
 	if err != nil {
 		t.Fatalf("compute mode-changed image identity: %v", err)
 	}
@@ -96,12 +109,16 @@ func TestRemoveStaleImagesKeepsOnlyCurrentAttestedPair(t *testing.T) {
 	currentMetadata := currentImage + ".build.json"
 	staleImage := filepath.Join(directory, "gnome-"+staleDigest+".qcow2")
 	staleMetadata := staleImage + ".build.json"
+	kdeImage := filepath.Join(directory, "kde-"+staleDigest+".qcow2")
+	kdeMetadata := kdeImage + ".build.json"
 	baseImage := filepath.Join(directory, "ubuntu-base.qcow2")
 	for _, path := range []string{
 		currentImage,
 		currentMetadata,
 		staleImage,
 		staleMetadata,
+		kdeImage,
+		kdeMetadata,
 		baseImage,
 	} {
 		if err := os.WriteFile(path, []byte("fixture"), 0o600); err != nil {
@@ -110,12 +127,19 @@ func TestRemoveStaleImagesKeepsOnlyCurrentAttestedPair(t *testing.T) {
 	}
 	if err := removeStaleImages(
 		directory,
+		portalLaneGNOME,
 		currentImage,
 		currentMetadata,
 	); err != nil {
 		t.Fatalf("removeStaleImages: %v", err)
 	}
-	for _, path := range []string{currentImage, currentMetadata, baseImage} {
+	for _, path := range []string{
+		currentImage,
+		currentMetadata,
+		kdeImage,
+		kdeMetadata,
+		baseImage,
+	} {
 		if _, err := os.Stat(path); err != nil {
 			t.Fatalf("expected retained image %q: %v", path, err)
 		}
@@ -123,6 +147,50 @@ func TestRemoveStaleImagesKeepsOnlyCurrentAttestedPair(t *testing.T) {
 	for _, path := range []string{staleImage, staleMetadata} {
 		if _, err := os.Stat(path); !os.IsNotExist(err) {
 			t.Fatalf("stale image %q still exists: %v", path, err)
+		}
+	}
+}
+
+func TestRepositoryGuestFilesAreCompleteAndExecutable(t *testing.T) {
+	t.Parallel()
+	for _, lane := range []string{portalLaneGNOME, portalLaneKDE} {
+		path, err := filepath.Abs(
+			filepath.Join(
+				"..",
+				"..",
+				"infrastructure",
+				"portal-runner",
+				lane,
+			),
+		)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := validateGuestFiles(path, lane); err != nil {
+			t.Fatalf("validate %s guest files: %v", lane, err)
+		}
+		files, err := guestImageFilesForLane(lane)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, relative := range files {
+			info, err := os.Stat(filepath.Join(path, relative))
+			if err != nil {
+				t.Fatal(err)
+			}
+			wantMode := os.FileMode(0o755)
+			if filepath.Ext(relative) == ".js" {
+				wantMode = 0o644
+			}
+			if info.Mode().Perm() != wantMode {
+				t.Errorf(
+					"%s %s mode = %o, want %o",
+					lane,
+					relative,
+					info.Mode().Perm(),
+					wantMode,
+				)
+			}
 		}
 	}
 }
@@ -140,7 +208,7 @@ func TestValidateGuestFilesRejectsUnboundInput(t *testing.T) {
 	); err != nil {
 		t.Fatalf("write unexpected guest input: %v", err)
 	}
-	if err := validateGuestFiles(guestRoot); err == nil ||
+	if err := validateGuestFiles(guestRoot, portalLaneGNOME); err == nil ||
 		!strings.Contains(err.Error(), "not identity-bound") {
 		t.Fatalf("validateGuestFiles() error = %v, want identity-bound rejection", err)
 	}
@@ -281,6 +349,22 @@ func TestRepositoryGuestSessionContract(t *testing.T) {
 	) {
 		t.Fatal("wait-session.sh does not use the protected user's explicit bus")
 	}
+	for _, required := range []string{
+		"--no-pager call",
+		"org.freedesktop.portal.Desktop",
+		"org.freedesktop.DBus.Peer",
+		"Ping",
+	} {
+		if !strings.Contains(string(waitScript), required) {
+			t.Fatalf(
+				"wait-session.sh omits portal activation contract %q",
+				required,
+			)
+		}
+	}
+	if strings.Contains(string(waitScript), "--no-legend status") {
+		t.Fatal("wait-session.sh passively inspects an on-demand portal")
+	}
 
 	installScript, err := os.ReadFile(filepath.Join(guestRoot, "install.sh"))
 	if err != nil {
@@ -350,6 +434,114 @@ func TestRepositoryGuestSessionContract(t *testing.T) {
 	}
 }
 
+func TestRepositoryKDEGuestActivatesPortalFrontendAndBackend(t *testing.T) {
+	t.Parallel()
+	guestRoot := filepath.Join(
+		"..",
+		"..",
+		"infrastructure",
+		"portal-runner",
+		"kde",
+		"guest",
+	)
+	waitScript, err := os.ReadFile(filepath.Join(guestRoot, "wait-session.sh"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	script := string(waitScript)
+	for _, required := range []string{
+		"busctl --address=unix:path=/run/user/1100/bus",
+		"--no-pager call",
+		"org.freedesktop.portal.Desktop",
+		"org.freedesktop.impl.portal.desktop.kde",
+		"org.freedesktop.DBus.Peer",
+		"Ping",
+	} {
+		if !strings.Contains(script, required) {
+			t.Errorf("KDE session readiness omits %q", required)
+		}
+	}
+	if strings.Contains(script, "--no-legend status") {
+		t.Fatal("KDE session readiness passively inspects an on-demand portal")
+	}
+	installScript, err := os.ReadFile(filepath.Join(guestRoot, "install.sh"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, required := range []string{
+		"/usr/local/libexec/robotgo-runner-locate-screencast",
+		"/usr/local/libexec/robotgo-runner-report-screencast-geometry",
+		"/usr/local/share/robotgo/report-screencast-geometry.js",
+	} {
+		if !strings.Contains(string(installScript), required) {
+			t.Errorf("KDE geometry approval omits %q", required)
+		}
+	}
+	manifest, err := os.ReadFile(filepath.Join(filepath.Dir(guestRoot), "manifest.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, required := range []string{
+		`"python3-dbus"`,
+		`"python3-gi"`,
+	} {
+		if !strings.Contains(string(manifest), required) {
+			t.Fatalf("KDE manifest omits geometry bridge package %s", required)
+		}
+	}
+
+	locator, err := os.ReadFile(filepath.Join(guestRoot, "locate-screencast.sh"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, required := range []string{
+		"org.kde.KWin",
+		"org.kde.kwin.Scripting",
+		"org.kde.kwin.Script run",
+		"unloadScript",
+		`rm -f -- "$output"`,
+	} {
+		if !strings.Contains(string(locator), required) {
+			t.Errorf("KDE geometry locator omits %q", required)
+		}
+	}
+	for _, forbidden := range []string{"screendump", "journalctl", "title"} {
+		if strings.Contains(string(locator), forbidden) {
+			t.Errorf("KDE geometry locator contains %q", forbidden)
+		}
+	}
+
+	reporter, err := os.ReadFile(
+		filepath.Join(guestRoot, "report-screencast-geometry.js"),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, required := range []string{
+		"workspace.virtualScreenSize",
+		"workspace.activeClient",
+		"workspace.cursorPos",
+		"dialog.x",
+		"dialog.y",
+		"dialog.width",
+		"dialog.height",
+	} {
+		if !strings.Contains(string(reporter), required) {
+			t.Errorf("KDE KWin reporter omits %q", required)
+		}
+	}
+	for _, forbidden := range []string{
+		"caption",
+		"resourceName",
+		"title",
+		"screenshot",
+	} {
+		if strings.Contains(string(reporter), forbidden) {
+			t.Errorf("KDE KWin reporter contains %q", forbidden)
+		}
+	}
+}
+
 func writeImageIdentityFixture(t *testing.T, repositoryRoot, guestRoot string) {
 	t.Helper()
 
@@ -375,6 +567,10 @@ func writeImageIdentityFixture(t *testing.T, repositoryRoot, guestRoot string) {
 		0o644,
 	); err != nil {
 		t.Fatalf("write manifest fixture: %v", err)
+	}
+	guestImageFiles, err := guestImageFilesForLane(portalLaneGNOME)
+	if err != nil {
+		t.Fatal(err)
 	}
 	for _, relative := range guestImageFiles {
 		if err := os.WriteFile(

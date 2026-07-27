@@ -5,12 +5,14 @@ package portal_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
 	"time"
 
 	portalinput "github.com/marang/robotgo/input/portal"
+	"github.com/marang/robotgo/internal/portalrunner"
 )
 
 const envRemoteDesktopE2E = "ROBOTGO_REMOTE_DESKTOP_E2E"
@@ -49,6 +51,8 @@ func TestRemoteDesktopPortalRuntime(t *testing.T) {
 		Devices: devices, Sources: portalinput.SourceMonitor,
 		CursorMode: portalinput.CursorHidden,
 	}
+	expectedOutputs, multiOutput := expectedPortalOutputs(t)
+	options.Multiple = multiOutput
 	stage = "open"
 	signalPortalConsentReady(t, "remote-desktop")
 	session, err := portalinput.OpenWithOptions(ctx, options)
@@ -75,12 +79,40 @@ func TestRemoteDesktopPortalRuntime(t *testing.T) {
 	if len(streams) == 0 {
 		t.Fatal("portal session returned no ScreenCast streams")
 	}
-	stream := streams[0]
 	stage = "input-events"
-	runPortalEvent(t, "PointerMotionAbsolute", func(eventCtx context.Context) error {
-		return session.PointerMotionAbsolute(eventCtx, stream.NodeID, 1, 1)
-	})
+	if multiOutput {
+		validateRemoteDesktopStreams(
+			t,
+			&stage,
+			streams,
+			expectedOutputs,
+			capability.ScreenCastVersion,
+		)
+		for index, stream := range streams {
+			stage = fmt.Sprintf("input-output-%d", index+1)
+			stream := stream
+			x, y := remoteDesktopStreamCoordinates(stream)
+			runPortalEvent(
+				t,
+				fmt.Sprintf("PointerMotionAbsolute output %d", index+1),
+				func(eventCtx context.Context) error {
+					return session.PointerMotionAbsolute(
+						eventCtx,
+						stream.NodeID,
+						x,
+						y,
+					)
+				},
+			)
+		}
+	} else {
+		stream := streams[0]
+		runPortalEvent(t, "PointerMotionAbsolute", func(eventCtx context.Context) error {
+			return session.PointerMotionAbsolute(eventCtx, stream.NodeID, 1, 1)
+		})
+	}
 	if devices&portalinput.DeviceTouchscreen != 0 {
+		stream := streams[0]
 		runPortalEvent(t, "TouchDown", func(eventCtx context.Context) error {
 			return session.TouchDown(eventCtx, stream.NodeID, 0, 1, 1)
 		})
@@ -101,6 +133,127 @@ func TestRemoteDesktopPortalRuntime(t *testing.T) {
 		t.Fatalf("portal session Close error: %v", err)
 	}
 	closed = true
+}
+
+func expectedPortalOutputs(
+	t *testing.T,
+) (portalrunner.HostedDisplay, bool) {
+	t.Helper()
+	multiOutput := os.Getenv(portalrunner.PortalMultiOutputEnvKey)
+	encoded := os.Getenv(portalrunner.PortalExpectedOutputsEnvKey)
+	if multiOutput == "" {
+		if encoded != "" {
+			t.Fatal("portal expected outputs require multi-output mode")
+		}
+		return portalrunner.HostedDisplay{}, false
+	}
+	if multiOutput != "1" {
+		t.Fatal("portal multi-output marker is invalid")
+	}
+	display, err := portalrunner.ParseHostedDisplay(encoded)
+	if err != nil {
+		t.Fatalf("parse expected portal outputs: %v", err)
+	}
+	return display, true
+}
+
+func validateRemoteDesktopStreams(
+	t *testing.T,
+	stage *string,
+	streams []portalinput.Stream,
+	expected portalrunner.HostedDisplay,
+	screenCastVersion uint32,
+) {
+	t.Helper()
+	evidence := make(
+		[]portalrunner.HostedStreamEvidence,
+		0,
+		len(streams),
+	)
+	for _, stream := range streams {
+		evidence = append(evidence, portalrunner.HostedStreamEvidence{
+			NodeID: stream.NodeID, ID: stream.ID,
+			MappingID:      stream.MappingID,
+			PipeWireSerial: stream.PipeWireSerial,
+			Monitor:        stream.SourceType == portalinput.SourceMonitor,
+			HasPosition:    stream.HasPosition,
+			HasSize:        stream.HasSize,
+			X:              int(stream.Position.X),
+			Y:              int(stream.Position.Y),
+			Width:          int(stream.Size.Width),
+			Height:         int(stream.Size.Height),
+		})
+	}
+	if err := portalrunner.ValidateHostedStreamEvidence(
+		expected,
+		screenCastVersion,
+		evidence,
+	); err != nil {
+		if category := portalrunner.HostedStreamEvidenceFailureStage(err); category != "" {
+			*stage = "streams-" + category
+		}
+		t.Fatalf("validate portal multi-output evidence: %v", err)
+	}
+}
+
+func remoteDesktopStreamCoordinates(stream portalinput.Stream) (float64, float64) {
+	x, y := float64(1), float64(1)
+	if stream.HasSize && stream.Size.Width > 0 {
+		x = float64(stream.Size.Width) / 2
+	}
+	if stream.HasSize && stream.Size.Height > 0 {
+		y = float64(stream.Size.Height) / 2
+	}
+	return x, y
+}
+
+func TestRemoteDesktopStreamCoordinates(t *testing.T) {
+	t.Parallel()
+	for _, test := range []struct {
+		name   string
+		stream portalinput.Stream
+		wantX  float64
+		wantY  float64
+	}{
+		{
+			name: "portal omitted optional size",
+			stream: portalinput.Stream{
+				Size: portalinput.Size{Width: 1280, Height: 720},
+			},
+			wantX: 1, wantY: 1,
+		},
+		{
+			name: "logical center",
+			stream: portalinput.Stream{
+				HasSize: true,
+				Size:    portalinput.Size{Width: 1280, Height: 720},
+			},
+			wantX: 640, wantY: 360,
+		},
+		{
+			name: "minimum safe coordinate",
+			stream: portalinput.Stream{
+				HasSize: true,
+				Size:    portalinput.Size{Width: 1, Height: 1},
+			},
+			wantX: 0.5, wantY: 0.5,
+		},
+	} {
+		test := test
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			x, y := remoteDesktopStreamCoordinates(test.stream)
+			if x != test.wantX || y != test.wantY {
+				t.Fatalf(
+					"remoteDesktopStreamCoordinates() = (%g,%g), want (%g,%g)",
+					x,
+					y,
+					test.wantX,
+					test.wantY,
+				)
+			}
+		})
+	}
 }
 
 func reportPortalStageOnFailure(t *testing.T, stage *string) {

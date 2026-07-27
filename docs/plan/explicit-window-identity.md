@@ -44,5 +44,6 @@ Wayland handles. Existing protected Sway and opt-in Sway/Hyprland runtime tests
 also exercise active PID lookup. Cross-build tests preserve native and Pure-Go
 behavior.
 
-Protected Hyprland geometry evidence and GNOME/KDE runner provisioning remain
-separate infrastructure work.
+Protected Hyprland geometry evidence remains separate infrastructure work.
+Hosted GNOME/KDE portal runners are delivered, but their portal evidence does
+not prove compositor window identity.

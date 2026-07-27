@@ -29,7 +29,7 @@ func main() {
 
 func run(arguments []string, stdout, stderr io.Writer) error {
 	if len(arguments) == 0 {
-		return errors.New("usage: portalrunner <validate|build|probe|hosted-run|run|proxy>")
+		return errors.New("usage: portalrunner <validate|build|probe|hosted-run|guest-display|run|cleanup|proxy>")
 	}
 	switch arguments[0] {
 	case "validate":
@@ -40,13 +40,102 @@ func run(arguments []string, stdout, stderr io.Writer) error {
 		return runProbe(arguments[1:], stdout, stderr)
 	case "hosted-run":
 		return runHosted(arguments[1:], stdout, stderr)
+	case "guest-display":
+		return runGuestDisplay(arguments[1:], stdout, stderr)
 	case "run":
 		return runProtected(arguments[1:], stdout, stderr)
+	case "cleanup":
+		return runCleanup(arguments[1:], stdout, stderr)
 	case "proxy":
 		return runProxy(arguments[1:], stdout, stderr)
 	default:
 		return fmt.Errorf("unknown portalrunner command %q", arguments[0])
 	}
+}
+
+func runGuestDisplay(
+	arguments []string,
+	stdout,
+	stderr io.Writer,
+) error {
+	flags := flag.NewFlagSet("guest-display", flag.ContinueOnError)
+	flags.SetOutput(stderr)
+	manifestPath := flags.String(
+		"manifest",
+		defaultManifest,
+		"runner manifest path",
+	)
+	if err := flags.Parse(arguments); err != nil {
+		return err
+	}
+	if flags.NArg() != 0 {
+		return errors.New("guest-display accepts no positional arguments")
+	}
+	if os.Getenv(portalrunner.HostedGuestEnvKey) != "1" {
+		return errors.New(
+			"guest-display is restricted to a disposable hosted guest",
+		)
+	}
+	manifest, err := portalrunner.LoadManifest(*manifestPath)
+	if err != nil {
+		return err
+	}
+	ctx, cancel := signal.NotifyContext(
+		context.Background(),
+		os.Interrupt,
+		syscall.SIGTERM,
+	)
+	defer cancel()
+	if err := portalrunner.ConfigureHostedDisplay(
+		ctx,
+		manifest,
+		stdout,
+	); err != nil {
+		_ = portalrunner.WriteHostedDisplayFailureMarker(stderr, err)
+		return errors.New("configure hosted display")
+	}
+	return nil
+}
+
+func runCleanup(arguments []string, stdout, stderr io.Writer) error {
+	flags := flag.NewFlagSet("cleanup", flag.ContinueOnError)
+	flags.SetOutput(stderr)
+	repositoryRoot := flags.String("repository-root", ".", "repository root")
+	stateRoot := flags.String("state-root", "", "external private runner state root")
+	if err := flags.Parse(arguments); err != nil {
+		return err
+	}
+	if flags.NArg() != 0 {
+		return errors.New("cleanup accepts no positional arguments")
+	}
+	if *stateRoot == "" {
+		return errors.New("cleanup requires an explicit state root")
+	}
+	absoluteRepository, err := filepath.Abs(*repositoryRoot)
+	if err != nil {
+		return fmt.Errorf("resolve repository root: %w", err)
+	}
+	absoluteState, err := filepath.Abs(*stateRoot)
+	if err != nil {
+		return fmt.Errorf("resolve portal runner state: %w", err)
+	}
+	if err := portalrunner.PrepareStateRoot(
+		absoluteState,
+		absoluteRepository,
+	); err != nil {
+		return err
+	}
+	ctx, cancel := signal.NotifyContext(
+		context.Background(),
+		os.Interrupt,
+		syscall.SIGTERM,
+	)
+	defer cancel()
+	if err := portalrunner.CleanupAbandonedRuns(ctx, absoluteState); err != nil {
+		return err
+	}
+	_, err = fmt.Fprintln(stdout, "portal runner transient cleanup complete")
+	return err
 }
 
 func runHosted(arguments []string, stdout, stderr io.Writer) error {
@@ -61,6 +150,11 @@ func runHosted(arguments []string, stdout, stderr io.Writer) error {
 		"cell",
 		"",
 		"hosted test cell: remote-desktop or screencast",
+	)
+	topology := flags.String(
+		"topology",
+		portalrunner.HostedTopologySingle,
+		"hosted display topology: single-output or multi-output",
 	)
 	if err := flags.Parse(arguments); err != nil {
 		return err
@@ -92,11 +186,15 @@ func runHosted(arguments []string, stdout, stderr io.Writer) error {
 	if err != nil {
 		return fmt.Errorf("resolve portal runner state: %w", err)
 	}
+	manifest, err := portalrunner.LoadManifest(absoluteManifest)
+	if err != nil {
+		return err
+	}
 	guestFiles := filepath.Join(
 		absoluteRepository,
 		"infrastructure",
 		"portal-runner",
-		"gnome",
+		manifest.Lane,
 	)
 	ctx, cancel := signal.NotifyContext(
 		context.Background(),
@@ -104,7 +202,7 @@ func runHosted(arguments []string, stdout, stderr io.Writer) error {
 		syscall.SIGTERM,
 	)
 	defer cancel()
-	return portalrunner.RunHostedGNOME(
+	return portalrunner.RunHostedPortal(
 		ctx,
 		portalrunner.HostedRuntimeOptions{
 			ManifestPath:   absoluteManifest,
@@ -114,6 +212,7 @@ func runHosted(arguments []string, stdout, stderr io.Writer) error {
 			SSHPort:        *sshPort,
 			Commit:         *commit,
 			Cell:           *cell,
+			Topology:       *topology,
 			Output:         stdout,
 		},
 	)
@@ -277,11 +376,15 @@ func runBuild(arguments []string, stdout, stderr io.Writer) error {
 	if err != nil {
 		return fmt.Errorf("resolve portal runner state: %w", err)
 	}
+	manifest, err := portalrunner.LoadManifest(absoluteManifest)
+	if err != nil {
+		return err
+	}
 	guestFiles := filepath.Join(
 		absoluteRepository,
 		"infrastructure",
 		"portal-runner",
-		"gnome",
+		manifest.Lane,
 	)
 	ctx, cancel := signal.NotifyContext(
 		context.Background(),

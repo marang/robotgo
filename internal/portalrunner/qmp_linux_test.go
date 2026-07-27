@@ -6,6 +6,7 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"fmt"
 	"net"
 	"path/filepath"
 	"reflect"
@@ -15,7 +16,68 @@ import (
 )
 
 func TestQMPPortalApprovalUsesIndependentKeyboardChords(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		cell string
+		want [][]string
+	}{
+		{
+			name: "RemoteDesktop",
+			cell: "remote-desktop",
+			want: [][]string{
+				{"alt", "i"},
+				{"tab"},
+				{"spc"},
+				{"tab"},
+				{"spc"},
+				{"alt", "s"},
+			},
+		},
+	} {
+		test := test
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			got := recordQMPCommands(
+				t,
+				len(test.want),
+				func(ctx context.Context, client *qmpClient) error {
+					return client.approvePortal(
+						ctx,
+						portalLaneGNOME,
+						test.cell,
+						HostedTopologyMulti,
+					)
+				},
+			)
+			for index, want := range test.want {
+				assertQMPChord(t, got[index+1], want)
+			}
+		})
+	}
+}
+
+func TestQMPGNOMEMultiOutputScreenCastRequiresPointerGeometry(
+	t *testing.T,
+) {
 	t.Parallel()
+	client := &qmpClient{}
+	err := client.approvePortal(
+		context.Background(),
+		portalLaneGNOME,
+		"screencast",
+		HostedTopologyMulti,
+	)
+	if err == nil || !strings.Contains(err.Error(), "pointer geometry") {
+		t.Fatalf("GNOME multi-output keyboard approval error = %v", err)
+	}
+}
+
+func recordQMPCommands(
+	t *testing.T,
+	chordCount int,
+	run func(context.Context, *qmpClient) error,
+) []qmpCommand {
+	t.Helper()
 	socket := filepath.Join(t.TempDir(), "qmp.sock")
 	listener, err := net.Listen("unix", socket)
 	if err != nil {
@@ -23,7 +85,8 @@ func TestQMPPortalApprovalUsesIndependentKeyboardChords(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = listener.Close() })
 
-	commands := make(chan qmpCommand, 3)
+	commandCount := chordCount + 1
+	commands := make(chan qmpCommand, commandCount)
 	serverDone := make(chan error, 1)
 	go func() {
 		connection, err := listener.Accept()
@@ -40,7 +103,7 @@ func TestQMPPortalApprovalUsesIndependentKeyboardChords(t *testing.T) {
 		}
 		decoder := json.NewDecoder(bufio.NewReader(connection))
 		encoder := json.NewEncoder(connection)
-		for range 3 {
+		for range commandCount {
 			var command qmpCommand
 			if err := decoder.Decode(&command); err != nil {
 				serverDone <- err
@@ -65,14 +128,14 @@ func TestQMPPortalApprovalUsesIndependentKeyboardChords(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { _ = client.close() }()
-	if err := client.approvePortal(ctx, "remote-desktop"); err != nil {
+	if err := run(ctx, client); err != nil {
 		t.Fatal(err)
 	}
 	if err := <-serverDone; err != nil {
 		t.Fatal(err)
 	}
 
-	got := make([]qmpCommand, 0, 3)
+	got := make([]qmpCommand, 0, commandCount)
 	close(commands)
 	for command := range commands {
 		got = append(got, command)
@@ -80,8 +143,302 @@ func TestQMPPortalApprovalUsesIndependentKeyboardChords(t *testing.T) {
 	if got[0].Execute != "qmp_capabilities" {
 		t.Fatalf("first QMP command = %q", got[0].Execute)
 	}
-	assertQMPChord(t, got[1], []string{"alt", "i"})
-	assertQMPChord(t, got[2], []string{"alt", "s"})
+	return got
+}
+
+func TestQMPKDEPhysicalOutputScrollUsesIndependentWheelNotches(t *testing.T) {
+	t.Parallel()
+	socket := filepath.Join(t.TempDir(), "qmp.sock")
+	listener, err := net.Listen("unix", socket)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = listener.Close() })
+
+	commandCount := 1 + qmpKDEScrollNotches*2
+	commands := make(chan qmpCommand, commandCount)
+	serverDone := make(chan error, 1)
+	go func() {
+		connection, err := listener.Accept()
+		if err != nil {
+			serverDone <- err
+			return
+		}
+		defer func() { _ = connection.Close() }()
+		if _, err := connection.Write([]byte(
+			`{"QMP":{"version":{"qemu":{"major":11}},"capabilities":[]}}` + "\n",
+		)); err != nil {
+			serverDone <- err
+			return
+		}
+		decoder := json.NewDecoder(bufio.NewReader(connection))
+		encoder := json.NewEncoder(connection)
+		for range commandCount {
+			var command qmpCommand
+			if err := decoder.Decode(&command); err != nil {
+				serverDone <- err
+				return
+			}
+			commands <- command
+			if err := encoder.Encode(map[string]any{
+				"return": map[string]any{},
+				"id":     command.ID,
+			}); err != nil {
+				serverDone <- err
+				return
+			}
+		}
+		serverDone <- nil
+	}()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	client, err := connectQMP(ctx, socket)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = client.close() }()
+	if err := client.scrollKDEPhysicalOutputs(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if err := <-serverDone; err != nil {
+		t.Fatal(err)
+	}
+	close(commands)
+	got := make([]qmpCommand, 0, commandCount)
+	for command := range commands {
+		got = append(got, command)
+	}
+	if got[0].Execute != "qmp_capabilities" {
+		t.Fatalf("first QMP command = %q", got[0].Execute)
+	}
+	for index := 1; index < len(got); index++ {
+		assertQMPButton(
+			t,
+			got[index],
+			qmpPointerWheelDown,
+			index%2 == 1,
+		)
+	}
+}
+
+func TestQMPAbsoluteClickUsesRuntimeDisplayGeometry(t *testing.T) {
+	t.Parallel()
+	socket := filepath.Join(t.TempDir(), "qmp.sock")
+	listener, err := net.Listen("unix", socket)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = listener.Close() })
+
+	commands := make(chan qmpCommand, 7)
+	serverDone := make(chan error, 1)
+	go func() {
+		connection, err := listener.Accept()
+		if err != nil {
+			serverDone <- err
+			return
+		}
+		defer func() { _ = connection.Close() }()
+		if _, err := connection.Write([]byte(
+			`{"QMP":{"version":{"qemu":{"major":11}},"capabilities":[]}}` + "\n",
+		)); err != nil {
+			serverDone <- err
+			return
+		}
+		decoder := json.NewDecoder(bufio.NewReader(connection))
+		encoder := json.NewEncoder(connection)
+		for commandIndex := range 7 {
+			var command qmpCommand
+			if err := decoder.Decode(&command); err != nil {
+				serverDone <- err
+				return
+			}
+			commands <- command
+			response := any(map[string]any{})
+			switch commandIndex {
+			case 1:
+				response = []map[string]any{
+					{
+						"name": "relative", "index": 1,
+						"absolute": false, "current": true,
+					},
+					{
+						"name": qmpUSBTabletName, "index": 2,
+						"absolute": true, "current": false,
+					},
+					{
+						"name": "other absolute", "index": 3,
+						"absolute": true, "current": false,
+					},
+				}
+			case 2:
+				response = ""
+			case 3:
+				response = []map[string]any{
+					{
+						"name": "relative", "index": 1,
+						"absolute": false, "current": false,
+					},
+					{
+						"name": qmpUSBTabletName, "index": 2,
+						"absolute": true, "current": true,
+					},
+					{
+						"name": "other absolute", "index": 3,
+						"absolute": true, "current": false,
+					},
+				}
+			}
+			if err := encoder.Encode(map[string]any{
+				"return": response,
+				"id":     command.ID,
+			}); err != nil {
+				serverDone <- err
+				return
+			}
+		}
+		serverDone <- nil
+	}()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	client, err := connectQMP(ctx, socket)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = client.close() }()
+	if err := client.clickAbsolute(ctx, 400, 300, 1600, 900); err != nil {
+		t.Fatal(err)
+	}
+	if err := <-serverDone; err != nil {
+		t.Fatal(err)
+	}
+	close(commands)
+	got := make([]qmpCommand, 0, 7)
+	for command := range commands {
+		got = append(got, command)
+	}
+	if got[0].Execute != "qmp_capabilities" {
+		t.Fatalf("first QMP command = %q", got[0].Execute)
+	}
+	if got[1].Execute != qmpCommandQueryMice {
+		t.Fatalf("pointer query command = %q", got[1].Execute)
+	}
+	assertQMPMouseSet(t, got[2], 2)
+	if got[3].Execute != qmpCommandQueryMice {
+		t.Fatalf("pointer verification command = %q", got[3].Execute)
+	}
+	assertQMPMove(t, got[4], 400, 300, 1600, 900)
+	assertQMPButton(t, got[5], qmpPointerLeft, true)
+	assertQMPButton(t, got[6], qmpPointerLeft, false)
+}
+
+func TestQMPAbsoluteClickRejectsAmbiguousPointerHandlers(t *testing.T) {
+	t.Parallel()
+	for _, response := range []string{
+		`[]`,
+		`[{"name":"QEMU HID Tablet","index":2,` +
+			`"absolute":true,"current":true},` +
+			`{"name":"QEMU HID Tablet","index":3,` +
+			`"absolute":true,"current":false}]`,
+	} {
+		response := response
+		t.Run(response, func(t *testing.T) {
+			t.Parallel()
+			socket := filepath.Join(t.TempDir(), "qmp.sock")
+			listener, err := net.Listen("unix", socket)
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = listener.Close() })
+			go serveQMPResponses(t, listener, []string{
+				`{"QMP":{"version":{"qemu":{"major":11}}}}`,
+				`{"return":{},"id":1}`,
+				`{"return":` + response + `,"id":2}`,
+			})
+
+			ctx, cancel := context.WithTimeout(
+				context.Background(),
+				2*time.Second,
+			)
+			defer cancel()
+			client, err := connectQMP(ctx, socket)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer func() { _ = client.close() }()
+			if err := client.clickAbsolute(
+				ctx,
+				400,
+				300,
+				1600,
+				900,
+			); err == nil {
+				t.Fatal("unsafe QMP pointer configuration was accepted")
+			}
+		})
+	}
+}
+
+func TestQMPAbsoluteClickVerifiesPointerActivation(t *testing.T) {
+	t.Parallel()
+	socket := filepath.Join(t.TempDir(), "qmp.sock")
+	listener, err := net.Listen("unix", socket)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = listener.Close() })
+	go serveQMPResponses(t, listener, []string{
+		`{"QMP":{"version":{"qemu":{"major":11}}}}`,
+		`{"return":{},"id":1}`,
+		`{"return":[{"name":"relative","index":1,` +
+			`"absolute":false,"current":true},` +
+			`{"name":"QEMU HID Tablet","index":2,` +
+			`"absolute":true,"current":false}],"id":2}`,
+		`{"return":"","id":3}`,
+		`{"return":[{"name":"relative","index":1,` +
+			`"absolute":false,"current":true},` +
+			`{"name":"QEMU HID Tablet","index":2,` +
+			`"absolute":true,"current":false}],"id":4}`,
+	})
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	client, err := connectQMP(ctx, socket)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = client.close() }()
+	if err := client.clickAbsolute(
+		ctx,
+		400,
+		300,
+		1600,
+		900,
+	); err == nil ||
+		!strings.Contains(err.Error(), "did not become current") {
+		t.Fatalf("unverified QMP pointer activation error = %v", err)
+	}
+}
+
+func TestQMPAbsoluteCoordinateRejectsOutsideDisplay(t *testing.T) {
+	t.Parallel()
+	for _, test := range []struct {
+		pixel     int
+		dimension int
+	}{
+		{pixel: -1, dimension: hostedDisplayWidth},
+		{pixel: hostedDisplayWidth, dimension: hostedDisplayWidth},
+		{pixel: 0, dimension: 1},
+	} {
+		if _, err := qmpAbsoluteCoordinate(
+			test.pixel,
+			test.dimension,
+		); err == nil {
+			t.Fatalf("unsafe absolute coordinate accepted: %+v", test)
+		}
+	}
 }
 
 func TestQMPRejectsMalformedAndFailedResponses(t *testing.T) {
@@ -166,10 +523,11 @@ func TestHostedQEMUIsHeadlessPrivateAndControllable(t *testing.T) {
 		"/private/serial.log",
 		22222,
 		qmpSocket,
+		HostedTopologySingle,
 	)
 	joined := strings.Join(arguments, " ")
 	for _, required := range []string{
-		"-device bochs-display",
+		"-device bochs-display,xres=1280,yres=720",
 		"-display none",
 		"-device qemu-xhci",
 		"-device usb-kbd",
@@ -190,6 +548,139 @@ func TestHostedQEMUIsHeadlessPrivateAndControllable(t *testing.T) {
 		if strings.Contains(joined, forbidden) {
 			t.Errorf("hosted QEMU arguments contain %q", forbidden)
 		}
+	}
+	if count := strings.Count(joined, "bochs-display"); count != 1 {
+		t.Fatalf("hosted QEMU display devices = %d, want exactly one", count)
+	}
+}
+
+func TestHostedMultiOutputQEMUUsesManifestBoundVirtIOScanouts(t *testing.T) {
+	t.Parallel()
+	manifest := validManifest()
+	arguments := buildHostedQEMUArguments(
+		manifest,
+		"/private/disk.qcow2",
+		"/private/seed.img",
+		"/private/qemu.pid",
+		"/private/serial.log",
+		22222,
+		"/private/run/qmp.sock",
+		HostedTopologyMulti,
+	)
+	joined := strings.Join(arguments, " ")
+	for _, required := range []string{
+		"-device virtio-vga,max_outputs=2,edid=off,xres=1280,yres=720",
+		"-display " + hostedQEMUDisplayGTK,
+		"-device usb-tablet",
+	} {
+		if !strings.Contains(joined, required) {
+			t.Errorf("hosted multi-output QEMU arguments omit %q", required)
+		}
+	}
+	for _, forbidden := range []string{"bochs-display", "-display none"} {
+		if strings.Contains(joined, forbidden) {
+			t.Errorf("hosted multi-output QEMU arguments contain %q", forbidden)
+		}
+	}
+}
+
+func assertQMPMove(
+	t *testing.T,
+	command qmpCommand,
+	x,
+	y,
+	width,
+	height int,
+) {
+	t.Helper()
+	if command.Execute != "input-send-event" {
+		t.Fatalf("QMP move command = %q", command.Execute)
+	}
+	arguments, ok := command.Arguments.(map[string]any)
+	if !ok {
+		t.Fatalf("QMP move arguments type = %T", command.Arguments)
+	}
+	rawEvents, ok := arguments["events"].([]any)
+	if !ok || len(rawEvents) != 2 {
+		t.Fatalf("QMP move events = %#v", arguments["events"])
+	}
+	wantX, err := qmpAbsoluteCoordinate(x, width)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantY, err := qmpAbsoluteCoordinate(y, height)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertQMPPointerEvent(t, rawEvents[0], "abs", "x", wantX, false)
+	assertQMPPointerEvent(t, rawEvents[1], "abs", "y", wantY, false)
+}
+
+func assertQMPButton(
+	t *testing.T,
+	command qmpCommand,
+	button string,
+	down bool,
+) {
+	t.Helper()
+	if command.Execute != "input-send-event" {
+		t.Fatalf("QMP button command = %q", command.Execute)
+	}
+	arguments, ok := command.Arguments.(map[string]any)
+	if !ok {
+		t.Fatalf("QMP button arguments type = %T", command.Arguments)
+	}
+	rawEvents, ok := arguments["events"].([]any)
+	if !ok || len(rawEvents) != 1 {
+		t.Fatalf("QMP button events = %#v", arguments["events"])
+	}
+	assertQMPPointerEvent(t, rawEvents[0], "btn", button, 0, down)
+}
+
+func assertQMPMouseSet(t *testing.T, command qmpCommand, index int) {
+	t.Helper()
+	if command.Execute != qmpCommandHumanMonitor {
+		t.Fatalf("QMP mouse selection command = %q", command.Execute)
+	}
+	arguments, ok := command.Arguments.(map[string]any)
+	if !ok {
+		t.Fatalf("QMP mouse selection arguments type = %T", command.Arguments)
+	}
+	want := qmpMouseSetCommand + " " + fmt.Sprint(index)
+	if arguments["command-line"] != want {
+		t.Fatalf(
+			"QMP mouse selection = %#v, want %q",
+			arguments["command-line"],
+			want,
+		)
+	}
+}
+
+func assertQMPPointerEvent(
+	t *testing.T,
+	rawEvent any,
+	eventType,
+	name string,
+	value int,
+	down bool,
+) {
+	t.Helper()
+	event, ok := rawEvent.(map[string]any)
+	if !ok || event["type"] != eventType {
+		t.Fatalf("QMP pointer event = %#v", rawEvent)
+	}
+	data, ok := event["data"].(map[string]any)
+	if !ok {
+		t.Fatalf("QMP pointer data = %#v", event["data"])
+	}
+	if eventType == "abs" {
+		if data["axis"] != name || int(data["value"].(float64)) != value {
+			t.Fatalf("QMP absolute event = %#v", data)
+		}
+		return
+	}
+	if data["button"] != name || data["down"] != down {
+		t.Fatalf("QMP button event = %#v", data)
 	}
 }
 
