@@ -171,6 +171,13 @@ jobs:
       desktop: all
       topology: multi-output
 
+  display-bounds-evidence:
+    name: Display bounds evidence
+    if: github.event_name == 'release' || github.event_name == 'workflow_dispatch'
+    uses: ./.github/workflows/display-bounds-e2e.yml
+    with:
+      desktop: all
+
   hyprland-window-evidence:
     name: Hyprland window evidence
     if: github.event_name == 'release' || github.event_name == 'workflow_dispatch'
@@ -179,6 +186,7 @@ jobs:
   protected-checks:
     if: github.event_name == 'release' || github.event_name == 'workflow_dispatch'
     needs:
+      - display-bounds-evidence
       - portal-capture-evidence
       - portal-input-evidence
       - hyprland-window-evidence
@@ -241,6 +249,8 @@ jobs:
           Portal capture evidence / GitHub-hosted kde multi-output persistent capture
           Portal input evidence / GitHub-hosted gnome multi-output portal input
           Portal input evidence / GitHub-hosted kde multi-output portal input
+          Display bounds evidence / GitHub-hosted gnome multi-output Wayland bounds
+          Display bounds evidence / GitHub-hosted kde multi-output Wayland bounds
           Hyprland window evidence / hyprland-window
           portal-availability
           race
@@ -343,6 +353,8 @@ jobs:
             'Portal capture evidence / GitHub-hosted kde multi-output persistent capture' \
             'Portal input evidence / GitHub-hosted gnome multi-output portal input' \
             'Portal input evidence / GitHub-hosted kde multi-output portal input' \
+            'Display bounds evidence / GitHub-hosted gnome multi-output Wayland bounds' \
+            'Display bounds evidence / GitHub-hosted kde multi-output Wayland bounds' \
             'Hyprland window evidence / hyprland-window' \
             portal-availability race release-evidence-validation sanitizer \
             'test (macOS-latest)' \
@@ -361,7 +373,7 @@ jobs:
           jq -e --arg commit "$commit" '
             .schema_version == "1" and
             .commit == $commit and
-            (.checks | length) == 26 and
+            (.checks | length) == 28 and
             all(.checks[];
               .conclusion == "success" and
               (.provider | type) == "string" and
@@ -377,6 +389,8 @@ jobs:
                    .name == "Portal capture evidence / GitHub-hosted kde multi-output persistent capture" or
                    .name == "Portal input evidence / GitHub-hosted gnome multi-output portal input" or
                    .name == "Portal input evidence / GitHub-hosted kde multi-output portal input" or
+                   .name == "Display bounds evidence / GitHub-hosted gnome multi-output Wayland bounds" or
+                   .name == "Display bounds evidence / GitHub-hosted kde multi-output Wayland bounds" or
                    .name == "Hyprland window evidence / hyprland-window" or
                    .name == "portal-availability" or
                    .name == "x11-default-suite")

@@ -448,6 +448,8 @@ archive, logs, and runner binary on every completion path.
 Retained exact-commit
 [`Display Bounds E2E` run 30268702514](https://github.com/marang/robotgo/actions/runs/30268702514)
 passes both GNOME and KDE lanes on `8f12eacf640a903fb078b598085b3664892a40a8`.
+Both reusable lanes are required by Release Evidence for the exact candidate
+commit and recorded in its protected-check manifest.
 
 The nested guests run automatically only on trusted `main` pushes or an
 explicit workflow dispatch; pull requests do not boot them. Local compile
