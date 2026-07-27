@@ -285,7 +285,8 @@ A PR is ready to merge only when all applicable conditions are true:
 - configured or explicitly requested reviewers, including Codex, have had the
   opportunity to review the ready PR, and their result applies to the current
   head
-- default and relevant tagged tests pass
+- default and relevant tagged tests pass on the current head after the final
+  change
 - public behavior and test instructions are documented where required
 - no test or development run leaves sensitive desktop, clipboard, OCR, input,
   credential, diagnostic, or similar artifacts behind
@@ -341,8 +342,9 @@ Before declaring a PR complete:
       the current head.
 - [ ] The CI and review inspections in section 5 apply to the current head, and
       every actionable finding is fixed or explicitly tracked.
-- [ ] The tests, documentation, compatibility, and cleanup requirements in
-      `AGENTS.md`, `TEST.md`, and the section 6 merge gate are satisfied.
+- [ ] Relevant local checks were rerun after the final change; the tests,
+      documentation, compatibility, and cleanup requirements in `AGENTS.md`,
+      `TEST.md`, and the section 6 merge gate are satisfied.
 - [ ] The Linear issue and project reflect the merged result and follow-ups.
 - [ ] Useful issue context was archived before any free-tier cleanup.
 - [ ] GitHub merge state and local `main` were verified before branch cleanup.
