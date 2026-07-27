@@ -81,9 +81,15 @@ classify_session_bus_failure() {
 		failure_stage="$ROBOTGO_HYPRLAND_FAILURE_STAGE_SESSION_BUS_REDIRECTION"
 	elif grep -Eqi 'permission denied|operation not permitted' "$log_file"; then
 		failure_stage="$ROBOTGO_HYPRLAND_FAILURE_STAGE_SESSION_BUS_PERMISSION"
+	elif grep -Eqi 'failed to bind socket|address already in use' "$log_file"; then
+		failure_stage="$ROBOTGO_HYPRLAND_FAILURE_STAGE_SESSION_BUS_BIND"
 	elif grep -Eqi 'invalid option|unknown option|usage:' "$log_file"; then
 		failure_stage="$ROBOTGO_HYPRLAND_FAILURE_STAGE_SESSION_BUS_INVOCATION"
-	elif grep -Eqi 'configuration file|failed to start message bus|machine (id|uuid)' "$log_file"; then
+	elif grep -Eqi 'machine[- ]id|machine uuid' "$log_file"; then
+		failure_stage="$ROBOTGO_HYPRLAND_FAILURE_STAGE_SESSION_BUS_MACHINE_ID"
+	elif grep -Eqi 'uid and gid|user[^[:alnum:]]+(does not exist|not found|unknown)' "$log_file"; then
+		failure_stage="$ROBOTGO_HYPRLAND_FAILURE_STAGE_SESSION_BUS_USER"
+	elif grep -Eqi 'configuration file|error in file|failed to start message bus' "$log_file"; then
 		failure_stage="$ROBOTGO_HYPRLAND_FAILURE_STAGE_SESSION_BUS_CONFIGURATION"
 	fi
 }
