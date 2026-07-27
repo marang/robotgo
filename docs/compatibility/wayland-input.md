@@ -35,7 +35,8 @@ native input backend cannot satisfy the checks instead of RemoteDesktop.
 The GNOME and KDE jobs retain no desktop artifact or raw log. They run
 automatically on trusted `main` pushes and can be manually dispatched; fork and
 ordinary pull-request events do not boot either guest. Manual dispatch selects
-`gnome`, `kde`, or `all`.
+`gnome`, `kde`, or `all`. Release Evidence reuses and requires both
+multi-output jobs for the exact candidate SHA.
 Sway/wlroots native input and explicit portal-unavailability evidence use
 separate P005 lanes; they are not counted as RemoteDesktop portal passes.
 

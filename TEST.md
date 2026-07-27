@@ -528,7 +528,9 @@ the integration test instead requires two unique physical monitor streams and
 captures one owned, non-empty PipeWire frame from each stream.
 `.github/workflows/screencast-e2e.yml` runs GNOME and KDE in the same
 disposable GitHub-hosted nested-QEMU model. Both run on `main` pushes and on
-manual `gnome|kde|all` and single-/multi-output dispatches. KDE's pinned KWin
+manual `gnome|kde|all` and single-/multi-output dispatches. The exact-release
+workflow reuses and requires both multi-output jobs for its candidate SHA.
+KDE's pinned KWin
 helper reports only
 virtual-screen, active-dialog, and pointer geometry through private D-Bus. The
 host validates a plausible dialog, scrolls the pinned CardsGridView, selects
