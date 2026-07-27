@@ -48,8 +48,12 @@ func validManifest() Manifest {
 		Packages: []string{
 			"gdm3",
 			"gnome-shell",
+			"libdrm-dev",
+			"libgbm-dev",
 			"libpam-gnome-keyring",
 			"libpipewire-0.3-dev",
+			"libwayland-dev",
+			"libxkbcommon-dev",
 			"linux-modules-extra-6.8.0-134-generic",
 			"pipewire",
 			"wireplumber",
@@ -96,8 +100,12 @@ func TestKDEManifestContract(t *testing.T) {
 	manifest.Labels = []string{"self-hosted", "linux", "wayland", portalLaneKDE}
 	manifest.Packages = []string{
 		"kwin-wayland",
+		"libdrm-dev",
+		"libgbm-dev",
 		"libkf5screen-bin",
 		"libpipewire-0.3-dev",
+		"libwayland-dev",
+		"libxkbcommon-dev",
 		"linux-modules-extra-6.8.0-134-generic",
 		"pipewire",
 		"plasma-desktop",
@@ -272,6 +280,18 @@ func TestManifestRejectsUnsafeContract(t *testing.T) {
 				manifest.Packages = manifest.Packages[:len(manifest.Packages)-1]
 			},
 			want: `package set omits "xdg-desktop-portal-gnome"`,
+		},
+		{
+			name: "missing Wayland development package",
+			change: func(manifest *Manifest) {
+				manifest.Packages = slices.DeleteFunc(
+					manifest.Packages,
+					func(packageName string) bool {
+						return packageName == "libwayland-dev"
+					},
+				)
+			},
+			want: `package set omits "libwayland-dev"`,
 		},
 		{
 			name: "unsafe proxy port",

@@ -252,7 +252,11 @@ func (manifest Manifest) Validate() error {
 		}
 	}
 	requiredPackages := []string{
+		"libdrm-dev",
+		"libgbm-dev",
 		"libpipewire-0.3-dev",
+		"libwayland-dev",
+		"libxkbcommon-dev",
 		"linux-modules-extra-" + manifest.VM.KernelRelease,
 		"pipewire",
 		"wireplumber",
