@@ -13,12 +13,14 @@ readonly mode="${2:-normal}"
 : "${GITHUB_WORKSPACE:?GITHUB_WORKSPACE is required}"
 : "${GITHUB_RUN_ID:?GITHUB_RUN_ID is required}"
 : "${GITHUB_RUN_ATTEMPT:?GITHUB_RUN_ATTEMPT is required}"
+: "${ROBOTGO_EVIDENCE_WORKFLOW:?ROBOTGO_EVIDENCE_WORKFLOW is required}"
 : "${ROBOTGO_APPROVED_COMMIT:?ROBOTGO_APPROVED_COMMIT is required}"
 : "${ROBOTGO_HYPRLAND_DRM_DEVICE:?ROBOTGO_HYPRLAND_DRM_DEVICE is required}"
 : "${ROBOTGO_HYPRLAND_DRM_DRIVER:?ROBOTGO_HYPRLAND_DRM_DRIVER is required}"
 
 if [[ ! "$image" =~ ^robotgo-hyprland-e2e:[0-9a-f]{40}$ ||
-	"$mode" != 'normal' && "$mode" != 'induced-failure' ]]; then
+	"$mode" != 'normal' && "$mode" != 'induced-failure' ||
+	"$ROBOTGO_EVIDENCE_WORKFLOW" != 'Hyprland E2E' ]]; then
 	printf 'invalid isolated Hyprland container request\n' >&2
 	exit 2
 fi
@@ -99,12 +101,12 @@ arguments=(
 	--volume "$private_runner_temp:$container_runner_temp:rw"
 	--workdir /workspace
 	--env "RUNNER_TEMP=$container_runner_temp"
-	--env GITHUB_WORKFLOW
 	--env GITHUB_RUN_ID
 	--env GITHUB_RUN_ATTEMPT
 	--env GITHUB_REF
 	--env GITHUB_EVENT_NAME
 	--env GITHUB_HEAD_REF
+	--env ROBOTGO_EVIDENCE_WORKFLOW
 	--env ROBOTGO_APPROVED_COMMIT
 	--env ROBOTGO_HYPRLAND_DRM_DEVICE
 	--env ROBOTGO_HYPRLAND_DRM_DRIVER

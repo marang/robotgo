@@ -20,13 +20,13 @@ if (($# != 0)); then
 fi
 
 : "${RUNNER_TEMP:?RUNNER_TEMP is required}"
-: "${GITHUB_WORKFLOW:?GITHUB_WORKFLOW is required}"
+: "${ROBOTGO_EVIDENCE_WORKFLOW:?ROBOTGO_EVIDENCE_WORKFLOW is required}"
 : "${GITHUB_RUN_ID:?GITHUB_RUN_ID is required}"
 : "${GITHUB_RUN_ATTEMPT:?GITHUB_RUN_ATTEMPT is required}"
 : "${GITHUB_REF:?GITHUB_REF is required}"
 : "${ROBOTGO_APPROVED_COMMIT:?ROBOTGO_APPROVED_COMMIT is required}"
 
-if [[ "$GITHUB_WORKFLOW" != 'Hyprland E2E' ]]; then
+if [[ "$ROBOTGO_EVIDENCE_WORKFLOW" != 'Hyprland E2E' ]]; then
 	printf 'unexpected workflow identity\n' >&2
 	exit 2
 fi
@@ -261,7 +261,7 @@ go run ./internal/cmd/compositorevidence preflight \
 	-commit "$ROBOTGO_APPROVED_COMMIT" \
 	-expected-commit "$ROBOTGO_APPROVED_COMMIT" \
 	-ref "$evidence_ref" \
-	-workflow "$GITHUB_WORKFLOW" \
+	-workflow "$ROBOTGO_EVIDENCE_WORKFLOW" \
 	-run-id "$GITHUB_RUN_ID" \
 	-run-attempt "$GITHUB_RUN_ATTEMPT" \
 	-output-count 1 \
@@ -289,7 +289,7 @@ go run ./internal/cmd/compositorevidence finalize \
 	-runner-temp "$RUNNER_TEMP" \
 	-output-dir "$output_dir" \
 	-expected-commit "$ROBOTGO_APPROVED_COMMIT" \
-	-workflow "$GITHUB_WORKFLOW" \
+	-workflow "$ROBOTGO_EVIDENCE_WORKFLOW" \
 	-run-id "$GITHUB_RUN_ID" \
 	-run-attempt "$GITHUB_RUN_ATTEMPT" \
 	-test-exit-code "$test_status"
@@ -300,7 +300,7 @@ go run ./internal/cmd/compositorevidence verify \
 	-runner-temp "$RUNNER_TEMP" \
 	-output-dir "$output_dir" \
 	-expected-commit "$ROBOTGO_APPROVED_COMMIT" \
-	-workflow "$GITHUB_WORKFLOW" \
+	-workflow "$ROBOTGO_EVIDENCE_WORKFLOW" \
 	-run-id "$GITHUB_RUN_ID" \
 	-run-attempt "$GITHUB_RUN_ATTEMPT"
 failure_stage="$ROBOTGO_HYPRLAND_FAILURE_STAGE_SUMMARY"
