@@ -226,8 +226,9 @@ backends.
     gates green.
   - A separate consent-free hosted GNOME/KDE two-output workflow exercises
     public native-CGO and Pure-Go bounds, count, primary, aggregate, invalid
-    index, and legacy/error parity with `DISPLAY` unset. Retain a passing
-    exact-commit run before promoting it into release evidence.
+    index, and legacy/error parity with `DISPLAY` unset. Retain passing
+    [`exact-commit run 30268702514`](https://github.com/marang/robotgo/actions/runs/30268702514)
+    before promoting it into release evidence.
 - Portal Path:
   - Expand troubleshooting for xdg-desktop-portal backend selection and consent prompts.
   - Keep the hosted high-level RemoteDesktop input fallback validation green on

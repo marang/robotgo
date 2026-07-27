@@ -220,6 +220,8 @@ the Pure-Go Wayland client. It requires exact output count, deterministic
 primary-first bounds, aggregate desktop bounds, primary size, invalid-index
 errors, and legacy/error API parity. No pixels, clipboard data, window content,
 or input events are read or produced.
+Both GNOME and KDE pass this contract in retained exact-commit
+[`Display Bounds E2E` run 30268702514](https://github.com/marang/robotgo/actions/runs/30268702514).
 
 ### Promotion to protected evidence
 
@@ -272,10 +274,11 @@ green.
    exact release commit and in branch protection, plus the four reusable
    GNOME/KDE multi-output RemoteDesktop/ScreenCast jobs for the exact release
    commit.
-7. **Implemented, runtime evidence pending:** run the consent-free public
-   multi-output bounds contract in both native-CGO and Pure-Go builds on GNOME
-   and KDE. Retain one exact-commit run with both lanes green before deciding
-   branch or release promotion.
+7. **Runtime evidence delivered; promotion pending:** the consent-free public
+   multi-output bounds contract passes in both native-CGO and Pure-Go builds on
+   GNOME and KDE in retained
+   [`exact-commit run 30268702514`](https://github.com/marang/robotgo/actions/runs/30268702514).
+   Decide branch or release promotion separately.
 
 Create Linear issues only when the next slice has concrete runner ownership and
 acceptance evidence. Do not create speculative implementation tickets for

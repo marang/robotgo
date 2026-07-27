@@ -388,9 +388,10 @@ cross-platform semantics:
   active-window contract is available.
 - Add protected real-desktop capture-helper evidence beyond the delivered
   hermetic native Wayland, portal, and cross-build backend contracts.
-- Retain a passing exact-commit run of the new GNOME/KDE multi-output bounds
-  workflow, then decide its branch/release promotion separately from portal
-  evidence. Keep the delivered Sway/wlroots and Weston geometry gates green.
+- Retain the passing GNOME/KDE multi-output bounds
+  [`exact-commit run 30268702514`](https://github.com/marang/robotgo/actions/runs/30268702514),
+  then decide its branch/release promotion separately from portal evidence.
+  Keep the delivered Sway/wlroots and Weston geometry gates green.
 
 Every addition needs unit tests, an applicable runtime integration test, and a
 runnable example unless the environment makes one technically impossible.

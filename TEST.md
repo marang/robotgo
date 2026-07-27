@@ -445,6 +445,9 @@ protocols, an unexpected topology, X11 exposure, a skipped test, or surviving
 runner state fails the job. The workflow is credential-free inside the guest,
 uses no portal consent marker, captures no pixels, and removes its VM, source
 archive, logs, and runner binary on every completion path.
+Retained exact-commit
+[`Display Bounds E2E` run 30268702514](https://github.com/marang/robotgo/actions/runs/30268702514)
+passes both GNOME and KDE lanes on `8f12eacf640a903fb078b598085b3664892a40a8`.
 
 The nested guests run automatically only on trusted `main` pushes or an
 explicit workflow dispatch; pull requests do not boot them. Local compile
