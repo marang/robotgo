@@ -26,6 +26,7 @@ func renderPackageAPI(pkg *types.Package) PackageAPI {
 	slices.Sort(declarations)
 	return PackageAPI{
 		Path:         pkg.Path(),
+		Name:         pkg.Name(),
 		Declarations: declarations,
 	}
 }

@@ -3,6 +3,7 @@ package apicompat
 import (
 	"bufio"
 	"fmt"
+	"go/token"
 	"strings"
 )
 
@@ -14,6 +15,7 @@ const (
 // PackageAPI is the canonical exported API for one import path.
 type PackageAPI struct {
 	Path         string
+	Name         string
 	Declarations []string
 }
 
@@ -28,8 +30,8 @@ func (manifest Manifest) Render() string {
 	body.WriteString(manifestHeader)
 	body.WriteString("\n")
 	for _, pkg := range manifest.Packages {
-		body.WriteString("\npackage ")
-		body.WriteString(pkg.Path)
+		body.WriteString("\n")
+		body.WriteString(renderPackageLine(pkg))
 		body.WriteString("\n")
 		for _, declaration := range pkg.Declarations {
 			body.WriteString(declaration)
@@ -57,9 +59,9 @@ func ParseManifest(body string) (Manifest, error) {
 			continue
 		}
 		if strings.HasPrefix(line, "package ") {
-			path := strings.TrimSpace(strings.TrimPrefix(line, "package "))
-			if path == "" {
-				return Manifest{}, fmt.Errorf("line %d: empty package path", lineNumber)
+			path, name, err := parsePackageLine(line)
+			if err != nil {
+				return Manifest{}, fmt.Errorf("line %d: %w", lineNumber, err)
 			}
 			if len(manifest.Packages) > 0 &&
 				path <= manifest.Packages[len(manifest.Packages)-1].Path {
@@ -68,7 +70,10 @@ func ParseManifest(body string) (Manifest, error) {
 					lineNumber,
 				)
 			}
-			manifest.Packages = append(manifest.Packages, PackageAPI{Path: path})
+			manifest.Packages = append(manifest.Packages, PackageAPI{
+				Path: path,
+				Name: name,
+			})
 			current = &manifest.Packages[len(manifest.Packages)-1]
 			continue
 		}
@@ -104,6 +109,9 @@ func validateManifest(manifest Manifest) error {
 		if pkg.Path == "" {
 			return fmt.Errorf("package %d has an empty path", packageIndex)
 		}
+		if !token.IsIdentifier(pkg.Name) {
+			return fmt.Errorf("package %s has invalid name %q", pkg.Path, pkg.Name)
+		}
 		if packageIndex > 0 && pkg.Path <= manifest.Packages[packageIndex-1].Path {
 			return fmt.Errorf("package paths are not strictly sorted")
 		}
@@ -121,4 +129,20 @@ func validateManifest(manifest Manifest) error {
 		}
 	}
 	return nil
+}
+
+func renderPackageLine(pkg PackageAPI) string {
+	return "package " + pkg.Path + " name " + pkg.Name
+}
+
+func parsePackageLine(line string) (string, string, error) {
+	value := strings.TrimPrefix(line, "package ")
+	path, name, found := strings.Cut(value, " name ")
+	if !found || path == "" || strings.TrimSpace(path) != path {
+		return "", "", fmt.Errorf("invalid package path")
+	}
+	if !token.IsIdentifier(name) {
+		return "", "", fmt.Errorf("invalid package name %q", name)
+	}
+	return path, name, nil
 }

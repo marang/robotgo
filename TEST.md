@@ -32,8 +32,10 @@ go run ./internal/cmd/apicompat \
 ```
 
 The OCR CI job separately checks `linux-cgo-ocr` after installing Tesseract
-and Leptonica development files. Any exported change or newly discovered
-public library package fails until the affected generated manifest is updated
+and Leptonica development files. The protected native macOS and Windows
+default-build jobs separately check `darwin-cgo` and `windows-cgo` on matching
+hosted runners. Any package-name, exported API, or newly discovered public
+library-package drift fails until the affected generated manifest is updated
 and reviewed. See
 [Public Go API Compatibility](docs/compatibility/public-api.md) for scope,
 exclusions, and the update command.

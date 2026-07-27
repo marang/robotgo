@@ -111,10 +111,12 @@ func TestCompareRejectsIncompatibleAndAdditiveDrift(t *testing.T) {
 
 	baseline := Manifest{Packages: []PackageAPI{{
 		Path:         "example.test/fixture",
+		Name:         "fixture",
 		Declarations: []string{"func Run(int) error"},
 	}}}
 	incompatible := Manifest{Packages: []PackageAPI{{
 		Path:         "example.test/fixture",
+		Name:         "fixture",
 		Declarations: []string{"func Run(string) error"},
 	}}}
 	if err := Compare(baseline, incompatible); err == nil ||
@@ -125,6 +127,7 @@ func TestCompareRejectsIncompatibleAndAdditiveDrift(t *testing.T) {
 
 	additive := Manifest{Packages: []PackageAPI{{
 		Path: "example.test/fixture",
+		Name: "fixture",
 		Declarations: []string{
 			"func Added()",
 			"func Run(int) error",
@@ -137,6 +140,7 @@ func TestCompareRejectsIncompatibleAndAdditiveDrift(t *testing.T) {
 		baseline.Packages[0],
 		{
 			Path:         "example.test/newpkg",
+			Name:         "newpkg",
 			Declarations: []string{"func New()"},
 		},
 	}}
@@ -146,6 +150,15 @@ func TestCompareRejectsIncompatibleAndAdditiveDrift(t *testing.T) {
 	}
 	if err := Compare(baseline, baseline); err != nil {
 		t.Fatalf("identical manifest rejected: %v", err)
+	}
+
+	renamed := baseline
+	renamed.Packages = slices.Clone(baseline.Packages)
+	renamed.Packages[0].Name = "renamed"
+	if err := Compare(baseline, renamed); err == nil ||
+		!strings.Contains(err.Error(), "name fixture") ||
+		!strings.Contains(err.Error(), "name renamed") {
+		t.Fatalf("package-name drift result = %v", err)
 	}
 }
 
@@ -201,10 +214,12 @@ func TestManifestRoundTrip(t *testing.T) {
 	manifest := Manifest{Packages: []PackageAPI{
 		{
 			Path:         "example.test/a",
+			Name:         "a",
 			Declarations: []string{"func A()"},
 		},
 		{
 			Path:         "example.test/b",
+			Name:         "b",
 			Declarations: []string{"type B int"},
 		},
 	}}
@@ -232,6 +247,7 @@ func TestManifestRoundTripAllowsLongDeclarations(t *testing.T) {
 
 	manifest := Manifest{Packages: []PackageAPI{{
 		Path:         "example.test/fixture",
+		Name:         "fixture",
 		Declarations: []string{"type Large " + strings.Repeat("x", 128*1024)},
 	}}}
 	parsed, err := ParseManifest(manifest.Render())

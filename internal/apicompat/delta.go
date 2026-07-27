@@ -148,12 +148,20 @@ func ParseDelta(body string) (Delta, error) {
 
 func manifestFromAPISet(lines map[string]struct{}) (Manifest, error) {
 	packagesByPath := make(map[string][]string)
+	packageNames := make(map[string]string)
 	for line := range lines {
 		if strings.HasPrefix(line, "package ") {
-			path := strings.TrimPrefix(line, "package ")
-			if path == "" {
-				return Manifest{}, fmt.Errorf("API set contains an empty package")
+			path, name, err := parsePackageLine(line)
+			if err != nil {
+				return Manifest{}, fmt.Errorf("invalid API package entry %q: %w", line, err)
 			}
+			if _, exists := packageNames[path]; exists {
+				return Manifest{}, fmt.Errorf(
+					"API set contains duplicate package %s",
+					path,
+				)
+			}
+			packageNames[path] = name
 			if _, exists := packagesByPath[path]; !exists {
 				packagesByPath[path] = nil
 			}
@@ -168,7 +176,7 @@ func manifestFromAPISet(lines map[string]struct{}) (Manifest, error) {
 
 	paths := make([]string, 0, len(packagesByPath))
 	for path := range packagesByPath {
-		if _, exists := lines["package "+path]; !exists {
+		if _, exists := packageNames[path]; !exists {
 			return Manifest{}, fmt.Errorf(
 				"API declarations exist without package %s",
 				path,
@@ -184,6 +192,7 @@ func manifestFromAPISet(lines map[string]struct{}) (Manifest, error) {
 		slices.Sort(declarations)
 		manifest.Packages = append(manifest.Packages, PackageAPI{
 			Path:         path,
+			Name:         packageNames[path],
 			Declarations: declarations,
 		})
 	}

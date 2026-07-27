@@ -74,6 +74,24 @@
       "description": "Native OCR implementation with invariant public API"
     },
     {
+      "name": "windows-cgo",
+      "goos": "windows",
+      "goarch": "amd64",
+      "cgoEnabled": true,
+      "baseline": "windows-cgo.delta",
+      "base": "linux-cgo.api",
+      "description": "Native Windows AMD64 build"
+    },
+    {
+      "name": "darwin-cgo",
+      "goos": "darwin",
+      "goarch": "arm64",
+      "cgoEnabled": true,
+      "baseline": "darwin-cgo.delta",
+      "base": "linux-cgo.api",
+      "description": "Native macOS ARM64 build"
+    },
+    {
       "name": "linux-nocgo",
       "goos": "linux",
       "goarch": "amd64",

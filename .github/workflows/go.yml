@@ -172,6 +172,12 @@ jobs:
         run: go build -v .
       - name: Test
         run: go test -v ./...
+      - name: Check native macOS public Go API
+        if: runner.os == 'macOS'
+        run: go run ./internal/cmd/apicompat -variant darwin-cgo
+      - name: Check native Windows public Go API
+        if: runner.os == 'Windows'
+        run: go run ./internal/cmd/apicompat -variant windows-cgo
   nocgo:
     strategy:
       fail-fast: false

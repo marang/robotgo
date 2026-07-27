@@ -39,6 +39,7 @@ The manifest records exported:
 - constants, their types, and exact values;
 - variables and types;
 - functions and signatures;
+- package names as well as import paths;
 - defined types, aliases, generic constraints, exported struct fields/tags,
   interface contracts, and effective value/pointer method sets.
 
@@ -62,15 +63,19 @@ build tags, and baseline mapping. Blocking coverage includes:
 | `linux-cgo-pipewire` | PipeWire implementation, same public API as native Linux |
 | `linux-cgo-full` | Wayland + portal + PipeWire, with only the portal-tag additions |
 | `linux-cgo-ocr` | In-process OCR, same public API as native Linux |
+| `windows-cgo` | Native Windows on the protected AMD64 runner |
+| `darwin-cgo` | Native macOS on the protected ARM64 runner |
 | `linux-nocgo`, `linux-nocgo-arm64` | Pure-Go Linux/X11 on AMD64 and ARM64; one invariant Linux API |
 | `windows-nocgo`, `windows-nocgo-arm64` | Pure-Go Windows on AMD64 and ARM64; one invariant Windows API |
 | `darwin-nocgo`, `darwin-nocgo-amd64` | Pure-Go macOS on ARM64 and AMD64; one invariant macOS API |
 
-The main `api-compat` job evaluates all variants except OCR after installing
-the native Linux/Wayland/PipeWire headers once. The existing OCR job evaluates
-`linux-cgo-ocr` with its Tesseract and Leptonica headers. Cross-platform
-non-CGO manifests are loaded with explicit `GOOS`, `GOARCH`, `CGO_ENABLED`,
-empty `GOFLAGS`/`GOEXPERIMENT`, `GOENV=off`, and `GOWORK=off`.
+The main `api-compat` job evaluates the Linux and cross-compiled Pure-Go
+variants after installing the native Linux/Wayland/PipeWire headers once. The
+existing OCR job evaluates `linux-cgo-ocr` with its Tesseract and Leptonica
+headers. The protected default macOS and Windows test jobs evaluate their
+native CGO variants on the matching hosted operating system and architecture.
+Cross-platform non-CGO manifests are loaded with explicit `GOOS`, `GOARCH`,
+`CGO_ENABLED`, empty `GOFLAGS`/`GOEXPERIMENT`, `GOENV=off`, and `GOWORK=off`.
 
 ## Check and update
 

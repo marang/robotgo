@@ -32,6 +32,12 @@ func TestGoWorkflowBlocksOnEveryPublicAPIVariant(t *testing.T) {
 		"-variant darwin-nocgo-amd64",
 		"name: Check OCR public API invariance",
 		"go run ./internal/cmd/apicompat -variant linux-cgo-ocr",
+		"name: Check native macOS public Go API",
+		"if: runner.os == 'macOS'",
+		"go run ./internal/cmd/apicompat -variant darwin-cgo",
+		"name: Check native Windows public Go API",
+		"if: runner.os == 'Windows'",
+		"go run ./internal/cmd/apicompat -variant windows-cgo",
 	} {
 		if !strings.Contains(text, required) {
 			t.Errorf("Go workflow omits API compatibility contract %q", required)

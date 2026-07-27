@@ -77,7 +77,7 @@ func manifestAPISet(manifest Manifest) map[string]struct{} {
 	}
 	lines := make(map[string]struct{}, total)
 	for _, pkg := range manifest.Packages {
-		lines["package "+pkg.Path] = struct{}{}
+		lines[renderPackageLine(pkg)] = struct{}{}
 		for _, declaration := range pkg.Declarations {
 			lines[pkg.Path+": "+declaration] = struct{}{}
 		}

@@ -3,11 +3,11 @@
 ## Unreleased
 
 - Added a checked-in, human-reviewable public Go API freeze across every
-  importable library package, Linux native/Wayland/portal/PipeWire, and
-  Linux/Windows/macOS Pure-Go variants; exported or package-discovery drift now
-  fails CI and the expanded 29-check exact-release manifest. Native Linux X11
-  now also exports the existing `GetXidByPid` compatibility name consistently
-  with the Wayland build.
+  importable library package, Linux native/Wayland/portal/PipeWire,
+  native macOS/Windows, and Linux/Windows/macOS Pure-Go variants; package-name,
+  exported, or package-discovery drift now fails CI and the expanded 29-check
+  exact-release manifest. Native Linux X11 now also exports the existing
+  `GetXidByPid` compatibility name consistently with the Wayland build.
 - Selected `v1.0.0-rc.1` then `v1.0.0` as the independent module's stable
   release line after verifying the authoritative origin contains only the fork
   beta tags; documented safe handling of local upstream-derived tags and

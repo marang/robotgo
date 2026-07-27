@@ -11,6 +11,7 @@ func TestManifestDeltaRoundTrip(t *testing.T) {
 	base := Manifest{Packages: []PackageAPI{
 		{
 			Path: "example.test/a",
+			Name: "a",
 			Declarations: []string{
 				"func Changed(int)",
 				"func Kept()",
@@ -20,6 +21,7 @@ func TestManifestDeltaRoundTrip(t *testing.T) {
 	current := Manifest{Packages: []PackageAPI{
 		{
 			Path: "example.test/a",
+			Name: "a",
 			Declarations: []string{
 				"func Changed(string)",
 				"func Kept()",
@@ -27,6 +29,7 @@ func TestManifestDeltaRoundTrip(t *testing.T) {
 		},
 		{
 			Path:         "example.test/newpkg",
+			Name:         "newpkg",
 			Declarations: []string{"func New()"},
 		},
 	}}
@@ -56,6 +59,7 @@ func TestApplyDeltaRejectsStaleEntries(t *testing.T) {
 
 	base := Manifest{Packages: []PackageAPI{{
 		Path:         "example.test/a",
+		Name:         "a",
 		Declarations: []string{"func Kept()"},
 	}}}
 	_, err := ApplyDelta(base, Delta{
