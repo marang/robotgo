@@ -63,7 +63,19 @@ repository code; it only verifies the already packaged SHA-256 and uploads the
 two assets. Manual runs retain the bundle as a GitHub Actions artifact for 90
 days and do not modify a release.
 
-The first published bundle is attached to
+The latest published bundle is attached to
+[`v1.0.0-beta.2`](https://github.com/marang/robotgo/releases/tag/v1.0.0-beta.2):
+
+- [`robotgo-release-evidence-v1.0.0-beta.2-f3530594f30b.tar.gz`](https://github.com/marang/robotgo/releases/download/v1.0.0-beta.2/robotgo-release-evidence-v1.0.0-beta.2-f3530594f30b.tar.gz)
+- [`robotgo-release-evidence-v1.0.0-beta.2-f3530594f30b.tar.gz.sha256`](https://github.com/marang/robotgo/releases/download/v1.0.0-beta.2/robotgo-release-evidence-v1.0.0-beta.2-f3530594f30b.tar.gz.sha256)
+
+It records exact source commit
+`f3530594f30baa29fd61828c77b2b5c0140f3d15`; all six snapshot cells and all 25
+protected checks passed, including the four real GNOME/KDE multi-output portal
+checks. The archive digest is
+`5d21e7da7b2f8d8745dfa9a48b14e301ac7d97763d453fbe789f6355fe01efe0`.
+
+The first published bundle remains attached to
 [`v1.0.0-beta.1`](https://github.com/marang/robotgo/releases/tag/v1.0.0-beta.1):
 
 - [`robotgo-release-evidence-v1.0.0-beta.1-1bab5e173f6b.tar.gz`](https://github.com/marang/robotgo/releases/download/v1.0.0-beta.1/robotgo-release-evidence-v1.0.0-beta.1-1bab5e173f6b.tar.gz)
