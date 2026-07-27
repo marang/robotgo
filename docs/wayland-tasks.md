@@ -198,10 +198,12 @@ backends.
     versioned. Schema v1 now reports negotiated protocol versions, permission
     state, and actionable remediation without sensitive session data. Release
     Evidence v1 binds that report and test-log digests to exact source across
-    the six native/Pure-Go hosted platform cells.
+    the six native/Pure-Go hosted platform cells; `v1.0.0-beta.2` additionally
+    records the protected 25-check manifest.
   - 7. Keep race/vet and the manifest-checked native ASan/LeakSanitizer ownership
     suites blocking. Hosted Sway and GNOME/KDE single-/multi-output jobs are
-    defined and evidenced; provision their remaining release-promotion gates.
+    defined and evidenced. The six hosted Sway checks and four GNOME/KDE
+    multi-output portal checks remain required by exact-release evidence.
 
 - Recently completed parity work:
   - Window state/query APIs expose `IsTopMostE`, `IsMinimizedE`,
@@ -220,10 +222,12 @@ backends.
     GNOME, and KDE sessions.
   - Protected GNOME/KDE portal multi-output selection and stream evidence is
     retained alongside blocking hosted wlroots/Sway and Weston
-    single-/multi-output evidence. Promote the portal checks into release gates.
+    single-/multi-output evidence. Keep the promoted multi-output portal release
+    gates green.
 - Portal Path:
   - Expand troubleshooting for xdg-desktop-portal backend selection and consent prompts.
-  - Validate the existing high-level RemoteDesktop input fallback on GNOME/KDE.
+  - Keep the hosted high-level RemoteDesktop input fallback validation green on
+    GNOME and KDE.
   - GNOME/KDE single-output repeated-frame behavior and multi-output
     per-stream ScreenCast/PipeWire capture are validated in hosted guests. Keep
     Sway/wlroots native capture and
@@ -298,4 +302,5 @@ backends.
     `-text`, `-paste`, or `-color` flags.
   - Keep the explicitly gated real Windows input-desktop pointer probe blocking
     in the non-CGO Windows CI leg; it must restore the original cursor position.
-  - Publish a versioned support matrix and troubleshooting guide.
+  - Keep the published versioned support matrix and troubleshooting guidance
+    current.

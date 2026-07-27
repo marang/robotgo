@@ -29,7 +29,7 @@ The July 2026 hardening work establishes the foundation for this roadmap:
 - CI covers lint, default tests on Linux/macOS/Windows, non-CGO, Wayland, portal,
   Weston integration, race, vet, and native sanitizer/leak variants.
 
-## Execution Status (2026-07-26)
+## Execution Status (2026-07-27)
 
 | Area | Status | Delivered | Exit criteria still open |
 |---|---|---|---|
@@ -38,7 +38,7 @@ The July 2026 hardening work establishes the foundation for this roadmap:
 | 2. Capture | Complete for the scoped production and evidence contract | Reliable one-shot paths plus one consent-aware ScreenCast session, reusable PipeWire frames with static-desktop reuse, logical region crop, raw pixel conversion, metadata/restore tokens, cleanup, hosted GNOME/KDE single- and multi-output persistent-capture execution, non-skipping geometry/transform CI, sanitizer-backed native ownership gates, isolated hosted Sway native/multi-output evidence, and exact-release promotion | Keep runtime and release gates green; extend only for newly scoped formats/backends |
 | 3. Pure-Go | X11 complete; Windows input/window CI-evidenced; macOS capture/display/input and window implementation delivered; Wayland logical output enumeration plus Weston, hosted Sway, and hosted GNOME/KDE multi-output evidence delivered; broader phase partial | Build and feature-level introspection; non-CGO macOS CoreGraphics capture/display, Quartz input, and Accessibility window inspection/control with explicit gaps; Windows capture, `SendInput` keyboard/pointer, and Win32 window control with blocking runtime probes; X11 capture, XGB/XTEST input, and X11/EWMH window introspection/control; Wayland portal capture/input plus bounded native `wl_output`/`xdg-output` geometry; permission/error contracts; shared behavioral parity; reproducible balanced benchmark tooling; optimized guardian-path decision evidence; explicit decision to retain native CGO as the X11 default; race-testable internal X11 core; re-exec guardian with application-`SIGKILL` recovery; protected three-OS CI | Collect opt-in real macOS input and self-owned-window evidence and assess further backends selectively |
 | 4. API/compositor gaps | Parity surface delivered; runtime support partial | Window-state, geometry, and active-identity error APIs, bitmap string helpers, `FindColorCS`, hook/event capability reporting, Sway/Hyprland/wlroots resolver, Sway active node/client geometry and PID, Hyprland active compositor-reported geometry/PID, provider-aware Hyprland 0.55+ Lua window dispatch, bounded process-group-owned compositor helpers with lifecycle evidence | Further trustworthy compositor-backed state/geometry operations and cross-platform/runtime matrix coverage |
-| 5. Reliability product | Partial | Capability APIs, versioned sanitized runtime diagnostics/example, compatibility matrix v1, expanded CI variants, blocking ASan/LeakSanitizer ownership gates, six-cell checksummed release-evidence pipeline, fail-closed real-compositor contracts, promoted six-cell hosted Sway gate, promoted GNOME/KDE multi-output portal release gates, and the published [`v1.0.0-beta.1`](https://github.com/marang/robotgo/releases/tag/v1.0.0-beta.1) evidence bundle | Complete the remaining release-readiness and ongoing compatibility lifecycle |
+| 5. Reliability product | Partial | Capability APIs, versioned sanitized runtime diagnostics/example, compatibility matrix v1, expanded CI variants, blocking ASan/LeakSanitizer ownership gates, six-cell checksummed release snapshots, fail-closed real-compositor contracts, promoted six-cell hosted Sway gate, promoted GNOME/KDE multi-output portal release gates, and published exact-tag [`v1.0.0-beta.2`](https://github.com/marang/robotgo/releases/tag/v1.0.0-beta.2) evidence with a 25-check manifest | Continue the compatibility lifecycle and final `v1.0.0` readiness; keep open Phase 3/4 runtime gaps explicit |
 
 No delivery phase is complete until all of its exit criteria are blocking and
 green. Phases 1 and 2 now have implementation, real-compositor validation, and
@@ -57,8 +57,8 @@ Ubuntu 24.04 with retained exact-commit evidence;
 the separate hosted Sway multi-output cell is passing with retained
 [exact-commit evidence](https://github.com/marang/robotgo/actions/runs/29861058126).
 The GNOME/KDE evidence and release-promotion gap across phases 1, 2, and 3 is
-closed; Phase 5 continues with release readiness and compatibility lifecycle
-work.
+closed; Phase 5 continues with compatibility lifecycle work and final
+`v1.0.0` readiness.
 The completed [Agent Adapter and Evaluation Plan](agent-adapter-evaluation.md)
 provides a local, policy-gated MCP boundary on the agent-session proof. The
 adjacent [Safe Agent Visual Conditions Plan](agent-visual-conditions.md) now
@@ -418,7 +418,14 @@ The first public
 pre-release, [`v1.0.0-beta.1`](https://github.com/marang/robotgo/releases/tag/v1.0.0-beta.1),
 publishes that verified six-cell bundle and checksum for exact commit
 `1bab5e173f6b96f61d349473b348f839291b9a89`; manual runs remain read-only
-artifacts. Process termination rejects non-positive and platform-overflow PIDs
+artifacts. The latest pre-release,
+[`v1.0.0-beta.2`](https://github.com/marang/robotgo/releases/tag/v1.0.0-beta.2),
+publishes exact-tag
+[release evidence](https://github.com/marang/robotgo/actions/runs/30244107872)
+for commit `f3530594f30baa29fd61828c77b2b5c0140f3d15`: six platform
+snapshots, the protected 25-check manifest, and real GNOME/KDE multi-output
+RemoteDesktop and ScreenCast execution all passed before the checksummed bundle
+was attached. Process termination rejects non-positive and platform-overflow PIDs
 before invoking the operating system, preventing Unix process-group signaling
 through `Kill(0)` or a narrowed negative PID. Dedicated GNOME/KDE portal jobs
 are hosted; their multi-output cells are promoted into exact-release evidence
