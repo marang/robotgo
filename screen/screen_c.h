@@ -50,7 +50,8 @@ static inline int wayland_screen_rect(int32_t display_id, int32_t *x,
 }
 
 static inline int wayland_main_bounds(int32_t *w, int32_t *h) {
-    return wayland_screen_rect(-1, NULL, NULL, w, h);
+    // Output index 0 is the deterministic primary; -1 is the aggregate desktop.
+    return wayland_screen_rect(0, NULL, NULL, w, h);
 }
 #endif
 
