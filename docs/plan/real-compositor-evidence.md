@@ -220,6 +220,8 @@ the Pure-Go Wayland client. It requires exact output count, deterministic
 primary-first bounds, aggregate desktop bounds, primary size, invalid-index
 errors, and legacy/error API parity. No pixels, clipboard data, window content,
 or input events are read or produced.
+Both GNOME and KDE pass this contract in retained exact-commit
+[`Display Bounds E2E` run 30268702514](https://github.com/marang/robotgo/actions/runs/30268702514).
 
 ### Promotion to protected evidence
 
