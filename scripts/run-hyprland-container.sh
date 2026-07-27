@@ -77,6 +77,7 @@ arguments=(
 	--user "$(id -u):$(id -g)"
 	--device "$ROBOTGO_HYPRLAND_DRM_DEVICE:$ROBOTGO_HYPRLAND_DRM_DEVICE:rwm"
 	--tmpfs /tmp:rw,nosuid,nodev,noexec,mode=1777,size=256m
+	--tmpfs /run:rw,nosuid,nodev,noexec,mode=1777,size=16m
 	--volume "$GITHUB_WORKSPACE:/workspace:ro"
 	--volume "$RUNNER_TEMP:$RUNNER_TEMP:rw"
 	--workdir /workspace

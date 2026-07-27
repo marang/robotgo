@@ -12,6 +12,7 @@ readonly required_width=1280
 readonly required_height=720
 readonly cell='hyprland-window'
 readonly test_name='TestHyprlandWindowRuntime'
+readonly seatd_socket='/run/seatd.sock'
 
 if (($# != 0)); then
 	printf 'usage: %s\n' "$0" >&2
@@ -79,6 +80,7 @@ cleanup() {
 	terminate_group "$test_pid"
 	terminate_group "$hyprland_pid"
 	terminate_group "$seatd_pid"
+	rm -f -- "$seatd_socket"
 	if [[ -n "$runtime_dir" && "$runtime_dir" == "$RUNNER_TEMP/$runtime_prefix".* ]]; then
 		rm -rf -- "$runtime_dir"
 	fi
@@ -155,7 +157,7 @@ fi
 export AQ_DRM_DEVICES="$ROBOTGO_HYPRLAND_DRM_DEVICE"
 export AQ_NO_MODIFIERS='1'
 export LIBSEAT_BACKEND='seatd'
-export SEATD_SOCK="$runtime_dir/seatd.sock"
+export SEATD_SOCK="$seatd_socket"
 export SEATD_VTBOUND='0'
 unset \
 	DBUS_SESSION_BUS_ADDRESS \
