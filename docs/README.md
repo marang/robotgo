@@ -19,7 +19,7 @@ Use the following documents as the primary entry points:
   explicit-observation color search, bounded region waits, quotas, and cleanup.
 - [Explicit window identity plan](plan/explicit-window-identity.md) for
   error-returning active handle/PID queries and compositor-aware Wayland
-  semantics.
+  semantics plus protected Hyprland active-window geometry evidence.
 - [Wayland window-helper lifecycle plan](plan/wayland-window-helper-lifecycle.md)
   for bounded compositor commands, error-cause fidelity, and descendant
   cleanup evidence.

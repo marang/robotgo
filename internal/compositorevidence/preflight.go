@@ -49,6 +49,8 @@ type PreflightConfig struct {
 	MinimumOutputCount      int
 	RequireHeadlessSway     bool
 	RequireHeadlessHyprland bool
+	VirtualDRMDevice        string
+	VirtualDRMDriver        string
 	ProbeTimeout            time.Duration
 }
 
@@ -191,14 +193,6 @@ func preflight(
 				return PreflightReport{}, err
 			}
 		case "hyprland":
-			if config.RequireHeadlessHyprland {
-				if err := probeSway(ctx, probe, 1, true); err != nil {
-					return PreflightReport{}, fmt.Errorf(
-						"isolated Hyprland parent compositor check failed: %w",
-						err,
-					)
-				}
-			}
 			if err := probeHyprland(
 				ctx,
 				probe,
@@ -286,10 +280,26 @@ func validatePreflightConfig(config PreflightConfig) error {
 		return errors.New("headless Hyprland isolation requires the wlroots Hyprland window cell")
 	}
 	if config.Cell == CellHyprlandWindow && !config.RequireHeadlessHyprland {
-		return errors.New("Hyprland window evidence requires headless Hyprland isolation")
+		return errors.New("hyprland window evidence requires headless Hyprland isolation")
+	}
+	if config.RequireHeadlessHyprland {
+		if !strings.HasPrefix(config.VirtualDRMDevice, "/dev/dri/card") ||
+			filepath.Clean(config.VirtualDRMDevice) != config.VirtualDRMDevice {
+			return errors.New("headless Hyprland isolation requires a clean DRM card device")
+		}
+		card := strings.TrimPrefix(config.VirtualDRMDevice, "/dev/dri/card")
+		if card == "" {
+			return errors.New("headless Hyprland isolation requires a numbered DRM card device")
+		}
+		if _, err := strconv.ParseUint(card, 10, 31); err != nil {
+			return errors.New("headless Hyprland isolation requires a numbered DRM card device")
+		}
+		if config.VirtualDRMDriver != "vkms" {
+			return errors.New("headless Hyprland isolation requires the vkms DRM driver")
+		}
 	}
 	if config.RequireHeadlessSway && config.RequireHeadlessHyprland {
-		return errors.New("Sway and Hyprland isolation cannot be required together")
+		return errors.New("sway and Hyprland isolation cannot be required together")
 	}
 	return nil
 }
@@ -678,9 +688,10 @@ func probeHyprland(
 		return errors.New("native Hyprland output count does not match the declared topology")
 	}
 	for _, monitor := range monitors {
-		if requireHeadless &&
-			!strings.HasPrefix(monitor.Name, "HEADLESS-") &&
-			!strings.HasPrefix(monitor.Name, "WL-") {
+		if requireHeadless && validateLabel(
+			"isolated Hyprland output",
+			monitor.Name,
+		) != nil {
 			return errors.New("isolated Hyprland output check failed")
 		}
 	}

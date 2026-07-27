@@ -55,7 +55,7 @@ umask 077
 ulimit -c 0
 runtime_dir=''
 hyprland_pid=''
-sway_pid=''
+seatd_pid=''
 test_pid=''
 failure_stage="$ROBOTGO_HYPRLAND_FAILURE_STAGE_COMPOSITOR_START"
 
@@ -78,7 +78,7 @@ cleanup() {
 	trap - EXIT INT TERM HUP
 	terminate_group "$test_pid"
 	terminate_group "$hyprland_pid"
-	terminate_group "$sway_pid"
+	terminate_group "$seatd_pid"
 	if [[ -n "$runtime_dir" && "$runtime_dir" == "$RUNNER_TEMP/$runtime_prefix".* ]]; then
 		rm -rf -- "$runtime_dir"
 	fi
@@ -116,51 +116,53 @@ export ROBOTGO_HYPRLAND_ISOLATED='1'
 export ROBOTGO_DISABLE_PORTAL='1'
 export HYPRLAND_NO_SD_NOTIFY='1'
 export HYPRLAND_NO_SD_VARS='1'
-export WLR_BACKENDS='headless'
-export WLR_RENDERER='pixman'
-export WLR_RENDERER_ALLOW_SOFTWARE='1'
 export WLR_LIBINPUT_NO_DEVICES='1'
+: "${ROBOTGO_HYPRLAND_DRM_DEVICE:?ROBOTGO_HYPRLAND_DRM_DEVICE is required}"
+: "${ROBOTGO_HYPRLAND_DRM_DRIVER:?ROBOTGO_HYPRLAND_DRM_DRIVER is required}"
+if [[ ! "$ROBOTGO_HYPRLAND_DRM_DEVICE" =~ ^/dev/dri/card[0-9]+$ ||
+	"$ROBOTGO_HYPRLAND_DRM_DRIVER" != 'vkms' ||
+	-L "$ROBOTGO_HYPRLAND_DRM_DEVICE" ||
+	! -c "$ROBOTGO_HYPRLAND_DRM_DEVICE" ]]; then
+	printf 'isolated Hyprland requires one verified vkms DRM card\n' >&2
+	exit 1
+fi
+shopt -s nullglob
+drm_entries=(/dev/dri/*)
+shopt -u nullglob
+if ((${#drm_entries[@]} != 1)) ||
+	[[ "${drm_entries[0]}" != "$ROBOTGO_HYPRLAND_DRM_DEVICE" ||
+	-e /dev/input ]]; then
+	printf 'isolated Hyprland exposes an unexpected device path\n' >&2
+	exit 1
+fi
+drm_driver_path="$(
+	readlink -f \
+		"/sys/class/drm/${ROBOTGO_HYPRLAND_DRM_DEVICE##*/}/device/driver"
+)"
+readonly drm_driver_path
+if [[ "${drm_driver_path##*/}" != "$ROBOTGO_HYPRLAND_DRM_DRIVER" ]]; then
+	printf 'isolated Hyprland DRM device is not backed by vkms\n' >&2
+	exit 1
+fi
+
+export AQ_DRM_DEVICES="$ROBOTGO_HYPRLAND_DRM_DEVICE"
+export AQ_NO_MODIFIERS='1'
+export LIBSEAT_BACKEND='seatd'
+export SEATD_SOCK="$runtime_dir/seatd.sock"
+export SEATD_VTBOUND='0'
 unset DISPLAY WAYLAND_DISPLAY HYPRLAND_INSTANCE_SIGNATURE SWAYSOCK
 
-setsid sway -c /dev/null >"$runtime_dir/sway.log" 2>&1 &
-sway_pid=$!
-
+setsid seatd -l error >"$runtime_dir/seatd.log" 2>&1 &
+seatd_pid=$!
 for _ in {1..100}; do
-	parent_wayland_sockets=()
-	sway_sockets=()
-	for candidate in "$runtime_dir"/wayland-*; do
-		[[ -S "$candidate" ]] && parent_wayland_sockets+=("$candidate")
-	done
-	for candidate in "$runtime_dir"/sway-ipc.*.sock; do
-		[[ -S "$candidate" ]] && sway_sockets+=("$candidate")
-	done
-	if ((${#parent_wayland_sockets[@]} == 1 && ${#sway_sockets[@]} == 1)); then
-		export WAYLAND_DISPLAY="${parent_wayland_sockets[0]##*/}"
-		export SWAYSOCK="${sway_sockets[0]}"
-		if swaymsg -t get_outputs -r >/dev/null 2>&1; then
-			break
-		fi
-	fi
+	[[ -S "$SEATD_SOCK" ]] && break
+	kill -0 "$seatd_pid" 2>/dev/null || break
 	sleep 0.05
 done
-if [[ -z "${WAYLAND_DISPLAY:-}" || -z "${SWAYSOCK:-}" ]]; then
-	printf 'isolated headless Sway parent did not become ready\n' >&2
+if [[ ! -S "$SEATD_SOCK" ]]; then
+	printf 'isolated seat manager did not become ready\n' >&2
 	exit 1
 fi
-parent_wayland_display="$WAYLAND_DISPLAY"
-readonly parent_wayland_display
-parent_output="$(
-	swaymsg -t get_outputs -r |
-		jq -er '[.[] | select(.active)] | select(length == 1) | .[0].name'
-)"
-readonly parent_output
-if [[ ! "$parent_output" =~ ^HEADLESS-[0-9]+$ ]]; then
-	printf 'isolated headless Sway parent exposed an unexpected output\n' >&2
-	exit 1
-fi
-swaymsg \
-	"output $parent_output mode ${required_width}x${required_height} pos 0 0 scale 1 transform normal" \
-	>/dev/null
 
 export XDG_CURRENT_DESKTOP='Hyprland'
 setsid Hyprland \
@@ -172,9 +174,7 @@ for _ in {1..200}; do
 	wayland_sockets=()
 	instance_directories=()
 	for candidate in "$runtime_dir"/wayland-*; do
-		if [[ -S "$candidate" && "${candidate##*/}" != "$parent_wayland_display" ]]; then
-			wayland_sockets+=("$candidate")
-		fi
+		[[ -S "$candidate" ]] && wayland_sockets+=("$candidate")
 	done
 	for candidate in "$runtime_dir"/hypr/*; do
 		[[ -d "$candidate" ]] && instance_directories+=("$candidate")
@@ -201,7 +201,7 @@ for _ in {1..100}; do
 		--argjson width "$required_width" \
 		--argjson height "$required_height" \
 		'length == 1 and
-		 (.[0].name | startswith("HEADLESS-")) and
+		 (.[0].name | type == "string" and length > 0) and
 		 .[0].x == 0 and .[0].y == 0 and
 		 .[0].width == $width and .[0].height == $height and
 		 .[0].scale == 1' \
@@ -215,8 +215,8 @@ if ((topology_ready != 1)); then
 	printf 'isolated Hyprland output topology did not become ready\n' >&2
 	exit 1
 fi
-if [[ -e /dev/dri || -e /dev/input ]]; then
-	printf 'isolated Hyprland container exposes a physical device path\n' >&2
+if [[ -e /dev/input || ! -c "$ROBOTGO_HYPRLAND_DRM_DEVICE" ]]; then
+	printf 'isolated Hyprland device contract changed during startup\n' >&2
 	exit 1
 fi
 
@@ -251,7 +251,7 @@ go run ./internal/cmd/compositorevidence preflight \
 	-require-headless-hyprland
 
 failure_stage="$ROBOTGO_HYPRLAND_FAILURE_STAGE_INTEGRATION_TEST"
-setsid go test -count=1 -timeout=2m -tags=wayland,hyprlandintegration . \
+setsid go test -asan -count=1 -timeout=2m -tags=wayland,hyprlandintegration . \
 	-run "^${test_name}$" -v >"$output_dir/raw-test.log" 2>&1 &
 test_pid=$!
 if wait "$test_pid"; then

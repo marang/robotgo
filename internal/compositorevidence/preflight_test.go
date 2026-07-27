@@ -75,7 +75,7 @@ func (probe *fakeProbe) output(
 		case "version":
 			return []byte(`{"tag":"v0.56.0","commit":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}`), nil
 		case "monitors":
-			return []byte(`[{"name":"WL-1"}]`), nil
+			return []byte(`[{"name":"Virtual-1"}]`), nil
 		case "devices":
 			return []byte(`{"mice":[],"keyboards":[],"tablets":[],"touch":[],"switches":[]}`), nil
 		default:
@@ -142,6 +142,8 @@ func validPreflightConfig(lane Lane, cell Cell) PreflightConfig {
 		MinimumOutputCount:      outputCount,
 		RequireHeadlessSway:     requireSway,
 		RequireHeadlessHyprland: requireHyprland,
+		VirtualDRMDevice:        "/dev/dri/card0",
+		VirtualDRMDriver:        "vkms",
 		ProbeTimeout:            time.Second,
 	}
 }
@@ -168,8 +170,8 @@ func TestPreflightNativeHyprlandDoesNotRequirePortalOrPipeWire(t *testing.T) {
 			t.Fatalf("headless Hyprland %s was not probed: %v", method, probe.calls)
 		}
 	}
-	if !probe.called("swaymsg") || strings.Contains(calls, portalBusName) {
-		t.Fatalf("Hyprland cell omitted its isolated parent or ran a portal probe: %v", probe.calls)
+	if probe.called("swaymsg") || strings.Contains(calls, portalBusName) {
+		t.Fatalf("Hyprland cell ran an unrelated parent or portal probe: %v", probe.calls)
 	}
 }
 
@@ -229,14 +231,7 @@ func validDependencies(probe *fakeProbe) preflightDependencies {
 }
 
 func validHyprlandDependencies(probe *fakeProbe) preflightDependencies {
-	dependencies := validDependencies(probe)
-	dependencies.output = func(ctx context.Context, name string, args ...string) ([]byte, error) {
-		if name == "swaymsg" && len(args) > 1 && args[1] == "get_outputs" {
-			return []byte(`[{"name":"HEADLESS-1","active":true}]`), nil
-		}
-		return probe.output(ctx, name, args...)
-	}
-	return dependencies
+	return validDependencies(probe)
 }
 
 func TestPreflightPortalCellsSelectApplicableRequirements(t *testing.T) {
@@ -370,7 +365,7 @@ func TestPreflightHeadlessSwayRejectsPhysicalInputAndOutput(t *testing.T) {
 	}
 }
 
-func TestPreflightHeadlessHyprlandRejectsPhysicalInputAndOutput(t *testing.T) {
+func TestPreflightHeadlessHyprlandRejectsInputAndInvalidOutput(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct {
 		name   string
@@ -378,9 +373,9 @@ func TestPreflightHeadlessHyprlandRejectsPhysicalInputAndOutput(t *testing.T) {
 		result []byte
 	}{
 		{
-			name:   "physical output",
+			name:   "invalid output identity",
 			method: "monitors",
-			result: []byte(`[{"name":"DP-1"}]`),
+			result: []byte(`[{"name":"private/output"}]`),
 		},
 		{
 			name:   "physical input",
@@ -408,6 +403,20 @@ func TestPreflightHeadlessHyprlandRejectsPhysicalInputAndOutput(t *testing.T) {
 				t.Fatalf("preflight error = %v, want isolated Hyprland rejection", err)
 			}
 		})
+	}
+}
+
+func TestPreflightHeadlessHyprlandRejectsNonVKMSDevice(t *testing.T) {
+	t.Parallel()
+	config := validPreflightConfig(LaneWlroots, CellHyprlandWindow)
+	config.VirtualDRMDriver = "i915"
+	_, err := preflight(
+		context.Background(),
+		config,
+		validHyprlandDependencies(&fakeProbe{}),
+	)
+	if err == nil || !strings.Contains(err.Error(), "vkms DRM driver") {
+		t.Fatalf("preflight error = %v, want vkms isolation rejection", err)
 	}
 }
 

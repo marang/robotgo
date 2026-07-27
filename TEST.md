@@ -864,6 +864,30 @@ success and failure. The hosted Sway job is safe for fork pull requests because
 it has read-only permissions, no credentials, no physical input devices, and no
 access to a developer or self-hosted desktop.
 
+The separate `Hyprland E2E` workflow proves compositor-specific active-window
+geometry on one GitHub-hosted `vkms` display. It loads and verifies exactly one
+virtual DRM card on the disposable host, passes only that card into a pinned
+Arch Linux container, and runs Hyprland without a network, `/dev/input`, render
+node, host display socket, writable checkout, or credentials. The test owns its
+`wev` fixture and verifies title, PID, exact bounds, legacy/error API parity,
+and explicit unsupported handle/client/PID-target contracts under
+AddressSanitizer and LeakSanitizer.
+
+The runner also executes an induced failure after compositor startup and
+requires fixture processes, seat-manager state, sockets, raw logs, and the
+private runtime directory to be gone. Only `evidence.json`, `test.log`, and
+`summary.md` are uploaded. Local development should run only the side-effect
+free contract and compile gates:
+
+```bash
+go test ./internal/compositorevidence ./internal/cmd/compositorevidence ./scripts
+go test -run '^$' -tags='wayland,hyprlandintegration' .
+```
+
+Do not point `scripts/run-hyprland-container.sh` at a developer GPU. Real
+execution belongs to the disposable hosted `vkms` runner documented in
+[`infrastructure/hyprland-runner`](infrastructure/hyprland-runner/README.md).
+
 The GNOME and KDE jobs build pinned images on fresh GitHub-hosted Ubuntu
 runners, transfer only the exact clean commit through `git archive`, and
 execute inside disposable guests with live Wayland/user-bus sessions. A private
@@ -921,7 +945,9 @@ missing, pending, skipped, neutral, cancelled, timed-out, or failed Sway check
 blocks the release bundle. It additionally invokes and requires the
 multi-output GNOME and KDE RemoteDesktop and ScreenCast jobs for the same
 candidate SHA. Missing, skipped, stale, or failed portal evidence therefore
-also blocks packaging and publication.
+also blocks packaging and publication. The isolated Hyprland window-geometry
+cell is invoked for that exact candidate and is likewise required before the
+26-check manifest can be packaged.
 
 On a clean Linux native checkout, reproduce the generator/verifier path with:
 

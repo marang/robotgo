@@ -16,10 +16,9 @@ RUN pacman -Syu --noconfirm --needed \
         libxtst \
         mesa \
         pkgconf \
-        sway \
+        seatd \
         wayland \
         wev \
-    && setcap -r /usr/bin/sway \
     && pacman -Scc --noconfirm
 
 ENV GOMODCACHE=/go/pkg/mod

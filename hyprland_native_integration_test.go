@@ -22,10 +22,8 @@ const (
 	envHyprlandRuntimeDir = "XDG_RUNTIME_DIR"
 	envHyprlandDesktop    = "XDG_CURRENT_DESKTOP"
 	envHyprlandSession    = "XDG_SESSION_TYPE"
-	envHyprParentBackends = "WLR_BACKENDS"
-	envHyprParentRenderer = "WLR_RENDERER"
-	envHyprParentNoInput  = "WLR_LIBINPUT_NO_DEVICES"
-	envHyprParentSocket   = "SWAYSOCK"
+	envHyprlandDRMDevice  = "ROBOTGO_HYPRLAND_DRM_DEVICE"
+	envHyprlandDRMDriver  = "ROBOTGO_HYPRLAND_DRM_DRIVER"
 	hyprlandFixtureTitle  = "wev"
 	hyprlandFixtureX      = 120
 	hyprlandFixtureY      = 80
@@ -105,9 +103,7 @@ func requireIsolatedHyprland(t *testing.T) {
 		envRequireHyprlandE2E: "1",
 		envHyprlandIsolated:   "1",
 		envHyprlandSession:    "wayland",
-		envHyprParentBackends: "headless",
-		envHyprParentRenderer: "pixman",
-		envHyprParentNoInput:  "1",
+		envHyprlandDRMDriver:  "vkms",
 	}
 	for name, want := range checks {
 		if got := os.Getenv(name); got != want {
@@ -128,11 +124,9 @@ func requireIsolatedHyprland(t *testing.T) {
 		t.Fatal("isolated Hyprland runtime directory is invalid")
 	}
 	assertHyprlandSocketInRuntime(t, runtimeDirectory, os.Getenv(envWaylandDisplay))
-	assertHyprlandSocketInRuntime(t, runtimeDirectory, os.Getenv(envHyprParentSocket))
-	for _, devicePath := range []string{"/dev/dri", "/dev/input"} {
-		if _, err := os.Lstat(devicePath); !errors.Is(err, os.ErrNotExist) {
-			t.Fatalf("isolated Hyprland container exposes %s: %v", devicePath, err)
-		}
+	assertVirtualDRMIsolation(t)
+	if _, err := os.Lstat("/dev/input"); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("isolated Hyprland container exposes /dev/input: %v", err)
 	}
 
 	var monitors []hyprlandMonitorIdentity
@@ -141,9 +135,7 @@ func requireIsolatedHyprland(t *testing.T) {
 		t.Fatalf("isolated Hyprland monitor count = %d, want 1", len(monitors))
 	}
 	monitor := monitors[0]
-	if (!strings.HasPrefix(monitor.Name, "HEADLESS-") &&
-		!strings.HasPrefix(monitor.Name, "WL-")) ||
-		monitor.X != 0 || monitor.Y != 0 ||
+	if monitor.Name == "" || monitor.X != 0 || monitor.Y != 0 ||
 		monitor.Width != hyprlandOutputWidth ||
 		monitor.Height != hyprlandOutputHeight ||
 		monitor.Scale != 1 {
@@ -167,6 +159,37 @@ func requireIsolatedHyprland(t *testing.T) {
 	}
 	if DetectDisplayServer() != DisplayServerWayland {
 		t.Fatal("isolated Hyprland did not select the Wayland backend")
+	}
+}
+
+func assertVirtualDRMIsolation(t *testing.T) {
+	t.Helper()
+	device := filepath.Clean(os.Getenv(envHyprlandDRMDevice))
+	if !strings.HasPrefix(device, "/dev/dri/card") ||
+		device != os.Getenv(envHyprlandDRMDevice) {
+		t.Fatalf("isolated Hyprland DRM device is invalid: %q", device)
+	}
+	info, err := os.Lstat(device)
+	if err != nil || info.Mode()&os.ModeDevice == 0 ||
+		info.Mode()&os.ModeCharDevice == 0 {
+		t.Fatalf("isolated Hyprland DRM device is not a character device: %v", err)
+	}
+	entries, err := os.ReadDir("/dev/dri")
+	if err != nil {
+		t.Fatalf("read isolated DRM directory: %v", err)
+	}
+	if len(entries) != 1 || filepath.Join("/dev/dri", entries[0].Name()) != device {
+		t.Fatalf("isolated Hyprland exposes unexpected DRM entries: %v", entries)
+	}
+	driverLink := filepath.Join(
+		"/sys/class/drm",
+		filepath.Base(device),
+		"device",
+		"driver",
+	)
+	driver, err := filepath.EvalSymlinks(driverLink)
+	if err != nil || filepath.Base(driver) != "vkms" {
+		t.Fatalf("isolated Hyprland DRM driver is not vkms: %q, %v", driver, err)
 	}
 }
 

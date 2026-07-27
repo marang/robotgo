@@ -17,6 +17,8 @@ const (
 	envWaylandDisplay    = "WAYLAND_DISPLAY"
 	envRuntimeDir        = "XDG_RUNTIME_DIR"
 	envSessionBusAddress = "DBUS_SESSION_BUS_ADDRESS"
+	envHyprlandDRMDevice = "ROBOTGO_HYPRLAND_DRM_DEVICE"
+	envHyprlandDRMDriver = "ROBOTGO_HYPRLAND_DRM_DRIVER"
 	envHome              = "HOME"
 	envUser              = "USER"
 	envLogName           = "LOGNAME"
@@ -117,7 +119,7 @@ func runPreflight(
 	flags.IntVar(&outputCount, "output-count", 0, "declared compositor output count")
 	flags.IntVar(&minimumOutputs, "minimum-outputs", 1, "minimum required output count")
 	flags.BoolVar(&requireHeadless, "require-headless-sway", false, "require isolated headless Sway with no input devices")
-	flags.BoolVar(&requireHyprland, "require-headless-hyprland", false, "require Hyprland nested on isolated headless Sway with no input devices")
+	flags.BoolVar(&requireHyprland, "require-headless-hyprland", false, "require Hyprland on an isolated vkms display with no input devices")
 	flags.DurationVar(&probeTimeout, "probe-timeout", 5*time.Second, "per-probe timeout")
 	if err := flags.Parse(arguments); err != nil {
 		return err
@@ -163,6 +165,8 @@ func runPreflight(
 		MinimumOutputCount:      minimumOutputs,
 		RequireHeadlessSway:     requireHeadless,
 		RequireHeadlessHyprland: requireHyprland,
+		VirtualDRMDevice:        getenv(envHyprlandDRMDevice),
+		VirtualDRMDriver:        getenv(envHyprlandDRMDriver),
 		ProbeTimeout:            probeTimeout,
 	})
 	if err != nil {

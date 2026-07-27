@@ -380,8 +380,9 @@ cross-platform semantics:
 
 - Extend compositor-backed state/query behavior beyond the delivered Hyprland
   maximize slice only where equally trustworthy state is exposed.
-- Collect protected Hyprland geometry evidence and add other compositor
-  geometry only where a stable active-window contract is available.
+- Keep the protected isolated Hyprland active-window geometry and sanitizer
+  evidence green; add other compositor geometry only where a stable
+  active-window contract is available.
 - Add protected real-desktop capture-helper evidence beyond the delivered
   hermetic native Wayland, portal, and cross-build backend contracts.
 - Collect protected GNOME/KDE/wlroots multi-output bounds evidence beyond the
@@ -414,6 +415,10 @@ the test-log SHA-256 for native/Pure-Go Linux, macOS, and Windows cells. It also
 requires and records the complete protected `x11-default-suite`, lint, vet,
 race, sanitizer, platform, Wayland, targeted X11, and six-cell hosted Sway
 check set for the exact commit.
+The release workflow additionally invokes the isolated Hyprland
+active-window-geometry proof, bringing the current exact-candidate manifest to
+26 checks while preserving the published beta.2 bundle as historical
+25-check evidence.
 The first public
 pre-release, [`v1.0.0-beta.1`](https://github.com/marang/robotgo/releases/tag/v1.0.0-beta.1),
 publishes that verified six-cell bundle and checksum for exact commit

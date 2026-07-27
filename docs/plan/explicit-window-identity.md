@@ -1,6 +1,6 @@
 # Explicit Window Identity Plan
 
-Status: Initial delivery implemented by LAB-21
+Status: API delivery implemented by LAB-21; protected Hyprland geometry evidence implemented by LAB-59
 
 Linear coordination:
 
@@ -44,6 +44,9 @@ Wayland handles. Existing protected Sway and opt-in Sway/Hyprland runtime tests
 also exercise active PID lookup. Cross-build tests preserve native and Pure-Go
 behavior.
 
-Protected Hyprland geometry evidence remains separate infrastructure work.
+The protected `Hyprland E2E` workflow now exercises active title, PID, and
+exact active-window geometry on a self-owned fixture under an isolated
+GitHub-hosted `vkms` display. It also proves explicit unsupported handle,
+client-geometry, and PID-target contracts plus sanitizer-backed cleanup.
 Hosted GNOME/KDE portal runners are delivered, but their portal evidence does
 not prove compositor window identity.

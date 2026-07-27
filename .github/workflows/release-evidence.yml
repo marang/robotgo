@@ -171,11 +171,17 @@ jobs:
       desktop: all
       topology: multi-output
 
+  hyprland-window-evidence:
+    name: Hyprland window evidence
+    if: github.event_name == 'release' || github.event_name == 'workflow_dispatch'
+    uses: ./.github/workflows/hyprland-e2e.yml
+
   protected-checks:
     if: github.event_name == 'release' || github.event_name == 'workflow_dispatch'
     needs:
       - portal-capture-evidence
       - portal-input-evidence
+      - hyprland-window-evidence
       - release-evidence-validation
     runs-on: ubuntu-latest
     timeout-minutes: 12
@@ -235,6 +241,7 @@ jobs:
           Portal capture evidence / GitHub-hosted kde multi-output persistent capture
           Portal input evidence / GitHub-hosted gnome multi-output portal input
           Portal input evidence / GitHub-hosted kde multi-output portal input
+          Hyprland window evidence / hyprland-window
           portal-availability
           race
           release-evidence-validation
@@ -336,6 +343,7 @@ jobs:
             'Portal capture evidence / GitHub-hosted kde multi-output persistent capture' \
             'Portal input evidence / GitHub-hosted gnome multi-output portal input' \
             'Portal input evidence / GitHub-hosted kde multi-output portal input' \
+            'Hyprland window evidence / hyprland-window' \
             portal-availability race release-evidence-validation sanitizer \
             'test (macOS-latest)' \
             'test (ubuntu-latest)' \
@@ -353,7 +361,7 @@ jobs:
           jq -e --arg commit "$commit" '
             .schema_version == "1" and
             .commit == $commit and
-            (.checks | length) == 25 and
+            (.checks | length) == 26 and
             all(.checks[];
               .conclusion == "success" and
               (.provider | type) == "string" and
@@ -369,6 +377,7 @@ jobs:
                    .name == "Portal capture evidence / GitHub-hosted kde multi-output persistent capture" or
                    .name == "Portal input evidence / GitHub-hosted gnome multi-output portal input" or
                    .name == "Portal input evidence / GitHub-hosted kde multi-output portal input" or
+                   .name == "Hyprland window evidence / hyprland-window" or
                    .name == "portal-availability" or
                    .name == "x11-default-suite")
                then .provider == "github-actions"

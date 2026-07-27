@@ -247,7 +247,8 @@ backends.
   - Validate display/output geometry (`GetScreenRectE`/`GetDisplayBoundsE`)
     independently from window geometry on protected wlroots/GNOME/KDE runners.
     The hosted Sway window cell proves exact active node/client geometry;
-    Hyprland protected geometry evidence remains open.
+    the isolated hosted Hyprland cell proves exact self-owned active-window
+    geometry plus title/PID and explicit unsupported targeting contracts.
   - Keep the delivered bounded Wayland window-helper lifecycle contract green.
     Sway, Hyprland, and generic wlroots commands share one two-second runner;
     hermetic Linux/CGO tests prove process-group and inherited-I/O cleanup with
@@ -288,7 +289,8 @@ backends.
   - Keep the dedicated credential-free hosted GNOME and KDE portal workflows
     green. The six hosted wlroots/Sway checks are promoted into branch and
     release gates; the four GNOME/KDE multi-output portal checks are promoted
-    into exact-release gates.
+    into exact-release gates. Keep the isolated `vkms` Hyprland window cell
+    green as a branch check and exact-release gate.
   - Keep the race/vet and native ASan/LeakSanitizer CI jobs green and protected.
     The sanitizer gate covers the default CGO suite plus hermetic screencopy
     allocation/free, bounded timeout cleanup, and FD ownership paths.

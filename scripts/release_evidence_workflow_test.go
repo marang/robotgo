@@ -25,6 +25,7 @@ func TestReleaseEvidenceRequiresEveryPromotedHostedCheck(t *testing.T) {
 		"Portal capture evidence / GitHub-hosted kde multi-output persistent capture",
 		"Portal input evidence / GitHub-hosted gnome multi-output portal input",
 		"Portal input evidence / GitHub-hosted kde multi-output portal input",
+		"Hyprland window evidence / hyprland-window",
 	} {
 		count := strings.Count(text, check)
 		if !strings.Contains(check, " ") {
@@ -43,7 +44,7 @@ func TestReleaseEvidenceRequiresEveryPromotedHostedCheck(t *testing.T) {
 			)
 		}
 	}
-	if !strings.Contains(text, "(.checks | length) == 25") {
+	if !strings.Contains(text, "(.checks | length) == 26") {
 		t.Fatal("release evidence does not require the expanded exact check count")
 	}
 	if !strings.Contains(text, "then .provider == \"github-actions\"") {
@@ -79,6 +80,10 @@ func TestReleaseEvidenceCallsPortalProofBeforeCollection(t *testing.T) {
 		"topology: multi-output",
 		"      - portal-capture-evidence",
 		"      - portal-input-evidence",
+		"  hyprland-window-evidence:",
+		"name: Hyprland window evidence",
+		"uses: ./.github/workflows/hyprland-e2e.yml",
+		"      - hyprland-window-evidence",
 	} {
 		if !strings.Contains(text, required) {
 			t.Errorf("release evidence omits portal-gate contract %q", required)
