@@ -19,6 +19,7 @@ RUN pacman -Syu --noconfirm --needed \
         sway \
         wayland \
         wev \
+    && setcap -r /usr/bin/sway \
     && pacman -Scc --noconfirm
 
 ENV GOMODCACHE=/go/pkg/mod
