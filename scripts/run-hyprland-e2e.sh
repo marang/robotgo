@@ -144,7 +144,9 @@ if [[ ! -d /sys/module/vkms ]]; then
 	exit 1
 fi
 readonly exact_drm_sysfs_path="/sys/devices/platform/vkms/drm/${ROBOTGO_HYPRLAND_DRM_DEVICE##*/}"
-if [[ "$drm_sysfs_path" != "$exact_drm_sysfs_path" &&
+readonly faux_drm_sysfs_path="/sys/devices/faux/vkms/drm/${ROBOTGO_HYPRLAND_DRM_DEVICE##*/}"
+if [[ "$drm_sysfs_path" != "$faux_drm_sysfs_path" &&
+	"$drm_sysfs_path" != "$exact_drm_sysfs_path" &&
 	"$drm_sysfs_path" != /sys/devices/platform/vkms.*/drm/"${ROBOTGO_HYPRLAND_DRM_DEVICE##*/}" ]]; then
 	printf 'isolated Hyprland DRM device is not backed by vkms\n' >&2
 	exit 1

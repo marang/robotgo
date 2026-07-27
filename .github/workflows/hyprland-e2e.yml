@@ -48,8 +48,10 @@ jobs:
           mapfile -t vkms_cards < <(
             for card in /sys/class/drm/card[0-9]*; do
               test -e "$card" || continue
+              [[ "${card##*/}" =~ ^card[0-9]+$ ]] || continue
               card_path="$(readlink -f "$card")"
-              if [[ "$card_path" == /sys/devices/platform/vkms/drm/card[0-9]* ||
+              if [[ "$card_path" == /sys/devices/faux/vkms/drm/card[0-9]* ||
+                "$card_path" == /sys/devices/platform/vkms/drm/card[0-9]* ||
                 "$card_path" == /sys/devices/platform/vkms.*/drm/card[0-9]* ]]; then
                 printf '%s\n' "/dev/dri/${card##*/}"
               fi
@@ -59,10 +61,12 @@ jobs:
             echo 'vkms did not expose exactly one DRM card' >&2
             for card in /sys/class/drm/card[0-9]*; do
               test -e "$card" || continue
+              [[ "${card##*/}" =~ ^card[0-9]+$ ]] || continue
               printf 'observed DRM card %s sysfs=%s\n' \
                 "${card##*/}" "$(readlink -f "$card")" >&2
             done
-            find /sys/devices/platform -maxdepth 4 -name '*vkms*' \
+            find /sys/devices/faux /sys/devices/platform \
+              -maxdepth 4 -name '*vkms*' \
               -printf 'observed vkms platform path=%p\n' >&2
             exit 1
           fi

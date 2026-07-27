@@ -188,13 +188,15 @@ func assertVirtualDRMIsolation(t *testing.T) {
 	cardPath, err := filepath.EvalSymlinks(cardLink)
 	pathPrefix := "/sys/devices/platform/vkms"
 	pathSuffix := filepath.Join(string(filepath.Separator), "drm", filepath.Base(device))
+	fauxPath := filepath.Join("/sys/devices/faux/vkms/drm", filepath.Base(device))
 	moduleInfo, moduleErr := os.Stat("/sys/module/vkms")
 	instance := strings.TrimSuffix(strings.TrimPrefix(cardPath, pathPrefix), pathSuffix)
+	validPlatformPath := strings.HasPrefix(cardPath, pathPrefix) &&
+		strings.HasSuffix(cardPath, pathSuffix) &&
+		(instance == "" || strings.HasPrefix(instance, ".")) &&
+		!strings.Contains(instance, string(filepath.Separator))
 	if err != nil || moduleErr != nil || !moduleInfo.IsDir() ||
-		!strings.HasPrefix(cardPath, pathPrefix) ||
-		!strings.HasSuffix(cardPath, pathSuffix) ||
-		(instance != "" && !strings.HasPrefix(instance, ".")) ||
-		strings.Contains(instance, string(filepath.Separator)) {
+		(cardPath != fauxPath && !validPlatformPath) {
 		t.Fatalf("isolated Hyprland DRM driver is not vkms: %q, %v", cardPath, err)
 	}
 }
