@@ -54,10 +54,11 @@ fi
 umask 077
 ulimit -c 0
 runtime_dir=''
+dbus_pid=''
 hyprland_pid=''
 seatd_pid=''
 test_pid=''
-failure_stage="$ROBOTGO_HYPRLAND_FAILURE_STAGE_COMPOSITOR_START"
+failure_stage="$ROBOTGO_HYPRLAND_FAILURE_STAGE_SESSION_BUS"
 
 terminate_group() {
 	local pid="$1"
@@ -79,6 +80,7 @@ cleanup() {
 	terminate_group "$test_pid"
 	terminate_group "$hyprland_pid"
 	terminate_group "$seatd_pid"
+	terminate_group "$dbus_pid"
 	if [[ -n "$runtime_dir" && "$runtime_dir" == "$RUNNER_TEMP/$runtime_prefix".* ]]; then
 		rm -rf -- "$runtime_dir"
 	fi
@@ -157,8 +159,28 @@ export AQ_NO_MODIFIERS='1'
 export LIBSEAT_BACKEND='seatd'
 export SEATD_SOCK="$runtime_dir/seatd.sock"
 export SEATD_VTBOUND='0'
+export DBUS_SESSION_BUS_ADDRESS="unix:path=$runtime_dir/session-bus"
 unset DISPLAY WAYLAND_DISPLAY HYPRLAND_INSTANCE_SIGNATURE SWAYSOCK
 
+setsid dbus-daemon \
+	--session \
+	--nofork \
+	--nopidfile \
+	--nosyslog \
+	--address="$DBUS_SESSION_BUS_ADDRESS" \
+	>"$runtime_dir/dbus.log" 2>&1 &
+dbus_pid=$!
+for _ in {1..100}; do
+	[[ -S "$runtime_dir/session-bus" ]] && break
+	kill -0 "$dbus_pid" 2>/dev/null || break
+	sleep 0.05
+done
+if [[ ! -S "$runtime_dir/session-bus" ]]; then
+	printf 'isolated session bus did not become ready\n' >&2
+	exit 1
+fi
+
+failure_stage="$ROBOTGO_HYPRLAND_FAILURE_STAGE_COMPOSITOR_START"
 setsid seatd -l error >"$runtime_dir/seatd.log" 2>&1 &
 seatd_pid=$!
 for _ in {1..100}; do

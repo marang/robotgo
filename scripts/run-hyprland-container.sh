@@ -99,7 +99,6 @@ if [[ "$mode" == 'induced-failure' ]]; then
 fi
 arguments+=(
 	"$image"
-	/usr/bin/dbus-run-session --
 	/usr/bin/bash
 	./scripts/run-hyprland-e2e.sh
 )
