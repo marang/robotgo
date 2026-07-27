@@ -75,6 +75,19 @@ terminate_group() {
 	wait "$pid" 2>/dev/null || true
 }
 
+classify_session_bus_failure() {
+	local log_file="$runtime_dir/dbus.log"
+	if [[ ! -f "$log_file" ]]; then
+		failure_stage="$ROBOTGO_HYPRLAND_FAILURE_STAGE_SESSION_BUS_REDIRECTION"
+	elif grep -Eqi 'permission denied|operation not permitted' "$log_file"; then
+		failure_stage="$ROBOTGO_HYPRLAND_FAILURE_STAGE_SESSION_BUS_PERMISSION"
+	elif grep -Eqi 'invalid option|unknown option|usage:' "$log_file"; then
+		failure_stage="$ROBOTGO_HYPRLAND_FAILURE_STAGE_SESSION_BUS_INVOCATION"
+	elif grep -Eqi 'configuration file|failed to start message bus|machine (id|uuid)' "$log_file"; then
+		failure_stage="$ROBOTGO_HYPRLAND_FAILURE_STAGE_SESSION_BUS_CONFIGURATION"
+	fi
+}
+
 cleanup() {
 	local status=$?
 	trap - EXIT INT TERM HUP
@@ -193,6 +206,7 @@ for _ in {1..100}; do
 	sleep 0.05
 done
 if [[ ! -s "$runtime_dir/dbus-address" ]]; then
+	classify_session_bus_failure
 	printf 'isolated session bus did not become ready\n' >&2
 	exit 1
 fi
