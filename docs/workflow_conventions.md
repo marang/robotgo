@@ -1,6 +1,6 @@
 # RobotGo Workflow Conventions
 
-Version: 1.2
+Version: 1.3
 Status: Active  
 Audience: contributors, reviewers, and coding agents
 
@@ -189,8 +189,12 @@ CI status and review status are separate. Both must be inspected explicitly.
 ### 5.1 CI
 
 - Verify authenticated GitHub access before relying on automation.
-- Inspect check summaries first; fetch full logs only for failed, cancelled, or
-  suspicious jobs.
+- Inspect compact check counts and active or failed job names first.
+- Fetch full logs only for failed, cancelled, suspicious, or explicitly
+  evidence-bearing jobs.
+- Suppress routine successful command output when the command, exit status,
+  exact commit, and durable CI or evidence URL are sufficient. Keep temporary
+  full logs only while diagnosing a failure, then remove them.
 - Treat a skipped job as acceptable only when its trigger or runner conditions
   intentionally do not apply.
 - A local green test run does not replace GitHub Actions, and GitHub Actions do
@@ -242,6 +246,32 @@ After a review-driven push:
 
 Never report a PR as fully reviewed merely because its CI is green.
 
+### 5.3 Compact progress and handoffs
+
+Do not repeatedly copy complete green matrices, successful test output, review
+boilerplate, or unchanged background into chat, Linear, or PR comments. Report
+the outcome, exact head, compact counts, durable URLs, and any exception that
+needs attention. Expand the relevant log or context only when a failure,
+ambiguity, or audit requires it.
+
+When a long-running task changes agent, session, or day, use this bounded
+handoff:
+
+```text
+Ticket/project:
+Worktree and branch:
+Exact head and current main/base:
+PR and review state:
+Verified evidence (commands/results/URLs):
+Blockers:
+Next action:
+Sensitive/transient artifacts and cleanup state:
+```
+
+Record facts once and link to durable sources. Do not paste full logs, complete
+diffs, old conversation history, or already completed step-by-step narration
+into the handoff.
+
 ## 6. Merge gate
 
 A PR is ready to merge only when all applicable conditions are true:
@@ -265,16 +295,14 @@ merge before deleting branches.
 
 ## 7. Sensitive test and development data
 
-The cleanup contract in `AGENTS.md` applies throughout this workflow:
+The mandatory cleanup contract lives in `AGENTS.md` section 8; runtime commands
+and prerequisites live in `TEST.md`. Do not duplicate those rules in issue or
+PR prose. Instead, record the privacy impact and the concrete cleanup evidence
+for the changed path, and block merge when that evidence is missing.
 
-- prefer hermetic fixtures and in-memory data
-- use `t.TempDir()` and `t.Cleanup()` for unavoidable test files
-- clean sensitive artifacts on success, error, timeout, and cancellation
-- treat files returned by an external desktop backend as RobotGo's cleanup
-  responsibility
-- add regression assertions that the artifact no longer exists
-- inspect unexpected files before deleting them, then remove confirmed
-  RobotGo-created sensitive content and derivative caches
+Inspect unexpected files before deleting them. Remove confirmed RobotGo-created
+sensitive content and derivative caches, and report the cleanup result without
+copying the sensitive content itself.
 
 When a real desktop integration test is necessary, make that opt-in and document
 its privacy impact and cleanup behavior in `TEST.md`.
@@ -309,17 +337,12 @@ follow-ups; never archive sensitive desktop data or credentials.
 
 Before declaring a PR complete:
 
-- [ ] Working tree is clean and the intended commits are pushed.
-- [ ] PR description matches the current head.
-- [ ] PR is ready for review, not draft.
-- [ ] CI was checked on the current head.
-- [ ] Top-level comments, reviews, and thread-aware inline comments were read.
-- [ ] Automated-review reactions were checked.
-- [ ] Codex feedback or its clean-review reaction was checked against the
-      current head when Codex is configured or requested.
-- [ ] All actionable findings were fixed or explicitly tracked.
-- [ ] Relevant checks were rerun after the last fix.
-- [ ] No sensitive test or development artifacts remain.
+- [ ] The branch is clean and pushed; the PR description and readiness match
+      the current head.
+- [ ] The CI and review inspections in section 5 apply to the current head, and
+      every actionable finding is fixed or explicitly tracked.
+- [ ] The tests, documentation, compatibility, and cleanup requirements in
+      `AGENTS.md`, `TEST.md`, and the section 6 merge gate are satisfied.
 - [ ] The Linear issue and project reflect the merged result and follow-ups.
 - [ ] Useful issue context was archived before any free-tier cleanup.
-- [ ] Merge state and local `main` were verified after merge.
+- [ ] GitHub merge state and local `main` were verified before branch cleanup.
