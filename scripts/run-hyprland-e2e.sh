@@ -55,6 +55,7 @@ umask 077
 ulimit -c 0
 runtime_dir=''
 hyprland_pid=''
+sway_pid=''
 test_pid=''
 failure_stage="$ROBOTGO_HYPRLAND_FAILURE_STAGE_COMPOSITOR_START"
 
@@ -77,6 +78,7 @@ cleanup() {
 	trap - EXIT INT TERM HUP
 	terminate_group "$test_pid"
 	terminate_group "$hyprland_pid"
+	terminate_group "$sway_pid"
 	if [[ -n "$runtime_dir" && "$runtime_dir" == "$RUNNER_TEMP/$runtime_prefix".* ]]; then
 		rm -rf -- "$runtime_dir"
 	fi
@@ -109,15 +111,58 @@ export HOME="$runtime_dir/home"
 export GOCACHE="$runtime_dir/go-cache"
 export GOTMPDIR="$runtime_dir/go-tmp"
 export XDG_SESSION_TYPE='wayland'
-export XDG_CURRENT_DESKTOP='Hyprland'
 export ROBOTGO_REQUIRE_HYPRLAND_E2E='1'
 export ROBOTGO_HYPRLAND_ISOLATED='1'
 export ROBOTGO_DISABLE_PORTAL='1'
-export AQ_NO_KMS_REQUIREMENT='1'
 export HYPRLAND_NO_SD_NOTIFY='1'
 export HYPRLAND_NO_SD_VARS='1'
+export WLR_BACKENDS='headless'
+export WLR_RENDERER='pixman'
+export WLR_RENDERER_ALLOW_SOFTWARE='1'
+export WLR_LIBINPUT_NO_DEVICES='1'
 unset DISPLAY WAYLAND_DISPLAY HYPRLAND_INSTANCE_SIGNATURE SWAYSOCK
 
+setsid sway -c /dev/null >"$runtime_dir/sway.log" 2>&1 &
+sway_pid=$!
+
+for _ in {1..100}; do
+	parent_wayland_sockets=()
+	sway_sockets=()
+	for candidate in "$runtime_dir"/wayland-*; do
+		[[ -S "$candidate" ]] && parent_wayland_sockets+=("$candidate")
+	done
+	for candidate in "$runtime_dir"/sway-ipc.*.sock; do
+		[[ -S "$candidate" ]] && sway_sockets+=("$candidate")
+	done
+	if ((${#parent_wayland_sockets[@]} == 1 && ${#sway_sockets[@]} == 1)); then
+		export WAYLAND_DISPLAY="${parent_wayland_sockets[0]##*/}"
+		export SWAYSOCK="${sway_sockets[0]}"
+		if swaymsg -t get_outputs -r >/dev/null 2>&1; then
+			break
+		fi
+	fi
+	sleep 0.05
+done
+if [[ -z "${WAYLAND_DISPLAY:-}" || -z "${SWAYSOCK:-}" ]]; then
+	printf 'isolated headless Sway parent did not become ready\n' >&2
+	exit 1
+fi
+parent_wayland_display="$WAYLAND_DISPLAY"
+readonly parent_wayland_display
+parent_output="$(
+	swaymsg -t get_outputs -r |
+		jq -er '[.[] | select(.active)] | select(length == 1) | .[0].name'
+)"
+readonly parent_output
+if [[ ! "$parent_output" =~ ^HEADLESS-[0-9]+$ ]]; then
+	printf 'isolated headless Sway parent exposed an unexpected output\n' >&2
+	exit 1
+fi
+swaymsg \
+	"output $parent_output mode ${required_width}x${required_height} pos 0 0 scale 1 transform normal" \
+	>/dev/null
+
+export XDG_CURRENT_DESKTOP='Hyprland'
 setsid Hyprland \
 	--config "$repo_root/infrastructure/hyprland-runner/hyprland.lua" \
 	>"$runtime_dir/hyprland.log" 2>&1 &
@@ -127,7 +172,9 @@ for _ in {1..200}; do
 	wayland_sockets=()
 	instance_directories=()
 	for candidate in "$runtime_dir"/wayland-*; do
-		[[ -S "$candidate" ]] && wayland_sockets+=("$candidate")
+		if [[ -S "$candidate" && "${candidate##*/}" != "$parent_wayland_display" ]]; then
+			wayland_sockets+=("$candidate")
+		fi
 	done
 	for candidate in "$runtime_dir"/hypr/*; do
 		[[ -d "$candidate" ]] && instance_directories+=("$candidate")
@@ -240,4 +287,3 @@ go run ./internal/cmd/compositorevidence verify \
 	-run-attempt "$GITHUB_RUN_ATTEMPT"
 failure_stage="$ROBOTGO_HYPRLAND_FAILURE_STAGE_SUMMARY"
 cat "$output_dir/summary.md" >>"$GITHUB_STEP_SUMMARY"
-

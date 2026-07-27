@@ -22,6 +22,10 @@ const (
 	envHyprlandRuntimeDir = "XDG_RUNTIME_DIR"
 	envHyprlandDesktop    = "XDG_CURRENT_DESKTOP"
 	envHyprlandSession    = "XDG_SESSION_TYPE"
+	envHyprParentBackends = "WLR_BACKENDS"
+	envHyprParentRenderer = "WLR_RENDERER"
+	envHyprParentNoInput  = "WLR_LIBINPUT_NO_DEVICES"
+	envHyprParentSocket   = "SWAYSOCK"
 	hyprlandFixtureTitle  = "wev"
 	hyprlandFixtureX      = 120
 	hyprlandFixtureY      = 80
@@ -101,6 +105,9 @@ func requireIsolatedHyprland(t *testing.T) {
 		envRequireHyprlandE2E: "1",
 		envHyprlandIsolated:   "1",
 		envHyprlandSession:    "wayland",
+		envHyprParentBackends: "headless",
+		envHyprParentRenderer: "pixman",
+		envHyprParentNoInput:  "1",
 	}
 	for name, want := range checks {
 		if got := os.Getenv(name); got != want {
@@ -121,6 +128,7 @@ func requireIsolatedHyprland(t *testing.T) {
 		t.Fatal("isolated Hyprland runtime directory is invalid")
 	}
 	assertHyprlandSocketInRuntime(t, runtimeDirectory, os.Getenv(envWaylandDisplay))
+	assertHyprlandSocketInRuntime(t, runtimeDirectory, os.Getenv(envHyprParentSocket))
 	for _, devicePath := range []string{"/dev/dri", "/dev/input"} {
 		if _, err := os.Lstat(devicePath); !errors.Is(err, os.ErrNotExist) {
 			t.Fatalf("isolated Hyprland container exposes %s: %v", devicePath, err)
@@ -133,7 +141,8 @@ func requireIsolatedHyprland(t *testing.T) {
 		t.Fatalf("isolated Hyprland monitor count = %d, want 1", len(monitors))
 	}
 	monitor := monitors[0]
-	if !strings.HasPrefix(monitor.Name, "HEADLESS-") ||
+	if (!strings.HasPrefix(monitor.Name, "HEADLESS-") &&
+		!strings.HasPrefix(monitor.Name, "WL-")) ||
 		monitor.X != 0 || monitor.Y != 0 ||
 		monitor.Width != hyprlandOutputWidth ||
 		monitor.Height != hyprlandOutputHeight ||

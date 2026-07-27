@@ -117,7 +117,7 @@ func runPreflight(
 	flags.IntVar(&outputCount, "output-count", 0, "declared compositor output count")
 	flags.IntVar(&minimumOutputs, "minimum-outputs", 1, "minimum required output count")
 	flags.BoolVar(&requireHeadless, "require-headless-sway", false, "require isolated headless Sway with no input devices")
-	flags.BoolVar(&requireHyprland, "require-headless-hyprland", false, "require isolated headless Hyprland with no input devices")
+	flags.BoolVar(&requireHyprland, "require-headless-hyprland", false, "require Hyprland nested on isolated headless Sway with no input devices")
 	flags.DurationVar(&probeTimeout, "probe-timeout", 5*time.Second, "per-probe timeout")
 	if err := flags.Parse(arguments); err != nil {
 		return err

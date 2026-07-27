@@ -16,6 +16,7 @@ RUN pacman -Syu --noconfirm --needed \
         libxtst \
         mesa \
         pkgconf \
+        sway \
         wayland \
         wev \
     && pacman -Scc --noconfirm
@@ -26,4 +27,3 @@ COPY go.mod go.sum ./
 RUN go mod download
 
 WORKDIR /workspace
-

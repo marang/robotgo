@@ -191,6 +191,14 @@ func preflight(
 				return PreflightReport{}, err
 			}
 		case "hyprland":
+			if config.RequireHeadlessHyprland {
+				if err := probeSway(ctx, probe, 1, true); err != nil {
+					return PreflightReport{}, fmt.Errorf(
+						"isolated Hyprland parent compositor check failed: %w",
+						err,
+					)
+				}
+			}
 			if err := probeHyprland(
 				ctx,
 				probe,
@@ -670,7 +678,9 @@ func probeHyprland(
 		return errors.New("native Hyprland output count does not match the declared topology")
 	}
 	for _, monitor := range monitors {
-		if requireHeadless && !strings.HasPrefix(monitor.Name, "HEADLESS-") {
+		if requireHeadless &&
+			!strings.HasPrefix(monitor.Name, "HEADLESS-") &&
+			!strings.HasPrefix(monitor.Name, "WL-") {
 			return errors.New("isolated Hyprland output check failed")
 		}
 	}

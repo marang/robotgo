@@ -75,7 +75,7 @@ func (probe *fakeProbe) output(
 		case "version":
 			return []byte(`{"tag":"v0.56.0","commit":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}`), nil
 		case "monitors":
-			return []byte(`[{"name":"HEADLESS-1"},{"name":"HEADLESS-2"}]`), nil
+			return []byte(`[{"name":"WL-1"}]`), nil
 		case "devices":
 			return []byte(`{"mice":[],"keyboards":[],"tablets":[],"touch":[],"switches":[]}`), nil
 		default:
@@ -120,6 +120,10 @@ func validPreflightConfig(lane Lane, cell Cell) PreflightConfig {
 		requireSway = false
 		requireHyprland = true
 	}
+	outputCount := 2
+	if cell == CellHyprlandWindow {
+		outputCount = 1
+	}
 	return PreflightConfig{
 		Lane:                    lane,
 		Cell:                    cell,
@@ -134,8 +138,8 @@ func validPreflightConfig(lane Lane, cell Cell) PreflightConfig {
 		RuntimeDir:              "/run/user/1000",
 		SessionBusAddress:       "unix:path=/run/private-bus",
 		OperatorReadyPath:       "/run/robotgo-evidence/operator-ready",
-		OutputCount:             2,
-		MinimumOutputCount:      2,
+		OutputCount:             outputCount,
+		MinimumOutputCount:      outputCount,
 		RequireHeadlessSway:     requireSway,
 		RequireHeadlessHyprland: requireHyprland,
 		ProbeTimeout:            time.Second,
@@ -148,7 +152,7 @@ func TestPreflightNativeHyprlandDoesNotRequirePortalOrPipeWire(t *testing.T) {
 	report, err := preflight(
 		context.Background(),
 		validPreflightConfig(LaneWlroots, CellHyprlandWindow),
-		validDependencies(probe),
+		validHyprlandDependencies(probe),
 	)
 	if err != nil {
 		t.Fatalf("preflight failed: %v", err)
@@ -164,8 +168,8 @@ func TestPreflightNativeHyprlandDoesNotRequirePortalOrPipeWire(t *testing.T) {
 			t.Fatalf("headless Hyprland %s was not probed: %v", method, probe.calls)
 		}
 	}
-	if probe.called("swaymsg") || strings.Contains(calls, portalBusName) {
-		t.Fatalf("Hyprland cell ran another compositor/portal probe: %v", probe.calls)
+	if !probe.called("swaymsg") || strings.Contains(calls, portalBusName) {
+		t.Fatalf("Hyprland cell omitted its isolated parent or ran a portal probe: %v", probe.calls)
 	}
 }
 
@@ -222,6 +226,17 @@ func validDependencies(probe *fakeProbe) preflightDependencies {
 			return []byte("ID=ubuntu\nVERSION_ID=24.04\n"), nil
 		},
 	}
+}
+
+func validHyprlandDependencies(probe *fakeProbe) preflightDependencies {
+	dependencies := validDependencies(probe)
+	dependencies.output = func(ctx context.Context, name string, args ...string) ([]byte, error) {
+		if name == "swaymsg" && len(args) > 1 && args[1] == "get_outputs" {
+			return []byte(`[{"name":"HEADLESS-1","active":true}]`), nil
+		}
+		return probe.output(ctx, name, args...)
+	}
+	return dependencies
 }
 
 func TestPreflightPortalCellsSelectApplicableRequirements(t *testing.T) {
@@ -365,7 +380,7 @@ func TestPreflightHeadlessHyprlandRejectsPhysicalInputAndOutput(t *testing.T) {
 		{
 			name:   "physical output",
 			method: "monitors",
-			result: []byte(`[{"name":"DP-1"},{"name":"HEADLESS-2"}]`),
+			result: []byte(`[{"name":"DP-1"}]`),
 		},
 		{
 			name:   "physical input",
@@ -376,12 +391,13 @@ func TestPreflightHeadlessHyprlandRejectsPhysicalInputAndOutput(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			probe := &fakeProbe{}
-			dependencies := validDependencies(probe)
+			dependencies := validHyprlandDependencies(probe)
+			baseOutput := dependencies.output
 			dependencies.output = func(ctx context.Context, name string, args ...string) ([]byte, error) {
 				if name == "hyprctl" && len(args) > 0 && args[0] == tc.method {
 					return tc.result, nil
 				}
-				return probe.output(ctx, name, args...)
+				return baseOutput(ctx, name, args...)
 			}
 			_, err := preflight(
 				context.Background(),
