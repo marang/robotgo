@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path"
 	"path/filepath"
 	"runtime"
 	"strconv"
@@ -284,7 +285,7 @@ func validatePreflightConfig(config PreflightConfig) error {
 	}
 	if config.RequireHeadlessHyprland {
 		if !strings.HasPrefix(config.VirtualDRMDevice, "/dev/dri/card") ||
-			filepath.Clean(config.VirtualDRMDevice) != config.VirtualDRMDevice {
+			path.Clean(config.VirtualDRMDevice) != config.VirtualDRMDevice {
 			return errors.New("headless Hyprland isolation requires a clean DRM card device")
 		}
 		card := strings.TrimPrefix(config.VirtualDRMDevice, "/dev/dri/card")
