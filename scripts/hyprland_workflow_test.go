@@ -56,6 +56,7 @@ func TestHyprlandWorkflowUsesOnlyVerifiedVKMSDevice(t *testing.T) {
 		"--user \"$(id -u):$(id -g)\"",
 		`--volume "$GITHUB_WORKSPACE:/workspace:ro"`,
 		`--volume "$machine_id_file:/etc/machine-id:ro"`,
+		`chmod 444 "$machine_id_file"`,
 		`-e /dev/input`,
 		"ROBOTGO_HYPRLAND_DRM_DRIVER=vkms",
 		"SEATD_VTBOUND='0'",

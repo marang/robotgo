@@ -76,7 +76,7 @@ if [[ ! "$machine_id" =~ ^[0-9a-f]{32}$ ]]; then
 	exit 1
 fi
 printf '%s\n' "$machine_id" >"$machine_id_file"
-chmod 600 "$machine_id_file"
+chmod 444 "$machine_id_file"
 
 arguments=(
 	run
