@@ -31,18 +31,19 @@ race, ASan/LeakSanitizer, OCR, all three default and Pure-Go platform legs,
 Wayland, targeted X11 evidence, the release-evidence validator, all six hosted
 Sway cells (native input, capture, window, single-/multi-output geometry, and
 portal availability), and the four release-only GNOME/KDE multi-output
-RemoteDesktop/ScreenCast cells. It also invokes the isolated hosted Hyprland
-active-window geometry check. Missing, pending, skipped, neutral, cancelled,
-timed-out, stale, or failed required checks abort snapshot publication. The
-current workflow manifest has 26 entries.
+RemoteDesktop/ScreenCast cells. It also invokes the two release-only GNOME/KDE
+multi-output bounds cells and the isolated hosted Hyprland active-window
+geometry check. Missing, pending, skipped, neutral, cancelled, timed-out,
+stale, or failed required checks abort snapshot publication. The current
+workflow manifest has 28 entries.
 
 Twenty-two manifest entries are intended to mirror the `main`
-branch-protection contexts. The four portal entries are intentionally
-release-only because their
+branch-protection contexts. The four portal and two display-bounds entries are
+intentionally release-only because their
 disposable nested desktop guests do not boot for ordinary pull requests. Add,
 rename, or remove a branch-protection context in both contracts in the same
-change; change a portal check together with its reusable workflow and
-release-manifest entry.
+change; change a portal or display-bounds check together with its reusable
+workflow and release-manifest entry.
 
 The generator rejects a matrix whose operating system or CGO state disagrees
 with the running binary. The verifier rejects unknown fields, trailing JSON,
@@ -109,9 +110,11 @@ sha256sum -c robotgo-release-evidence-*.tar.gz.sha256
 This six-cell snapshot matrix does not replace real-compositor evidence. The
 release workflow directly invokes GNOME and KDE multi-output
 RemoteDesktop/ScreenCast checks in disposable hosted guests and records their
-successful exact-SHA check runs in the bundle. The separate hosted Sway/wlroots
-native, single-/multi-output, and explicit portal-availability rows are also
-required by the release gate for the exact release commit. The hosted
-Hyprland/`vkms` window cell is required as well. These compositor jobs remain
+successful exact-SHA check runs in the bundle. It also directly invokes the
+consent-free GNOME/KDE multi-output bounds checks in native-CGO and Pure-Go
+builds. The separate hosted Sway/wlroots native, single-/multi-output, and
+explicit portal-availability rows are also required by the release gate for
+the exact release commit. The hosted Hyprland/`vkms` window cell is required as
+well. These compositor jobs remain
 linked to their own sanitized compositor-evidence artifacts. Published beta.2
 remains immutable historical evidence with its 25-check manifest.

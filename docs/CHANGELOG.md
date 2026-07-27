@@ -8,6 +8,9 @@
 - Promoted the Hyprland window cell into the exact-candidate release gate,
   expanding the current workflow manifest from 25 to 26 checks while retaining
   the published beta.2 evidence unchanged.
+- Added privacy-safe hosted GNOME/KDE multi-output bounds evidence for native
+  CGO and Pure-Go Wayland builds, then promoted both lanes into the exact
+  release gate, expanding the current candidate manifest from 26 to 28 checks.
 
 ## RobotGo v1.0.0-beta.2 — 2026-07-27
 

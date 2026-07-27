@@ -390,8 +390,9 @@ cross-platform semantics:
   hermetic native Wayland, portal, and cross-build backend contracts.
 - Retain the passing GNOME/KDE multi-output bounds
   [`exact-commit run 30268702514`](https://github.com/marang/robotgo/actions/runs/30268702514),
-  then decide its branch/release promotion separately from portal evidence.
-  Keep the delivered Sway/wlroots and Weston geometry gates green.
+  now required as two exact-release checks alongside portal evidence. Keep
+  ordinary PR promotion separate and the delivered Sway/wlroots and Weston
+  geometry gates green.
 
 Every addition needs unit tests, an applicable runtime integration test, and a
 runnable example unless the environment makes one technically impossible.
@@ -420,8 +421,9 @@ requires and records the complete protected `x11-default-suite`, lint, vet,
 race, sanitizer, platform, Wayland, targeted X11, and six-cell hosted Sway
 check set for the exact commit.
 The release workflow additionally invokes the isolated Hyprland
-active-window-geometry proof, bringing the current exact-candidate manifest to
-26 checks while preserving the published beta.2 bundle as historical
+active-window-geometry proof plus the GNOME/KDE multi-output bounds proof,
+bringing the current exact-candidate manifest to 28 checks while preserving
+the published beta.2 bundle as historical
 25-check evidence.
 The first public
 pre-release, [`v1.0.0-beta.1`](https://github.com/marang/robotgo/releases/tag/v1.0.0-beta.1),

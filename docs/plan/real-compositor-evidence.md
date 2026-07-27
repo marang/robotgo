@@ -274,11 +274,12 @@ green.
    exact release commit and in branch protection, plus the four reusable
    GNOME/KDE multi-output RemoteDesktop/ScreenCast jobs for the exact release
    commit.
-7. **Runtime evidence delivered; promotion pending:** the consent-free public
+7. **Runtime and release promotion delivered:** the consent-free public
    multi-output bounds contract passes in both native-CGO and Pure-Go builds on
    GNOME and KDE in retained
    [`exact-commit run 30268702514`](https://github.com/marang/robotgo/actions/runs/30268702514).
-   Decide branch or release promotion separately.
+   Both lanes are required for the exact release commit; ordinary PR branch
+   protection remains separate because each lane provisions a nested desktop.
 
 Create Linear issues only when the next slice has concrete runner ownership and
 acceptance evidence. Do not create speculative implementation tickets for

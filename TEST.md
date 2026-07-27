@@ -448,6 +448,8 @@ archive, logs, and runner binary on every completion path.
 Retained exact-commit
 [`Display Bounds E2E` run 30268702514](https://github.com/marang/robotgo/actions/runs/30268702514)
 passes both GNOME and KDE lanes on `8f12eacf640a903fb078b598085b3664892a40a8`.
+Both reusable lanes are required by Release Evidence for the exact candidate
+commit and recorded in its protected-check manifest.
 
 The nested guests run automatically only on trusted `main` pushes or an
 explicit workflow dispatch; pull requests do not boot them. Local compile
@@ -980,9 +982,10 @@ missing, pending, skipped, neutral, cancelled, timed-out, or failed Sway check
 blocks the release bundle. It additionally invokes and requires the
 multi-output GNOME and KDE RemoteDesktop and ScreenCast jobs for the same
 candidate SHA. Missing, skipped, stale, or failed portal evidence therefore
-also blocks packaging and publication. The isolated Hyprland window-geometry
-cell is invoked for that exact candidate and is likewise required before the
-26-check manifest can be packaged.
+also blocks packaging and publication. The consent-free GNOME and KDE
+multi-output bounds jobs and isolated Hyprland window-geometry cell are invoked
+for that exact candidate and are likewise required before the 28-check manifest
+can be packaged.
 
 On a clean Linux native checkout, reproduce the generator/verifier path with:
 

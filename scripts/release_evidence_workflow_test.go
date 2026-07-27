@@ -25,6 +25,8 @@ func TestReleaseEvidenceRequiresEveryPromotedHostedCheck(t *testing.T) {
 		"Portal capture evidence / GitHub-hosted kde multi-output persistent capture",
 		"Portal input evidence / GitHub-hosted gnome multi-output portal input",
 		"Portal input evidence / GitHub-hosted kde multi-output portal input",
+		"Display bounds evidence / GitHub-hosted gnome multi-output Wayland bounds",
+		"Display bounds evidence / GitHub-hosted kde multi-output Wayland bounds",
 		"Hyprland window evidence / hyprland-window",
 	} {
 		count := strings.Count(text, check)
@@ -44,7 +46,7 @@ func TestReleaseEvidenceRequiresEveryPromotedHostedCheck(t *testing.T) {
 			)
 		}
 	}
-	if !strings.Contains(text, "(.checks | length) == 26") {
+	if !strings.Contains(text, "(.checks | length) == 28") {
 		t.Fatal("release evidence does not require the expanded exact check count")
 	}
 	if !strings.Contains(text, "then .provider == \"github-actions\"") {
@@ -62,7 +64,7 @@ func TestReleaseEvidenceRequiresEveryPromotedHostedCheck(t *testing.T) {
 	}
 }
 
-func TestReleaseEvidenceCallsPortalProofBeforeCollection(t *testing.T) {
+func TestReleaseEvidenceCallsRealDesktopProofBeforeCollection(t *testing.T) {
 	t.Parallel()
 	workflow, err := os.ReadFile("../.github/workflows/release-evidence.yml")
 	if err != nil {
@@ -80,6 +82,10 @@ func TestReleaseEvidenceCallsPortalProofBeforeCollection(t *testing.T) {
 		"topology: multi-output",
 		"      - portal-capture-evidence",
 		"      - portal-input-evidence",
+		"  display-bounds-evidence:",
+		"name: Display bounds evidence",
+		"uses: ./.github/workflows/display-bounds-e2e.yml",
+		"      - display-bounds-evidence",
 		"  hyprland-window-evidence:",
 		"name: Hyprland window evidence",
 		"uses: ./.github/workflows/hyprland-e2e.yml",
@@ -87,6 +93,25 @@ func TestReleaseEvidenceCallsPortalProofBeforeCollection(t *testing.T) {
 	} {
 		if !strings.Contains(text, required) {
 			t.Errorf("release evidence omits portal-gate contract %q", required)
+		}
+	}
+
+	start := strings.Index(text, "  display-bounds-evidence:")
+	if start < 0 {
+		t.Fatal("release evidence does not isolate the display-bounds call")
+	}
+	end := strings.Index(text[start:], "  hyprland-window-evidence:")
+	if end < 0 {
+		t.Fatal("release evidence does not terminate the display-bounds call")
+	}
+	boundsCall := text[start : start+end]
+	for _, required := range []string{
+		"name: Display bounds evidence",
+		"uses: ./.github/workflows/display-bounds-e2e.yml",
+		"desktop: all",
+	} {
+		if !strings.Contains(boundsCall, required) {
+			t.Errorf("display-bounds release call omits %q", required)
 		}
 	}
 }
