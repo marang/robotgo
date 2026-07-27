@@ -154,15 +154,15 @@ PID/handle-specific control remains unsupported for all listed Wayland
 backends.
 
 - Priority Backlog (1-7):
-  - 1. Promote the delivered hosted GNOME/KDE single- and multi-output
-    RemoteDesktop evidence into exact-release gates. Track
+  - 1. Keep the promoted hosted GNOME/KDE multi-output RemoteDesktop
+    exact-release gates green. Track
     Sway/wlroots native input and explicit portal availability in the delivered
     passing isolated hosted lanes. Shared ScreenCast mapping, absolute
     pointer/touch, consent, denial, cancellation, timeout, restore metadata,
     teardown, and high-level dispatch have hermetic coverage.
     `[new vs robotgo-pro]`
-  - 2. Promote the delivered hosted real GNOME/KDE single- and multi-output
-    ScreenCast/PipeWire evidence and its leak/timeout tests to release gates.
+  - 2. Keep the promoted hosted real GNOME/KDE multi-output
+    ScreenCast/PipeWire release gates and their leak/timeout tests green.
     The isolated hosted Sway native-capture and portal-availability lanes pass
     separately; hosted Sway and GNOME/KDE multi-output proofs are delivered.
     `[new vs robotgo-pro]`
@@ -283,7 +283,8 @@ backends.
     cleanup deadline remain outside that scoped guarantee.
   - Keep the dedicated credential-free hosted GNOME and KDE portal workflows
     green. The six hosted wlroots/Sway checks are promoted into branch and
-    release gates; portal promotion remains open.
+    release gates; the four GNOME/KDE multi-output portal checks are promoted
+    into exact-release gates.
   - Keep the race/vet and native ASan/LeakSanitizer CI jobs green and protected.
     The sanitizer gate covers the default CGO suite plus hermetic screencopy
     allocation/free, bounded timeout cleanup, and FD ownership paths.

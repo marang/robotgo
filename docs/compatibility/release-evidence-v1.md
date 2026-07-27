@@ -26,17 +26,21 @@ Each cell emits `evidence.json` and `test.log`. The JSON document records:
 - the sanitized Runtime Diagnostics v1 report.
 
 The bundle also contains `required-checks.json`. It records the successful
-protected status set for the exact commit: the X11 default suite, lint, vet,
+release status set for the exact commit: the X11 default suite, lint, vet,
 race, ASan/LeakSanitizer, OCR, all three default and Pure-Go platform legs,
-Wayland, targeted X11 evidence, the release-evidence validator, and all six
-hosted Sway cells (native input, capture, window, single-/multi-output geometry,
-and portal availability). Missing, pending, skipped, neutral, cancelled,
-timed-out, or failed required checks abort snapshot publication. The current
-manifest has 21 entries.
+Wayland, targeted X11 evidence, the release-evidence validator, all six hosted
+Sway cells (native input, capture, window, single-/multi-output geometry, and
+portal availability), and the four release-only GNOME/KDE multi-output
+RemoteDesktop/ScreenCast cells. Missing, pending, skipped, neutral, cancelled,
+timed-out, stale, or failed required checks abort snapshot publication. The
+current manifest has 25 entries.
 
-The required-check manifest in the workflow and the `main` branch-protection
-contexts are one contract. Add, rename, or remove a stable check in both places
-in the same change.
+The first 21 manifest entries mirror the `main` branch-protection contexts.
+The four portal entries are intentionally release-only because their
+disposable nested desktop guests do not boot for ordinary pull requests. Add,
+rename, or remove a branch-protection context in both contracts in the same
+change; change a portal check together with its reusable workflow and
+release-manifest entry.
 
 The generator rejects a matrix whose operating system or CGO state disagrees
 with the running binary. The verifier rejects unknown fields, trailing JSON,
@@ -88,10 +92,10 @@ extracting it:
 sha256sum -c robotgo-release-evidence-*.tar.gz.sha256
 ```
 
-This six-cell release bundle does not replace real-compositor evidence. GNOME
-and KDE single- and multi-output RemoteDesktop/ScreenCast checks run in
-disposable hosted guests but remain outside this bundle until exact-release
-promotion is complete. The separate hosted Sway/wlroots native,
-single-/multi-output, and explicit portal-availability rows are required by the
-release gate for the exact release commit and remain linked to their own
-sanitized compositor-evidence artifacts.
+This six-cell snapshot matrix does not replace real-compositor evidence. The
+release workflow directly invokes GNOME and KDE multi-output
+RemoteDesktop/ScreenCast checks in disposable hosted guests and records their
+successful exact-SHA check runs in the bundle. The separate hosted Sway/wlroots
+native, single-/multi-output, and explicit portal-availability rows are also
+required by the release gate for the exact release commit and remain linked to
+their own sanitized compositor-evidence artifacts.

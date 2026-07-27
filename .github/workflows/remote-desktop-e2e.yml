@@ -4,6 +4,16 @@ on:
   pull_request:
   push:
     branches: [main]
+  workflow_call:
+    inputs:
+      desktop:
+        description: Hosted desktop lane to run
+        required: true
+        type: string
+      topology:
+        description: Hosted display topology to prove
+        required: true
+        type: string
   workflow_dispatch:
     inputs:
       desktop:
@@ -34,7 +44,10 @@ permissions:
 
 jobs:
   hosted-portal:
-    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    if: >-
+      github.event_name == 'push' ||
+      github.event_name == 'workflow_dispatch' ||
+      github.event_name == 'release'
     name: GitHub-hosted ${{ matrix.desktop }} ${{ matrix.topology }} portal input
     runs-on: ubuntu-24.04
     timeout-minutes: 25
