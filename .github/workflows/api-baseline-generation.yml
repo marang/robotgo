@@ -1,0 +1,34 @@
+name: Generate native API baselines
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  generate:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macOS-latest
+            variant: darwin-cgo
+          - os: windows-latest
+            variant: windows-cgo
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@v7
+        with:
+          go-version: 1.25.x
+      - name: Generate native public API delta
+        run: go run ./internal/cmd/apicompat -write -variant ${{ matrix.variant }}
+      - uses: actions/upload-artifact@v7
+        with:
+          name: api-baseline-${{ matrix.variant }}
+          path: api/compat/${{ matrix.variant }}.delta
+          if-no-files-found: error
+          retention-days: 1
