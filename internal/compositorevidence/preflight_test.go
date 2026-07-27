@@ -3,6 +3,7 @@ package compositorevidence
 import (
 	"context"
 	"errors"
+	"os/exec"
 	"strings"
 	"sync"
 	"testing"
@@ -69,6 +70,17 @@ func (probe *fakeProbe) output(
 		default:
 			return nil, errors.New("unexpected swaymsg request")
 		}
+	case "hyprctl":
+		switch args[0] {
+		case "version":
+			return []byte(`{"tag":"v0.56.0","commit":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}`), nil
+		case "monitors":
+			return []byte(`[{"name":"HEADLESS-1"},{"name":"HEADLESS-2"}]`), nil
+		case "devices":
+			return []byte(`{"mice":[],"keyboards":[],"tablets":[],"touch":[],"switches":[]}`), nil
+		default:
+			return nil, errors.New("unexpected hyprctl request")
+		}
 	default:
 		return nil, errors.New("unexpected command")
 	}
@@ -100,24 +112,88 @@ func validPreflightConfig(lane Lane, cell Cell) PreflightConfig {
 	if lane == LaneWlroots {
 		workflow = "Sway E2E"
 	}
+	requireSway := lane == LaneWlroots
+	requireHyprland := false
+	if cell == CellHyprlandWindow {
+		desktop = "Hyprland"
+		workflow = "Hyprland E2E"
+		requireSway = false
+		requireHyprland = true
+	}
 	return PreflightConfig{
-		Lane:                lane,
-		Cell:                cell,
-		CheckoutCommit:      testCommit,
-		ExpectedCommit:      testCommit,
-		Ref:                 testRef,
-		Workflow:            workflow,
-		RunID:               "12345",
-		RunAttempt:          2,
-		CurrentDesktop:      desktop,
-		WaylandDisplay:      "wayland-1",
-		RuntimeDir:          "/run/user/1000",
-		SessionBusAddress:   "unix:path=/run/private-bus",
-		OperatorReadyPath:   "/run/robotgo-evidence/operator-ready",
-		OutputCount:         2,
-		MinimumOutputCount:  2,
-		RequireHeadlessSway: lane == LaneWlroots,
-		ProbeTimeout:        time.Second,
+		Lane:                    lane,
+		Cell:                    cell,
+		CheckoutCommit:          testCommit,
+		ExpectedCommit:          testCommit,
+		Ref:                     testRef,
+		Workflow:                workflow,
+		RunID:                   "12345",
+		RunAttempt:              2,
+		CurrentDesktop:          desktop,
+		WaylandDisplay:          "wayland-1",
+		RuntimeDir:              "/run/user/1000",
+		SessionBusAddress:       "unix:path=/run/private-bus",
+		OperatorReadyPath:       "/run/robotgo-evidence/operator-ready",
+		OutputCount:             2,
+		MinimumOutputCount:      2,
+		RequireHeadlessSway:     requireSway,
+		RequireHeadlessHyprland: requireHyprland,
+		ProbeTimeout:            time.Second,
+	}
+}
+
+func TestPreflightNativeHyprlandDoesNotRequirePortalOrPipeWire(t *testing.T) {
+	t.Parallel()
+	probe := &fakeProbe{}
+	report, err := preflight(
+		context.Background(),
+		validPreflightConfig(LaneWlroots, CellHyprlandWindow),
+		validDependencies(probe),
+	)
+	if err != nil {
+		t.Fatalf("preflight failed: %v", err)
+	}
+	if report.Desktop.Compositor != "hyprland" ||
+		report.Desktop.Portal.Observed || report.Desktop.PipeWire.Required ||
+		report.Desktop.OperatorReady {
+		t.Fatalf("Hyprland report contains invalid requirements: %+v", report.Desktop)
+	}
+	calls := strings.Join(probe.calls, "\n")
+	for _, method := range []string{"version -j", "monitors -j", "devices -j"} {
+		if !strings.Contains(calls, "hyprctl "+method) {
+			t.Fatalf("headless Hyprland %s was not probed: %v", method, probe.calls)
+		}
+	}
+	if probe.called("swaymsg") || strings.Contains(calls, portalBusName) {
+		t.Fatalf("Hyprland cell ran another compositor/portal probe: %v", probe.calls)
+	}
+}
+
+func TestPackageVersionFallsBackToPacman(t *testing.T) {
+	t.Parallel()
+	probe := commandProbe{
+		timeout: time.Second,
+		output: func(_ context.Context, name string, args ...string) ([]byte, error) {
+			switch name {
+			case "dpkg-query", "rpm":
+				return nil, &exec.Error{Name: name, Err: exec.ErrNotFound}
+			case "pacman":
+				if strings.Join(args, " ") != "-Q hyprland" {
+					t.Fatalf("pacman args = %v", args)
+				}
+				return []byte("hyprland 0.56.0-2\n"), nil
+			default:
+				t.Fatalf("unexpected command %q", name)
+				return nil, nil
+			}
+		},
+	}
+	version, err := probe.packageVersion(context.Background(), "hyprland")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if version != "0.56.0-2" {
+		t.Fatalf("package version = %q", version)
 	}
 }
 
@@ -274,6 +350,46 @@ func TestPreflightHeadlessSwayRejectsPhysicalInputAndOutput(t *testing.T) {
 			)
 			if err == nil || !strings.Contains(err.Error(), "isolated Sway") {
 				t.Fatalf("preflight error = %v, want isolated Sway rejection", err)
+			}
+		})
+	}
+}
+
+func TestPreflightHeadlessHyprlandRejectsPhysicalInputAndOutput(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name   string
+		method string
+		result []byte
+	}{
+		{
+			name:   "physical output",
+			method: "monitors",
+			result: []byte(`[{"name":"DP-1"},{"name":"HEADLESS-2"}]`),
+		},
+		{
+			name:   "physical input",
+			method: "devices",
+			result: []byte(`{"mice":[{"name":"private-device"}],"keyboards":[]}`),
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			probe := &fakeProbe{}
+			dependencies := validDependencies(probe)
+			dependencies.output = func(ctx context.Context, name string, args ...string) ([]byte, error) {
+				if name == "hyprctl" && len(args) > 0 && args[0] == tc.method {
+					return tc.result, nil
+				}
+				return probe.output(ctx, name, args...)
+			}
+			_, err := preflight(
+				context.Background(),
+				validPreflightConfig(LaneWlroots, CellHyprlandWindow),
+				dependencies,
+			)
+			if err == nil || !strings.Contains(err.Error(), "isolated Hyprland") {
+				t.Fatalf("preflight error = %v, want isolated Hyprland rejection", err)
 			}
 		})
 	}

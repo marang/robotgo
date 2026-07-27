@@ -32,23 +32,24 @@ const (
 // PreflightConfig contains trusted workflow inputs and private session values.
 // Private values are validated but never copied into the report.
 type PreflightConfig struct {
-	Lane                Lane
-	Cell                Cell
-	CheckoutCommit      string
-	ExpectedCommit      string
-	Ref                 string
-	Workflow            string
-	RunID               string
-	RunAttempt          int
-	CurrentDesktop      string
-	WaylandDisplay      string
-	RuntimeDir          string
-	SessionBusAddress   string
-	OperatorReadyPath   string
-	OutputCount         int
-	MinimumOutputCount  int
-	RequireHeadlessSway bool
-	ProbeTimeout        time.Duration
+	Lane                    Lane
+	Cell                    Cell
+	CheckoutCommit          string
+	ExpectedCommit          string
+	Ref                     string
+	Workflow                string
+	RunID                   string
+	RunAttempt              int
+	CurrentDesktop          string
+	WaylandDisplay          string
+	RuntimeDir              string
+	SessionBusAddress       string
+	OperatorReadyPath       string
+	OutputCount             int
+	MinimumOutputCount      int
+	RequireHeadlessSway     bool
+	RequireHeadlessHyprland bool
+	ProbeTimeout            time.Duration
 }
 
 // Platform identifies a sanitized runner software platform.
@@ -144,8 +145,12 @@ func preflight(
 	if err != nil {
 		return PreflightReport{}, err
 	}
-	if config.Cell.NativeRequired() && compositor != "sway" {
-		return PreflightReport{}, errors.New("protected native wlroots cells currently require the pinned Sway image")
+	if config.Cell == CellHyprlandWindow {
+		if compositor != "hyprland" {
+			return PreflightReport{}, errors.New("protected Hyprland window cell requires the pinned Hyprland image")
+		}
+	} else if config.Cell.NativeRequired() && compositor != "sway" {
+		return PreflightReport{}, errors.New("protected native Sway cells require the pinned Sway image")
 	}
 
 	probe := commandProbe{
@@ -159,7 +164,7 @@ func preflight(
 	if err != nil {
 		return PreflightReport{}, err
 	}
-	compositorVersion, err := probe.packageVersion(ctx, compositorPackage(config.Lane))
+	compositorVersion, err := probe.packageVersion(ctx, compositorPackage(config.Lane, compositor))
 	if err != nil {
 		return PreflightReport{}, fmt.Errorf("compositor version check failed: %w", err)
 	}
@@ -175,13 +180,25 @@ func preflight(
 		},
 	}
 	if config.Lane == LaneWlroots {
-		if err := probeSway(
-			ctx,
-			probe,
-			config.OutputCount,
-			config.RequireHeadlessSway,
-		); err != nil {
-			return PreflightReport{}, err
+		switch compositor {
+		case "sway":
+			if err := probeSway(
+				ctx,
+				probe,
+				config.OutputCount,
+				config.RequireHeadlessSway,
+			); err != nil {
+				return PreflightReport{}, err
+			}
+		case "hyprland":
+			if err := probeHyprland(
+				ctx,
+				probe,
+				config.OutputCount,
+				config.RequireHeadlessHyprland,
+			); err != nil {
+				return PreflightReport{}, err
+			}
 		}
 	}
 	if config.Cell.PortalObserved() {
@@ -255,6 +272,16 @@ func validatePreflightConfig(config PreflightConfig) error {
 	}
 	if config.RequireHeadlessSway && config.Lane != LaneWlroots {
 		return errors.New("headless Sway isolation requires the wlroots lane")
+	}
+	if config.RequireHeadlessHyprland &&
+		(config.Lane != LaneWlroots || config.Cell != CellHyprlandWindow) {
+		return errors.New("headless Hyprland isolation requires the wlroots Hyprland window cell")
+	}
+	if config.Cell == CellHyprlandWindow && !config.RequireHeadlessHyprland {
+		return errors.New("Hyprland window evidence requires headless Hyprland isolation")
+	}
+	if config.RequireHeadlessSway && config.RequireHeadlessHyprland {
+		return errors.New("Sway and Hyprland isolation cannot be required together")
 	}
 	return nil
 }
@@ -434,28 +461,46 @@ func (probe commandProbe) run(ctx context.Context, name string, args ...string) 
 
 func (probe commandProbe) packageVersion(ctx context.Context, packageName string) (string, error) {
 	output, err := probe.run(ctx, "dpkg-query", "-W", "-f=${Version}", packageName)
-	if err != nil && probeFailureIs(err, probeFailureUnavailable) {
+	if err == nil {
+		return sanitizedPackageVersion(output)
+	}
+	if probeFailureIs(err, probeFailureUnavailable) {
 		return "", fmt.Errorf("package version is unavailable: %w", err)
 	}
-	if err != nil && !probeFailureIs(err, probeFailureExecutableMissing) {
+	if !probeFailureIs(err, probeFailureExecutableMissing) {
 		return "", fmt.Errorf("package version probe failed: %w", err)
 	}
-	if err != nil {
-		output, err = probe.run(
-			ctx,
-			"rpm",
-			"-q",
-			"--qf",
-			"%{VERSION}-%{RELEASE}",
-			packageName,
-		)
+
+	output, err = probe.run(
+		ctx,
+		"rpm",
+		"-q",
+		"--qf",
+		"%{VERSION}-%{RELEASE}",
+		packageName,
+	)
+	if err == nil {
+		return sanitizedPackageVersion(output)
 	}
-	if err != nil {
-		if probeFailureIs(err, probeFailureUnavailable) {
-			return "", fmt.Errorf("package version is unavailable: %w", err)
-		}
+	if probeFailureIs(err, probeFailureUnavailable) {
+		return "", fmt.Errorf("package version is unavailable: %w", err)
+	}
+	if !probeFailureIs(err, probeFailureExecutableMissing) {
 		return "", fmt.Errorf("package version probe failed: %w", err)
 	}
+
+	output, err = probe.run(ctx, "pacman", "-Q", packageName)
+	if err != nil {
+		return "", fmt.Errorf("package version is unavailable: %w", err)
+	}
+	fields := strings.Fields(string(output))
+	if len(fields) != 2 || fields[0] != packageName {
+		return "", errors.New("package version probe returned malformed pacman output")
+	}
+	return sanitizedPackageVersion([]byte(fields[1]))
+}
+
+func sanitizedPackageVersion(output []byte) (string, error) {
 	version := strings.TrimSpace(string(output))
 	if err := validateVersion("package version", version, true); err != nil {
 		return "", err
@@ -463,13 +508,16 @@ func (probe commandProbe) packageVersion(ctx context.Context, packageName string
 	return version, nil
 }
 
-func compositorPackage(lane Lane) string {
+func compositorPackage(lane Lane, compositor string) string {
 	switch lane {
 	case LaneGNOME:
 		return "gnome-shell"
 	case LaneKDE:
 		return "kwin-wayland"
 	default:
+		if compositor == "hyprland" {
+			return "hyprland"
+		}
 		return "sway"
 	}
 }
@@ -585,6 +633,68 @@ func probeSway(
 	}
 	if len(inputs) != 0 {
 		return errors.New("isolated Sway session exposes an input device before the test")
+	}
+	return nil
+}
+
+func probeHyprland(
+	ctx context.Context,
+	probe commandProbe,
+	expectedOutputs int,
+	requireHeadless bool,
+) error {
+	output, err := probe.run(ctx, "hyprctl", "version", "-j")
+	var version struct {
+		Tag    string `json:"tag"`
+		Commit string `json:"commit"`
+	}
+	if err != nil || json.Unmarshal(output, &version) != nil ||
+		(version.Tag == "" && version.Commit == "") {
+		return errors.New("native Hyprland capability check failed")
+	}
+	if version.Tag != "" && validateVersion("Hyprland version", version.Tag, true) != nil {
+		return errors.New("native Hyprland capability check failed")
+	}
+	if version.Commit != "" && !gitObjectPattern.MatchString(version.Commit) {
+		return errors.New("native Hyprland capability check failed")
+	}
+
+	output, err = probe.run(ctx, "hyprctl", "monitors", "-j")
+	var monitors []struct {
+		Name string `json:"name"`
+	}
+	if err != nil || json.Unmarshal(output, &monitors) != nil {
+		return errors.New("native Hyprland output check failed")
+	}
+	if len(monitors) != expectedOutputs {
+		return errors.New("native Hyprland output count does not match the declared topology")
+	}
+	for _, monitor := range monitors {
+		if requireHeadless && !strings.HasPrefix(monitor.Name, "HEADLESS-") {
+			return errors.New("isolated Hyprland output check failed")
+		}
+	}
+	if !requireHeadless {
+		return nil
+	}
+
+	output, err = probe.run(ctx, "hyprctl", "devices", "-j")
+	if err != nil {
+		return errors.New("isolated Hyprland input check failed")
+	}
+	var devices map[string]json.RawMessage
+	if json.Unmarshal(output, &devices) != nil {
+		return errors.New("isolated Hyprland input check failed")
+	}
+	for _, category := range []string{"mice", "keyboards", "tablets", "touch", "switches"} {
+		raw, ok := devices[category]
+		if !ok {
+			continue
+		}
+		var entries []json.RawMessage
+		if json.Unmarshal(raw, &entries) != nil || len(entries) != 0 {
+			return errors.New("isolated Hyprland session exposes an input device before the test")
+		}
 	}
 	return nil
 }

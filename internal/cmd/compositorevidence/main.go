@@ -105,6 +105,7 @@ func runPreflight(
 		outputCount       int
 		minimumOutputs    int
 		requireHeadless   bool
+		requireHyprland   bool
 		probeTimeout      time.Duration
 	)
 	flags.StringVar(&checkoutCommit, "commit", "", "checked-out Git commit")
@@ -116,6 +117,7 @@ func runPreflight(
 	flags.IntVar(&outputCount, "output-count", 0, "declared compositor output count")
 	flags.IntVar(&minimumOutputs, "minimum-outputs", 1, "minimum required output count")
 	flags.BoolVar(&requireHeadless, "require-headless-sway", false, "require isolated headless Sway with no input devices")
+	flags.BoolVar(&requireHyprland, "require-headless-hyprland", false, "require isolated headless Hyprland with no input devices")
 	flags.DurationVar(&probeTimeout, "probe-timeout", 5*time.Second, "per-probe timeout")
 	if err := flags.Parse(arguments); err != nil {
 		return err
@@ -144,23 +146,24 @@ func runPreflight(
 		}
 	}()
 	report, err := compositorevidence.Preflight(ctx, compositorevidence.PreflightConfig{
-		Lane:                lane,
-		Cell:                cell,
-		CheckoutCommit:      checkoutCommit,
-		ExpectedCommit:      identity.expectedCommit,
-		Ref:                 ref,
-		Workflow:            workflow,
-		RunID:               runID,
-		RunAttempt:          runAttempt,
-		CurrentDesktop:      getenv(envCurrentDesktop),
-		WaylandDisplay:      getenv(envWaylandDisplay),
-		RuntimeDir:          getenv(envRuntimeDir),
-		SessionBusAddress:   getenv(envSessionBusAddress),
-		OperatorReadyPath:   operatorReadyPath,
-		OutputCount:         outputCount,
-		MinimumOutputCount:  minimumOutputs,
-		RequireHeadlessSway: requireHeadless,
-		ProbeTimeout:        probeTimeout,
+		Lane:                    lane,
+		Cell:                    cell,
+		CheckoutCommit:          checkoutCommit,
+		ExpectedCommit:          identity.expectedCommit,
+		Ref:                     ref,
+		Workflow:                workflow,
+		RunID:                   runID,
+		RunAttempt:              runAttempt,
+		CurrentDesktop:          getenv(envCurrentDesktop),
+		WaylandDisplay:          getenv(envWaylandDisplay),
+		RuntimeDir:              getenv(envRuntimeDir),
+		SessionBusAddress:       getenv(envSessionBusAddress),
+		OperatorReadyPath:       operatorReadyPath,
+		OutputCount:             outputCount,
+		MinimumOutputCount:      minimumOutputs,
+		RequireHeadlessSway:     requireHeadless,
+		RequireHeadlessHyprland: requireHyprland,
+		ProbeTimeout:            probeTimeout,
 	})
 	if err != nil {
 		return err

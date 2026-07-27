@@ -44,6 +44,10 @@ func validReport(lane Lane, cell Cell) PreflightReport {
 	if lane == LaneWlroots {
 		workflow = "Sway E2E"
 	}
+	if cell == CellHyprlandWindow {
+		compositor = "hyprland"
+		workflow = "Hyprland E2E"
+	}
 	return PreflightReport{
 		SchemaVersion: preflightSchemaVersion,
 		Commit:        testCommit,
@@ -69,6 +73,28 @@ func validReport(lane Lane, cell Cell) PreflightReport {
 			Portal:            portal,
 			PipeWire:          pipeWire,
 		},
+	}
+}
+
+func TestHyprlandWindowCellHasFixedEvidenceIdentity(t *testing.T) {
+	t.Parallel()
+	spec, err := CellHyprlandWindow.TestSpec()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if spec.Package != swayPackage ||
+		spec.Name != hyprlandWindowTestName ||
+		spec.Command != hyprlandCommandPrefix+hyprlandWindowTestName+swayCommandSuffix {
+		t.Fatalf("Hyprland test spec = %+v", spec)
+	}
+	if err := validateWorkflow(CellHyprlandWindow, "Hyprland E2E"); err != nil {
+		t.Fatalf("Hyprland workflow rejected: %v", err)
+	}
+	if err := validateWorkflow(CellHyprlandWindow, "Sway E2E"); err == nil {
+		t.Fatal("Hyprland cell accepted the Sway workflow")
+	}
+	if err := validateLaneCell(LaneWlroots, CellHyprlandWindow); err != nil {
+		t.Fatalf("Hyprland window cell rejected wlroots lane: %v", err)
 	}
 }
 
