@@ -66,6 +66,14 @@ repository code; it only verifies the already packaged SHA-256 and uploads the
 two assets. Manual runs retain the bundle as a GitHub Actions artifact for 90
 days and do not modify a release.
 
+The current 28-check exact-candidate contract passes in
+[`Release Evidence` run 30272753885](https://github.com/marang/robotgo/actions/runs/30272753885)
+on merged `main` commit
+`a641236b1b8f8bd80d4fbffc526a10aa5862b001`. The packaged schema-v1
+`required-checks.json` contains both successful GitHub Actions GNOME/KDE
+multi-output bounds rows. This manual candidate evidence does not alter the
+immutable assets of an already published release.
+
 The latest published bundle is attached to
 [`v1.0.0-beta.2`](https://github.com/marang/robotgo/releases/tag/v1.0.0-beta.2):
 

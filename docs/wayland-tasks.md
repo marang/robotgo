@@ -199,11 +199,13 @@ backends.
     state, and actionable remediation without sensitive session data. Release
     Evidence v1 binds that report and test-log digests to exact source across
     the six native/Pure-Go hosted platform cells; `v1.0.0-beta.2` additionally
-    records the protected 25-check manifest.
+    records its historical protected 25-check manifest. The current candidate
+    contract passes with 28 checks on exact merged `main`.
   - 7. Keep race/vet and the manifest-checked native ASan/LeakSanitizer ownership
     suites blocking. Hosted Sway and GNOME/KDE single-/multi-output jobs are
-    defined and evidenced. The six hosted Sway checks and four GNOME/KDE
-    multi-output portal checks remain required by exact-release evidence.
+    defined and evidenced. The six hosted Sway checks, four GNOME/KDE
+    multi-output portal checks, and two GNOME/KDE bounds checks remain required
+    by exact-release evidence.
 
 - Recently completed parity work:
   - Window state/query APIs expose `IsTopMostE`, `IsMinimizedE`,
@@ -228,7 +230,8 @@ backends.
     public native-CGO and Pure-Go bounds, count, primary, aggregate, invalid
     index, and legacy/error parity with `DISPLAY` unset. Retain passing
     [`exact-commit run 30268702514`](https://github.com/marang/robotgo/actions/runs/30268702514)
-    before promoting it into release evidence.
+    as the implementation proof; both lanes are now required by exact-release
+    evidence.
 - Portal Path:
   - Expand troubleshooting for xdg-desktop-portal backend selection and consent prompts.
   - Keep the hosted high-level RemoteDesktop input fallback validation green on
@@ -294,11 +297,11 @@ backends.
   - Keep the dedicated credential-free hosted GNOME and KDE portal workflows
     green. The six hosted wlroots/Sway checks are promoted into branch and
     release gates; the four GNOME/KDE multi-output portal checks are promoted
-    into exact-release gates. Keep the isolated `vkms` Hyprland window cell
-    green as a branch check and exact-release gate.
+    into exact-release gates. Keep the isolated `vkms` Hyprland window cell and
+    both GNOME/KDE bounds lanes green as exact-release gates.
   - Keep the consent-free hosted GNOME/KDE bounds workflow independent from
-    portal consent and pixel/input paths. Promote it only after both desktop
-    lanes pass for the same exact commit.
+    portal consent and pixel/input paths. Both desktop lanes pass on the same
+    exact commit and are included in the current 28-check candidate manifest.
   - Keep the race/vet and native ASan/LeakSanitizer CI jobs green and protected.
     The sanitizer gate covers the default CGO suite plus hermetic screencopy
     allocation/free, bounded timeout cleanup, and FD ownership paths.

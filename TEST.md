@@ -986,6 +986,8 @@ also blocks packaging and publication. The consent-free GNOME and KDE
 multi-output bounds jobs and isolated Hyprland window-geometry cell are invoked
 for that exact candidate and are likewise required before the 28-check manifest
 can be packaged.
+The complete contract passes on exact merged `main` in
+[`Release Evidence` run 30272753885](https://github.com/marang/robotgo/actions/runs/30272753885).
 
 On a clean Linux native checkout, reproduce the generator/verifier path with:
 

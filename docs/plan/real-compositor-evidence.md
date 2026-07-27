@@ -1,7 +1,7 @@
 # Protected Real-Compositor Evidence Plan
 
-Status: Complete; hosted wlroots and GNOME/KDE single-/multi-output portal
-execution delivered and exact-release gates promoted
+Status: Complete; hosted wlroots, GNOME/KDE portal and bounds, and Hyprland
+evidence delivered with a passing 28-check exact-release contract
 
 Linear project:
 [RobotGo | P005 | Protected Compositor Evidence](https://linear.app/riotbox/project/robotgo-or-p005-or-protected-compositor-evidence-d66467e3b5ee)
@@ -22,13 +22,12 @@ not actually demonstrate.
 
 ## Trust and runner model
 
-The P005 target design requires every matrix job to use a clean, ephemeral
+The P005 runner contract requires every matrix job to use a clean, ephemeral
 Linux environment that is destroyed afterward. Persistent personal desktop
 sessions are not eligible. GNOME and KDE run as nested guests on fresh
 GitHub-hosted runners without self-hosted registration credentials.
 
-Before the protected workflows are enabled, their implementation must enforce
-these boundaries:
+The protected workflows enforce these boundaries:
 
 - hosted GNOME/KDE runs only on trusted `main` pushes or explicit manual
   dispatch; fork and ordinary pull-request events never boot either guest
@@ -287,7 +286,7 @@ unfunded or unavailable infrastructure.
 
 ## Exit criteria
 
-P005 is complete only when:
+P005 completed after all of the following became blocking evidence:
 
 - GNOME, KDE, and wlroots runner definitions are reproducible and ephemeral
 - every configured job fails closed on missing infrastructure or consent
@@ -299,6 +298,12 @@ P005 is complete only when:
 - promoted checks block release evidence for the exact commit
 - `docs/compatibility/wayland-input.md`, `wayland-capture.md`, and
   `runtime-v1.md` link the retained evidence
+
+The completed contract passes in
+[`Release Evidence` run 30272753885](https://github.com/marang/robotgo/actions/runs/30272753885)
+on exact merged `main` commit
+`a641236b1b8f8bd80d4fbffc526a10aa5862b001`. Its schema-v1 manifest contains
+exactly 28 successful checks, including both hosted GNOME/KDE bounds lanes.
 
 ## Non-goals
 
