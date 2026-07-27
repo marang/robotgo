@@ -39,6 +39,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y \
+            "linux-modules-extra-$(uname -r)"
           sudo modprobe vkms
           mapfile -t vkms_cards < <(
             for card in /sys/class/drm/card[0-9]*; do

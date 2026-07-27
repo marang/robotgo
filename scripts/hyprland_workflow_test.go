@@ -32,6 +32,7 @@ func TestHyprlandWorkflowUsesOnlyVerifiedVKMSDevice(t *testing.T) {
 		"actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e",
 		"actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a",
 		"persist-credentials: false",
+		`"linux-modules-extra-$(uname -r)"`,
 		"sudo modprobe vkms",
 		`"${driver##*/}" = vkms`,
 		`test "${#vkms_cards[@]}" -eq 1`,
