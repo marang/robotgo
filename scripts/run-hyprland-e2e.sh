@@ -58,7 +58,7 @@ dbus_pid=''
 hyprland_pid=''
 seatd_pid=''
 test_pid=''
-failure_stage="$ROBOTGO_HYPRLAND_FAILURE_STAGE_SESSION_BUS"
+failure_stage="$ROBOTGO_HYPRLAND_FAILURE_STAGE_DEVICE_CONTRACT"
 
 terminate_group() {
 	local pid="$1"
@@ -162,6 +162,19 @@ export SEATD_VTBOUND='0'
 export DBUS_SESSION_BUS_ADDRESS="unix:path=$runtime_dir/session-bus"
 unset DISPLAY WAYLAND_DISPLAY HYPRLAND_INSTANCE_SIGNATURE SWAYSOCK
 
+failure_stage="$ROBOTGO_HYPRLAND_FAILURE_STAGE_MACHINE_IDENTITY"
+if [[ -L /etc/machine-id || ! -f /etc/machine-id || ! -r /etc/machine-id ]]; then
+	printf 'isolated machine identity is unavailable\n' >&2
+	exit 1
+fi
+machine_identity="$(</etc/machine-id)"
+readonly machine_identity
+if [[ ! "$machine_identity" =~ ^[0-9a-f]{32}$ ]]; then
+	printf 'isolated machine identity is invalid\n' >&2
+	exit 1
+fi
+
+failure_stage="$ROBOTGO_HYPRLAND_FAILURE_STAGE_SESSION_BUS"
 setsid dbus-daemon \
 	--session \
 	--nofork \
@@ -180,7 +193,7 @@ if [[ ! -S "$runtime_dir/session-bus" ]]; then
 	exit 1
 fi
 
-failure_stage="$ROBOTGO_HYPRLAND_FAILURE_STAGE_COMPOSITOR_START"
+failure_stage="$ROBOTGO_HYPRLAND_FAILURE_STAGE_SEAT_MANAGER"
 setsid seatd -l error >"$runtime_dir/seatd.log" 2>&1 &
 seatd_pid=$!
 for _ in {1..100}; do
@@ -193,6 +206,7 @@ if [[ ! -S "$SEATD_SOCK" ]]; then
 	exit 1
 fi
 
+failure_stage="$ROBOTGO_HYPRLAND_FAILURE_STAGE_COMPOSITOR_START"
 export XDG_CURRENT_DESKTOP='Hyprland'
 setsid Hyprland \
 	--config "$repo_root/infrastructure/hyprland-runner/hyprland.lua" \

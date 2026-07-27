@@ -20,9 +20,14 @@ func TestHyprlandWorkflowUsesOnlyVerifiedVKMSDevice(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	failureStageData, err := os.ReadFile("hyprland-failure-stages.sh")
+	if err != nil {
+		t.Fatal(err)
+	}
 	contract := normalizeWorkflowText(workflowData) + "\n" +
 		normalizeWorkflowText(containerData) + "\n" +
-		normalizeWorkflowText(runtimeData)
+		normalizeWorkflowText(runtimeData) + "\n" +
+		normalizeWorkflowText(failureStageData)
 	for _, required := range []string{
 		"name: Hyprland E2E",
 		"  workflow_call:",
@@ -58,7 +63,10 @@ func TestHyprlandWorkflowUsesOnlyVerifiedVKMSDevice(t *testing.T) {
 		"/usr/bin/bash",
 		"dbus-daemon",
 		"DBUS_SESSION_BUS_ADDRESS",
+		"device-contract",
+		"machine-identity",
 		"session-bus",
+		"seat-manager",
 		"go test -asan -count=1",
 		"ROBOTGO_HYPRLAND_E2E_FAIL_AFTER_START=1",
 		"hyprland-hyprland-window-failure-reason",
