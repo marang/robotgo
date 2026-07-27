@@ -43,4 +43,3 @@ hl.window_rule({
   border_size = 0,
   no_anim = true,
 })
-

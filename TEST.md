@@ -874,10 +874,11 @@ and explicit unsupported handle/client/PID-target contracts under
 AddressSanitizer and LeakSanitizer.
 
 The runner also executes an induced failure after compositor startup and
-requires fixture processes, seat-manager state, sockets, raw logs, and the
-private runtime directory to be gone. Only `evidence.json`, `test.log`, and
-`summary.md` are uploaded. Local development should run only the side-effect
-free contract and compile gates:
+requires compositor/seat-manager processes, sockets, raw logs, the private
+runtime directory, and the dedicated container-transfer workspace to be gone.
+The normal test separately proves cleanup of its self-owned fixture. Only
+`evidence.json`, `test.log`, and `summary.md` are uploaded. Local development
+should run only the side-effect-free contract and compile gates:
 
 ```bash
 go test ./internal/compositorevidence ./internal/cmd/compositorevidence ./scripts

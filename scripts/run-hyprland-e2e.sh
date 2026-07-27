@@ -101,7 +101,9 @@ cleanup() {
 	exit "$status"
 }
 trap cleanup EXIT
-trap 'exit 130' INT TERM HUP
+trap 'exit 130' INT
+trap 'exit 143' TERM
+trap 'exit 129' HUP
 
 runtime_dir="$(mktemp -d "$RUNNER_TEMP/$runtime_prefix.XXXXXX")"
 chmod 700 "$runtime_dir"
