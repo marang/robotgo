@@ -302,4 +302,4 @@ go run ./internal/cmd/compositorevidence verify \
 	-run-id "$GITHUB_RUN_ID" \
 	-run-attempt "$GITHUB_RUN_ATTEMPT"
 failure_stage="$ROBOTGO_HYPRLAND_FAILURE_STAGE_SUMMARY"
-cat "$output_dir/summary.md" >>"$GITHUB_STEP_SUMMARY"
+test -s "$output_dir/summary.md"

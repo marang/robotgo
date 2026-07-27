@@ -56,6 +56,8 @@ func TestHyprlandWorkflowUsesOnlyVerifiedVKMSDevice(t *testing.T) {
 		"--security-opt no-new-privileges",
 		"--user \"$(id -u):$(id -g)\"",
 		`--volume "$GITHUB_WORKSPACE:/workspace:ro"`,
+		`--volume "$private_runner_temp:$container_runner_temp:rw"`,
+		`--env "RUNNER_TEMP=$container_runner_temp"`,
 		`-e /dev/input`,
 		"ROBOTGO_HYPRLAND_DRM_DRIVER=vkms",
 		"SEATD_VTBOUND='0'",
@@ -70,11 +72,14 @@ func TestHyprlandWorkflowUsesOnlyVerifiedVKMSDevice(t *testing.T) {
 		"ROBOTGO_HYPRLAND_E2E_FAIL_AFTER_START=1",
 		"hyprland-hyprland-window-failure-reason",
 		"container-runtime",
+		"container-transfer",
+		"go run ./internal/cmd/compositorevidence verify",
 		"trap 'exit 130' INT",
 		"trap 'exit 143' TERM",
 		"trap 'exit 129' HUP",
 		"isolated Hyprland evidence failed at sanitized stage: unavailable",
 		"induced failure retained an isolated Hyprland runtime",
+		"induced failure retained a private container workspace",
 		"evidence.json",
 		"test.log",
 		"summary.md",
@@ -92,6 +97,9 @@ func TestHyprlandWorkflowUsesOnlyVerifiedVKMSDevice(t *testing.T) {
 		"--privileged",
 		"--network host",
 		"/dev/dri:/dev/dri",
+		`--volume "$RUNNER_TEMP:$RUNNER_TEMP:rw"`,
+		"--env GITHUB_STEP_SUMMARY",
+		"_runner_file_commands",
 		"persist-credentials: true",
 		"actions/checkout@v",
 		"actions/setup-go@v",
@@ -111,6 +119,16 @@ func TestHyprlandWorkflowUsesOnlyVerifiedVKMSDevice(t *testing.T) {
 	)
 	if containerStop < 0 || evidenceCleanup < 0 || containerStop > evidenceCleanup {
 		t.Fatal("Hyprland fallback cleanup does not stop containers before deleting evidence")
+	}
+	hostVerify := strings.LastIndex(
+		string(workflowData),
+		"go run ./internal/cmd/compositorevidence verify",
+	)
+	publishSummary := strings.LastIndex(string(workflowData), `>>"$GITHUB_STEP_SUMMARY"`)
+	uploadEvidence := strings.LastIndex(string(workflowData), "actions/upload-artifact@")
+	if hostVerify < 0 || publishSummary < 0 || uploadEvidence < 0 ||
+		hostVerify > publishSummary || publishSummary > uploadEvidence {
+		t.Fatal("Hyprland host does not verify transferred evidence before publishing it")
 	}
 }
 

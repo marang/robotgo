@@ -125,6 +125,10 @@ jobs:
             echo 'induced failure retained an isolated Hyprland runtime' >&2
             exit 1
           fi
+          if compgen -G "$RUNNER_TEMP/robotgo-hyprland-container.*" >/dev/null; then
+            echo 'induced failure retained a private container workspace' >&2
+            exit 1
+          fi
       - name: Run isolated Hyprland evidence
         env:
           ROBOTGO_APPROVED_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
@@ -146,6 +150,17 @@ jobs:
             echo 'isolated Hyprland evidence failed; private runtime output was removed' >&2
             exit "$status"
           fi
+          go run ./internal/cmd/compositorevidence verify \
+            -lane wlroots \
+            -cell hyprland-window \
+            -runner-temp "$RUNNER_TEMP" \
+            -output-dir "$RUNNER_TEMP/hyprland-e2e-hyprland-window" \
+            -expected-commit "$ROBOTGO_APPROVED_COMMIT" \
+            -workflow "$GITHUB_WORKFLOW" \
+            -run-id "$GITHUB_RUN_ID" \
+            -run-attempt "$GITHUB_RUN_ATTEMPT"
+          cat "$RUNNER_TEMP/hyprland-e2e-hyprland-window/summary.md" \
+            >>"$GITHUB_STEP_SUMMARY"
       - name: Upload compatibility evidence
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
@@ -188,8 +203,12 @@ jobs:
             -output-dir "$RUNNER_TEMP/hyprland-e2e-hyprland-window"
           find "$RUNNER_TEMP" -mindepth 1 -maxdepth 1 -type d \
             -name 'robotgo-hyprland-runtime.*' -exec rm -rf -- {} +
+          find "$RUNNER_TEMP" -mindepth 1 -maxdepth 1 -type d \
+            -name 'robotgo-hyprland-container.*' -exec rm -rf -- {} +
           test -z "$(find "$RUNNER_TEMP" -mindepth 1 -maxdepth 1 -type d \
             -name 'robotgo-hyprland-runtime.*' -print -quit)"
+          test -z "$(find "$RUNNER_TEMP" -mindepth 1 -maxdepth 1 -type d \
+            -name 'robotgo-hyprland-container.*' -print -quit)"
           if [ -n "${ROBOTGO_HYPRLAND_IMAGE:-}" ]; then
             docker image rm -f "$ROBOTGO_HYPRLAND_IMAGE" >/dev/null 2>&1 || true
           fi

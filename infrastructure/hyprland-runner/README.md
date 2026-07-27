@@ -8,6 +8,10 @@ The host loads Linux `vkms`, verifies that exactly one DRM card is backed by
 that virtual driver, and passes only that card into the pinned Arch Linux
 container. The runtime has no network, `/dev/input`, render node, host display
 socket, writable source tree, checkout credentials, or physical GPU device.
+Its only writable host mount is a dedicated, ephemeral transfer directory; the
+container never receives the runner's complete temporary directory or GitHub
+Actions command files. The host revalidates transferred evidence before it
+publishes the summary or uploads artifacts.
 The evidence supervisor owns a private seat manager. Hyprland owns one virtual
 1280x720 output, and RobotGo controls only a self-created `wev` window. This
 native, portal-free cell deliberately has no session bus.
