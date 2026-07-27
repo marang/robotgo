@@ -2,6 +2,9 @@ name: Generate native API baselines
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - feature/lab-65-add-a-stable-public-go-api-compatibility-gate
 
 permissions:
   contents: read
