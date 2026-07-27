@@ -26,18 +26,19 @@ Each cell emits `evidence.json` and `test.log`. The JSON document records:
 - the sanitized Runtime Diagnostics v1 report.
 
 The bundle also contains `required-checks.json`. It records the successful
-release status set for the exact commit: the X11 default suite, lint, vet,
-race, ASan/LeakSanitizer, OCR, all three default and Pure-Go platform legs,
-Wayland, targeted X11 evidence, the release-evidence validator, all six hosted
+release status set for the exact commit: the public API compatibility gate,
+X11 default suite, lint, vet, race, ASan/LeakSanitizer, OCR, all three default
+and Pure-Go platform legs, Wayland, targeted X11 evidence, the
+release-evidence validator, all six hosted
 Sway cells (native input, capture, window, single-/multi-output geometry, and
 portal availability), and the four release-only GNOME/KDE multi-output
 RemoteDesktop/ScreenCast cells. It also invokes the two release-only GNOME/KDE
 multi-output bounds cells and the isolated hosted Hyprland active-window
 geometry check. Missing, pending, skipped, neutral, cancelled, timed-out,
 stale, or failed required checks abort snapshot publication. The current
-workflow manifest has 28 entries.
+workflow manifest has 29 entries.
 
-Twenty-two manifest entries are intended to mirror the `main`
+Twenty-three manifest entries are intended to mirror the `main`
 branch-protection contexts. The four portal and two display-bounds entries are
 intentionally release-only because their
 disposable nested desktop guests do not boot for ordinary pull requests. Add,
@@ -66,7 +67,7 @@ repository code; it only verifies the already packaged SHA-256 and uploads the
 two assets. Manual runs retain the bundle as a GitHub Actions artifact for 90
 days and do not modify a release.
 
-The current 28-check exact-candidate contract passes in
+The last pre-API-freeze 28-check exact-candidate contract passes in
 [`Release Evidence` run 30272753885](https://github.com/marang/robotgo/actions/runs/30272753885)
 on merged `main` commit
 `a641236b1b8f8bd80d4fbffc526a10aa5862b001`. The packaged schema-v1

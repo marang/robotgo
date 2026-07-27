@@ -235,6 +235,7 @@ jobs:
               fi
               printf '%s\n' "$row" >> "$output/rows.jsonl"
             done <<'EOF'
+          api-compat
           lint
           native-capture
           native-input
@@ -342,6 +343,7 @@ jobs:
             exit 1
           fi
           expected_checks="$(printf '%s\n' \
+            api-compat \
             lint \
             native-capture native-input native-output native-output-multi \
             native-window \
@@ -373,7 +375,7 @@ jobs:
           jq -e --arg commit "$commit" '
             .schema_version == "1" and
             .commit == $commit and
-            (.checks | length) == 28 and
+            (.checks | length) == 29 and
             all(.checks[];
               .conclusion == "success" and
               (.provider | type) == "string" and
