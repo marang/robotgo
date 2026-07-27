@@ -135,12 +135,12 @@ if ((${#drm_entries[@]} != 1)) ||
 	printf 'isolated Hyprland exposes an unexpected device path\n' >&2
 	exit 1
 fi
-drm_driver_path="$(
-	readlink -f \
-		"/sys/class/drm/${ROBOTGO_HYPRLAND_DRM_DEVICE##*/}/device/driver"
+drm_sysfs_path="$(
+	readlink -f "/sys/class/drm/${ROBOTGO_HYPRLAND_DRM_DEVICE##*/}"
 )"
-readonly drm_driver_path
-if [[ "${drm_driver_path##*/}" != "$ROBOTGO_HYPRLAND_DRM_DRIVER" ]]; then
+readonly drm_sysfs_path
+readonly expected_drm_sysfs_path="/sys/devices/platform/vkms/drm/${ROBOTGO_HYPRLAND_DRM_DEVICE##*/}"
+if [[ "$drm_sysfs_path" != "$expected_drm_sysfs_path" ]]; then
 	printf 'isolated Hyprland DRM device is not backed by vkms\n' >&2
 	exit 1
 fi

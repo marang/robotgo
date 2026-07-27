@@ -181,15 +181,17 @@ func assertVirtualDRMIsolation(t *testing.T) {
 	if len(entries) != 1 || filepath.Join("/dev/dri", entries[0].Name()) != device {
 		t.Fatalf("isolated Hyprland exposes unexpected DRM entries: %v", entries)
 	}
-	driverLink := filepath.Join(
+	cardLink := filepath.Join(
 		"/sys/class/drm",
 		filepath.Base(device),
-		"device",
-		"driver",
 	)
-	driver, err := filepath.EvalSymlinks(driverLink)
-	if err != nil || filepath.Base(driver) != "vkms" {
-		t.Fatalf("isolated Hyprland DRM driver is not vkms: %q, %v", driver, err)
+	cardPath, err := filepath.EvalSymlinks(cardLink)
+	wantCardPath := filepath.Join(
+		"/sys/devices/platform/vkms/drm",
+		filepath.Base(device),
+	)
+	if err != nil || cardPath != wantCardPath {
+		t.Fatalf("isolated Hyprland DRM driver is not vkms: %q, %v", cardPath, err)
 	}
 }
 

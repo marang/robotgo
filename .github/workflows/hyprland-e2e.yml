@@ -43,11 +43,12 @@ jobs:
           sudo apt-get install --no-install-recommends -y \
             "linux-modules-extra-$(uname -r)"
           sudo modprobe vkms
+          sudo udevadm settle
           mapfile -t vkms_cards < <(
             for card in /sys/class/drm/card[0-9]*; do
               test -e "$card" || continue
-              driver="$(readlink -f "$card/device/driver")"
-              if [ "${driver##*/}" = vkms ]; then
+              card_path="$(readlink -f "$card")"
+              if [[ "$card_path" == /sys/devices/platform/vkms/drm/card[0-9]* ]]; then
                 printf '%s\n' "/dev/dri/${card##*/}"
               fi
             done
