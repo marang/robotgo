@@ -8,10 +8,9 @@ The host loads Linux `vkms`, verifies that exactly one DRM card is backed by
 that virtual driver, and passes only that card into the pinned Arch Linux
 container. The runtime has no network, `/dev/input`, render node, host display
 socket, writable source tree, checkout credentials, or physical GPU device.
-The evidence supervisor creates an ephemeral machine identity, owns a private
-session bus and seat manager, and removes that identity on every exit path.
-Hyprland owns one virtual 1280x720 output, and RobotGo controls only a
-self-created `wev` window.
+The evidence supervisor owns a private seat manager. Hyprland owns one virtual
+1280x720 output, and RobotGo controls only a self-created `wev` window. This
+native, portal-free cell deliberately has no session bus.
 
 The runtime proves:
 
@@ -21,8 +20,8 @@ The runtime proves:
 - explicit unsupported contracts for portable handles, client bounds, and
   PID-targeted geometry;
 - AddressSanitizer/LeakSanitizer execution;
-- deterministic fixture, compositor, session-bus, seat-manager, socket, log,
-  and temporary directory cleanup on success and failure.
+- deterministic fixture, compositor, seat-manager, socket, log, and temporary
+  directory cleanup on success and failure.
 
 Only sanitized `evidence.json`, `test.log`, and `summary.md` files are retained.
 The induced-failure job proves that private compositor logs and runtime state

@@ -58,25 +58,10 @@ fi
 
 readonly container_name="robotgo-hyprland-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-${mode}"
 readonly failure_reason_file="$RUNNER_TEMP/hyprland-hyprland-window-failure-reason"
-machine_id_file=''
 cleanup() {
 	docker rm -f "$container_name" >/dev/null 2>&1 || true
-	if [[ -n "$machine_id_file" &&
-		"$machine_id_file" == "$RUNNER_TEMP"/.hyprland-machine-id.* ]]; then
-		rm -f -- "$machine_id_file"
-	fi
 }
 trap cleanup EXIT INT TERM HUP
-
-machine_id_file="$(mktemp "$RUNNER_TEMP/.hyprland-machine-id.XXXXXX")"
-machine_id="$(tr -d '-' </proc/sys/kernel/random/uuid)"
-readonly machine_id
-if [[ ! "$machine_id" =~ ^[0-9a-f]{32}$ ]]; then
-	printf 'isolated Hyprland could not create a private machine identity\n' >&2
-	exit 1
-fi
-printf '%s\n' "$machine_id" >"$machine_id_file"
-chmod 444 "$machine_id_file"
 
 arguments=(
 	run
@@ -94,7 +79,6 @@ arguments=(
 	--tmpfs /tmp:rw,nosuid,nodev,noexec,mode=1777,size=256m
 	--volume "$GITHUB_WORKSPACE:/workspace:ro"
 	--volume "$RUNNER_TEMP:$RUNNER_TEMP:rw"
-	--volume "$machine_id_file:/etc/machine-id:ro"
 	--workdir /workspace
 	--env RUNNER_TEMP
 	--env GITHUB_WORKFLOW

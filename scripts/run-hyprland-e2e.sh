@@ -54,8 +54,6 @@ fi
 umask 077
 ulimit -c 0
 runtime_dir=''
-session_bus_socket=''
-dbus_pid=''
 hyprland_pid=''
 seatd_pid=''
 test_pid=''
@@ -75,43 +73,12 @@ terminate_group() {
 	wait "$pid" 2>/dev/null || true
 }
 
-classify_session_bus_failure() {
-	local log_file="$runtime_dir/dbus.log"
-	if [[ ! -f "$log_file" ]]; then
-		failure_stage="$ROBOTGO_HYPRLAND_FAILURE_STAGE_SESSION_BUS_REDIRECTION"
-	elif grep -Eqi 'permission denied|operation not permitted|read-only file system' "$log_file"; then
-		failure_stage="$ROBOTGO_HYPRLAND_FAILURE_STAGE_SESSION_BUS_PERMISSION"
-	elif grep -Eqi 'failed to bind socket|address already in use' "$log_file"; then
-		failure_stage="$ROBOTGO_HYPRLAND_FAILURE_STAGE_SESSION_BUS_BIND"
-	elif grep -Eqi 'invalid option|unknown option|invalid argument|usage:' "$log_file"; then
-		failure_stage="$ROBOTGO_HYPRLAND_FAILURE_STAGE_SESSION_BUS_INVOCATION"
-	elif grep -Eqi 'machine[- ]id|machine uuid' "$log_file"; then
-		failure_stage="$ROBOTGO_HYPRLAND_FAILURE_STAGE_SESSION_BUS_MACHINE_ID"
-	elif grep -Eqi 'uid and gid|user[^[:alnum:]]+(does not exist|not found|unknown)' "$log_file"; then
-		failure_stage="$ROBOTGO_HYPRLAND_FAILURE_STAGE_SESSION_BUS_USER"
-	elif grep -Eqi 'failed to setup environment|environment[^[:alnum:]]+(invalid|unavailable)' "$log_file"; then
-		failure_stage="$ROBOTGO_HYPRLAND_FAILURE_STAGE_SESSION_BUS_ENVIRONMENT"
-	elif grep -Eqi 'failed to (open|read|write|close)[^[:alnum:]]|no such file|not a directory' "$log_file"; then
-		failure_stage="$ROBOTGO_HYPRLAND_FAILURE_STAGE_SESSION_BUS_FILE"
-	elif grep -Eqi 'failed to (fork|create pipe|fdopen)|file descriptor|child pipe' "$log_file"; then
-		failure_stage="$ROBOTGO_HYPRLAND_FAILURE_STAGE_SESSION_BUS_PROCESS"
-	elif grep -Eqi 'fd limit|resource|out of memory|not enough memory|capabilit|too many open files|temporarily unavailable' "$log_file"; then
-		failure_stage="$ROBOTGO_HYPRLAND_FAILURE_STAGE_SESSION_BUS_RESOURCE"
-	elif grep -Eqi 'configuration file|error in file|failed to start message bus' "$log_file"; then
-		failure_stage="$ROBOTGO_HYPRLAND_FAILURE_STAGE_SESSION_BUS_CONFIGURATION"
-	fi
-}
-
 cleanup() {
 	local status=$?
 	trap - EXIT INT TERM HUP
 	terminate_group "$test_pid"
 	terminate_group "$hyprland_pid"
 	terminate_group "$seatd_pid"
-	terminate_group "$dbus_pid"
-	if [[ "$session_bus_socket" == /tmp/dbus-* ]]; then
-		rm -f -- "$session_bus_socket"
-	fi
 	if [[ -n "$runtime_dir" && "$runtime_dir" == "$RUNNER_TEMP/$runtime_prefix".* ]]; then
 		rm -rf -- "$runtime_dir"
 	fi
@@ -190,51 +157,12 @@ export AQ_NO_MODIFIERS='1'
 export LIBSEAT_BACKEND='seatd'
 export SEATD_SOCK="$runtime_dir/seatd.sock"
 export SEATD_VTBOUND='0'
-unset DISPLAY WAYLAND_DISPLAY HYPRLAND_INSTANCE_SIGNATURE SWAYSOCK
-
-failure_stage="$ROBOTGO_HYPRLAND_FAILURE_STAGE_MACHINE_IDENTITY"
-if [[ -L /etc/machine-id || ! -f /etc/machine-id || ! -r /etc/machine-id ]]; then
-	printf 'isolated machine identity is unavailable\n' >&2
-	exit 1
-fi
-machine_identity="$(</etc/machine-id)"
-readonly machine_identity
-if [[ ! "$machine_identity" =~ ^[0-9a-f]{32}$ ]]; then
-	printf 'isolated machine identity is invalid\n' >&2
-	exit 1
-fi
-
-failure_stage="$ROBOTGO_HYPRLAND_FAILURE_STAGE_SESSION_BUS"
-setsid dbus-daemon \
-	--session \
-	--nofork \
-	--nopidfile \
-	--nosyslog \
-	--print-address=3 \
-	3>"$runtime_dir/dbus-address" \
-	>"$runtime_dir/dbus.log" 2>&1 &
-dbus_pid=$!
-for _ in {1..100}; do
-	[[ -s "$runtime_dir/dbus-address" ]] && break
-	kill -0 "$dbus_pid" 2>/dev/null || break
-	sleep 0.05
-done
-if [[ ! -s "$runtime_dir/dbus-address" ]]; then
-	classify_session_bus_failure
-	printf 'isolated session bus did not become ready\n' >&2
-	exit 1
-fi
-IFS= read -r session_bus_address <"$runtime_dir/dbus-address"
-if [[ ! "$session_bus_address" =~ ^unix:path=(/tmp/dbus-[A-Za-z0-9_-]+),guid=[0-9a-f]{32}$ ]]; then
-	printf 'isolated session bus returned an invalid address\n' >&2
-	exit 1
-fi
-session_bus_socket="${BASH_REMATCH[1]}"
-if [[ ! -S "$session_bus_socket" ]]; then
-	printf 'isolated session bus socket is unavailable\n' >&2
-	exit 1
-fi
-export DBUS_SESSION_BUS_ADDRESS="$session_bus_address"
+unset \
+	DBUS_SESSION_BUS_ADDRESS \
+	DISPLAY \
+	HYPRLAND_INSTANCE_SIGNATURE \
+	SWAYSOCK \
+	WAYLAND_DISPLAY
 
 failure_stage="$ROBOTGO_HYPRLAND_FAILURE_STAGE_SEAT_MANAGER"
 setsid seatd -l error >"$runtime_dir/seatd.log" 2>&1 &

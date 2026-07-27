@@ -55,32 +55,14 @@ func TestHyprlandWorkflowUsesOnlyVerifiedVKMSDevice(t *testing.T) {
 		"--security-opt no-new-privileges",
 		"--user \"$(id -u):$(id -g)\"",
 		`--volume "$GITHUB_WORKSPACE:/workspace:ro"`,
-		`--volume "$machine_id_file:/etc/machine-id:ro"`,
-		`chmod 444 "$machine_id_file"`,
 		`-e /dev/input`,
 		"ROBOTGO_HYPRLAND_DRM_DRIVER=vkms",
 		"SEATD_VTBOUND='0'",
 		"ASAN_OPTIONS=detect_leaks=1:halt_on_error=1:strict_string_checks=1",
 		"GIT_OPTIONAL_LOCKS=0",
 		"/usr/bin/bash",
-		"dbus-daemon",
 		"DBUS_SESSION_BUS_ADDRESS",
-		"--print-address=3",
-		"^unix:path=(/tmp/dbus-",
 		"device-contract",
-		"machine-identity",
-		"session-bus",
-		"session-bus-bind",
-		"session-bus-configuration",
-		"session-bus-environment",
-		"session-bus-file",
-		"session-bus-invocation",
-		"session-bus-machine-id",
-		"session-bus-permission",
-		"session-bus-process",
-		"session-bus-redirection",
-		"session-bus-resource",
-		"session-bus-user",
 		"seat-manager",
 		"go test -asan -count=1",
 		"ROBOTGO_HYPRLAND_E2E_FAIL_AFTER_START=1",
@@ -88,8 +70,6 @@ func TestHyprlandWorkflowUsesOnlyVerifiedVKMSDevice(t *testing.T) {
 		"container-runtime",
 		"isolated Hyprland evidence failed at sanitized stage: unavailable",
 		"induced failure retained an isolated Hyprland runtime",
-		"induced failure retained a private machine identity",
-		".hyprland-machine-id.*",
 		"evidence.json",
 		"test.log",
 		"summary.md",
@@ -111,6 +91,9 @@ func TestHyprlandWorkflowUsesOnlyVerifiedVKMSDevice(t *testing.T) {
 		"actions/checkout@v",
 		"actions/setup-go@v",
 		"actions/upload-artifact@v",
+		"dbus-daemon",
+		"export DBUS_SESSION_BUS_ADDRESS",
+		"machine_id_file",
 	} {
 		if strings.Contains(contract, forbidden) {
 			t.Errorf("Hyprland evidence contract contains unsafe token %q", forbidden)
@@ -130,7 +113,6 @@ func TestHyprlandRunnerImageIsImmutableAndMinimal(t *testing.T) {
 		"COPY infrastructure/hyprland-runner/mirrorlist",
 		"hyprland",
 		"seatd",
-		"/usr/bin/dbus-daemon",
 		"wev",
 		"go mod download",
 	} {
@@ -138,7 +120,13 @@ func TestHyprlandRunnerImageIsImmutableAndMinimal(t *testing.T) {
 			t.Errorf("Hyprland runner image omits %q", required)
 		}
 	}
-	for _, forbidden := range []string{"FROM archlinux:latest", "\n        sway \\", "weston"} {
+	for _, forbidden := range []string{
+		"FROM archlinux:latest",
+		"\n        dbus \\",
+		"\n        sway \\",
+		"/usr/bin/dbus-daemon",
+		"weston",
+	} {
 		if strings.Contains(containerfile, forbidden) {
 			t.Errorf("Hyprland runner image contains %q", forbidden)
 		}

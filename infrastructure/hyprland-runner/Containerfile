@@ -5,7 +5,6 @@ COPY infrastructure/hyprland-runner/mirrorlist /etc/pacman.d/mirrorlist
 RUN pacman -Syu --noconfirm --needed \
         base-devel \
         coreutils \
-        dbus \
         git \
         go \
         hyprland \
@@ -23,8 +22,6 @@ RUN pacman -Syu --noconfirm --needed \
 
 RUN for command in \
         /usr/bin/bash \
-        /usr/bin/dbus-daemon \
-        /usr/bin/dbus-run-session \
         /usr/bin/git \
         /usr/bin/go \
         /usr/bin/Hyprland \

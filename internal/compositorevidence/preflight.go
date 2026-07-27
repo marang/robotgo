@@ -140,7 +140,8 @@ func preflight(
 	if err := dependencies.socketReady(config.RuntimeDir, config.WaylandDisplay); err != nil {
 		return PreflightReport{}, fmt.Errorf("wayland socket check failed: %w", err)
 	}
-	if strings.TrimSpace(config.SessionBusAddress) == "" {
+	sessionBusRequired := config.Cell != CellHyprlandWindow
+	if sessionBusRequired && strings.TrimSpace(config.SessionBusAddress) == "" {
 		return PreflightReport{}, errors.New("session bus check failed")
 	}
 
@@ -160,8 +161,10 @@ func preflight(
 		output:  dependencies.output,
 		timeout: config.ProbeTimeout,
 	}
-	if err := probeBusName(ctx, probe, "org.freedesktop.DBus"); err != nil {
-		return PreflightReport{}, fmt.Errorf("session bus check failed: %w", err)
+	if sessionBusRequired {
+		if err := probeBusName(ctx, probe, "org.freedesktop.DBus"); err != nil {
+			return PreflightReport{}, fmt.Errorf("session bus check failed: %w", err)
+		}
 	}
 	platform, err := probePlatform(ctx, dependencies.readFile, probe)
 	if err != nil {

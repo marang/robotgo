@@ -125,10 +125,6 @@ jobs:
             echo 'induced failure retained an isolated Hyprland runtime' >&2
             exit 1
           fi
-          if compgen -G "$RUNNER_TEMP/.hyprland-machine-id.*" >/dev/null; then
-            echo 'induced failure retained a private machine identity' >&2
-            exit 1
-          fi
       - name: Run isolated Hyprland evidence
         env:
           ROBOTGO_APPROVED_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
@@ -170,8 +166,6 @@ jobs:
             "$RUNNER_TEMP/hyprland-cleanup-supervisor.log" \
             "$RUNNER_TEMP/hyprland-supervisor.log" \
             "$RUNNER_TEMP/hyprland-hyprland-window-failure-reason"
-          find "$RUNNER_TEMP" -mindepth 1 -maxdepth 1 -type f \
-            -name '.hyprland-machine-id.*' -delete
           rm -f -- \
             "$RUNNER_TEMP/hyprland-e2e-hyprland-window/raw-test.log" \
             "$RUNNER_TEMP/hyprland-e2e-hyprland-window/.preflight.json" || true
@@ -196,8 +190,6 @@ jobs:
             -name 'robotgo-hyprland-runtime.*' -exec rm -rf -- {} +
           test -z "$(find "$RUNNER_TEMP" -mindepth 1 -maxdepth 1 -type d \
             -name 'robotgo-hyprland-runtime.*' -print -quit)"
-          test -z "$(find "$RUNNER_TEMP" -mindepth 1 -maxdepth 1 -type f \
-            -name '.hyprland-machine-id.*' -print -quit)"
           if [ -n "${ROBOTGO_HYPRLAND_IMAGE:-}" ]; then
             docker image rm -f "$ROBOTGO_HYPRLAND_IMAGE" >/dev/null 2>&1 || true
           fi

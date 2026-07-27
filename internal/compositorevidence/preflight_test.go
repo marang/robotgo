@@ -151,9 +151,11 @@ func validPreflightConfig(lane Lane, cell Cell) PreflightConfig {
 func TestPreflightNativeHyprlandDoesNotRequirePortalOrPipeWire(t *testing.T) {
 	t.Parallel()
 	probe := &fakeProbe{}
+	config := validPreflightConfig(LaneWlroots, CellHyprlandWindow)
+	config.SessionBusAddress = ""
 	report, err := preflight(
 		context.Background(),
-		validPreflightConfig(LaneWlroots, CellHyprlandWindow),
+		config,
 		validHyprlandDependencies(probe),
 	)
 	if err != nil {
@@ -170,8 +172,8 @@ func TestPreflightNativeHyprlandDoesNotRequirePortalOrPipeWire(t *testing.T) {
 			t.Fatalf("headless Hyprland %s was not probed: %v", method, probe.calls)
 		}
 	}
-	if probe.called("swaymsg") || strings.Contains(calls, portalBusName) {
-		t.Fatalf("Hyprland cell ran an unrelated parent or portal probe: %v", probe.calls)
+	if probe.called("swaymsg") || probe.called("busctl") {
+		t.Fatalf("Hyprland cell ran an unrelated parent or session-bus probe: %v", probe.calls)
 	}
 }
 
