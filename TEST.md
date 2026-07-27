@@ -263,8 +263,8 @@ operator-driven compositor jobs remain outside the default gate.
 The additive `X11 default suite` workflow runs the complete CGO default suite
 inside a private GitHub-hosted Xvfb and explicitly proves that the display-aware
 screen-size, scale, and title tests pass rather than skip. It retains no
-synthetic desktop artifact. CircleCI remains required until this replacement
-has passed on `main` and the release/branch-protection contract is migrated.
+synthetic desktop artifact. Its stable `x11-default-suite` check is required by
+`main` branch protection and the exact-commit Release Evidence contract.
 
 Pure-Go Windows input has hermetic tests for Win32 `INPUT` layout,
 foreground-layout key mapping, Unicode surrogate pairs, partial-injection
