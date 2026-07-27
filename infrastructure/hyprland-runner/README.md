@@ -8,9 +8,10 @@ The host loads Linux `vkms`, verifies that exactly one DRM card is backed by
 that virtual driver, and passes only that card into the pinned Arch Linux
 container. The runtime has no network, `/dev/input`, render node, host display
 socket, writable source tree, checkout credentials, or physical GPU device.
-The evidence supervisor owns a private session bus and seat manager, Hyprland
-owns one virtual 1280x720 output, and RobotGo controls only a self-created
-`wev` window.
+The evidence supervisor creates an ephemeral machine identity, owns a private
+session bus and seat manager, and removes that identity on every exit path.
+Hyprland owns one virtual 1280x720 output, and RobotGo controls only a
+self-created `wev` window.
 
 The runtime proves:
 
