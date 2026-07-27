@@ -155,9 +155,28 @@ jobs:
           if-no-files-found: error
           retention-days: 90
 
+  portal-input-evidence:
+    name: Portal input evidence
+    if: github.event_name == 'release' || github.event_name == 'workflow_dispatch'
+    uses: ./.github/workflows/remote-desktop-e2e.yml
+    with:
+      desktop: all
+      topology: multi-output
+
+  portal-capture-evidence:
+    name: Portal capture evidence
+    if: github.event_name == 'release' || github.event_name == 'workflow_dispatch'
+    uses: ./.github/workflows/screencast-e2e.yml
+    with:
+      desktop: all
+      topology: multi-output
+
   protected-checks:
     if: github.event_name == 'release' || github.event_name == 'workflow_dispatch'
-    needs: release-evidence-validation
+    needs:
+      - portal-capture-evidence
+      - portal-input-evidence
+      - release-evidence-validation
     runs-on: ubuntu-latest
     timeout-minutes: 12
     permissions:
@@ -212,6 +231,10 @@ jobs:
           nocgo (ubuntu-latest)
           nocgo (windows-latest)
           ocr
+          Portal capture evidence / GitHub-hosted gnome multi-output persistent capture
+          Portal capture evidence / GitHub-hosted kde multi-output persistent capture
+          Portal input evidence / GitHub-hosted gnome multi-output portal input
+          Portal input evidence / GitHub-hosted kde multi-output portal input
           portal-availability
           race
           release-evidence-validation
@@ -308,7 +331,12 @@ jobs:
             'nocgo (macOS-latest)' \
             'nocgo (ubuntu-latest)' \
             'nocgo (windows-latest)' \
-            ocr portal-availability race release-evidence-validation sanitizer \
+            ocr \
+            'Portal capture evidence / GitHub-hosted gnome multi-output persistent capture' \
+            'Portal capture evidence / GitHub-hosted kde multi-output persistent capture' \
+            'Portal input evidence / GitHub-hosted gnome multi-output portal input' \
+            'Portal input evidence / GitHub-hosted kde multi-output portal input' \
+            portal-availability race release-evidence-validation sanitizer \
             'test (macOS-latest)' \
             'test (ubuntu-latest)' \
             'test (windows-latest)' \
@@ -325,7 +353,7 @@ jobs:
           jq -e --arg commit "$commit" '
             .schema_version == "1" and
             .commit == $commit and
-            (.checks | length) == 21 and
+            (.checks | length) == 25 and
             all(.checks[];
               .conclusion == "success" and
               (.provider | type) == "string" and
@@ -337,6 +365,10 @@ jobs:
                    .name == "native-output" or
                    .name == "native-output-multi" or
                    .name == "native-window" or
+                   .name == "Portal capture evidence / GitHub-hosted gnome multi-output persistent capture" or
+                   .name == "Portal capture evidence / GitHub-hosted kde multi-output persistent capture" or
+                   .name == "Portal input evidence / GitHub-hosted gnome multi-output portal input" or
+                   .name == "Portal input evidence / GitHub-hosted kde multi-output portal input" or
                    .name == "portal-availability" or
                    .name == "x11-default-suite")
                then .provider == "github-actions"

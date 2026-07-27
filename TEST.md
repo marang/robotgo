@@ -469,7 +469,9 @@ Default CI compile-checks this harness without opening a consent session.
 `.github/workflows/remote-desktop-e2e.yml` runs GNOME and KDE inside disposable
 nested-QEMU guests on GitHub-hosted Ubuntu. wlroots native and
 portal-availability evidence is promoted through the separate P005 runner path
-and is not a RemoteDesktop pass. The portal client is pure Go and therefore
+and is not a RemoteDesktop pass. The exact-release workflow reuses the
+multi-output GNOME and KDE jobs and requires both to pass for its candidate
+SHA. The portal client is pure Go and therefore
 independent of the root package's CGO setting; CGO and non-CGO high-level
 fallback dispatch remains covered by the hermetic root tests. Both desktop
 lanes run automatically for pushes to `main` and can be selected manually with
@@ -526,7 +528,9 @@ the integration test instead requires two unique physical monitor streams and
 captures one owned, non-empty PipeWire frame from each stream.
 `.github/workflows/screencast-e2e.yml` runs GNOME and KDE in the same
 disposable GitHub-hosted nested-QEMU model. Both run on `main` pushes and on
-manual `gnome|kde|all` and single-/multi-output dispatches. KDE's pinned KWin
+manual `gnome|kde|all` and single-/multi-output dispatches. The exact-release
+workflow reuses and requires both multi-output jobs for its candidate SHA.
+KDE's pinned KWin
 helper reports only
 virtual-screen, active-dialog, and pointer geometry through private D-Bus. The
 host validates a plausible dialog, scrolls the pinned CardsGridView, selects
@@ -914,9 +918,10 @@ then verify and package all six evidence cells. Its exact-commit protected
 manifest also requires every hosted Sway cell: native input, capture, window,
 single-output geometry, multi-output geometry, and portal availability. A
 missing, pending, skipped, neutral, cancelled, timed-out, or failed Sway check
-blocks the release bundle; GNOME/KDE portal checks have real-consent,
-single-output, and multi-output evidence but remain excluded until their
-checks are promoted into the exact-release manifest.
+blocks the release bundle. It additionally invokes and requires the
+multi-output GNOME and KDE RemoteDesktop and ScreenCast jobs for the same
+candidate SHA. Missing, skipped, stale, or failed portal evidence therefore
+also blocks packaging and publication.
 
 On a clean Linux native checkout, reproduce the generator/verifier path with:
 

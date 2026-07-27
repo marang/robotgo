@@ -32,6 +32,7 @@ func TestHostedPortalProofUsesEphemeralGitHubKVM(t *testing.T) {
 		hostedJob := workflow[start:]
 		hostedContract := hostedJob + "\n" + script
 		for _, required := range []string{
+			"github.event_name == 'release'",
 			"github.event_name == 'push'",
 			`'["gnome","kde"]'`,
 			"inputs.desktop == 'kde'",
@@ -88,6 +89,9 @@ func TestHostedPortalProofUsesEphemeralGitHubKVM(t *testing.T) {
 		}
 		if !strings.Contains(workflow, "permissions:\n  contents: read") {
 			t.Errorf("%s omits read-only workflow permissions", path)
+		}
+		if !strings.Contains(workflow, "  workflow_call:\n") {
+			t.Errorf("%s cannot be called by the release-evidence workflow", path)
 		}
 		for _, forbidden := range []string{
 			"self-hosted",

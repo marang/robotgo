@@ -21,11 +21,18 @@ func TestReleaseEvidenceRequiresEveryPromotedHostedCheck(t *testing.T) {
 		"native-window",
 		"portal-availability",
 		"x11-default-suite",
+		"Portal capture evidence / GitHub-hosted gnome multi-output persistent capture",
+		"Portal capture evidence / GitHub-hosted kde multi-output persistent capture",
+		"Portal input evidence / GitHub-hosted gnome multi-output portal input",
+		"Portal input evidence / GitHub-hosted kde multi-output portal input",
 	} {
-		count := 0
-		for _, field := range strings.Fields(text) {
-			if strings.Trim(field, "'\"\\()") == check {
-				count++
+		count := strings.Count(text, check)
+		if !strings.Contains(check, " ") {
+			count = 0
+			for _, field := range strings.Fields(text) {
+				if strings.Trim(field, "'\"\\()") == check {
+					count++
+				}
 			}
 		}
 		if count != 3 {
@@ -36,7 +43,7 @@ func TestReleaseEvidenceRequiresEveryPromotedHostedCheck(t *testing.T) {
 			)
 		}
 	}
-	if !strings.Contains(text, "(.checks | length) == 21") {
+	if !strings.Contains(text, "(.checks | length) == 25") {
 		t.Fatal("release evidence does not require the expanded exact check count")
 	}
 	if !strings.Contains(text, "then .provider == \"github-actions\"") {
@@ -50,6 +57,31 @@ func TestReleaseEvidenceRequiresEveryPromotedHostedCheck(t *testing.T) {
 	} {
 		if strings.Contains(text, removed) {
 			t.Fatalf("release evidence retains CircleCI contract %q", removed)
+		}
+	}
+}
+
+func TestReleaseEvidenceCallsPortalProofBeforeCollection(t *testing.T) {
+	t.Parallel()
+	workflow, err := os.ReadFile("../.github/workflows/release-evidence.yml")
+	if err != nil {
+		t.Fatalf("read release-evidence workflow: %v", err)
+	}
+	text := normalizeWorkflowText(workflow)
+	for _, required := range []string{
+		"  portal-input-evidence:",
+		"name: Portal input evidence",
+		"uses: ./.github/workflows/remote-desktop-e2e.yml",
+		"  portal-capture-evidence:",
+		"name: Portal capture evidence",
+		"uses: ./.github/workflows/screencast-e2e.yml",
+		"desktop: all",
+		"topology: multi-output",
+		"      - portal-capture-evidence",
+		"      - portal-input-evidence",
+	} {
+		if !strings.Contains(text, required) {
+			t.Errorf("release evidence omits portal-gate contract %q", required)
 		}
 	}
 }

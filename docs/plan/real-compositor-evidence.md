@@ -1,7 +1,7 @@
 # Protected Real-Compositor Evidence Plan
 
-Status: Hosted wlroots and GNOME/KDE single-/multi-output portal execution
-delivered; portal release promotion remains
+Status: Complete; hosted wlroots and GNOME/KDE single-/multi-output portal
+execution delivered and exact-release gates promoted
 
 Linear project:
 [RobotGo | P005 | Protected Compositor Evidence](https://linear.app/riotbox/project/robotgo-or-p005-or-protected-compositor-evidence-d66467e3b5ee)
@@ -247,7 +247,7 @@ green.
    Multi-output proof is retained in
    [`RemoteDesktop E2E` run 30220551561](https://github.com/marang/robotgo/actions/runs/30220551561)
    and [`ScreenCast E2E` run 30222315257](https://github.com/marang/robotgo/actions/runs/30222315257).
-   Release-gate promotion remains open.
+   The GNOME/KDE multi-output jobs are required by exact-release evidence.
 5. **Hosted KDE single- and multi-output proof delivered:** retained exact-commit
    [`RemoteDesktop E2E` run 30204553569](https://github.com/marang/robotgo/actions/runs/30204553569)
    and
@@ -256,11 +256,11 @@ green.
    execution, and transient-artifact cleanup. Multi-output proof is retained in
    [`RemoteDesktop E2E` run 30220551561](https://github.com/marang/robotgo/actions/runs/30220551561)
    and [`ScreenCast E2E` run 30221893077](https://github.com/marang/robotgo/actions/runs/30221893077).
-   Release-gate promotion remains open.
-6. **Implemented for hosted wlroots:** require all six stable Sway checks for
-   the exact release commit and in branch protection. Extend promotion to GNOME
-   after wiring its passing jobs into exact-release evidence, then extend the
-   same promotion to the now-proven KDE jobs.
+   The GNOME/KDE multi-output jobs are required by exact-release evidence.
+6. **Release promotion delivered:** require all six stable Sway checks for the
+   exact release commit and in branch protection, plus the four reusable
+   GNOME/KDE multi-output RemoteDesktop/ScreenCast jobs for the exact release
+   commit.
 
 Create Linear issues only when the next slice has concrete runner ownership and
 acceptance evidence. Do not create speculative implementation tickets for

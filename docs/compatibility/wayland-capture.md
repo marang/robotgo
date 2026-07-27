@@ -18,7 +18,9 @@ passing result.
 The GNOME/KDE matrix is defined in `.github/workflows/screencast-e2e.yml`.
 Both desktops run in credential-free nested guests. Single-output cells capture
 two frames through one consent session; multi-output cells capture one frame
-from each of two physical streams. Neither mode retains pixels or raw logs.
+from each of two physical streams. Release Evidence reuses and requires both
+multi-output jobs for the exact candidate SHA. Neither mode retains pixels or
+raw logs.
 Sway/wlroots native
 capture and explicit portal availability run separately in
 `.github/workflows/sway-e2e.yml`; a wlroots environment is not counted as a
