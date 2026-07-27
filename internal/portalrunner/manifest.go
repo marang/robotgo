@@ -26,6 +26,9 @@ const (
 	// HostedGuestEnvKey gates commands that may reconfigure the disposable
 	// hosted guest desktop.
 	HostedGuestEnvKey = "ROBOTGO_HOSTED_GUEST"
+	// HostedExpectedOutputsEnvKey carries the encoded logical topology for
+	// consent-free hosted display-bounds evidence.
+	HostedExpectedOutputsEnvKey = "ROBOTGO_HOSTED_EXPECTED_OUTPUTS"
 	// PortalMultiOutputEnvKey enables the hosted multi-output portal contract.
 	PortalMultiOutputEnvKey = "ROBOTGO_PORTAL_MULTI_OUTPUT"
 	// PortalExpectedOutputsEnvKey carries the encoded hosted output topology.

@@ -15,7 +15,10 @@ import (
 func TestHostedIdentityIsExact(t *testing.T) {
 	t.Parallel()
 	commit := strings.Repeat("a", 40)
-	for _, cell := range []string{"remote-desktop", "screencast"} {
+	for _, cell := range []string{
+		HostedCellRemoteDesktop,
+		HostedCellScreenCast,
+	} {
 		for _, topology := range []string{
 			HostedTopologySingle,
 			HostedTopologyMulti,
@@ -33,6 +36,13 @@ func TestHostedIdentityIsExact(t *testing.T) {
 				)
 			}
 		}
+	}
+	if err := validateHostedIdentity(
+		commit,
+		HostedCellDisplayBounds,
+		HostedTopologyMulti,
+	); err != nil {
+		t.Fatalf("validate display-bounds identity: %v", err)
 	}
 	for _, invalid := range []struct {
 		commit   string
@@ -58,6 +68,10 @@ func TestHostedIdentityIsExact(t *testing.T) {
 		{
 			commit: commit, cell: "remote-desktop",
 			topology: "other",
+		},
+		{
+			commit: commit, cell: HostedCellDisplayBounds,
+			topology: HostedTopologySingle,
 		},
 	} {
 		if err := validateHostedIdentity(
@@ -270,6 +284,66 @@ func TestHostedPortalMultiOutputCommandBindsCanonicalTopology(
 	}
 }
 
+func TestHostedDisplayBoundsCommandIsWaylandOnlyAndConsentFree(t *testing.T) {
+	t.Parallel()
+	command, err := hostedPortalTestCommandForTopology(
+		portalLaneGNOME,
+		HostedCellDisplayBounds,
+		"",
+		HostedTopologyMulti,
+		validManifest().HostedDisplay,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, required := range []string{
+		"runuser -u robotgo",
+		"env -u DISPLAY",
+		"WAYLAND_DISPLAY=wayland-0",
+		"XDG_SESSION_TYPE=wayland",
+		"ROBOTGO_HOSTED_BOUNDS_E2E=1",
+		HostedExpectedOutputsEnvKey +
+			"='0,0,1280,720;1280,0,1024,768'",
+		"TestHostedWaylandBoundsCGORuntime",
+		"CGO_ENABLED=0",
+		"TestHostedWaylandBoundsPureGoRuntime",
+	} {
+		if !strings.Contains(command, required) {
+			t.Errorf("display-bounds command omits %q", required)
+		}
+	}
+	for _, forbidden := range []string{
+		"DISPLAY=:",
+		"ROBOTGO_PORTAL_",
+		"ROBOTGO_REMOTE_DESKTOP_E2E",
+		"ROBOTGO_SCREENCAST_E2E",
+		"TestRemoteDesktopPortalRuntime",
+		"TestPipeWireCapturePersistentSessionIntegration",
+	} {
+		if strings.Contains(command, forbidden) {
+			t.Errorf("display-bounds command contains %q", forbidden)
+		}
+	}
+	if _, err := hostedPortalTestCommandForTopology(
+		portalLaneGNOME,
+		HostedCellDisplayBounds,
+		"/run/user/1100/unexpected.ready",
+		HostedTopologyMulti,
+		validManifest().HostedDisplay,
+	); err == nil {
+		t.Fatal("display-bounds command accepted a consent marker")
+	}
+	if _, err := hostedPortalTestCommandForTopology(
+		portalLaneGNOME,
+		HostedCellDisplayBounds,
+		"",
+		HostedTopologySingle,
+		validManifest().HostedDisplay,
+	); err == nil {
+		t.Fatal("display-bounds command accepted single-output topology")
+	}
+}
+
 func TestHostedDisplayConfigurationIsGuestRestrictedAndCredentialFree(
 	t *testing.T,
 ) {
@@ -423,6 +497,14 @@ func TestHostedPortalApprovalPolicyMatchesDesktopBackend(t *testing.T) {
 		{
 			lane: portalLaneKDE, cell: "screencast",
 			topology: HostedTopologyMulti, want: true,
+		},
+		{
+			lane: portalLaneGNOME, cell: HostedCellDisplayBounds,
+			topology: HostedTopologyMulti, want: false,
+		},
+		{
+			lane: portalLaneKDE, cell: HostedCellDisplayBounds,
+			topology: HostedTopologyMulti, want: false,
 		},
 	} {
 		if got := hostedPortalApprovalRequired(

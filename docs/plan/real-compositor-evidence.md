@@ -210,6 +210,17 @@ and
 [ScreenCast](https://flatpak.github.io/xdg-desktop-portal/docs/doc-org.freedesktop.portal.ScreenCast.html)
 interfaces.
 
+### Consent-free GNOME and KDE output proof
+
+The follow-up bounds cell reuses the disposable GNOME/KDE guests but does not
+use either portal interface. It configures the manifest-bound two-output
+topology, removes `DISPLAY` from the test process, and runs the same public
+geometry contract once through the native-CGO Wayland client and once through
+the Pure-Go Wayland client. It requires exact output count, deterministic
+primary-first bounds, aggregate desktop bounds, primary size, invalid-index
+errors, and legacy/error API parity. No pixels, clipboard data, window content,
+or input events are read or produced.
+
 ### Promotion to protected evidence
 
 A lane moves from `pending` to `pass` in the compatibility matrices only when:
@@ -261,6 +272,10 @@ green.
    exact release commit and in branch protection, plus the four reusable
    GNOME/KDE multi-output RemoteDesktop/ScreenCast jobs for the exact release
    commit.
+7. **Implemented, runtime evidence pending:** run the consent-free public
+   multi-output bounds contract in both native-CGO and Pure-Go builds on GNOME
+   and KDE. Retain one exact-commit run with both lanes green before deciding
+   branch or release promotion.
 
 Create Linear issues only when the next slice has concrete runner ownership and
 acceptance evidence. Do not create speculative implementation tickets for

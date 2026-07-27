@@ -30,6 +30,16 @@ const (
 	maximumPortalGeometry   = 256
 	hostedXvfbEnvKey        = "ROBOTGO_HOSTED_XVFB"
 
+	// HostedCellRemoteDesktop exercises portal-backed pointer and keyboard
+	// input in a disposable desktop guest.
+	HostedCellRemoteDesktop = "remote-desktop"
+	// HostedCellScreenCast exercises persistent portal-backed capture in a
+	// disposable desktop guest.
+	HostedCellScreenCast = "screencast"
+	// HostedCellDisplayBounds exercises read-only public display geometry
+	// without opening a portal session or exposing X11 to the test process.
+	HostedCellDisplayBounds = "display-bounds"
+
 	// HostedTopologySingle preserves the established one-output portal run.
 	HostedTopologySingle = "single-output"
 	// HostedTopologyMulti enables the manifest-bound two-output experiment.
@@ -59,7 +69,7 @@ var kdeLocatorFailureStages = map[string]struct{}{
 	"window-unavailable":     {},
 }
 
-// HostedRuntimeOptions identifies one credential-free portal test in a
+// HostedRuntimeOptions identifies one credential-free integration test in a
 // disposable desktop guest running inside a GitHub-hosted Linux runner.
 type HostedRuntimeOptions struct {
 	ManifestPath   string
@@ -95,10 +105,11 @@ type hostedPortalPoint struct {
 	y int
 }
 
-// RunHostedPortal transfers the exact clean commit into a disposable guest,
-// runs one portal integration cell, and drives desktop consent independently
-// through QMP. It does not register a GitHub Actions runner or consume tokens.
-func RunHostedPortal(
+// RunHosted transfers the exact clean commit into a disposable guest and runs
+// one integration cell. Portal cells drive desktop consent independently
+// through QMP; read-only cells do not create a portal session. The runner does
+// not register a GitHub Actions runner or consume tokens.
+func RunHosted(
 	ctx context.Context,
 	options HostedRuntimeOptions,
 ) (returnError error) {
@@ -417,9 +428,12 @@ func RunHostedPortal(
 		}
 	}
 
-	marker := "/run/user/1100/robotgo-portal-consent-" +
-		options.Cell + ".ready"
-	testLogPath := filepath.Join(runDirectory, "portal-test.log")
+	marker := ""
+	if hostedCellUsesPortal(options.Cell) {
+		marker = "/run/user/1100/robotgo-portal-consent-" +
+			options.Cell + ".ready"
+	}
+	testLogPath := filepath.Join(runDirectory, "hosted-test.log")
 	testLog, err := os.OpenFile(
 		testLogPath,
 		os.O_WRONLY|os.O_CREATE|os.O_EXCL,
@@ -457,7 +471,7 @@ func RunHostedPortal(
 	testCommand.Stderr = testOutput
 	configureHostedProcess(testCommand)
 	if err := testCommand.Start(); err != nil {
-		return errors.New("start hosted portal integration test")
+		return errors.New("start hosted integration test")
 	}
 	testResult := &hostedProcessResult{done: make(chan struct{})}
 	go func() {
@@ -515,21 +529,32 @@ func RunHostedPortal(
 	}
 	<-testResult.done
 	testError := testResult.err
-	cleanupError := assertConsentMarkerRemoved(
-		guestContext,
-		options.Commands,
-		sshArguments,
-		marker,
-		logWriter,
-	)
+	var cleanupError error
+	if marker != "" {
+		cleanupError = assertConsentMarkerRemoved(
+			guestContext,
+			options.Commands,
+			sshArguments,
+			marker,
+			logWriter,
+		)
+	}
 	if testError != nil {
-		stage := readPortalFailureStage(testLogPath)
-		if stage == "" {
-			testError = errors.New("hosted portal integration test failed")
+		if hostedCellUsesPortal(options.Cell) {
+			stage := readPortalFailureStage(testLogPath)
+			if stage == "" {
+				testError = errors.New(
+					"hosted portal integration test failed",
+				)
+			} else {
+				testError = fmt.Errorf(
+					"hosted portal integration test failed at stage %q",
+					stage,
+				)
+			}
 		} else {
-			testError = fmt.Errorf(
-				"hosted portal integration test failed at stage %q",
-				stage,
+			testError = errors.New(
+				"hosted display-bounds integration test failed",
 			)
 		}
 	}
@@ -552,11 +577,11 @@ func RunHostedPortal(
 			return fmt.Errorf("hosted %s VM exited unsuccessfully", manifest.Lane)
 		}
 	case <-runtimeContext.Done():
-		return fmt.Errorf("hosted portal lifetime ended: %w", runtimeContext.Err())
+		return fmt.Errorf("hosted integration lifetime ended: %w", runtimeContext.Err())
 	}
 	return writeStatus(
 		options.Output,
-		"hosted portal test complete cell=%s commit=%s\n",
+		"hosted test complete cell=%s commit=%s\n",
 		options.Cell,
 		options.Commit,
 	)
@@ -686,12 +711,19 @@ func validateHostedIdentity(commit, cell, topology string) error {
 		commit != strings.ToLower(commit) {
 		return errors.New("hosted portal commit is invalid")
 	}
-	if cell != "remote-desktop" && cell != "screencast" {
+	if cell != HostedCellRemoteDesktop &&
+		cell != HostedCellScreenCast &&
+		cell != HostedCellDisplayBounds {
 		return errors.New("hosted portal cell is invalid")
 	}
 	if topology != HostedTopologySingle &&
 		topology != HostedTopologyMulti {
 		return errors.New("hosted portal topology is invalid")
+	}
+	if cell == HostedCellDisplayBounds && topology != HostedTopologyMulti {
+		return errors.New(
+			"hosted display-bounds evidence requires multi-output topology",
+		)
 	}
 	return nil
 }
@@ -962,7 +994,25 @@ func hostedPortalTestCommandForTopology(
 		topology != HostedTopologyMulti {
 		return "", errors.New("hosted portal topology is invalid")
 	}
-	environment := strings.Join([]string{
+	if !hostedCellUsesPortal(cell) && cell != HostedCellDisplayBounds {
+		return "", errors.New("hosted portal cell is invalid")
+	}
+	if hostedCellUsesPortal(cell) && marker == "" {
+		return "", errors.New("hosted portal cell requires a consent marker")
+	}
+	if cell == HostedCellDisplayBounds {
+		if marker != "" {
+			return "", errors.New(
+				"hosted display-bounds cell must not receive a consent marker",
+			)
+		}
+		if topology != HostedTopologyMulti {
+			return "", errors.New(
+				"hosted display-bounds evidence requires multi-output topology",
+			)
+		}
+	}
+	environmentParts := []string{
 		"HOME=/home/robotgo",
 		"XDG_RUNTIME_DIR=/run/user/1100",
 		"DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1100/bus",
@@ -970,39 +1020,66 @@ func hostedPortalTestCommandForTopology(
 		"XDG_CURRENT_DESKTOP=" + currentDesktop,
 		"XDG_SESSION_DESKTOP=" + sessionDesktop,
 		"XDG_SESSION_TYPE=wayland",
-		"DISPLAY=:0",
 		"HTTP_PROXY=http://10.0.2.2:3128",
 		"HTTPS_PROXY=http://10.0.2.2:3128",
 		"http_proxy=http://10.0.2.2:3128",
 		"https_proxy=http://10.0.2.2:3128",
 		"NO_PROXY=localhost,127.0.0.1",
 		"no_proxy=localhost,127.0.0.1",
-		"ROBOTGO_PORTAL_CONSENT_READY_FILE=" + marker,
-	}, " ")
+	}
+	if hostedCellUsesPortal(cell) {
+		environmentParts = append(
+			environmentParts,
+			"DISPLAY=:0",
+			"ROBOTGO_PORTAL_CONSENT_READY_FILE="+marker,
+		)
+	}
+	environment := strings.Join(environmentParts, " ")
 	if topology == HostedTopologyMulti {
 		encoded, err := display.Encode()
 		if err != nil {
 			return "", err
 		}
-		environment += " " + PortalMultiOutputEnvKey + "=1" +
-			" " + PortalExpectedOutputsEnvKey + "=" + shellQuote(encoded)
+		if cell == HostedCellDisplayBounds {
+			environment += " " + HostedExpectedOutputsEnvKey + "=" +
+				shellQuote(encoded)
+		} else {
+			environment += " " + PortalMultiOutputEnvKey + "=1" +
+				" " + PortalExpectedOutputsEnvKey + "=" + shellQuote(encoded)
+		}
 	}
 	var test string
-	if cell == "screencast" {
+	switch cell {
+	case HostedCellScreenCast:
 		environment += " ROBOTGO_SCREENCAST_E2E=1" +
 			" ROBOTGO_SCREENCAST_REQUIRE_MONITOR=1"
 		test = "go test -count=1 -timeout=3m -tags=pipewire,integration " +
 			"./screen/portal " +
 			"-run '^TestPipeWireCapturePersistentSessionIntegration$' -v"
-	} else {
+	case HostedCellRemoteDesktop:
 		environment += " ROBOTGO_REMOTE_DESKTOP_E2E=1"
 		test = "go test -count=1 -timeout=3m -tags=integration " +
 			"./input/portal " +
 			"-run '^TestRemoteDesktopPortalRuntime$' -v"
+	case HostedCellDisplayBounds:
+		environment += " ROBOTGO_HOSTED_BOUNDS_E2E=1"
+		boundsTests := strings.Join([]string{
+			"go test -count=1 -timeout=3m " +
+				"-tags=wayland,hostedboundsintegration . " +
+				"-run '^TestHostedWaylandBoundsCGORuntime$' -v",
+			"CGO_ENABLED=0 go test -count=1 -timeout=3m " +
+				"-tags=hostedboundsintegration . " +
+				"-run '^TestHostedWaylandBoundsPureGoRuntime$' -v",
+		}, " && ")
+		test = "bash -c " + shellQuote(boundsTests)
 	}
 	guestCommand := "cd /home/robotgo/robotgo; exec " + test
-	return "set -euo pipefail; exec runuser -u robotgo -- env " +
+	return "set -euo pipefail; exec runuser -u robotgo -- env -u DISPLAY " +
 		environment + " bash -c " + shellQuote(guestCommand), nil
+}
+
+func hostedCellUsesPortal(cell string) bool {
+	return cell == HostedCellRemoteDesktop || cell == HostedCellScreenCast
 }
 
 func hostedDesktopEnvironment(lane string) (current, session string, err error) {
@@ -1017,8 +1094,9 @@ func hostedDesktopEnvironment(lane string) (current, session string, err error) 
 }
 
 func hostedPortalApprovalRequired(lane, cell, topology string) bool {
-	return lane == portalLaneGNOME ||
-		(lane == portalLaneKDE && cell == "screencast")
+	return hostedCellUsesPortal(cell) &&
+		(lane == portalLaneGNOME ||
+			(lane == portalLaneKDE && cell == HostedCellScreenCast))
 }
 
 func approveHostedPortal(

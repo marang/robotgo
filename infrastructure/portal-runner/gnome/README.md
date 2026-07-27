@@ -1,7 +1,8 @@
 # GitHub-Hosted GNOME Portal Runner
 
 This directory defines RobotGo's disposable GNOME Wayland guest for real
-RemoteDesktop and ScreenCast tests. The primary execution path is nested
+RemoteDesktop, ScreenCast, and read-only display-bounds tests. The primary
+execution path is nested
 QEMU/KVM on a fresh GitHub-hosted Ubuntu runner; it does not use a developer
 workstation or register a self-hosted Actions runner.
 
@@ -43,7 +44,9 @@ go run ./internal/cmd/portalrunner hosted-run \
   -commit "$GITHUB_SHA" -cell remote-desktop
 ```
 
-Use `-cell screencast` for the persistent PipeWire cell.
+Use `-cell screencast` for the persistent PipeWire cell. The separate
+`display-bounds` cell requires `-topology multi-output`; it runs native-CGO and
+Pure-Go public output APIs with `DISPLAY` unset and creates no portal session.
 
 `build` verifies every downloaded artifact against the pinned SHA-256 digest.
 The image identity also covers the manifest, provisioning implementation, guest
@@ -52,15 +55,16 @@ silently reuse an older image.
 
 `hosted-run` refuses a dirty or different checkout, creates a bounded source
 archive for the exact lowercase commit, and starts the test as the unprivileged
-`robotgo` guest user. Immediately before requesting portal consent, the test
-creates a private non-sensitive readiness marker. A separate host-side QMP
-client sends GNOME's real dialog mnemonics through the VM's virtual keyboard
-for RemoteDesktop. For the pinned two-output ScreenCast dialog, it selects both
-manifest-declared monitor buttons through the VM's virtual pointer. The target
-coordinates are derived from the validated output manifest and pinned dialog
-contract; no pixels, accessibility data, or window contents leave the guest.
-RobotGo does not patch or auto-approve the portal backend and is not the
-consent-input actor.
+`robotgo` guest user. For portal cells, the test creates a private
+non-sensitive readiness marker immediately before requesting consent. A
+separate host-side QMP client sends GNOME's real dialog mnemonics through the
+VM's virtual keyboard for RemoteDesktop. For the pinned two-output ScreenCast
+dialog, it selects both manifest-declared monitor buttons through the VM's
+virtual pointer. The target coordinates are derived from the validated output
+manifest and pinned dialog contract; no pixels, accessibility data, or window
+contents leave the guest. RobotGo does not patch or auto-approve the portal
+backend and is not the consent-input actor. The display-bounds cell never
+creates the marker or enters this consent path.
 
 Build and runtime logs, serial output, SSH keys, cloud-init inputs, seed disks,
 and overlays remain inside a private per-run directory. The command removes

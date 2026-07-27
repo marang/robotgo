@@ -224,6 +224,10 @@ backends.
     retained alongside blocking hosted wlroots/Sway and Weston
     single-/multi-output evidence. Keep the promoted multi-output portal release
     gates green.
+  - A separate consent-free hosted GNOME/KDE two-output workflow exercises
+    public native-CGO and Pure-Go bounds, count, primary, aggregate, invalid
+    index, and legacy/error parity with `DISPLAY` unset. Retain a passing
+    exact-commit run before promoting it into release evidence.
 - Portal Path:
   - Expand troubleshooting for xdg-desktop-portal backend selection and consent prompts.
   - Keep the hosted high-level RemoteDesktop input fallback validation green on
@@ -291,6 +295,9 @@ backends.
     release gates; the four GNOME/KDE multi-output portal checks are promoted
     into exact-release gates. Keep the isolated `vkms` Hyprland window cell
     green as a branch check and exact-release gate.
+  - Keep the consent-free hosted GNOME/KDE bounds workflow independent from
+    portal consent and pixel/input paths. Promote it only after both desktop
+    lanes pass for the same exact commit.
   - Keep the race/vet and native ASan/LeakSanitizer CI jobs green and protected.
     The sanitizer gate covers the default CGO suite plus hermetic screencopy
     allocation/free, bounded timeout cleanup, and FD ownership paths.
