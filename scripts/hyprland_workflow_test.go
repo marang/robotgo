@@ -56,6 +56,7 @@ func TestHyprlandWorkflowUsesOnlyVerifiedVKMSDevice(t *testing.T) {
 		"go test -asan -count=1",
 		"ROBOTGO_HYPRLAND_E2E_FAIL_AFTER_START=1",
 		"hyprland-hyprland-window-failure-reason",
+		"isolated Hyprland evidence failed at sanitized stage: unavailable",
 		"induced failure retained an isolated Hyprland runtime",
 		"evidence.json",
 		"test.log",

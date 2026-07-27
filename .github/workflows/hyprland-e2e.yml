@@ -106,13 +106,21 @@ jobs:
           status=$?
           set -e
           rm -f -- "$supervisor_log"
-          test "$status" -eq 86
           reason_file="$RUNNER_TEMP/hyprland-hyprland-window-failure-reason"
-          reason="$(./scripts/read-hyprland-failure-reason.sh \
-            "$RUNNER_TEMP" "$reason_file")"
+          if ! reason="$(./scripts/read-hyprland-failure-reason.sh \
+            "$RUNNER_TEMP" "$reason_file" 2>&1)"; then
+            reason='isolated Hyprland evidence failed at sanitized stage: unavailable'
+          fi
+          rm -f -- "$reason_file"
+          if [ "$status" -ne 86 ]; then
+            printf '%s\n' "$reason" >&2
+            if [ "$status" -eq 0 ]; then
+              exit 1
+            fi
+            exit "$status"
+          fi
           test "$reason" = \
             'isolated Hyprland evidence failed at sanitized stage: induced-failure'
-          rm -f -- "$reason_file"
           if compgen -G "$RUNNER_TEMP/robotgo-hyprland-runtime.*" >/dev/null; then
             echo 'induced failure retained an isolated Hyprland runtime' >&2
             exit 1
