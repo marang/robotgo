@@ -33,7 +33,6 @@ func TestPipeWireCapturePersistentSessionIntegration(t *testing.T) {
 		if err != nil {
 			t.Fatalf("ProbeScreenCast error: %v", err)
 		}
-		signalScreenCastConsentReady(t)
 		testMultiplePipeWireStreams(
 			t,
 			&stage,
@@ -42,7 +41,6 @@ func TestPipeWireCapturePersistentSessionIntegration(t *testing.T) {
 		)
 		return
 	}
-	signalScreenCastConsentReady(t)
 	openCtx, cancelOpen := context.WithTimeout(context.Background(), 2*time.Minute)
 	capture, err := openPipeWireCapture(
 		openCtx,
@@ -54,6 +52,20 @@ func TestPipeWireCapturePersistentSessionIntegration(t *testing.T) {
 		0,
 		func(current string) {
 			stage = current
+		},
+		func(
+			ctx context.Context,
+			options ScreenCastOptions,
+		) (ScreenCast, error) {
+			return openScreenCastBeforeStart(
+				ctx,
+				options,
+				func() error {
+					signalScreenCastConsentReady(t)
+					waitForScreenCastConsentStart(t, ctx)
+					return nil
+				},
+			)
 		},
 	)
 	cancelOpen()
@@ -105,12 +117,20 @@ func testMultiplePipeWireStreams(
 		context.Background(),
 		2*time.Minute,
 	)
-	session, err := OpenScreenCast(openCtx, ScreenCastOptions{
-		Sources:  ScreenCastSourceMonitor,
-		Multiple: true,
-		Cursor:   ScreenCastCursorEmbedded,
-		Persist:  ScreenCastPersistApplication,
-	})
+	session, err := openScreenCastBeforeStart(
+		openCtx,
+		ScreenCastOptions{
+			Sources:  ScreenCastSourceMonitor,
+			Multiple: true,
+			Cursor:   ScreenCastCursorEmbedded,
+			Persist:  ScreenCastPersistApplication,
+		},
+		func() error {
+			signalScreenCastConsentReady(t)
+			waitForScreenCastConsentStart(t, openCtx)
+			return nil
+		},
+	)
 	cancelOpen()
 	if err != nil {
 		if classified := screenCastPortalFailureStage(err); classified != "" {
@@ -350,10 +370,19 @@ func TestScreenCastConsentMarkerCleanup(t *testing.T) {
 		runtimeDirectory,
 		"robotgo-portal-consent-screencast.ready",
 	)
+	startGate := filepath.Join(
+		runtimeDirectory,
+		"robotgo-portal-consent-screencast.start",
+	)
+	if err := os.WriteFile(startGate, []byte("start\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	t.Setenv("XDG_RUNTIME_DIR", runtimeDirectory)
 	t.Setenv("ROBOTGO_PORTAL_CONSENT_READY_FILE", marker)
+	t.Setenv("ROBOTGO_PORTAL_CONSENT_START_GATE_FILE", startGate)
 	t.Run("lifecycle", func(t *testing.T) {
 		signalScreenCastConsentReady(t)
+		waitForScreenCastConsentStart(t, context.Background())
 		info, err := os.Lstat(marker)
 		if err != nil {
 			t.Fatal(err)
@@ -371,6 +400,9 @@ func TestScreenCastConsentMarkerCleanup(t *testing.T) {
 	})
 	if _, err := os.Lstat(marker); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("consent marker survived test cleanup: %v", err)
+	}
+	if _, err := os.Lstat(startGate); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("consent start gate survived test cleanup: %v", err)
 	}
 }
 
@@ -409,4 +441,53 @@ func signalScreenCastConsentReady(t *testing.T) {
 			t.Errorf("remove portal consent readiness marker: %v", err)
 		}
 	})
+}
+
+func waitForScreenCastConsentStart(t *testing.T, ctx context.Context) {
+	t.Helper()
+	const (
+		cell    = "screencast"
+		envName = "ROBOTGO_PORTAL_CONSENT_START_GATE_FILE"
+	)
+	path := os.Getenv(envName)
+	if path == "" {
+		return
+	}
+	runtimeDirectory := filepath.Clean(os.Getenv("XDG_RUNTIME_DIR"))
+	if !filepath.IsAbs(path) ||
+		filepath.Clean(path) != path ||
+		filepath.Dir(path) != runtimeDirectory ||
+		filepath.Base(path) != "robotgo-portal-consent-"+cell+".start" {
+		t.Fatal("portal consent start gate is outside the private runtime directory")
+	}
+	t.Cleanup(func() {
+		if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
+			t.Errorf("remove portal consent start gate: %v", err)
+		}
+	})
+	poll := time.NewTicker(25 * time.Millisecond)
+	defer poll.Stop()
+	for {
+		content, err := os.ReadFile(path)
+		if err == nil {
+			info, statErr := os.Lstat(path)
+			if statErr != nil {
+				t.Fatalf("inspect portal consent start gate: %v", statErr)
+			}
+			if !info.Mode().IsRegular() ||
+				info.Mode().Perm() != 0o600 ||
+				string(content) != "start\n" {
+				t.Fatal("portal consent start gate is invalid")
+			}
+			return
+		}
+		if !errors.Is(err, os.ErrNotExist) {
+			t.Fatalf("read portal consent start gate: %v", err)
+		}
+		select {
+		case <-ctx.Done():
+			t.Fatalf("wait for portal consent start gate: %v", ctx.Err())
+		case <-poll.C:
+		}
+	}
 }

@@ -64,15 +64,21 @@ silently reuse an older image.
 `hosted-run` refuses a dirty or different checkout, creates a bounded source
 archive for the exact lowercase commit, and starts the test as the unprivileged
 `robotgo` guest user. For portal cells, the test creates a private
-non-sensitive readiness marker immediately before requesting consent. A
-separate host-side QMP client sends GNOME's real dialog mnemonics through the
-VM's virtual keyboard for RemoteDesktop. For the pinned two-output ScreenCast
+non-sensitive readiness marker after every non-modal negotiation request has
+completed. On GNOME the client then blocks on a private start gate. The guest
+controller proves no earlier request object remains, creates that gate, and
+waits for the new dialog-producing `Start` request. A separate host-side QMP
+client sends GNOME's real dialog mnemonics through the VM's virtual keyboard for
+RemoteDesktop. For the pinned two-output ScreenCast
 dialog, it selects both manifest-declared monitor buttons through the VM's
 virtual pointer. The target coordinates are derived from the validated output
 manifest and pinned dialog contract. Before QMP input, the host waits for the
-GNOME portal backend to export the transient D-Bus request object that
-immediately precedes dialog creation. The object tree stays in guest memory and
-only a fixed readiness result may cross SSH. For parentless dialogs, QMP first
+GNOME portal backend to export the new transient `Start` request object that
+immediately precedes dialog creation. The earlier `CreateSession` and
+`Select*` requests have completed before the marker exists, and their request
+objects must disappear before the start gate is released. The object tree stays
+in guest memory and only a fixed readiness result may cross SSH. For parentless
+dialogs, QMP first
 clicks the neutral center of the pinned headerbar so the subsequent documented
 mnemonics reach that dialog; multi-output ScreenCast gains focus through its
 first physical-output card click. No pixels, titles, accessibility data, or

@@ -22,6 +22,22 @@ type remoteDesktopNegotiation struct {
 }
 
 func openRemoteDesktop(ctx context.Context, portal remoteDesktopPortal, options OpenOptions, token tokenFunc) (_ *Session, retErr error) {
+	return openRemoteDesktopBeforeStart(
+		ctx,
+		portal,
+		options,
+		token,
+		nil,
+	)
+}
+
+func openRemoteDesktopBeforeStart(
+	ctx context.Context,
+	portal remoteDesktopPortal,
+	options OpenOptions,
+	token tokenFunc,
+	beforeStart func() error,
+) (_ *Session, retErr error) {
 	devices := options.Devices
 	signals := make(chan *dbus.Signal, 16)
 	portal.registerSignals(signals)
@@ -77,6 +93,14 @@ func openRemoteDesktop(ctx context.Context, portal remoteDesktopPortal, options 
 	}
 	if err := negotiation.selectSources(actualSession, options); err != nil {
 		return nil, err
+	}
+	if beforeStart != nil {
+		if err := beforeStart(); err != nil {
+			return nil, fmt.Errorf(
+				"remote desktop portal: prepare start: %w",
+				err,
+			)
+		}
 	}
 	startResults, err := negotiation.start(actualSession)
 	if err != nil {

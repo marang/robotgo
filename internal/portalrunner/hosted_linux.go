@@ -24,7 +24,7 @@ const (
 	maximumSourceArchive    = 128 * 1024 * 1024
 	gnomePortalDialogSettle = 2 * time.Second
 	kdePortalDialogSettle   = 5 * time.Second
-	gnomePortalDialogWait   = 45 * time.Second
+	gnomePortalDialogWait   = 65 * time.Second
 	gnomePortalOutputLimit  = 64
 	consentPollInterval     = 250 * time.Millisecond
 	hostedTestTimeout       = 4 * time.Minute
@@ -473,9 +473,13 @@ func RunHosted(
 	}
 
 	marker := ""
+	startGate := ""
 	if hostedCellUsesPortal(options.Cell) {
 		marker = "/run/user/1100/robotgo-portal-consent-" +
 			options.Cell + ".ready"
+		if manifest.Lane == portalLaneGNOME {
+			startGate = hostedPortalStartGate(marker)
+		}
 	}
 	testLogPath := filepath.Join(runDirectory, "hosted-test.log")
 	testLog, err := os.OpenFile(
@@ -554,6 +558,7 @@ func RunHosted(
 				options.Commands,
 				sshArguments,
 				options.Cell,
+				startGate,
 			); err != nil {
 				stopProcessGroup(testCommand, testResult.done)
 				return err
@@ -586,11 +591,12 @@ func RunHosted(
 	testError := testResult.err
 	var cleanupError error
 	if marker != "" {
-		cleanupError = assertConsentMarkerRemoved(
+		cleanupError = assertPortalSyncFilesRemoved(
 			guestContext,
 			options.Commands,
 			sshArguments,
 			marker,
+			startGate,
 			logWriter,
 		)
 	}
@@ -1112,6 +1118,13 @@ func hostedPortalTestCommandForTopology(
 			"DISPLAY=:0",
 			"ROBOTGO_PORTAL_CONSENT_READY_FILE="+marker,
 		)
+		if lane == portalLaneGNOME {
+			environmentParts = append(
+				environmentParts,
+				"ROBOTGO_PORTAL_CONSENT_START_GATE_FILE="+
+					hostedPortalStartGate(marker),
+			)
+		}
 	}
 	environment := strings.Join(environmentParts, " ")
 	if topology == HostedTopologyMulti {
@@ -1593,17 +1606,23 @@ func waitForHostedGNOMEPortalDialog(
 	ctx context.Context,
 	commands CommandExecutor,
 	sshArguments []string,
-	cell string,
+	cell,
+	startGate string,
 ) error {
 	if cell != HostedCellRemoteDesktop && cell != HostedCellScreenCast {
 		return errors.New("hosted GNOME portal dialog cell is invalid")
+	}
+	if startGate != hostedPortalStartGate(
+		"/run/user/1100/robotgo-portal-consent-"+cell+".ready",
+	) {
+		return errors.New("hosted GNOME portal start gate is invalid")
 	}
 
 	command := "exec runuser -u robotgo -- env " +
 		"XDG_RUNTIME_DIR=/run/user/1100 " +
 		"DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1100/bus " +
 		"/usr/local/libexec/robotgo-runner-wait-portal-dialog " +
-		shellQuote(cell)
+		shellQuote(cell) + " " + shellQuote(startGate)
 
 	dialogContext, cancel := context.WithTimeout(ctx, gnomePortalDialogWait)
 	defer cancel()
@@ -1630,7 +1649,21 @@ func waitForHostedGNOMEPortalDialog(
 			`locate hosted GNOME portal dialog at stage "dialog-unavailable"`,
 		)
 	}
+	if output.String() == "error negotiation-busy\n" {
+		return errors.New(
+			`locate hosted GNOME portal dialog at stage "negotiation-busy"`,
+		)
+	}
+	if output.String() == "error start-gate\n" {
+		return errors.New(
+			`locate hosted GNOME portal dialog at stage "start-gate"`,
+		)
+	}
 	return errors.New("locate hosted GNOME portal dialog")
+}
+
+func hostedPortalStartGate(marker string) string {
+	return strings.TrimSuffix(marker, ".ready") + ".start"
 }
 
 const (
@@ -1878,25 +1911,32 @@ func waitForPortalDialog(
 	}
 }
 
-func assertConsentMarkerRemoved(
+func assertPortalSyncFilesRemoved(
 	ctx context.Context,
 	commands CommandExecutor,
 	sshArguments []string,
-	marker string,
+	marker,
+	startGate string,
 	output io.Writer,
 ) error {
-	if err := commands.Run(
-		ctx,
-		"ssh",
-		append(
-			append([]string{}, sshArguments...),
-			"root@127.0.0.1",
-			"test ! -e "+shellQuote(marker),
-		),
-		nil,
-		output,
-	); err != nil {
-		return errors.New("hosted portal test left its consent marker")
+	paths := []string{marker}
+	if startGate != "" {
+		paths = append(paths, startGate)
+	}
+	for _, path := range paths {
+		if err := commands.Run(
+			ctx,
+			"ssh",
+			append(
+				append([]string{}, sshArguments...),
+				"root@127.0.0.1",
+				"test ! -e "+shellQuote(path),
+			),
+			nil,
+			output,
+		); err != nil {
+			return errors.New("hosted portal test left a synchronization file")
+		}
 	}
 	return nil
 }

@@ -157,6 +157,14 @@ type screenCastNegotiation struct {
 }
 
 func openScreenCast(ctx context.Context, options ScreenCastOptions) (ScreenCast, error) {
+	return openScreenCastBeforeStart(ctx, options, nil)
+}
+
+func openScreenCastBeforeStart(
+	ctx context.Context,
+	options ScreenCastOptions,
+	beforeStart func() error,
+) (ScreenCast, error) {
 	if os.Getenv(envDisablePortal) != "" {
 		return nil, ErrScreenCastUnavailable
 	}
@@ -170,7 +178,12 @@ func openScreenCast(ctx context.Context, options ScreenCastOptions) (ScreenCast,
 	if err != nil {
 		return nil, err
 	}
-	return openScreenCastWithPortal(ctx, portal, options)
+	return openScreenCastWithPortalBeforeStart(
+		ctx,
+		portal,
+		options,
+		beforeStart,
+	)
 }
 
 func connectScreenCastPortal() (screenCastPortal, error) {
@@ -186,6 +199,20 @@ func connectScreenCastPortal() (screenCastPortal, error) {
 }
 
 func openScreenCastWithPortal(ctx context.Context, portal screenCastPortal, options ScreenCastOptions) (_ ScreenCast, retErr error) {
+	return openScreenCastWithPortalBeforeStart(
+		ctx,
+		portal,
+		options,
+		nil,
+	)
+}
+
+func openScreenCastWithPortalBeforeStart(
+	ctx context.Context,
+	portal screenCastPortal,
+	options ScreenCastOptions,
+	beforeStart func() error,
+) (_ ScreenCast, retErr error) {
 	signals := make(chan *dbus.Signal, 16)
 	portal.registerSignals(signals)
 	cleanupPortal := true
@@ -231,6 +258,14 @@ func openScreenCastWithPortal(ctx context.Context, portal screenCastPortal, opti
 	}
 	if err := negotiation.selectSources(sessionPath, options); err != nil {
 		return nil, err
+	}
+	if beforeStart != nil {
+		if err := beforeStart(); err != nil {
+			return nil, fmt.Errorf(
+				"screencast portal: prepare start: %w",
+				err,
+			)
+		}
 	}
 	results, err := negotiation.start(sessionPath)
 	if err != nil {

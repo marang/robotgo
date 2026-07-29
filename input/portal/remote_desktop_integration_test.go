@@ -1,6 +1,6 @@
 //go:build linux && integration
 
-package portal_test
+package portal
 
 import (
 	"context"
@@ -11,12 +11,14 @@ import (
 	"testing"
 	"time"
 
-	portalinput "github.com/marang/robotgo/input/portal"
 	"github.com/marang/robotgo/internal/portalrunner"
 )
 
 const envRemoteDesktopE2E = "ROBOTGO_REMOTE_DESKTOP_E2E"
-const envPortalConsentReadyFile = "ROBOTGO_PORTAL_CONSENT_READY_FILE"
+const (
+	envPortalConsentReadyFile = "ROBOTGO_PORTAL_CONSENT_READY_FILE"
+	envPortalConsentStartGate = "ROBOTGO_PORTAL_CONSENT_START_GATE_FILE"
+)
 
 func TestRemoteDesktopPortalRuntime(t *testing.T) {
 	if os.Getenv(envRemoteDesktopE2E) == "" {
@@ -26,36 +28,43 @@ func TestRemoteDesktopPortalRuntime(t *testing.T) {
 	defer reportPortalStageOnFailure(t, &stage)
 
 	probeCtx, cancelProbe := context.WithTimeout(context.Background(), 2*time.Second)
-	capability, err := portalinput.Probe(probeCtx)
+	capability, err := Probe(probeCtx)
 	cancelProbe()
 	if err != nil {
 		t.Fatalf("Probe error: %v", err)
 	}
-	devices := portalinput.DeviceKeyboard | portalinput.DevicePointer
-	if capability.Supports(portalinput.DeviceTouchscreen) {
-		devices |= portalinput.DeviceTouchscreen
+	devices := DeviceKeyboard | DevicePointer
+	if capability.Supports(DeviceTouchscreen) {
+		devices |= DeviceTouchscreen
 	}
 	if !capability.Supports(devices) {
 		t.Fatalf("RemoteDesktop portal does not advertise keyboard and pointer input: %+v", capability)
 	}
-	if !capability.SupportsSources(portalinput.SourceMonitor) {
+	if !capability.SupportsSources(SourceMonitor) {
 		t.Fatalf("ScreenCast portal does not advertise monitor sources: %+v", capability)
 	}
-	if !capability.SupportsCursorMode(portalinput.CursorHidden) {
+	if !capability.SupportsCursorMode(CursorHidden) {
 		t.Fatalf("ScreenCast portal does not advertise hidden cursor mode: %+v", capability)
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
-	options := portalinput.OpenOptions{
-		Devices: devices, Sources: portalinput.SourceMonitor,
-		CursorMode: portalinput.CursorHidden,
+	options := OpenOptions{
+		Devices: devices, Sources: SourceMonitor,
+		CursorMode: CursorHidden,
 	}
 	expectedOutputs, multiOutput := expectedPortalOutputs(t)
 	options.Multiple = multiOutput
 	stage = "open"
-	signalPortalConsentReady(t, "remote-desktop")
-	session, err := portalinput.OpenWithOptions(ctx, options)
+	session, err := openWithOptionsBeforeStart(
+		ctx,
+		options,
+		func() error {
+			signalPortalConsentReady(t, "remote-desktop")
+			waitForPortalConsentStart(t, ctx, "remote-desktop")
+			return nil
+		},
+	)
 	if err != nil {
 		t.Fatalf("OpenWithOptions error: %v", err)
 	}
@@ -111,7 +120,7 @@ func TestRemoteDesktopPortalRuntime(t *testing.T) {
 			return session.PointerMotionAbsolute(eventCtx, stream.NodeID, 1, 1)
 		})
 	}
-	if devices&portalinput.DeviceTouchscreen != 0 {
+	if devices&DeviceTouchscreen != 0 {
 		stream := streams[0]
 		runPortalEvent(t, "TouchDown", func(eventCtx context.Context) error {
 			return session.TouchDown(eventCtx, stream.NodeID, 0, 1, 1)
@@ -160,7 +169,7 @@ func expectedPortalOutputs(
 func validateRemoteDesktopStreams(
 	t *testing.T,
 	stage *string,
-	streams []portalinput.Stream,
+	streams []Stream,
 	expected portalrunner.HostedDisplay,
 	screenCastVersion uint32,
 ) {
@@ -175,7 +184,7 @@ func validateRemoteDesktopStreams(
 			NodeID: stream.NodeID, ID: stream.ID,
 			MappingID:      stream.MappingID,
 			PipeWireSerial: stream.PipeWireSerial,
-			Monitor:        stream.SourceType == portalinput.SourceMonitor,
+			Monitor:        stream.SourceType == SourceMonitor,
 			HasPosition:    stream.HasPosition,
 			HasSize:        stream.HasSize,
 			X:              int(stream.Position.X),
@@ -196,7 +205,7 @@ func validateRemoteDesktopStreams(
 	}
 }
 
-func remoteDesktopStreamCoordinates(stream portalinput.Stream) (float64, float64) {
+func remoteDesktopStreamCoordinates(stream Stream) (float64, float64) {
 	x, y := float64(1), float64(1)
 	if stream.HasSize && stream.Size.Width > 0 {
 		x = float64(stream.Size.Width) / 2
@@ -211,30 +220,30 @@ func TestRemoteDesktopStreamCoordinates(t *testing.T) {
 	t.Parallel()
 	for _, test := range []struct {
 		name   string
-		stream portalinput.Stream
+		stream Stream
 		wantX  float64
 		wantY  float64
 	}{
 		{
 			name: "portal omitted optional size",
-			stream: portalinput.Stream{
-				Size: portalinput.Size{Width: 1280, Height: 720},
+			stream: Stream{
+				Size: Size{Width: 1280, Height: 720},
 			},
 			wantX: 1, wantY: 1,
 		},
 		{
 			name: "logical center",
-			stream: portalinput.Stream{
+			stream: Stream{
 				HasSize: true,
-				Size:    portalinput.Size{Width: 1280, Height: 720},
+				Size:    Size{Width: 1280, Height: 720},
 			},
 			wantX: 640, wantY: 360,
 		},
 		{
 			name: "minimum safe coordinate",
-			stream: portalinput.Stream{
+			stream: Stream{
 				HasSize: true,
-				Size:    portalinput.Size{Width: 1, Height: 1},
+				Size:    Size{Width: 1, Height: 1},
 			},
 			wantX: 0.5, wantY: 0.5,
 		},
@@ -269,10 +278,23 @@ func TestRemoteDesktopConsentMarkerCleanup(t *testing.T) {
 		runtimeDirectory,
 		"robotgo-portal-consent-remote-desktop.ready",
 	)
+	startGate := filepath.Join(
+		runtimeDirectory,
+		"robotgo-portal-consent-remote-desktop.start",
+	)
+	if err := os.WriteFile(startGate, []byte("start\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	t.Setenv("XDG_RUNTIME_DIR", runtimeDirectory)
 	t.Setenv(envPortalConsentReadyFile, marker)
+	t.Setenv(envPortalConsentStartGate, startGate)
 	t.Run("lifecycle", func(t *testing.T) {
 		signalPortalConsentReady(t, "remote-desktop")
+		waitForPortalConsentStart(
+			t,
+			context.Background(),
+			"remote-desktop",
+		)
 		info, err := os.Lstat(marker)
 		if err != nil {
 			t.Fatal(err)
@@ -290,6 +312,9 @@ func TestRemoteDesktopConsentMarkerCleanup(t *testing.T) {
 	})
 	if _, err := os.Lstat(marker); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("consent marker survived test cleanup: %v", err)
+	}
+	if _, err := os.Lstat(startGate); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("consent start gate survived test cleanup: %v", err)
 	}
 }
 
@@ -324,6 +349,55 @@ func signalPortalConsentReady(t *testing.T, cell string) {
 			t.Errorf("remove portal consent readiness marker: %v", err)
 		}
 	})
+}
+
+func waitForPortalConsentStart(
+	t *testing.T,
+	ctx context.Context,
+	cell string,
+) {
+	t.Helper()
+	path := os.Getenv(envPortalConsentStartGate)
+	if path == "" {
+		return
+	}
+	runtimeDirectory := filepath.Clean(os.Getenv("XDG_RUNTIME_DIR"))
+	if !filepath.IsAbs(path) ||
+		filepath.Clean(path) != path ||
+		filepath.Dir(path) != runtimeDirectory ||
+		filepath.Base(path) != "robotgo-portal-consent-"+cell+".start" {
+		t.Fatal("portal consent start gate is outside the private runtime directory")
+	}
+	t.Cleanup(func() {
+		if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
+			t.Errorf("remove portal consent start gate: %v", err)
+		}
+	})
+	poll := time.NewTicker(25 * time.Millisecond)
+	defer poll.Stop()
+	for {
+		content, err := os.ReadFile(path)
+		if err == nil {
+			info, statErr := os.Lstat(path)
+			if statErr != nil {
+				t.Fatalf("inspect portal consent start gate: %v", statErr)
+			}
+			if !info.Mode().IsRegular() ||
+				info.Mode().Perm() != 0o600 ||
+				string(content) != "start\n" {
+				t.Fatal("portal consent start gate is invalid")
+			}
+			return
+		}
+		if !errors.Is(err, os.ErrNotExist) {
+			t.Fatalf("read portal consent start gate: %v", err)
+		}
+		select {
+		case <-ctx.Done():
+			t.Fatalf("wait for portal consent start gate: %v", ctx.Err())
+		case <-poll.C:
+		}
+	}
 }
 
 func runPortalEvent(t *testing.T, action string, event func(context.Context) error) {

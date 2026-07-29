@@ -119,6 +119,14 @@ func Open(ctx context.Context, devices DeviceType) (*Session, error) {
 // OpenWithOptions starts a RemoteDesktop session and optionally attaches
 // ScreenCast sources for absolute pointer and touch coordinates.
 func OpenWithOptions(ctx context.Context, options OpenOptions) (*Session, error) {
+	return openWithOptionsBeforeStart(ctx, options, nil)
+}
+
+func openWithOptionsBeforeStart(
+	ctx context.Context,
+	options OpenOptions,
+	beforeStart func() error,
+) (*Session, error) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -129,7 +137,13 @@ func OpenWithOptions(ctx context.Context, options OpenOptions) (*Session, error)
 	if err != nil {
 		return nil, err
 	}
-	session, err := openRemoteDesktop(ctx, portal, options, randomToken)
+	session, err := openRemoteDesktopBeforeStart(
+		ctx,
+		portal,
+		options,
+		randomToken,
+		beforeStart,
+	)
 	if err != nil {
 		return nil, err
 	}

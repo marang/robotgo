@@ -451,6 +451,11 @@ func TestRepositoryGuestSessionContract(t *testing.T) {
 		"org.freedesktop.impl.portal.desktop.gnome",
 		"/org/freedesktop/portal/desktop/request/",
 		"remote-desktop | screencast",
+		"CreateSession",
+		"every Select* request has completed",
+		"waits on start_gate",
+		"all earlier request objects have disappeared",
+		"Start immediately after consuming the gate",
 		"error dialog-unavailable",
 	} {
 		if !strings.Contains(dialogScript, required) {

@@ -24,6 +24,7 @@ type fakeScreenCastPortal struct {
 	connectionOne   sync.Once
 	selectCode      uint32
 	startCode       uint32
+	startCalls      int
 	holdCreate      bool
 	createEntered   chan struct{}
 	holdSelect      bool
@@ -132,6 +133,9 @@ func (p *fakeScreenCastPortal) selectSources(_ context.Context, _ dbus.ObjectPat
 }
 
 func (p *fakeScreenCastPortal) start(_ context.Context, _ dbus.ObjectPath, options map[string]dbus.Variant) (dbus.ObjectPath, error) {
+	p.mu.Lock()
+	p.startCalls++
+	p.mu.Unlock()
 	request := screenCastRequestPath(p.name, screenCastVariantString(options, screenCastOptionHandle))
 	streams := []screenCastRawStream{{NodeID: 77, Properties: map[string]dbus.Variant{
 		screenCastStreamID: dbus.MakeVariant("stream-1"), screenCastStreamPosition: dbus.MakeVariant(screenCastDBusPoint{X: -1920, Y: 0}),
@@ -254,6 +258,74 @@ func TestOpenScreenCastSessionReusesPipeWireRemoteAndCleansUp(t *testing.T) {
 	}
 	if screenCastVariantString(portal.selectOptions, screenCastOptionRestoreToken) != "restore-old" {
 		t.Fatalf("select options = %#v", portal.selectOptions)
+	}
+}
+
+func TestOpenScreenCastBeforeStartRunsAfterSourceSelection(t *testing.T) {
+	portal := newFakeScreenCastPortal(t)
+	calls := 0
+	opened, err := openScreenCastWithPortalBeforeStart(
+		context.Background(),
+		portal,
+		ScreenCastOptions{Sources: ScreenCastSourceMonitor},
+		func() error {
+			portal.mu.Lock()
+			defer portal.mu.Unlock()
+			if portal.selectOptions == nil {
+				return errors.New("start hook ran before source selection")
+			}
+			if portal.startCalls != 0 {
+				return errors.New("start hook ran after Start")
+			}
+			calls++
+			return nil
+		},
+	)
+	if err != nil {
+		t.Fatalf("openScreenCastWithPortalBeforeStart error: %v", err)
+	}
+	if calls != 1 {
+		t.Fatalf("before-Start calls = %d, want 1", calls)
+	}
+	portal.mu.Lock()
+	startCalls := portal.startCalls
+	portal.mu.Unlock()
+	if startCalls != 1 {
+		t.Fatalf("Start calls = %d, want 1", startCalls)
+	}
+	if err := opened.Close(); err != nil {
+		t.Fatalf("Close error: %v", err)
+	}
+}
+
+func TestOpenScreenCastBeforeStartFailurePreventsStartAndCleansUp(
+	t *testing.T,
+) {
+	portal := newFakeScreenCastPortal(t)
+	hookErr := errors.New("prepare consent")
+	_, err := openScreenCastWithPortalBeforeStart(
+		context.Background(),
+		portal,
+		ScreenCastOptions{Sources: ScreenCastSourceMonitor},
+		func() error { return hookErr },
+	)
+	if !errors.Is(err, hookErr) {
+		t.Fatalf(
+			"openScreenCastWithPortalBeforeStart error = %v, want hook error",
+			err,
+		)
+	}
+	portal.mu.Lock()
+	defer portal.mu.Unlock()
+	if portal.startCalls != 0 {
+		t.Fatalf("Start calls = %d, want 0", portal.startCalls)
+	}
+	if len(portal.closeSessions) != 1 || !portal.closed {
+		t.Fatalf(
+			"cleanup: sessions=%v closed=%v",
+			portal.closeSessions,
+			portal.closed,
+		)
 	}
 }
 
