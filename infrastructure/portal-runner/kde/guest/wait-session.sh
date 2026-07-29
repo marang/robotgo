@@ -115,7 +115,7 @@ recover_shell_once() {
     return 0
   fi
   shell_recovery_observed=1
-  if ! timeout 10 systemctl --user restart \
+  if ! timeout --kill-after=1s 9s systemctl --user restart \
     plasma-plasmashell.service >/dev/null 2>&1; then
     mkdir -m 0700 "$shell_recovery_failed" 2>/dev/null || true
     fail_stage desktop-shell-recovery-failed

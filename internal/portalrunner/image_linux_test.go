@@ -560,7 +560,7 @@ func TestRepositoryKDEGuestActivatesPortalFrontendAndBackend(t *testing.T) {
 		"/run/user/1100/robotgo-shell-recovery-failed",
 		"mkdir -m 0700 \"$shell_recovery_marker\"",
 		"wait_for_shell_recovery",
-		"timeout 10 systemctl --user restart",
+		"timeout --kill-after=1s 9s systemctl --user restart",
 		"ROBOTGO_SESSION_RECOVERY=desktop-shell",
 		"desktop-shell-never-seen",
 		"desktop-shell-failed",
