@@ -306,7 +306,7 @@ func ProbeImage(
 		{"GDM", "systemctl is-active --quiet gdm3"},
 		{
 			"GNOME portal session readiness",
-			sessionCommand + sessionReadinessCommand,
+			sessionCommand + gnomeSessionReadinessCommand,
 		},
 		{
 			"PipeWire",

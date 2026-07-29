@@ -4,10 +4,11 @@
 
 - Split KDE hosted-session readiness into bounded prerequisite, Plasma Shell,
   portal frontend, portal backend, and stability phases. The complete session
-  must now pass three consecutive probes, host/probe paths share one outer
-  timeout contract, and only explicitly allowlisted failure stages can escape
-  the disposable guest. This prevents slow early startup from consuming the
-  shell's budget or exposing private diagnostics.
+  must now pass three consecutive probes, later phases continuously revalidate
+  their prerequisites, and only explicitly allowlisted failure stages can
+  escape the disposable guest. KDE receives its own bounded timeout hierarchy
+  while GNOME retains its shorter guard. This prevents slow early startup from
+  consuming the shell's budget or exposing private diagnostics.
 - Made hosted GNOME/KDE image-install stalls fail earlier and diagnostically:
   all three portal workflows now share one tested outer timeout wrapper, guest
   installation has a shorter phase deadline, and failures expose only a

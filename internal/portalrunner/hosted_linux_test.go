@@ -5,6 +5,7 @@ package portalrunner
 import (
 	"context"
 	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -1074,25 +1075,31 @@ func TestHostedSessionFailureReportsOnlyAllowlistedStage(t *testing.T) {
 	executor := &scriptedCommandExecutor{
 		outputs: []string{
 			"private diagnostic ignored\n" +
-				"ROBOTGO_SESSION_STAGE=desktop-shell\n" +
+				"ROBOTGO_SESSION_STAGE=desktop-shell-failed\n" +
 				"token=must-not-leak\n",
 		},
 		errors: []error{errors.New("exit status 1")},
 	}
+	var output strings.Builder
 	err := waitForHostedSession(
 		context.Background(),
 		executor,
 		[]string{"-p", "22222"},
-		&strings.Builder{},
+		&output,
+		portalLaneKDE,
 	)
 	if err == nil ||
-		!strings.Contains(err.Error(), `stage "desktop-shell"`) {
+		!strings.Contains(err.Error(), `stage "desktop-shell-failed"`) {
 		t.Fatalf("session failure = %v", err)
+	}
+	if got := output.String(); got !=
+		"ROBOTGO_SESSION_STAGE=desktop-shell-failed\n" {
+		t.Fatalf("sanitized session output = %q", got)
 	}
 	if len(executor.calls) != 1 ||
 		!strings.Contains(
 			executor.calls[0][len(executor.calls[0])-1],
-			sessionReadinessCommand,
+			kdeSessionReadinessCommand,
 		) {
 		t.Fatalf("session readiness calls = %v", executor.calls)
 	}
@@ -1108,17 +1115,67 @@ func TestHostedSessionFailureReportsOnlyAllowlistedStage(t *testing.T) {
 		},
 		errors: []error{errors.New("exit status 1")},
 	}
+	output.Reset()
 	err = waitForHostedSession(
 		context.Background(),
 		executor,
 		nil,
-		&strings.Builder{},
+		&output,
+		portalLaneGNOME,
 	)
 	if err == nil || err.Error() != "wait for hosted portal session" {
 		t.Fatalf("unallowlisted session failure = %v", err)
 	}
 	if strings.Contains(err.Error(), "private-token") {
 		t.Fatalf("unallowlisted session stage escaped: %v", err)
+	}
+	if output.Len() != 0 {
+		t.Fatalf("unallowlisted session output escaped as %q", output.String())
+	}
+	if len(executor.calls) != 1 ||
+		!strings.Contains(
+			executor.calls[0][len(executor.calls[0])-1],
+			gnomeSessionReadinessCommand,
+		) {
+		t.Fatalf("GNOME session readiness calls = %v", executor.calls)
+	}
+}
+
+func TestHostedSessionSuppressesUnexpectedSuccessfulOutput(t *testing.T) {
+	t.Parallel()
+	executor := &scriptedCommandExecutor{
+		outputs: []string{"private success diagnostic\n"},
+	}
+	var output strings.Builder
+	if err := waitForHostedSession(
+		context.Background(),
+		executor,
+		nil,
+		&output,
+		portalLaneKDE,
+	); err != nil {
+		t.Fatalf("wait for hosted session: %v", err)
+	}
+	if output.Len() != 0 {
+		t.Fatalf("successful session output escaped as %q", output.String())
+	}
+}
+
+func TestHostedSessionRejectsUnknownLaneBeforeSSH(t *testing.T) {
+	t.Parallel()
+	executor := &scriptedCommandExecutor{}
+	err := waitForHostedSession(
+		context.Background(),
+		executor,
+		nil,
+		io.Discard,
+		"private",
+	)
+	if err == nil || err.Error() != "hosted portal lane is invalid" {
+		t.Fatalf("unknown hosted lane = %v", err)
+	}
+	if len(executor.calls) != 0 {
+		t.Fatalf("unknown hosted lane calls = %v", executor.calls)
 	}
 }
 

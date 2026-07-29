@@ -551,11 +551,14 @@ func TestRepositoryKDEGuestActivatesPortalFrontendAndBackend(t *testing.T) {
 		"deadline=$((SECONDS + 30))",
 		"deadline=$((SECONDS + 10))",
 		"stable >= 3",
+		"require_base_ready",
+		"require_shell_ready",
 		"desktop-shell-never-seen",
 		"desktop-shell-failed",
 		"desktop-shell-process-missing",
 		"desktop-shell-unstable",
 		"portal-backend-unstable",
+		"fail_stage session-unstable",
 	} {
 		if !strings.Contains(script, required) {
 			t.Errorf("KDE session readiness omits %q", required)

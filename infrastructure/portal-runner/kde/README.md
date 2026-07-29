@@ -22,7 +22,9 @@ budgets, so a slow prerequisite cannot silently consume the shell's wait time.
 The runner starts only after the complete contract remains ready for three
 consecutive probes. A failure returns one allowlisted stage; raw journals,
 process arguments, environment values, and other session details remain inside
-the disposable guest.
+the disposable guest. The nominal KDE phase deadlines total 220 seconds; a
+250-second host guard caps them plus bounded probe overhead beneath the
+270-second systemd startup limit.
 
 ## Hosted proof
 

@@ -32,29 +32,61 @@ all_ready() {
     portal_ping org.freedesktop.impl.portal.desktop.kde
 }
 
+fail_base_stage() {
+  if ! systemctl is-active --quiet sddm.service; then
+    fail_stage display-manager
+  elif [[ ! -d /run/user/1100 ]]; then
+    fail_stage runtime-directory
+  elif [[ ! -S /run/user/1100/bus ]]; then
+    fail_stage user-bus
+  elif [[ ! -S /run/user/1100/wayland-0 ]]; then
+    fail_stage wayland
+  elif ! pgrep -u robotgo -x kwin_wayland >/dev/null 2>&1; then
+    fail_stage compositor
+  else
+    fail_stage session-unstable
+  fi
+}
+
+require_base_ready() {
+  if ! base_ready; then
+    fail_base_stage
+  fi
+}
+
+fail_shell_stage() {
+  if systemctl --user is-failed --quiet plasma-plasmashell.service; then
+    fail_stage desktop-shell-failed
+  elif systemctl --user is-active --quiet plasma-plasmashell.service; then
+    fail_stage desktop-shell-process-missing
+  else
+    fail_stage desktop-shell-unstable
+  fi
+}
+
+require_shell_ready() {
+  if ! pgrep -u robotgo -x plasmashell >/dev/null 2>&1; then
+    fail_shell_stage
+  fi
+}
+
 # Give each startup layer its own bounded budget. A single shared deadline made
 # a slow display-manager/compositor startup consume nearly all of the time
 # intended for Plasma Shell and misclassified the terminal failure.
 deadline=$((SECONDS + 60))
 until base_ready; do
   if ((SECONDS >= deadline)); then
-    if ! systemctl is-active --quiet sddm.service; then
-      fail_stage display-manager
-    elif [[ ! -d /run/user/1100 ]]; then
-      fail_stage runtime-directory
-    elif [[ ! -S /run/user/1100/bus ]]; then
-      fail_stage user-bus
-    elif [[ ! -S /run/user/1100/wayland-0 ]]; then
-      fail_stage wayland
-    else
-      fail_stage compositor
-    fi
+    fail_base_stage
   fi
   sleep 1
 done
 
 deadline=$((SECONDS + 90))
-while ! pgrep -u robotgo -x plasmashell >/dev/null 2>&1; do
+while true; do
+  require_base_ready
+  if pgrep -u robotgo -x plasmashell >/dev/null 2>&1; then
+    break
+  fi
   if ((SECONDS >= deadline)); then
     if systemctl --user is-failed --quiet plasma-plasmashell.service; then
       fail_stage desktop-shell-failed
@@ -68,7 +100,12 @@ while ! pgrep -u robotgo -x plasmashell >/dev/null 2>&1; do
 done
 
 deadline=$((SECONDS + 30))
-until portal_ping org.freedesktop.portal.Desktop; do
+while true; do
+  require_base_ready
+  require_shell_ready
+  if portal_ping org.freedesktop.portal.Desktop; then
+    break
+  fi
   if ((SECONDS >= deadline)); then
     fail_stage portal
   fi
@@ -76,7 +113,15 @@ until portal_ping org.freedesktop.portal.Desktop; do
 done
 
 deadline=$((SECONDS + 30))
-until portal_ping org.freedesktop.impl.portal.desktop.kde; do
+while true; do
+  require_base_ready
+  require_shell_ready
+  if ! portal_ping org.freedesktop.portal.Desktop; then
+    fail_stage portal-unstable
+  fi
+  if portal_ping org.freedesktop.impl.portal.desktop.kde; then
+    break
+  fi
   if ((SECONDS >= deadline)); then
     fail_stage portal-backend
   fi
@@ -101,15 +146,13 @@ while ((SECONDS < deadline)); do
 done
 
 if ! base_ready; then
-  fail_stage session-unstable
+  fail_base_stage
 elif ! pgrep -u robotgo -x plasmashell >/dev/null 2>&1; then
-  if systemctl --user is-failed --quiet plasma-plasmashell.service; then
-    fail_stage desktop-shell-failed
-  else
-    fail_stage desktop-shell-unstable
-  fi
+  fail_shell_stage
 elif ! portal_ping org.freedesktop.portal.Desktop; then
   fail_stage portal-unstable
-else
+elif ! portal_ping org.freedesktop.impl.portal.desktop.kde; then
   fail_stage portal-backend-unstable
+else
+  fail_stage session-unstable
 fi

@@ -105,7 +105,6 @@ var sessionFailureStagePattern = regexp.MustCompile(
 
 var sessionFailureStages = map[string]struct{}{
 	"compositor":                    {},
-	"desktop-shell":                 {},
 	"desktop-shell-failed":          {},
 	"desktop-shell-never-seen":      {},
 	"desktop-shell-process-missing": {},
@@ -459,14 +458,8 @@ func RunHosted(
 		options.Commands,
 		sshArguments,
 		logWriter,
+		manifest.Lane,
 	); err != nil {
-		collectHostedDiagnostics(
-			guestContext,
-			options.Commands,
-			sshArguments,
-			logWriter,
-			manifest.Lane,
-		)
 		return err
 	}
 	if err := transferSourceArchive(
@@ -927,8 +920,18 @@ func waitForHostedSession(
 	commands CommandExecutor,
 	sshArguments []string,
 	output io.Writer,
+	lane string,
 ) error {
+	readinessCommand := gnomeSessionReadinessCommand
+	if lane == portalLaneKDE {
+		readinessCommand = kdeSessionReadinessCommand
+	} else if lane != portalLaneGNOME {
+		return errors.New("hosted portal lane is invalid")
+	}
 	var diagnostic bytes.Buffer
+	defer func() {
+		clear(diagnostic.Bytes())
+	}()
 	diagnosticWriter := &truncatingWriter{
 		destination: &diagnostic,
 		remaining:   maximumBuildInput,
@@ -936,7 +939,7 @@ func waitForHostedSession(
 	command := "set -euo pipefail; runuser -u robotgo -- env " +
 		"XDG_RUNTIME_DIR=/run/user/1100 " +
 		"DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1100/bus " +
-		sessionReadinessCommand
+		readinessCommand
 	if err := commands.Run(
 		ctx,
 		"ssh",
@@ -946,9 +949,16 @@ func waitForHostedSession(
 			command,
 		),
 		nil,
-		io.MultiWriter(output, diagnosticWriter),
+		diagnosticWriter,
 	); err != nil {
 		if stage := readSessionFailureStage(diagnostic.Bytes()); stage != "" {
+			if statusError := writeStatus(
+				output,
+				"ROBOTGO_SESSION_STAGE=%s\n",
+				stage,
+			); statusError != nil {
+				return statusError
+			}
 			return fmt.Errorf(
 				"wait for hosted portal session at stage %q",
 				stage,
@@ -1830,41 +1840,6 @@ func kdePortalPointInsideDialog(
 		point.x < geometry.dialogX+geometry.dialogWidth &&
 		point.y >= geometry.dialogY &&
 		point.y < geometry.dialogY+geometry.dialogHeight
-}
-
-func collectHostedDiagnostics(
-	ctx context.Context,
-	commands CommandExecutor,
-	sshArguments []string,
-	output io.Writer,
-	lane string,
-) {
-	unit := "gdm3"
-	if lane == portalLaneKDE {
-		unit = "sddm"
-	}
-	diagnosticCommand := `set +e
-echo ROBOTGO_PORTAL_DIAGNOSTICS
-systemctl status ` + unit + ` --no-pager --full
-loginctl list-sessions --no-legend
-loginctl user-status robotgo --no-pager
-test -d /run/user/1100 && find /run/user/1100 -maxdepth 1 -type s -printf '%f\n'
-journalctl --boot --unit=` + unit + ` --no-pager --lines=120
-journalctl --boot _UID=1100 --no-pager --lines=120
-echo ROBOTGO_PORTAL_DIAGNOSTICS_END`
-	diagnosticContext, cancel := context.WithTimeout(ctx, 30*time.Second)
-	defer cancel()
-	_ = commands.Run(
-		diagnosticContext,
-		"ssh",
-		append(
-			append([]string{}, sshArguments...),
-			"root@127.0.0.1",
-			diagnosticCommand,
-		),
-		nil,
-		output,
-	)
 }
 
 func waitForConsentMarker(
