@@ -437,7 +437,7 @@ The first public
 pre-release, [`v1.0.0-beta.1`](https://github.com/marang/robotgo/releases/tag/v1.0.0-beta.1),
 publishes that verified six-cell bundle and checksum for exact commit
 `1bab5e173f6b96f61d349473b348f839291b9a89`; manual runs remain read-only
-artifacts. The latest pre-release,
+artifacts. The preceding pre-release,
 [`v1.0.0-beta.2`](https://github.com/marang/robotgo/releases/tag/v1.0.0-beta.2),
 publishes exact-tag
 [release evidence](https://github.com/marang/robotgo/actions/runs/30244107872)
