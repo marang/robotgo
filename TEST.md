@@ -1059,12 +1059,15 @@ for three consecutive probes before source transfer begins. Failures expose
 only an allowlisted stage such as `desktop-shell-never-seen` or
 `portal-backend-unstable`; process arguments, journals, environment values, and
 other guest data do not cross SSH. A naturally managed Plasma Shell or portal
-frontend bounce may settle only inside the current bounded phase; RobotGo does
-not restart it, and the final stability probes still reject a crash loop. The
-KDE host-side guard remains shorter than the KDE systemd runner start bound.
-The nominal KDE phase deadlines total 220 seconds; the 250-second host guard is
-the hard cap including bounded probe overhead. GNOME retains its shorter
-130-second host guard and 150-second systemd bound.
+frontend bounce may settle only inside the current bounded phase. If the
+verified `plasma-plasmashell.service` reaches terminal `failed`, RobotGo may
+restart that unit exactly once under a 10-second command bound and emits only
+`ROBOTGO_SESSION_RECOVERY=desktop-shell`. A second failure is terminal, and the
+final stability probes still reject a crash loop. The normal KDE phase
+deadlines total 220 seconds; the one-recovery path adds at most a 10-second
+restart and 30-second settle phase. The 300-second host guard is the hard cap
+including bounded probe overhead beneath the 320-second systemd runner bound.
+GNOME retains its shorter 130-second host guard and 150-second systemd bound.
 
 Hosted workflow calls share
 `scripts/run_hosted_portal_e2e_ci.sh` as their fixed 30-minute outer guard.

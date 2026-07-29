@@ -103,21 +103,31 @@ var sessionFailureStagePattern = regexp.MustCompile(
 	`ROBOTGO_SESSION_STAGE=([a-z0-9-]{1,32})`,
 )
 
+var sessionRecoveryPattern = regexp.MustCompile(
+	`ROBOTGO_SESSION_RECOVERY=([a-z0-9-]{1,32})`,
+)
+
 var sessionFailureStages = map[string]struct{}{
-	"compositor":                    {},
-	"desktop-shell-failed":          {},
-	"desktop-shell-never-seen":      {},
-	"desktop-shell-process-missing": {},
-	"desktop-shell-unstable":        {},
-	"display-manager":               {},
-	"portal":                        {},
-	"portal-backend":                {},
-	"portal-backend-unstable":       {},
-	"portal-unstable":               {},
-	"runtime-directory":             {},
-	"session-unstable":              {},
-	"user-bus":                      {},
-	"wayland":                       {},
+	"compositor":                       {},
+	"desktop-shell-failed":             {},
+	"desktop-shell-never-seen":         {},
+	"desktop-shell-process-missing":    {},
+	"desktop-shell-recovery-exhausted": {},
+	"desktop-shell-recovery-failed":    {},
+	"desktop-shell-unstable":           {},
+	"display-manager":                  {},
+	"portal":                           {},
+	"portal-backend":                   {},
+	"portal-backend-unstable":          {},
+	"portal-unstable":                  {},
+	"runtime-directory":                {},
+	"session-unstable":                 {},
+	"user-bus":                         {},
+	"wayland":                          {},
+}
+
+var sessionRecoveries = map[string]struct{}{
+	"desktop-shell": {},
 }
 
 var errHostedPortalTestExitedBeforeConsent = errors.New(
@@ -940,7 +950,7 @@ func waitForHostedSession(
 		"XDG_RUNTIME_DIR=/run/user/1100 " +
 		"DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1100/bus " +
 		readinessCommand
-	if err := commands.Run(
+	runError := commands.Run(
 		ctx,
 		"ssh",
 		append(
@@ -950,7 +960,17 @@ func waitForHostedSession(
 		),
 		nil,
 		diagnosticWriter,
-	); err != nil {
+	)
+	if recovery := readSessionRecovery(diagnostic.Bytes()); recovery != "" {
+		if statusError := writeStatus(
+			output,
+			"ROBOTGO_SESSION_RECOVERY=%s\n",
+			recovery,
+		); statusError != nil {
+			return statusError
+		}
+	}
+	if runError != nil {
 		if stage := readSessionFailureStage(diagnostic.Bytes()); stage != "" {
 			if statusError := writeStatus(
 				output,
@@ -967,6 +987,21 @@ func waitForHostedSession(
 		return errors.New("wait for hosted portal session")
 	}
 	return nil
+}
+
+func readSessionRecovery(data []byte) string {
+	if len(data) > maximumBuildInput {
+		return ""
+	}
+	matches := sessionRecoveryPattern.FindAllSubmatch(data, -1)
+	if len(matches) == 0 {
+		return ""
+	}
+	recovery := string(matches[len(matches)-1][1])
+	if _, allowed := sessionRecoveries[recovery]; !allowed {
+		return ""
+	}
+	return recovery
 }
 
 func readSessionFailureStage(data []byte) string {

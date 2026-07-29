@@ -1075,6 +1075,7 @@ func TestHostedSessionFailureReportsOnlyAllowlistedStage(t *testing.T) {
 	executor := &scriptedCommandExecutor{
 		outputs: []string{
 			"private diagnostic ignored\n" +
+				"ROBOTGO_SESSION_RECOVERY=desktop-shell\n" +
 				"ROBOTGO_SESSION_STAGE=desktop-shell-failed\n" +
 				"token=must-not-leak\n",
 		},
@@ -1093,7 +1094,8 @@ func TestHostedSessionFailureReportsOnlyAllowlistedStage(t *testing.T) {
 		t.Fatalf("session failure = %v", err)
 	}
 	if got := output.String(); got !=
-		"ROBOTGO_SESSION_STAGE=desktop-shell-failed\n" {
+		"ROBOTGO_SESSION_RECOVERY=desktop-shell\n"+
+			"ROBOTGO_SESSION_STAGE=desktop-shell-failed\n" {
 		t.Fatalf("sanitized session output = %q", got)
 	}
 	if len(executor.calls) != 1 ||
@@ -1134,7 +1136,8 @@ func TestHostedSessionFailureReportsOnlyAllowlistedStage(t *testing.T) {
 
 	executor = &scriptedCommandExecutor{
 		outputs: []string{
-			"ROBOTGO_SESSION_STAGE=private-token\n",
+			"ROBOTGO_SESSION_RECOVERY=private-token\n" +
+				"ROBOTGO_SESSION_STAGE=private-token\n",
 		},
 		errors: []error{errors.New("exit status 1")},
 	}
@@ -1167,7 +1170,10 @@ func TestHostedSessionFailureReportsOnlyAllowlistedStage(t *testing.T) {
 func TestHostedSessionSuppressesUnexpectedSuccessfulOutput(t *testing.T) {
 	t.Parallel()
 	executor := &scriptedCommandExecutor{
-		outputs: []string{"private success diagnostic\n"},
+		outputs: []string{
+			"private success diagnostic\n" +
+				"ROBOTGO_SESSION_RECOVERY=desktop-shell\n",
+		},
 	}
 	var output strings.Builder
 	if err := waitForHostedSession(
@@ -1179,8 +1185,9 @@ func TestHostedSessionSuppressesUnexpectedSuccessfulOutput(t *testing.T) {
 	); err != nil {
 		t.Fatalf("wait for hosted session: %v", err)
 	}
-	if output.Len() != 0 {
-		t.Fatalf("successful session output escaped as %q", output.String())
+	if got := output.String(); got !=
+		"ROBOTGO_SESSION_RECOVERY=desktop-shell\n" {
+		t.Fatalf("sanitized successful session output = %q", got)
 	}
 }
 

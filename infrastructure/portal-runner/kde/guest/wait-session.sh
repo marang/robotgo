@@ -17,6 +17,10 @@ fail_stage() {
   exit 1
 }
 
+shell_recovery_observed=0
+shell_recovery_reported=0
+shell_recovery_marker=/run/user/1100/robotgo-shell-recovery-attempted
+
 base_ready() {
   systemctl is-active --quiet sddm.service &&
     [[ -d /run/user/1100 ]] &&
@@ -56,12 +60,48 @@ require_base_ready() {
 
 fail_shell_stage() {
   if systemctl --user is-failed --quiet plasma-plasmashell.service; then
+    if ((shell_recovery_observed)) || [[ -d "$shell_recovery_marker" ]]; then
+      fail_stage desktop-shell-recovery-exhausted
+    fi
     fail_stage desktop-shell-failed
   elif systemctl --user is-active --quiet plasma-plasmashell.service; then
     fail_stage desktop-shell-process-missing
   else
     fail_stage desktop-shell-unstable
   fi
+}
+
+report_shell_recovery() {
+  if ((!shell_recovery_reported)); then
+    shell_recovery_reported=1
+    printf 'ROBOTGO_SESSION_RECOVERY=desktop-shell\n' >&2
+  fi
+}
+
+recover_shell_once() {
+  if ((shell_recovery_observed)); then
+    return 1
+  fi
+  if [[ -d "$shell_recovery_marker" ]]; then
+    shell_recovery_observed=1
+    report_shell_recovery
+    return 0
+  fi
+  if ! systemctl --user is-failed --quiet \
+    plasma-plasmashell.service; then
+    return 1
+  fi
+  if ! mkdir -m 0700 "$shell_recovery_marker" 2>/dev/null; then
+    shell_recovery_observed=1
+    report_shell_recovery
+    return 0
+  fi
+  shell_recovery_observed=1
+  if ! timeout 10 systemctl --user restart \
+    plasma-plasmashell.service >/dev/null 2>&1; then
+    fail_stage desktop-shell-recovery-failed
+  fi
+  report_shell_recovery
 }
 
 # Give each startup layer its own bounded budget. A single shared deadline made
@@ -82,13 +122,17 @@ while true; do
     break
   fi
   if ((SECONDS >= deadline)); then
-    if systemctl --user is-failed --quiet plasma-plasmashell.service; then
-      fail_stage desktop-shell-failed
+    if recover_shell_once; then
+      deadline=$((SECONDS + 30))
+      continue
+    fi
+    if ((shell_recovery_observed)) ||
+      [[ -d "$shell_recovery_marker" ]]; then
+      fail_shell_stage
     elif systemctl --user is-active --quiet plasma-plasmashell.service; then
       fail_stage desktop-shell-process-missing
-    else
-      fail_stage desktop-shell-never-seen
     fi
+    fail_stage desktop-shell-never-seen
   fi
   sleep 1
 done
@@ -98,6 +142,10 @@ while true; do
   require_base_ready
   if ! pgrep -u robotgo -x plasmashell >/dev/null 2>&1; then
     if ((SECONDS >= deadline)); then
+      if recover_shell_once; then
+        deadline=$((SECONDS + 30))
+        continue
+      fi
       fail_shell_stage
     fi
     sleep 1
@@ -117,6 +165,10 @@ while true; do
   require_base_ready
   if ! pgrep -u robotgo -x plasmashell >/dev/null 2>&1; then
     if ((SECONDS >= deadline)); then
+      if recover_shell_once; then
+        deadline=$((SECONDS + 30))
+        continue
+      fi
       fail_shell_stage
     fi
     sleep 1
@@ -147,6 +199,9 @@ while ((SECONDS < deadline)); do
   if all_ready; then
     ((stable += 1))
     if ((stable >= 3)); then
+      if [[ -d "$shell_recovery_marker" ]]; then
+        report_shell_recovery
+      fi
       exit 0
     fi
   else

@@ -5,10 +5,11 @@
 - Split KDE hosted-session readiness into bounded prerequisite, Plasma Shell,
   portal frontend, portal backend, and stability phases. The complete session
   must now pass three consecutive probes, later phases continuously revalidate
-  their prerequisites, allow naturally managed shell/portal bounces to settle
-  only within the current phase, and expose only explicitly allowlisted failure
-  stages outside the disposable guest. KDE receives its own bounded timeout
-  hierarchy while GNOME retains its shorter guard and maps its legacy
+  their prerequisites, allow naturally managed shell/portal bounces to settle,
+  and expose only explicitly allowlisted failure stages outside the disposable
+  guest. A terminal Plasma Shell failure gets at most one bounded, visible user
+  unit restart; a second failure remains terminal. KDE receives its own bounded
+  timeout hierarchy while GNOME retains its shorter guard and maps its legacy
   `unknown` terminal marker to `session-unstable`. This prevents slow early
   startup from consuming the shell's budget or exposing private diagnostics.
 - Made hosted GNOME/KDE image-install stalls fail earlier and diagnostically:
