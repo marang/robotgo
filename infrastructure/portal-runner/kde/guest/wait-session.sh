@@ -26,8 +26,13 @@ session_ready_marker=/run/user/1100/robotgo-session-ready
 session_decision_lock=/run/user/1100/robotgo-session-decision.lock
 session_decision_lock_open=0
 
+display_manager_active() {
+  timeout --kill-after=1s 2s systemctl is-active --quiet \
+    sddm.service >/dev/null 2>&1
+}
+
 base_ready() {
-  systemctl is-active --quiet sddm.service &&
+  display_manager_active &&
     [[ -d /run/user/1100 ]] &&
     [[ -S /run/user/1100/bus ]] &&
     [[ -S /run/user/1100/wayland-0 ]] &&
@@ -52,7 +57,7 @@ shell_unit_active() {
 }
 
 fail_base_stage() {
-  if ! systemctl is-active --quiet sddm.service; then
+  if ! display_manager_active; then
     fail_stage display-manager
   elif [[ ! -d /run/user/1100 ]]; then
     fail_stage runtime-directory
@@ -99,7 +104,7 @@ acquire_session_decision() {
       fail_stage session-decision-failed
     session_decision_lock_open=1
   fi
-  flock --exclusive --wait 5 9 >/dev/null 2>&1 ||
+  flock --exclusive --wait 15 9 >/dev/null 2>&1 ||
     fail_stage session-decision-timeout
 }
 
@@ -165,6 +170,10 @@ recover_shell_once() {
 
 claim_session_ready() {
   acquire_session_decision
+  if ! all_ready; then
+    release_session_decision
+    return 1
+  fi
   if [[ -d "$session_ready_marker" ]]; then
     release_session_decision
     return 0

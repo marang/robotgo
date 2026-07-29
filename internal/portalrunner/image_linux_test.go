@@ -561,8 +561,11 @@ func TestRepositoryKDEGuestActivatesPortalFrontendAndBackend(t *testing.T) {
 		"/run/user/1100/robotgo-session-ready",
 		"/run/user/1100/robotgo-session-decision.lock",
 		"mkdir -m 0700 \"$shell_recovery_marker\"",
-		"flock --exclusive --wait 5 9",
+		"flock --exclusive --wait 15 9",
 		"claim_session_ready",
+		"if ! all_ready; then\n" +
+			"    release_session_decision\n" +
+			"    return 1",
 		"if [[ -d \"$session_ready_marker\" ]]; then\n" +
 			"    release_session_decision\n" +
 			"    return 0",
