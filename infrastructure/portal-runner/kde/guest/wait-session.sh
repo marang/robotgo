@@ -81,7 +81,7 @@ report_shell_recovery() {
 }
 
 wait_for_shell_recovery() {
-  local deadline=$((SECONDS + 12))
+  local deadline=$((SECONDS + 15))
   while ((SECONDS < deadline)); do
     if [[ -d "$shell_recovery_complete" ]]; then
       return 0
@@ -226,7 +226,7 @@ while true; do
     if all_ready; then
       ((stable += 1))
       if ((stable >= 3)); then
-        if [[ -d "$shell_recovery_marker" ]]; then
+        if [[ -d "$shell_recovery_complete" ]]; then
           report_shell_recovery
         fi
         exit 0
