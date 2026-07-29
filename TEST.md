@@ -1050,7 +1050,9 @@ reproducibility-pinned snapshot while retaining the real desktop sessions
 under test. The large kernel-extra package remains version- and SHA-256-pinned
 but is fetched from its immutable Ubuntu Launchpad artifact URL instead of the
 throttled snapshot and removed from temporary guest storage after local
-installation.
+installation. APT downloads only signed package indexes, omitting translations,
+desktop metadata, and command-not-found indexes that cannot affect the pinned
+headless image package set.
 
 The reproducible images, hosted supervisor, independent consent drivers,
 exact-tree transfer, and mandatory cleanup checks are documented in

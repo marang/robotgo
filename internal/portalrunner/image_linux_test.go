@@ -612,6 +612,9 @@ func TestRepositoryGuestProvisioningRetriesBoundedDownloads(t *testing.T) {
 			script := string(data)
 			for _, required := range []string{
 				"Acquire::Retries=5",
+				"Acquire::Languages=none",
+				"Acquire::IndexTargets::deb::DEP-11::DefaultEnabled=false",
+				"Acquire::IndexTargets::deb::CNF::DefaultEnabled=false",
 				"Acquire::http::Timeout=30",
 				"Acquire::https::Timeout=30",
 				"DPkg::Lock::Timeout=60",

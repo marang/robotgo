@@ -83,6 +83,9 @@ mapfile -t packages < <(
 test "${#packages[@]}" -gt 0
 apt_options=(
   -o Acquire::Retries=5
+  -o Acquire::Languages=none
+  -o Acquire::IndexTargets::deb::DEP-11::DefaultEnabled=false
+  -o Acquire::IndexTargets::deb::CNF::DefaultEnabled=false
   -o Acquire::http::Timeout=30
   -o Acquire::https::Timeout=30
   -o DPkg::Lock::Timeout=60
