@@ -121,6 +121,8 @@ var sessionFailureStages = map[string]struct{}{
 	"portal-backend-unstable":          {},
 	"portal-unstable":                  {},
 	"runtime-directory":                {},
+	"session-decision-failed":          {},
+	"session-decision-timeout":         {},
 	"session-unstable":                 {},
 	"user-bus":                         {},
 	"wayland":                          {},

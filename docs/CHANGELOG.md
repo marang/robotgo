@@ -8,10 +8,11 @@
   their prerequisites, allow naturally managed shell/portal bounces to settle,
   and expose only explicitly allowlisted failure stages outside the disposable
   guest. A terminal Plasma Shell failure gets at most one bounded, visible user
-  unit restart; a second failure remains terminal. KDE receives its own bounded
-  timeout hierarchy while GNOME retains its shorter guard and maps its legacy
-  `unknown` terminal marker to `session-unstable`. This prevents slow early
-  startup from consuming the shell's budget or exposing private diagnostics.
+  unit restart; recovery and ready claims are serialized, and a second failure
+  remains terminal. KDE receives its own bounded timeout hierarchy while GNOME
+  retains its shorter guard and maps its legacy `unknown` terminal marker to
+  `session-unstable`. This prevents slow early startup from consuming the
+  shell's budget or exposing private diagnostics.
 - Made hosted GNOME/KDE image-install stalls fail earlier and diagnostically:
   all three portal workflows now share one tested outer timeout wrapper, guest
   installation has a shorter phase deadline, and failures expose only a

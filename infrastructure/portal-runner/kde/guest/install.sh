@@ -114,6 +114,7 @@ test "$(dpkg-query -W -f='${db:Status-Status}' \
   "linux-modules-extra-$kernel_release")" = installed
 test -f /usr/share/wayland-sessions/plasmawayland.desktop
 test -f /usr/lib/systemd/user/plasma-plasmashell.service
+test -x /usr/bin/flock
 test -x /usr/bin/kwin_wayland
 test -x /usr/bin/plasmashell
 test -x /usr/lib/x86_64-linux-gnu/libexec/xdg-desktop-portal-kde

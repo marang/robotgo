@@ -26,9 +26,9 @@ const (
 	runCompletionTimeout         = 2 * time.Minute
 	runCompletionPoll            = 3 * time.Second
 	qemuExitGrace                = 15 * time.Second
-	gnomeSessionReadinessCommand = "timeout 130 " +
+	gnomeSessionReadinessCommand = "timeout --kill-after=5s 130s " +
 		"/usr/local/libexec/robotgo-runner-wait-session"
-	kdeSessionReadinessCommand = "timeout 340 " +
+	kdeSessionReadinessCommand = "timeout --kill-after=5s 340s " +
 		"/usr/local/libexec/robotgo-runner-wait-session"
 )
 

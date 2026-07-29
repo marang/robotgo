@@ -22,6 +22,9 @@ shell_recovery_reported=0
 shell_recovery_marker=/run/user/1100/robotgo-shell-recovery-attempted
 shell_recovery_complete=/run/user/1100/robotgo-shell-recovery-complete
 shell_recovery_failed=/run/user/1100/robotgo-shell-recovery-failed
+session_ready_marker=/run/user/1100/robotgo-session-ready
+session_decision_lock=/run/user/1100/robotgo-session-decision.lock
+session_decision_lock_open=0
 
 base_ready() {
   systemctl is-active --quiet sddm.service &&
@@ -36,6 +39,16 @@ all_ready() {
     pgrep -u robotgo -x plasmashell >/dev/null 2>&1 &&
     portal_ping org.freedesktop.portal.Desktop &&
     portal_ping org.freedesktop.impl.portal.desktop.kde
+}
+
+shell_unit_failed() {
+  timeout --kill-after=1s 2s systemctl --user is-failed --quiet \
+    plasma-plasmashell.service >/dev/null 2>&1
+}
+
+shell_unit_active() {
+  timeout --kill-after=1s 2s systemctl --user is-active --quiet \
+    plasma-plasmashell.service >/dev/null 2>&1
 }
 
 fail_base_stage() {
@@ -61,12 +74,12 @@ require_base_ready() {
 }
 
 fail_shell_stage() {
-  if systemctl --user is-failed --quiet plasma-plasmashell.service; then
+  if shell_unit_failed; then
     if ((shell_recovery_observed)) || [[ -d "$shell_recovery_marker" ]]; then
       fail_stage desktop-shell-recovery-exhausted
     fi
     fail_stage desktop-shell-failed
-  elif systemctl --user is-active --quiet plasma-plasmashell.service; then
+  elif shell_unit_active; then
     fail_stage desktop-shell-process-missing
   else
     fail_stage desktop-shell-unstable
@@ -78,6 +91,21 @@ report_shell_recovery() {
     shell_recovery_reported=1
     printf 'ROBOTGO_SESSION_RECOVERY=desktop-shell\n' >&2
   fi
+}
+
+acquire_session_decision() {
+  if ((!session_decision_lock_open)); then
+    exec 9>"$session_decision_lock" ||
+      fail_stage session-decision-failed
+    session_decision_lock_open=1
+  fi
+  flock --exclusive --wait 5 9 >/dev/null 2>&1 ||
+    fail_stage session-decision-timeout
+}
+
+release_session_decision() {
+  flock --unlock 9 >/dev/null 2>&1 ||
+    fail_stage session-decision-failed
 }
 
 wait_for_shell_recovery() {
@@ -98,23 +126,31 @@ recover_shell_once() {
   if ((shell_recovery_observed)); then
     return 1
   fi
+  acquire_session_decision
+  if [[ -d "$session_ready_marker" ]]; then
+    release_session_decision
+    return 1
+  fi
   if [[ -d "$shell_recovery_marker" ]]; then
     shell_recovery_observed=1
+    release_session_decision
     wait_for_shell_recovery
     report_shell_recovery
     return 0
   fi
-  if ! systemctl --user is-failed --quiet \
-    plasma-plasmashell.service; then
+  if ! shell_unit_failed; then
+    release_session_decision
     return 1
   fi
   if ! mkdir -m 0700 "$shell_recovery_marker" 2>/dev/null; then
     shell_recovery_observed=1
+    release_session_decision
     wait_for_shell_recovery
     report_shell_recovery
     return 0
   fi
   shell_recovery_observed=1
+  release_session_decision
   if ! timeout --kill-after=1s 9s systemctl --user restart \
     plasma-plasmashell.service >/dev/null 2>&1; then
     mkdir -m 0700 "$shell_recovery_failed" 2>/dev/null || true
@@ -125,6 +161,21 @@ recover_shell_once() {
     fail_stage desktop-shell-recovery-failed
   fi
   report_shell_recovery
+}
+
+claim_session_ready() {
+  acquire_session_decision
+  if [[ -d "$shell_recovery_marker" ]] &&
+    ((!shell_recovery_observed)); then
+    release_session_decision
+    return 1
+  fi
+  if ! mkdir -m 0700 "$session_ready_marker" 2>/dev/null &&
+    [[ ! -d "$session_ready_marker" ]]; then
+    release_session_decision
+    fail_stage session-decision-failed
+  fi
+  release_session_decision
 }
 
 # Give each startup layer its own bounded budget. A single shared deadline made
@@ -152,7 +203,7 @@ while true; do
     if ((shell_recovery_observed)) ||
       [[ -d "$shell_recovery_marker" ]]; then
       fail_shell_stage
-    elif systemctl --user is-active --quiet plasma-plasmashell.service; then
+    elif shell_unit_active; then
       fail_stage desktop-shell-process-missing
     fi
     fail_stage desktop-shell-never-seen
@@ -226,12 +277,14 @@ while true; do
     if all_ready; then
       ((stable += 1))
       if ((stable >= 3)); then
-        if [[ -d "$shell_recovery_marker" ]] &&
-          ((!shell_recovery_observed)); then
+        if ! claim_session_ready; then
           if recover_shell_once; then
             continue 2
           fi
-          fail_shell_stage
+          # Another waiter may have completed recovery and claimed readiness
+          # between our two serialized decisions. Revalidate that ready state
+          # instead of misclassifying the now-healthy shell.
+          continue 2
         fi
         if [[ -d "$shell_recovery_complete" ]]; then
           report_shell_recovery

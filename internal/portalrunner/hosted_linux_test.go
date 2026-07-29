@@ -1209,6 +1209,33 @@ func TestHostedSessionRejectsUnknownLaneBeforeSSH(t *testing.T) {
 	}
 }
 
+func TestHostedSessionReadinessCommandsAreHardBounded(t *testing.T) {
+	t.Parallel()
+	for name, test := range map[string]struct {
+		command  string
+		deadline string
+	}{
+		"GNOME": {
+			command:  gnomeSessionReadinessCommand,
+			deadline: "130s",
+		},
+		"KDE": {
+			command:  kdeSessionReadinessCommand,
+			deadline: "340s",
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			if !strings.HasPrefix(
+				test.command,
+				"timeout --kill-after=5s "+test.deadline+" ",
+			) {
+				t.Fatalf("session readiness command = %q", test.command)
+			}
+		})
+	}
+}
+
 func TestTruncatingWriterRetainsPrefixWithoutShortWrite(t *testing.T) {
 	t.Parallel()
 	var destination strings.Builder
