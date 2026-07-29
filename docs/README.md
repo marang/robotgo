@@ -9,7 +9,7 @@ Use the following documents as the primary entry points:
 - [Stable release readiness](plan/stable-release-readiness.md) for the
   `v1.0.0-rc.1` to `v1.0.0` decision, API freeze, platform claims, and
   exact-evidence gates.
-- [v1.0.0-rc.1 draft notes](releases/v1.0.0-rc.1.md) for installation,
+- [v1.0.0-rc.1 notes](releases/v1.0.0-rc.1.md) for installation,
   support-scope, migration, privacy, and final tag-evidence requirements.
 - [Public Go API compatibility](compatibility/public-api.md) for stable package
   discovery, platform/build-tag manifests, the blocking CI gate, and the

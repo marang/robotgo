@@ -1,8 +1,8 @@
 {
   "schemaVersion": 1,
-  "published": "2026-07-27",
-  "releaseRun": "https://github.com/marang/robotgo/actions/runs/30284816440",
-  "releaseCommit": "912722cd480bd542419bd16e7267bbf22201e1ff",
+  "published": "2026-07-29",
+  "releaseRun": "https://github.com/marang/robotgo/actions/runs/30434061380",
+  "releaseCommit": "cd204c663e4ff5c8d33504d8cbf8b4dce1d8cc59",
   "releaseChecks": [
     "Display bounds evidence / GitHub-hosted gnome multi-output Wayland bounds",
     "Display bounds evidence / GitHub-hosted kde multi-output Wayland bounds",
