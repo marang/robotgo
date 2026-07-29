@@ -29,9 +29,10 @@ so every waiter receives the full post-restart settle budget. A recovery during
 final stability repeats both portal phases before stability can pass. Recovery
 and readiness claims share a 15-second-bounded guest lock. Every ready claim
 revalidates the complete contract inside that lock, preventing a restart from
-racing a successful readiness decision. Raw journals, process arguments,
-environment values, and other session details remain inside the disposable
-guest. Normal phase deadlines total 220 seconds; the latest possible
+racing a successful readiness decision. A failed locked revalidation is
+classified without resetting the phase budgets. Raw journals, process
+arguments, environment values, and other session details remain inside the
+disposable guest. Normal phase deadlines total 220 seconds; the latest possible
 recovery adds at most 80 seconds for restart plus a complete portal/stability
 cycle. The host guard sends `TERM` after 340 seconds and enforces `KILL` five
 seconds later, capping both paths plus probe overhead beneath the 360-second

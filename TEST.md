@@ -1070,7 +1070,9 @@ during stability repeats the portal phases before stability can pass. Recovery
 and readiness claims are serialized under one 15-second-bounded guest lock:
 a ready claim revalidates the complete contract inside the lock and prevents
 any later restart, while a recovery claim forces every waiter to observe
-completion and revalidate. The normal KDE phase deadlines
+completion and revalidate. A failed locked revalidation falls through to the
+allowlisted terminal-stage classifier instead of resetting the phase budgets.
+The normal KDE phase deadlines
 total 220 seconds; the one-recovery path adds at most the 10-second restart plus
 a fresh 30-second portal frontend, 30-second backend, and 10-second stability
 cycle. The KDE host guard sends `TERM` after 340 seconds and enforces `KILL`

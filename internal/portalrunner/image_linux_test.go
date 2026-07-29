@@ -565,12 +565,13 @@ func TestRepositoryKDEGuestActivatesPortalFrontendAndBackend(t *testing.T) {
 		"claim_session_ready",
 		"if ! all_ready; then\n" +
 			"    release_session_decision\n" +
-			"    return 1",
+			"    return 2",
 		"if [[ -d \"$session_ready_marker\" ]]; then\n" +
 			"    release_session_decision\n" +
 			"    return 0",
 		"timeout --kill-after=1s 2s systemctl --user is-failed",
 		"wait_for_shell_recovery",
+		"if ((claim_status != 0)); then",
 		"continue 2",
 		"timeout --kill-after=1s 9s systemctl --user restart",
 		"ROBOTGO_SESSION_RECOVERY=desktop-shell",

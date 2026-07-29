@@ -169,10 +169,13 @@ recover_shell_once() {
 }
 
 claim_session_ready() {
+  # Return 1 only for an unobserved recovery claim and 2 when the locked
+  # contract revalidation fails. The caller may restart phase budgets only
+  # after return 1 has actually observed recovery completion.
   acquire_session_decision
   if ! all_ready; then
     release_session_decision
-    return 1
+    return 2
   fi
   if [[ -d "$session_ready_marker" ]]; then
     release_session_decision
@@ -290,14 +293,29 @@ while true; do
     if all_ready; then
       ((stable += 1))
       if ((stable >= 3)); then
-        if ! claim_session_ready; then
+        claim_status=0
+        if claim_session_ready; then
+          claim_status=0
+        else
+          claim_status=$?
+        fi
+        if ((claim_status == 1)); then
           if recover_shell_once; then
             continue 2
           fi
           # Another waiter may have completed recovery and claimed readiness
-          # between our two serialized decisions. Revalidate that ready state
-          # instead of misclassifying the now-healthy shell.
-          continue 2
+          # between our two serialized decisions. Revalidate exactly once
+          # without resetting any phase budget.
+          if claim_session_ready; then
+            claim_status=0
+          else
+            claim_status=$?
+          fi
+        fi
+        if ((claim_status != 0)); then
+          # Fall through to the existing allowlisted terminal classification.
+          # A failed locked revalidation must not reset all phase budgets.
+          break
         fi
         if [[ -d "$shell_recovery_complete" ]]; then
           report_shell_recovery
