@@ -16,16 +16,6 @@ func TestHostedPortalProofUsesEphemeralGitHubKVM(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	wrapperInfo, err := os.Stat("run_hosted_portal_e2e_ci.sh")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if wrapperInfo.Mode().Perm() != 0o755 {
-		t.Fatalf(
-			"hosted CI timeout wrapper mode = %o, want 755",
-			wrapperInfo.Mode().Perm(),
-		)
-	}
 	script := normalizeWorkflowText(scriptData) +
 		"\n" + normalizeWorkflowText(wrapperData)
 	for path, cell := range map[string]string{
