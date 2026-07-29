@@ -514,6 +514,8 @@ func TestRepositoryKDEGuestActivatesPortalFrontendAndBackend(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, required := range []string{
+		"dpkg-query -W -f='${db:Status-Status}' plasma-workspace",
+		"test -x /usr/bin/plasmashell",
 		"/usr/local/libexec/robotgo-runner-locate-screencast",
 		"/usr/local/libexec/robotgo-runner-report-screencast-geometry",
 		"/usr/local/share/robotgo/report-screencast-geometry.js",

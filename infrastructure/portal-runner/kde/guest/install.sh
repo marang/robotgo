@@ -51,12 +51,14 @@ apt_options=(
 )
 apt-get "${apt_options[@]}" update
 apt-get "${apt_options[@]}" install -y --no-install-recommends "${packages[@]}"
+test "$(dpkg-query -W -f='${db:Status-Status}' plasma-workspace)" = installed
 kernel_release=$(jq -r '.vm.kernel_release' "$manifest")
 test "$(uname -r)" = "$kernel_release"
 test "$(dpkg-query -W -f='${db:Status-Status}' \
   "linux-modules-extra-$kernel_release")" = installed
 test -f /usr/share/wayland-sessions/plasmawayland.desktop
 test -x /usr/bin/kwin_wayland
+test -x /usr/bin/plasmashell
 test -x /usr/lib/x86_64-linux-gnu/libexec/xdg-desktop-portal-kde
 
 if ! id robotgo >/dev/null 2>&1; then

@@ -1043,9 +1043,11 @@ screen frames, and input evidence cannot enter that log because runner
 registration occurs only after the immutable image is complete. The normal
 `always()` cleanup still removes the bounded log, VM state, and helper binary.
 The GNOME image installs the explicit `gnome-session`, GDM, Shell, and portal
-contract and rejects `ubuntu-desktop-minimal`; this avoids pulling unrelated
-applications and services through the throttled, reproducibility-pinned
-snapshot while retaining the real GNOME Wayland session under test.
+contract and rejects `ubuntu-desktop-minimal`. The KDE image likewise installs
+the explicit Plasma Workspace/Wayland contract and rejects `plasma-desktop`.
+This avoids pulling unrelated applications and services through the throttled,
+reproducibility-pinned snapshot while retaining the real desktop sessions
+under test.
 
 The reproducible images, hosted supervisor, independent consent drivers,
 exact-tree transfer, and mandatory cleanup checks are documented in

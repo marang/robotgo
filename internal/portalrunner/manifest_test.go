@@ -109,7 +109,7 @@ func TestKDEManifestContract(t *testing.T) {
 		"libxkbcommon-dev",
 		"linux-modules-extra-6.8.0-134-generic",
 		"pipewire",
-		"plasma-desktop",
+		"plasma-workspace",
 		"plasma-workspace-wayland",
 		"sddm",
 		"wireplumber",
@@ -118,6 +118,12 @@ func TestKDEManifestContract(t *testing.T) {
 	}
 	if err := manifest.Validate(); err != nil {
 		t.Fatalf("KDE manifest rejected: %v", err)
+	}
+	manifest.Packages = append(manifest.Packages, "plasma-desktop")
+	slices.Sort(manifest.Packages)
+	if err := manifest.Validate(); err == nil ||
+		!strings.Contains(err.Error(), `must not include "plasma-desktop"`) {
+		t.Fatalf("KDE broad package validation error = %v", err)
 	}
 }
 

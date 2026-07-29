@@ -278,10 +278,16 @@ func (manifest Manifest) Validate() error {
 			"xdg-desktop-portal-gnome",
 		)
 	case portalLaneKDE:
+		if slices.Contains(manifest.Packages, "plasma-desktop") {
+			return errors.New(
+				`portal runner KDE package set must not include ` +
+					`"plasma-desktop"`,
+			)
+		}
 		requiredPackages = append(requiredPackages,
 			"kwin-wayland",
 			"libkf5screen-bin",
-			"plasma-desktop",
+			"plasma-workspace",
 			"plasma-workspace-wayland",
 			"sddm",
 			"xdg-desktop-portal-kde",
