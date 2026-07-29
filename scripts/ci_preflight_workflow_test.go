@@ -75,7 +75,10 @@ func TestLocalCIPreflightCoversFastFailureContracts(t *testing.T) {
 	for _, required := range []string{
 		`mktemp -d "${TMPDIR:-/tmp}/robotgo-ci-preflight.XXXXXX"`,
 		"trap cleanup EXIT INT TERM",
-		`run_logged "diff hygiene" git diff --check`,
+		`base_ref="${ROBOTGO_PREFLIGHT_BASE_REF:-origin/main}"`,
+		`merge_base="$(git merge-base HEAD "$base_ref")"`,
+		`run_logged "branch diff hygiene" git diff --check "$merge_base"`,
+		`run_logged "working-tree diff hygiene" git diff --check HEAD`,
 		`run_logged "module integrity" go mod verify`,
 		"go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.7",
 		`run_logged "native default tests" go test ./...`,

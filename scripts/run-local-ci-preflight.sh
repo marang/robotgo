@@ -6,6 +6,7 @@ readonly script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 readonly repository_root="$(cd -- "$script_dir/.." && pwd)"
 readonly lint_version="2.11.4"
 readonly temporary_root="$(mktemp -d "${TMPDIR:-/tmp}/robotgo-ci-preflight.XXXXXX")"
+readonly base_ref="${ROBOTGO_PREFLIGHT_BASE_REF:-origin/main}"
 
 cleanup() {
   rm -rf -- "$temporary_root"
@@ -54,7 +55,17 @@ if [[ -n "$unformatted" ]]; then
   exit 1
 fi
 
-run_logged "diff hygiene" git diff --check
+if ! git rev-parse --verify --quiet "$base_ref^{commit}" >/dev/null; then
+  printf 'preflight base ref does not exist: %s\n' "$base_ref" >&2
+  exit 1
+fi
+merge_base="$(git merge-base HEAD "$base_ref")"
+if [[ -z "$merge_base" ]]; then
+  printf 'no merge base between HEAD and %s\n' "$base_ref" >&2
+  exit 1
+fi
+run_logged "branch diff hygiene" git diff --check "$merge_base"
+run_logged "working-tree diff hygiene" git diff --check HEAD
 run_logged "module integrity" go mod verify
 run_logged "workflow syntax" \
   go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.7
