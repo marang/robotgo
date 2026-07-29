@@ -22,8 +22,10 @@ import (
 
 const (
 	maximumSourceArchive    = 128 * 1024 * 1024
-	gnomePortalDialogSettle = 2 * time.Second
+	gnomePortalDialogSettle = 500 * time.Millisecond
 	kdePortalDialogSettle   = 5 * time.Second
+	gnomePortalDialogWait   = 45 * time.Second
+	gnomePortalOutputLimit  = 64
 	consentPollInterval     = 250 * time.Millisecond
 	hostedTestTimeout       = 4 * time.Minute
 	hostedTestLogLimit      = 2 * 1024 * 1024
@@ -545,6 +547,17 @@ func RunHosted(
 				}
 			}
 			return err
+		}
+		if manifest.Lane == portalLaneGNOME {
+			if err := waitForHostedGNOMEPortalDialog(
+				guestContext,
+				options.Commands,
+				sshArguments,
+				options.Cell,
+			); err != nil {
+				stopProcessGroup(testCommand, testResult.done)
+				return err
+			}
 		}
 		if err := waitForPortalDialog(
 			guestContext,
@@ -1494,6 +1507,50 @@ func locateHostedKDEScreenCast(
 		)
 	}
 	return geometry, nil
+}
+
+func waitForHostedGNOMEPortalDialog(
+	ctx context.Context,
+	commands CommandExecutor,
+	sshArguments []string,
+	cell string,
+) error {
+	if cell != HostedCellRemoteDesktop && cell != HostedCellScreenCast {
+		return errors.New("hosted GNOME portal dialog cell is invalid")
+	}
+
+	command := "exec runuser -u robotgo -- env " +
+		"XDG_RUNTIME_DIR=/run/user/1100 " +
+		"DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1100/bus " +
+		"/usr/local/libexec/robotgo-runner-wait-portal-dialog " +
+		shellQuote(cell)
+
+	dialogContext, cancel := context.WithTimeout(ctx, gnomePortalDialogWait)
+	defer cancel()
+	var output bytes.Buffer
+	err := commands.Run(
+		dialogContext,
+		"ssh",
+		append(
+			append([]string{}, sshArguments...),
+			"root@127.0.0.1",
+			command,
+		),
+		nil,
+		&boundedWriter{
+			destination: &output,
+			remaining:   gnomePortalOutputLimit,
+		},
+	)
+	if err == nil && output.String() == "ok\n" {
+		return nil
+	}
+	if output.String() == "error dialog-unavailable\n" {
+		return errors.New(
+			`locate hosted GNOME portal dialog at stage "dialog-unavailable"`,
+		)
+	}
+	return errors.New("locate hosted GNOME portal dialog")
 }
 
 const (

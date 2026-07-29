@@ -579,6 +579,113 @@ func TestHostedKDEScreenCastLocatorUsesContentFreeKWinGeometry(
 	}
 }
 
+func TestHostedGNOMEPortalDialogWaitUsesContentFreeShellReadiness(
+	t *testing.T,
+) {
+	t.Parallel()
+	for _, test := range []struct {
+		cell string
+	}{
+		{cell: HostedCellRemoteDesktop},
+		{cell: HostedCellScreenCast},
+	} {
+		test := test
+		t.Run(test.cell, func(t *testing.T) {
+			t.Parallel()
+			executor := &scriptedCommandExecutor{outputs: []string{"ok\n"}}
+			if err := waitForHostedGNOMEPortalDialog(
+				context.Background(),
+				executor,
+				[]string{"-p", "22222"},
+				test.cell,
+			); err != nil {
+				t.Fatalf("waitForHostedGNOMEPortalDialog: %v", err)
+			}
+			if len(executor.calls) != 1 {
+				t.Fatalf("GNOME dialog readiness calls = %v", executor.calls)
+			}
+			call := strings.Join(executor.calls[0], " ")
+			for _, required := range []string{
+				"ssh",
+				"root@127.0.0.1",
+				"runuser -u robotgo",
+				"XDG_RUNTIME_DIR=/run/user/1100",
+				"DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1100/bus",
+				"/usr/local/libexec/robotgo-runner-wait-portal-dialog",
+				test.cell,
+			} {
+				if !strings.Contains(call, required) {
+					t.Errorf("GNOME dialog readiness omits %q", required)
+				}
+			}
+			for _, forbidden := range []string{
+				"screenshot",
+				"journalctl",
+				"cat /",
+			} {
+				if strings.Contains(call, forbidden) {
+					t.Errorf("GNOME dialog readiness contains %q", forbidden)
+				}
+			}
+		})
+	}
+}
+
+func TestHostedGNOMEPortalDialogWaitSanitizesFailure(t *testing.T) {
+	t.Parallel()
+	executor := &scriptedCommandExecutor{
+		outputs: []string{"private window data\n"},
+		errors:  []error{errors.New("private SSH failure")},
+	}
+	err := waitForHostedGNOMEPortalDialog(
+		context.Background(),
+		executor,
+		nil,
+		HostedCellScreenCast,
+	)
+	if err == nil || err.Error() != "locate hosted GNOME portal dialog" {
+		t.Fatalf("GNOME dialog readiness error = %v", err)
+	}
+	for _, private := range []string{"private window data", "private SSH failure"} {
+		if strings.Contains(err.Error(), private) {
+			t.Fatalf("GNOME dialog readiness leaks %q: %v", private, err)
+		}
+	}
+
+	executor = &scriptedCommandExecutor{
+		outputs: []string{"error dialog-unavailable\n"},
+		errors:  []error{errors.New("private SSH failure")},
+	}
+	err = waitForHostedGNOMEPortalDialog(
+		context.Background(),
+		executor,
+		nil,
+		HostedCellRemoteDesktop,
+	)
+	if err == nil || !strings.Contains(
+		err.Error(),
+		`stage "dialog-unavailable"`,
+	) {
+		t.Fatalf("GNOME dialog readiness stage = %v", err)
+	}
+	if strings.Contains(err.Error(), "private SSH failure") {
+		t.Fatalf("GNOME dialog readiness leaks private failure: %v", err)
+	}
+}
+
+func TestHostedGNOMEPortalDialogWaitRejectsInvalidCell(t *testing.T) {
+	t.Parallel()
+	err := waitForHostedGNOMEPortalDialog(
+		context.Background(),
+		&scriptedCommandExecutor{},
+		nil,
+		HostedCellDisplayBounds,
+	)
+	if err == nil || !strings.Contains(err.Error(), "cell is invalid") {
+		t.Fatalf("invalid GNOME dialog cell error = %v", err)
+	}
+}
+
 func TestHostedKDEScreenCastLocatorRejectsUnsafeGeometry(t *testing.T) {
 	t.Parallel()
 	for _, output := range []string{

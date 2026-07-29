@@ -47,6 +47,10 @@ var commonGuestImageFiles = []string{
 	"guest/wait-session.sh",
 }
 
+var gnomeGuestImageFiles = []string{
+	"guest/wait-portal-dialog.sh",
+}
+
 var kdeGuestImageFiles = []string{
 	"guest/locate-screencast.sh",
 	"guest/report-screencast-geometry.js",
@@ -748,7 +752,8 @@ func preparePersistentDirectory(path string) error {
 func guestImageFilesForLane(lane string) ([]string, error) {
 	switch lane {
 	case portalLaneGNOME:
-		return append([]string{}, commonGuestImageFiles...), nil
+		files := append([]string{}, commonGuestImageFiles...)
+		return append(files, gnomeGuestImageFiles...), nil
 	case portalLaneKDE:
 		files := append([]string{}, commonGuestImageFiles...)
 		return append(files, kdeGuestImageFiles...), nil

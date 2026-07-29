@@ -416,6 +416,7 @@ func TestRepositoryGuestSessionContract(t *testing.T) {
 		"dpkg-query -W -f='${db:Status-Status}' gnome-session",
 		"test -f /usr/share/wayland-sessions/gnome.desktop",
 		"test -x /usr/bin/gnome-shell",
+		"/usr/local/libexec/robotgo-runner-wait-portal-dialog",
 		"chmod 0644 /etc/dconf/profile/user",
 		"chmod 0644 /etc/dconf/db/robotgo.d/00-runner",
 		"chmod 0644 /etc/dconf/db/robotgo",
@@ -427,6 +428,35 @@ func TestRepositoryGuestSessionContract(t *testing.T) {
 			t.Fatalf("install.sh omits GNOME guest contract %q", required)
 		}
 	}
+
+	dialogWait, err := os.ReadFile(
+		filepath.Join(guestRoot, "wait-portal-dialog.sh"),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dialogScript := string(dialogWait)
+	for _, required := range []string{
+		"org.gnome.Shell.Introspect",
+		"GetWindows",
+		`remote-desktop) readonly expected_title="Remote Desktop"`,
+		`screencast) readonly expected_title="Share Screen"`,
+		"error dialog-unavailable",
+	} {
+		if !strings.Contains(dialogScript, required) {
+			t.Errorf("GNOME dialog readiness omits %q", required)
+		}
+	}
+	for _, forbidden := range []string{
+		"journalctl",
+		"screenshot",
+		`printf '%s' "$windows"`,
+	} {
+		if strings.Contains(dialogScript, forbidden) {
+			t.Errorf("GNOME dialog readiness contains %q", forbidden)
+		}
+	}
+
 	for _, forbidden := range []string{
 		"ACTIONS_RUNNER_HOOK_JOB_STARTED=/usr/local/libexec/robotgo-runner-job-started-hook\n",
 		"ACTIONS_RUNNER_HOOK_JOB_COMPLETED=/usr/local/libexec/robotgo-runner-job-completed-hook\n",

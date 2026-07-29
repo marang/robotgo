@@ -1024,6 +1024,11 @@ helper reports only
 control geometry and the host performs both actions through QMP's private
 pointer; KDE's native non-sandboxed RemoteDesktop backend uses its upstream
 notification policy and therefore has no modal approval to drive.
+Before sending GNOME's QMP input, the controller waits until Shell
+introspection reports the exact expected portal dialog title. The full window
+list remains inside the disposable guest; only an `ok` marker or an allowlisted
+failure stage can reach the host. This removes the startup race between the
+test's pre-request marker and an on-demand portal backend.
 RobotGo never approves its own request or patches a portal. No Actions token,
 checkout credential, `.git` directory, untracked file, screen frame, restore
 token, or raw log enters retained guest state.

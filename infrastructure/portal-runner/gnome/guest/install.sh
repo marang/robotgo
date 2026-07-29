@@ -153,6 +153,8 @@ install -m 0755 "$(dirname "$0")/job-completed.sh" \
   /usr/local/sbin/robotgo-runner-job-completed
 install -m 0755 "$(dirname "$0")/wait-session.sh" \
   /usr/local/libexec/robotgo-runner-wait-session
+install -m 0755 "$(dirname "$0")/wait-portal-dialog.sh" \
+  /usr/local/libexec/robotgo-runner-wait-portal-dialog
 install -m 0755 "$(dirname "$0")/configure-egress.sh" \
   /usr/local/sbin/robotgo-runner-configure-egress
 install -m 0755 "$(dirname "$0")/register.sh" \
