@@ -275,7 +275,6 @@ func TestImage(t *testing.T) {
 	tt.Equal(t, 20, Height(img1))
 
 	bit1 := ImgToBitmap(img1)
-	defer FreeBitmap(bit1)
 	tt.Equal(t, bit1.Width, Width(img1))
 	tt.Equal(t, bit1.Height, Height(img1))
 }
