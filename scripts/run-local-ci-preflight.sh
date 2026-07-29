@@ -66,7 +66,7 @@ if [[ -z "$merge_base" ]]; then
   printf 'no merge base between HEAD and %s\n' "$base_ref" >&2
   exit 1
 fi
-run_logged "branch diff hygiene" git diff --check "$merge_base"
+run_logged "branch diff hygiene" git diff --check "$merge_base" HEAD
 run_logged "working-tree diff hygiene" git diff --check HEAD
 run_logged "module integrity" go mod verify
 run_logged "workflow syntax" \

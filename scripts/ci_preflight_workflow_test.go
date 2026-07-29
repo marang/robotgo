@@ -77,7 +77,7 @@ func TestLocalCIPreflightCoversFastFailureContracts(t *testing.T) {
 		"trap cleanup EXIT INT TERM",
 		`base_ref="${ROBOTGO_PREFLIGHT_BASE_REF:-origin/main}"`,
 		`merge_base="$(git merge-base HEAD "$base_ref")"`,
-		`run_logged "branch diff hygiene" git diff --check "$merge_base"`,
+		`run_logged "branch diff hygiene" git diff --check "$merge_base" HEAD`,
 		`run_logged "working-tree diff hygiene" git diff --check HEAD`,
 		`run_logged "module integrity" go mod verify`,
 		"go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.7",
