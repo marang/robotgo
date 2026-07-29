@@ -1058,11 +1058,13 @@ being misreported as a shell failure. The complete contract must remain true
 for three consecutive probes before source transfer begins. Failures expose
 only an allowlisted stage such as `desktop-shell-never-seen` or
 `portal-backend-unstable`; process arguments, journals, environment values, and
-other guest data do not cross SSH. The KDE host-side guard remains shorter
-than the KDE systemd runner start bound. The nominal KDE phase deadlines total
-220 seconds; the 250-second host guard is the hard cap including bounded probe
-overhead. GNOME retains its shorter 130-second host guard and 150-second systemd
-bound.
+other guest data do not cross SSH. A naturally managed Plasma Shell or portal
+frontend bounce may settle only inside the current bounded phase; RobotGo does
+not restart it, and the final stability probes still reject a crash loop. The
+KDE host-side guard remains shorter than the KDE systemd runner start bound.
+The nominal KDE phase deadlines total 220 seconds; the 250-second host guard is
+the hard cap including bounded probe overhead. GNOME retains its shorter
+130-second host guard and 150-second systemd bound.
 
 Hosted workflow calls share
 `scripts/run_hosted_portal_e2e_ci.sh` as their fixed 30-minute outer guard.

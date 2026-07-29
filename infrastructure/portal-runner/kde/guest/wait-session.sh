@@ -64,12 +64,6 @@ fail_shell_stage() {
   fi
 }
 
-require_shell_ready() {
-  if ! pgrep -u robotgo -x plasmashell >/dev/null 2>&1; then
-    fail_shell_stage
-  fi
-}
-
 # Give each startup layer its own bounded budget. A single shared deadline made
 # a slow display-manager/compositor startup consume nearly all of the time
 # intended for Plasma Shell and misclassified the terminal failure.
@@ -102,7 +96,13 @@ done
 deadline=$((SECONDS + 30))
 while true; do
   require_base_ready
-  require_shell_ready
+  if ! pgrep -u robotgo -x plasmashell >/dev/null 2>&1; then
+    if ((SECONDS >= deadline)); then
+      fail_shell_stage
+    fi
+    sleep 1
+    continue
+  fi
   if portal_ping org.freedesktop.portal.Desktop; then
     break
   fi
@@ -115,9 +115,19 @@ done
 deadline=$((SECONDS + 30))
 while true; do
   require_base_ready
-  require_shell_ready
+  if ! pgrep -u robotgo -x plasmashell >/dev/null 2>&1; then
+    if ((SECONDS >= deadline)); then
+      fail_shell_stage
+    fi
+    sleep 1
+    continue
+  fi
   if ! portal_ping org.freedesktop.portal.Desktop; then
-    fail_stage portal-unstable
+    if ((SECONDS >= deadline)); then
+      fail_stage portal-unstable
+    fi
+    sleep 1
+    continue
   fi
   if portal_ping org.freedesktop.impl.portal.desktop.kde; then
     break

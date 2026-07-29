@@ -552,7 +552,7 @@ func TestRepositoryKDEGuestActivatesPortalFrontendAndBackend(t *testing.T) {
 		"deadline=$((SECONDS + 10))",
 		"stable >= 3",
 		"require_base_ready",
-		"require_shell_ready",
+		"fail_shell_stage",
 		"desktop-shell-never-seen",
 		"desktop-shell-failed",
 		"desktop-shell-process-missing",
