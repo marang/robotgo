@@ -1,0 +1,220 @@
+{
+  "schemaVersion": 1,
+  "published": "2026-07-27",
+  "releaseRun": "https://github.com/marang/robotgo/actions/runs/30284816440",
+  "releaseCommit": "912722cd480bd542419bd16e7267bbf22201e1ff",
+  "releaseChecks": [
+    "Display bounds evidence / GitHub-hosted gnome multi-output Wayland bounds",
+    "Display bounds evidence / GitHub-hosted kde multi-output Wayland bounds",
+    "Hyprland window evidence / hyprland-window",
+    "Portal capture evidence / GitHub-hosted gnome multi-output persistent capture",
+    "Portal capture evidence / GitHub-hosted kde multi-output persistent capture",
+    "Portal input evidence / GitHub-hosted gnome multi-output portal input",
+    "Portal input evidence / GitHub-hosted kde multi-output portal input",
+    "api-compat",
+    "lint",
+    "native-capture",
+    "native-input",
+    "native-output",
+    "native-output-multi",
+    "native-window",
+    "nocgo (macOS-latest)",
+    "nocgo (ubuntu-latest)",
+    "nocgo (windows-latest)",
+    "ocr",
+    "portal-availability",
+    "race",
+    "release-evidence-validation",
+    "sanitizer",
+    "test (macOS-latest)",
+    "test (ubuntu-latest)",
+    "test (windows-latest)",
+    "vet",
+    "wayland-integration",
+    "x11-backend-evidence",
+    "x11-default-suite"
+  ],
+  "rows": [
+    {
+      "id": "linux-x11-native",
+      "platform": "Linux/X11",
+      "buildMode": "Native CGO",
+      "scope": "X11 capture and bounds, keyboard/pointer input, and X11/EWMH window and process helpers",
+      "status": "supported",
+      "blockingChecks": [
+        "api-compat",
+        "race",
+        "sanitizer",
+        "test (ubuntu-latest)",
+        "x11-backend-evidence",
+        "x11-default-suite"
+      ],
+      "limits": "Input requires XTEST; EWMH mutations require a window manager that advertises the operation."
+    },
+    {
+      "id": "linux-x11-purego",
+      "platform": "Linux/X11",
+      "buildMode": "Pure Go",
+      "scope": "X11 capture and bounds, XTEST input, and X11/EWMH window inspection and control",
+      "status": "supported",
+      "blockingChecks": [
+        "api-compat",
+        "nocgo (ubuntu-latest)",
+        "x11-backend-evidence"
+      ],
+      "limits": "Horizontal scroll and mutations without a consistent EWMH manager return explicit unsupported errors."
+    },
+    {
+      "id": "linux-wayland-wlroots-native",
+      "platform": "Linux/Wayland/wlroots",
+      "buildMode": "Native CGO with `wayland`",
+      "scope": "Advertised virtual input, screencopy, logical output geometry, and the evidenced Sway active-window subset",
+      "status": "supported",
+      "blockingChecks": [
+        "api-compat",
+        "native-capture",
+        "native-input",
+        "native-output",
+        "native-output-multi",
+        "native-window",
+        "portal-availability",
+        "wayland-integration"
+      ],
+      "limits": "Protocol and compositor capabilities are detected at runtime; Wayland core and unadvertised operations fail explicitly."
+    },
+    {
+      "id": "linux-wayland-hyprland-native",
+      "platform": "Hyprland/Wayland",
+      "buildMode": "Native CGO with `wayland`",
+      "scope": "Active-window title, PID, exact bounds, maximize query/set/restore, and legacy wrapper parity",
+      "status": "supported",
+      "blockingChecks": [
+        "Hyprland window evidence / hyprland-window",
+        "api-compat"
+      ],
+      "limits": "Portable handle/client and PID-target operations remain explicitly unsupported; broader foreign-window control is not claimed."
+    },
+    {
+      "id": "linux-wayland-purego",
+      "platform": "Linux/Wayland",
+      "buildMode": "Pure Go",
+      "scope": "Consent-aware one-shot Screenshot capture and RemoteDesktop input, plus bounded native logical output enumeration",
+      "status": "supported",
+      "blockingChecks": [
+        "Display bounds evidence / GitHub-hosted gnome multi-output Wayland bounds",
+        "Display bounds evidence / GitHub-hosted kde multi-output Wayland bounds",
+        "Portal input evidence / GitHub-hosted gnome multi-output portal input",
+        "Portal input evidence / GitHub-hosted kde multi-output portal input",
+        "api-compat",
+        "nocgo (ubuntu-latest)",
+        "portal-availability",
+        "wayland-integration"
+      ],
+      "limits": "Capture and input require explicit portal consent and an available desktop portal; persistent ScreenCast frames require a Linux CGO build with the `pipewire` tag, and implicit Xwayland is refused."
+    },
+    {
+      "id": "gnome-wayland-portal",
+      "platform": "GNOME/Wayland",
+      "buildMode": "Shared Go portal input, CGO with `pipewire` for ScreenCast, and native CGO/Pure-Go bounds",
+      "scope": "Multi-output RemoteDesktop input, CGO-only persistent ScreenCast capture, and logical display bounds",
+      "status": "supported",
+      "blockingChecks": [
+        "Display bounds evidence / GitHub-hosted gnome multi-output Wayland bounds",
+        "Portal capture evidence / GitHub-hosted gnome multi-output persistent capture",
+        "Portal input evidence / GitHub-hosted gnome multi-output portal input",
+        "api-compat"
+      ],
+      "limits": "Consent remains interactive by desktop policy; compositor-wide foreign-window control is not claimed."
+    },
+    {
+      "id": "kde-wayland-portal",
+      "platform": "KDE Plasma/Wayland",
+      "buildMode": "Shared Go portal input, CGO with `pipewire` for ScreenCast, and native CGO/Pure-Go bounds",
+      "scope": "Multi-output RemoteDesktop input, CGO-only persistent ScreenCast capture, and logical display bounds",
+      "status": "supported",
+      "blockingChecks": [
+        "Display bounds evidence / GitHub-hosted kde multi-output Wayland bounds",
+        "Portal capture evidence / GitHub-hosted kde multi-output persistent capture",
+        "Portal input evidence / GitHub-hosted kde multi-output portal input",
+        "api-compat"
+      ],
+      "limits": "Consent remains interactive by desktop policy; compositor-wide foreign-window control is not claimed."
+    },
+    {
+      "id": "macos-native-consent-free",
+      "platform": "macOS",
+      "buildMode": "Native CGO",
+      "scope": "Default build, public API, display metadata, and non-prompting permission/error contracts",
+      "status": "supported",
+      "blockingChecks": [
+        "api-compat",
+        "test (macOS-latest)"
+      ],
+      "limits": "This supported scope does not include operations that require Screen Recording or Accessibility grants."
+    },
+    {
+      "id": "macos-native-permission-granted",
+      "platform": "macOS",
+      "buildMode": "Native CGO",
+      "scope": "Screen capture plus permission-granted keyboard/pointer and Accessibility window operations",
+      "status": "implemented_evidence_pending",
+      "currentChecks": [
+        "api-compat",
+        "test (macOS-latest)"
+      ],
+      "limits": "Implemented APIs remain available with explicit permission diagnostics, but this scope is not an RC support claim.",
+      "missingEvidence": "repeatable permission-granted execution against a self-owned remote macOS desktop and window",
+      "followUp": "https://linear.app/riotbox/issue/LAB-69/add-permission-granted-self-owned-macos-runtime-evidence"
+    },
+    {
+      "id": "macos-purego-consent-free",
+      "platform": "macOS",
+      "buildMode": "Pure Go",
+      "scope": "CoreGraphics bounds and Retina scale, runtime symbol resolution, and non-prompting Screen Recording/Accessibility diagnostics",
+      "status": "supported",
+      "blockingChecks": [
+        "api-compat",
+        "nocgo (macOS-latest)"
+      ],
+      "limits": "The supported scope is observation/preflight only and does not post input, capture private pixels, or mutate windows."
+    },
+    {
+      "id": "macos-purego-permission-granted",
+      "platform": "macOS",
+      "buildMode": "Pure Go",
+      "scope": "CoreGraphics pixel capture, Quartz input mutation, and Accessibility window inspection/control",
+      "status": "implemented_evidence_pending",
+      "currentChecks": [
+        "api-compat",
+        "nocgo (macOS-latest)"
+      ],
+      "limits": "Hermetic implementation and denial contracts are blocking, but permission-granted behavior is not an RC support claim.",
+      "missingEvidence": "repeatable permission-granted execution against a self-owned remote macOS desktop and window",
+      "followUp": "https://linear.app/riotbox/issue/LAB-69/add-permission-granted-self-owned-macos-runtime-evidence"
+    },
+    {
+      "id": "windows-native",
+      "platform": "Windows",
+      "buildMode": "Native CGO",
+      "scope": "Default native build, public API, pointer behavior, and platform desktop/window helpers covered by the default suite",
+      "status": "supported",
+      "blockingChecks": [
+        "api-compat",
+        "test (windows-latest)"
+      ],
+      "limits": "Desktop policy and session isolation can still deny automation and are reported as runtime errors."
+    },
+    {
+      "id": "windows-purego",
+      "platform": "Windows",
+      "buildMode": "Pure Go",
+      "scope": "Capture, SendInput keyboard/pointer, clipboard-assisted paste, and self-owned Win32 window inspection/control",
+      "status": "supported",
+      "blockingChecks": [
+        "api-compat",
+        "nocgo (windows-latest)"
+      ],
+      "limits": "The blocking runner uses an input desktop and self-owned window; unrelated user windows and private content are never used."
+    }
+  ]
+}

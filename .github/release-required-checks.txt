@@ -1,0 +1,29 @@
+Display bounds evidence / GitHub-hosted gnome multi-output Wayland bounds
+Display bounds evidence / GitHub-hosted kde multi-output Wayland bounds
+Hyprland window evidence / hyprland-window
+Portal capture evidence / GitHub-hosted gnome multi-output persistent capture
+Portal capture evidence / GitHub-hosted kde multi-output persistent capture
+Portal input evidence / GitHub-hosted gnome multi-output portal input
+Portal input evidence / GitHub-hosted kde multi-output portal input
+api-compat
+lint
+native-capture
+native-input
+native-output
+native-output-multi
+native-window
+nocgo (macOS-latest)
+nocgo (ubuntu-latest)
+nocgo (windows-latest)
+ocr
+portal-availability
+race
+release-evidence-validation
+sanitizer
+test (macOS-latest)
+test (ubuntu-latest)
+test (windows-latest)
+vet
+wayland-integration
+x11-backend-evidence
+x11-default-suite

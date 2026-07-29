@@ -197,6 +197,9 @@ jobs:
       checks: read
       contents: read
     steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - name: Record successful protected checks for exact commit
         shell: bash
         env:
@@ -234,37 +237,7 @@ jobs:
                 exit 1
               fi
               printf '%s\n' "$row" >> "$output/rows.jsonl"
-            done <<'EOF'
-          api-compat
-          lint
-          native-capture
-          native-input
-          native-output
-          native-output-multi
-          native-window
-          nocgo (macOS-latest)
-          nocgo (ubuntu-latest)
-          nocgo (windows-latest)
-          ocr
-          Portal capture evidence / GitHub-hosted gnome multi-output persistent capture
-          Portal capture evidence / GitHub-hosted kde multi-output persistent capture
-          Portal input evidence / GitHub-hosted gnome multi-output portal input
-          Portal input evidence / GitHub-hosted kde multi-output portal input
-          Display bounds evidence / GitHub-hosted gnome multi-output Wayland bounds
-          Display bounds evidence / GitHub-hosted kde multi-output Wayland bounds
-          Hyprland window evidence / hyprland-window
-          portal-availability
-          race
-          release-evidence-validation
-          sanitizer
-          test (macOS-latest)
-          test (ubuntu-latest)
-          test (windows-latest)
-          vet
-          wayland-integration
-          x11-backend-evidence
-          x11-default-suite
-          EOF
+            done < .github/release-required-checks.txt
             if [ "$pending" -eq 0 ]; then
               break
             fi
@@ -342,28 +315,9 @@ jobs:
             echo "unexpected protected-check evidence files" >&2
             exit 1
           fi
-          expected_checks="$(printf '%s\n' \
-            api-compat \
-            lint \
-            native-capture native-input native-output native-output-multi \
-            native-window \
-            'nocgo (macOS-latest)' \
-            'nocgo (ubuntu-latest)' \
-            'nocgo (windows-latest)' \
-            ocr \
-            'Portal capture evidence / GitHub-hosted gnome multi-output persistent capture' \
-            'Portal capture evidence / GitHub-hosted kde multi-output persistent capture' \
-            'Portal input evidence / GitHub-hosted gnome multi-output portal input' \
-            'Portal input evidence / GitHub-hosted kde multi-output portal input' \
-            'Display bounds evidence / GitHub-hosted gnome multi-output Wayland bounds' \
-            'Display bounds evidence / GitHub-hosted kde multi-output Wayland bounds' \
-            'Hyprland window evidence / hyprland-window' \
-            portal-availability race release-evidence-validation sanitizer \
-            'test (macOS-latest)' \
-            'test (ubuntu-latest)' \
-            'test (windows-latest)' \
-            vet wayland-integration x11-backend-evidence \
-            x11-default-suite | LC_ALL=C sort)"
+          expected_checks="$(
+            LC_ALL=C sort .github/release-required-checks.txt
+          )"
           actual_checks="$(jq -r '.checks[].name' \
             required-checks/required-checks.json | LC_ALL=C sort)"
           if [ "$actual_checks" != "$expected_checks" ]; then

@@ -8,8 +8,8 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: hyprland-e2e-${{ github.ref }}
-  cancel-in-progress: true
+  group: hyprland-e2e-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read

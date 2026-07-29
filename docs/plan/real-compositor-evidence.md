@@ -1,7 +1,8 @@
 # Protected Real-Compositor Evidence Plan
 
 Status: Complete; hosted wlroots, GNOME/KDE portal and bounds, and Hyprland
-evidence delivered with a passing 28-check exact-release contract
+evidence delivered; the later API-freeze candidate passes a 29-check
+exact-release contract
 
 Linear project:
 [RobotGo | P005 | Protected Compositor Evidence](https://linear.app/riotbox/project/robotgo-or-p005-or-protected-compositor-evidence-d66467e3b5ee)
@@ -299,11 +300,12 @@ P005 completed after all of the following became blocking evidence:
 - `docs/compatibility/wayland-input.md`, `wayland-capture.md`, and
   `runtime-v1.md` link the retained evidence
 
-The completed contract passes in
-[`Release Evidence` run 30272753885](https://github.com/marang/robotgo/actions/runs/30272753885)
+The current completed contract passes in
+[`Release Evidence` run 30284816440](https://github.com/marang/robotgo/actions/runs/30284816440)
 on exact merged `main` commit
-`a641236b1b8f8bd80d4fbffc526a10aa5862b001`. Its schema-v1 manifest contains
-exactly 28 successful checks, including both hosted GNOME/KDE bounds lanes.
+`912722cd480bd542419bd16e7267bbf22201e1ff`. Its schema-v1 manifest contains
+exactly 29 successful checks, including both hosted GNOME/KDE bounds lanes and
+the stable public API gate.
 
 ## Non-goals
 

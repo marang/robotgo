@@ -2,6 +2,8 @@ name: X11 default suite
 
 on:
   push:
+    branches: [main]
+    tags: ['v*']
   pull_request:
 
 permissions:
@@ -9,7 +11,7 @@ permissions:
 
 concurrency:
   group: x11-default-suite-${{ github.ref }}
-  cancel-in-progress: false
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   x11-default-suite:

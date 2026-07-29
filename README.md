@@ -82,14 +82,22 @@ group.
 
 | Platform/session | Build | Current behavior |
 |---|---|---|
-| macOS | CGO-enabled default build | Native mouse, keyboard, capture, window, and process paths; macOS permissions still apply |
-| macOS | `CGO_ENABLED=0` | Pure-Go CoreGraphics capture, display bounds, real Retina scale, Quartz keyboard/pointer input, and Accessibility window inspection/control with explicit permission diagnostics; maximize/topmost and media keys without stable native semantics return `ErrNotSupported` |
+| macOS | CGO-enabled default build | Native implementation plus blocking build/API/display and non-prompting permission/error contracts; Screen Recording- or Accessibility-granted capture/input/window behavior is implemented but remains evidence-pending for the RC |
+| macOS | `CGO_ENABLED=0` | Blocking CoreGraphics bounds/Retina-scale and non-prompting permission diagnostics; pixel capture, Quartz input, and Accessibility window operations are implemented but permission-granted runtime evidence remains pending; maximize/topmost and media keys without stable native semantics return `ErrNotSupported` |
 | Windows | CGO-enabled default build | Native mouse, keyboard, capture, window, and process paths |
 | Windows | `CGO_ENABLED=0` | Pure-Go capture/display bounds, real Win32 DPI scale and pixel-at-pointer queries, foreground-layout-aware `SendInput` keyboard/text plus clipboard paste, complete pointer input, and Win32 window title/PID/handle/geometry/state/control operations with explicit errors |
 | Linux/X11 | CGO-enabled default build | X11/XTest input, capture, window, and process paths |
 | Linux/X11 | `CGO_ENABLED=0` | Pure-Go X11 capture/bounds, XTEST input, and window title/PID/handle/geometry/state/control through X11/EWMH; horizontal scroll and window mutations without a consistent EWMH window manager are explicitly unsupported |
 | Linux/Wayland | CGO with `-tags wayland`; add `pipewire` for persistent ScreenCast frames | Native wlroots capture/input where compositor protocols exist, one-shot Screenshot fallback, reusable ScreenCast/PipeWire capture, explicit RemoteDesktop portal sessions, capability-aware window support |
 | Linux/Wayland | `CGO_ENABLED=0` | Screenshot portal capture without implicit Xwayland, bounded native logical output enumeration without consent UI, and explicit RemoteDesktop portal sessions for supported input |
+
+“Implemented” is not automatically a stable support claim. The
+[Runtime Compatibility Matrix v1](docs/compatibility/runtime-v1.md) splits each
+bounded scope into `supported` or `implemented / evidence pending` and maps
+every supported row to exact release checks. In particular, permission-granted
+macOS capture/input/window operations are not in the RC-supported scope until
+[LAB-69](https://linear.app/riotbox/issue/LAB-69/add-permission-granted-self-owned-macos-runtime-evidence)
+provides sanitized evidence on a self-owned remote desktop.
 
 Wayland compositors intentionally restrict global automation. GNOME and KDE can
 use consent-aware Screenshot and RemoteDesktop portal paths. The explicit
@@ -110,6 +118,9 @@ through runtime-loaded system frameworks. `MouseReady`, `KeyboardReady`, and
 Accessibility preflight: if
 access is missing, they return/report `ErrPermissionDenied` with the relevant
 System Settings location. RobotGo never opens the consent dialog implicitly.
+The APIs described below are implemented and remain available, but operations
+that require an Accessibility grant are not part of the RC-supported scope
+until their self-owned permission-granted evidence is blocking.
 
 Keyboard support includes key taps, combinations, ownership-checked persistent
 key states, optional process targeting, exact UTF-16 text (including non-BMP
@@ -1107,8 +1118,10 @@ The stable remote checks and the six hosted Sway/wlroots native,
 single-/multi-output, and portal-availability jobs are required by `main`
 branch protection. Trusted `main` pushes also run real GNOME and KDE
 RemoteDesktop and persistent ScreenCast checks automatically inside disposable
-GitHub-hosted nested-KVM guests; these portal jobs are not yet required release
-gates. They do not use contributor workstations or self-hosted runners.
+GitHub-hosted nested-KVM guests. The exact-candidate release gate additionally
+requires the GNOME and KDE multi-output portal cells before it packages
+evidence. These jobs do not use contributor workstations or self-hosted
+runners.
 
 Wayland and portal code has additional tagged suites:
 
@@ -1130,6 +1143,8 @@ Real Wayland input results are tracked in the
 - [Go API reference](https://pkg.go.dev/github.com/marang/robotgo)
 - [Key names and conversion](docs/keys.md)
 - [Testing guide](TEST.md)
+- [Runtime compatibility and exact support claims](docs/compatibility/runtime-v1.md)
+- [v1.0.0-rc.1 draft install and migration notes](docs/releases/v1.0.0-rc.1.md)
 - [Release evidence format and verification](docs/compatibility/release-evidence-v1.md)
 - [Upstream compatibility audit](docs/compatibility/upstream-master.md)
 - [X11 native-vs-Pure-Go evidence](docs/performance/x11-native-vs-purego.md)
@@ -1138,17 +1153,17 @@ Real Wayland input results are tracked in the
 - [Wayland implementation history](docs/wayland-history.md)
 
 The bounded P002 reliability-hardening project is complete: Runtime Diagnostics
-v1, native sanitizer/leak gates, and a six-cell release-evidence workflow make
-support claims machine-readable and tied to exact source, test logs, and build
-identity. Published releases receive a checksummed evidence bundle. The active
-slice is now the
+v1, native sanitizer/leak gates, a machine-readable Runtime Compatibility
+Matrix, and a six-cell release-evidence workflow tie support claims to exact
+source, test logs, build identity, and 29 named release checks. Published
+releases receive a checksummed evidence bundle. The active reference is the
 [Protected Real-Compositor Evidence Plan](docs/plan/real-compositor-evidence.md),
 whose fail-closed preflight and sanitized evidence contract are implemented.
-Automated hosted GNOME/KDE single-output portal execution and the separate
-Sway/wlroots native and portal-availability jobs are implemented. GNOME/KDE
-multi-output proof and promotion of the passing portal jobs into required
-release gates remain across roadmap phases 1, 2, 3, and 5; those phases remain
-partial until their gates are green.
+Automated hosted GNOME/KDE single- and multi-output portal execution, hosted
+multi-output bounds, and the separate Sway/wlroots and Hyprland jobs are
+implemented. The GNOME/KDE multi-output portal and bounds checks are exact
+release gates; the current platform scope and permission-dependent exclusions
+live in the versioned compatibility contract.
 Phase 4 exposes the parity surface and now has a dedicated
 [P006 window-geometry project](https://linear.app/riotbox/project/robotgo-or-p006-or-explicit-window-geometry-4af461c427fb).
 `GetBoundsE`/`GetClientE` distinguish real window geometry from display

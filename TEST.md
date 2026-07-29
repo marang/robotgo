@@ -2,6 +2,26 @@
 
 This repository has both default tests and special test suites behind build tags.
 
+Before pushing a branch, run the repository-local CI predictor:
+
+```bash
+bash scripts/run-local-ci-preflight.sh
+```
+
+It checks formatting and diff hygiene, module integrity, workflow syntax,
+native and Pure-Go default tests/vet/lint, reconstruction of every checked-in
+API baseline supported by the current native host plus all cross-compiled
+Pure-Go variants, and the generated runtime-support contract. It deliberately
+fails when the pinned
+`golangci-lint` version is missing or different. Native CGO macOS/Windows
+execution and real compositor evidence still require their hosted jobs, but a
+missing or malformed native API baseline is rejected locally before a push.
+The default suites never post desktop input or change the clipboard. Legacy
+live desktop coverage is opt-in and requires both the `desktopintegration`
+build tag and `ROBOTGO_REQUIRE_DESKTOP_INTEGRATION=1`; run it only on a
+disposable, self-owned desktop. Clipboard and pointer state are restored by
+test cleanup.
+
 ## Default Test Suite
 
 Run this first on any platform:
@@ -11,6 +31,23 @@ go test ./...
 ```
 
 This is the baseline suite used for regular development and should stay green.
+It is safe to run from an interactive developer session: real desktop
+mutation is excluded unless the explicit integration tag and environment gate
+are both enabled.
+
+On a disposable, self-owned native Windows desktop, the protected Windows job
+also runs pointer and capture behavior with cleanup enabled:
+
+```bash
+ROBOTGO_REQUIRE_DESKTOP_INTEGRATION=1 \
+  go test -tags desktopintegration \
+  -run '^(TestColor|TestSize|TestMoveMouse|TestMoveMouseSmooth|TestDragMouse|TestMoveRelative|TestMoveSmoothRelative|TestImage)$' \
+  -count=1 -timeout=60s -v .
+```
+
+Do not set this opt-in variable on a developer workstation. Pointer state is
+restored and captured images exist only under `t.TempDir`, which Go removes
+after the test.
 
 The stable public Go API is an exact, blocking contract across native Linux,
 Wayland/portal/PipeWire, Pure-Go Linux, Windows, and macOS. Run the locally
@@ -39,6 +76,19 @@ library-package drift fails until the affected generated manifest is updated
 and reviewed. See
 [Public Go API Compatibility](docs/compatibility/public-api.md) for scope,
 exclusions, and the update command.
+
+The versioned platform-support contract is also machine-checked:
+
+```bash
+go run ./internal/cmd/supportmatrix
+```
+
+It rejects unknown evidence names, a `supported` row without release-blocking
+checks, and any row that mixes supported and pending semantics. After an
+intentional edit to
+[`runtime-v1.json`](docs/compatibility/runtime-v1.json), regenerate its
+human-readable table with `go run ./internal/cmd/supportmatrix -write`; both
+files must be reviewed together.
 
 The non-CGO contract is also part of CI:
 
@@ -99,7 +149,10 @@ macOS non-CGO leg also resolves the real CoreGraphics display-mode symbols and
 queries the active display scale as a blocking test. It additionally resolves
 the real Quartz keyboard/pointer and Accessibility symbols and performs a
 non-prompting permission preflight without posting input. None of these runtime
-checks requires a Screen Recording or Accessibility grant.
+checks requires a Screen Recording or Accessibility grant. They are the
+blocking evidence for the consent-free macOS support rows only; they do not
+promote permission-granted capture, input mutation, or window control into the
+RC-supported scope.
 
 Default Linux screen tests use hermetic portal fixtures rather than persisting
 the developer's real desktop. Portal regression tests require temporary
@@ -246,8 +299,10 @@ CGO_ENABLED=0 go test \
 
 GitHub-hosted macOS runs this preflight without controlling another
 application. Permission-granted activation, minimize/restore, and close remain
-opt-in runtime evidence until a self-owned macOS test-window harness is
-available; tests must not mutate an unrelated developer window.
+implemented / evidence pending until
+[LAB-69](https://linear.app/riotbox/issue/LAB-69/add-permission-granted-self-owned-macos-runtime-evidence)
+provides a self-owned remote macOS test-window harness. Tests must not mutate an
+unrelated developer window.
 
 Pure-Go `CloseWindowKill` tests use fake window/process backends. They cover
 PID, handle and active-window resolution, graceful exit, the bounded force-kill
@@ -271,9 +326,11 @@ CGO_ENABLED=0 ROBOTGO_REQUIRE_DARWIN_INPUT_INTEGRATION=1 \
   -run '^TestPureGoDarwin(Pointer|Keyboard)Integration$' -count=1 -v .
 ```
 
-These integration tests are not run on GitHub-hosted macOS because those runners
-do not grant Accessibility control to repository test binaries. The
-non-prompting symbol and permission contract remains blocking there.
+These integration tests are not part of the release gate because GitHub-hosted
+macOS does not grant Accessibility control to repository test binaries. Run
+them only on isolated, self-owned infrastructure; they must never target a
+developer desktop. The non-prompting symbol and permission contract remains
+blocking on the hosted runner.
 
 Linux CI additionally runs the non-CGO X11 input backend against a real Xvfb
 server with XTEST 2.2 or newer and `us,de` keyboard layouts. A separate X11
@@ -284,9 +341,11 @@ and verifies that native readiness rejects it without injecting input. Missing
 runtime prerequisites fail instead of turning these checks into successful
 skips. Performance numbers are report-only; correctness is blocking. Repository
 branch protection requires the public API gate, stable three-OS, lint, vet,
-race, sanitizer, Wayland, and X11 evidence checks. The hosted Sway, GNOME, and
-KDE compositor jobs are documented below; permission-granted macOS and optional
-operator-driven compositor jobs remain outside the default gate.
+race, sanitizer, Wayland, and X11 evidence checks. The exact release gate
+additionally requires hosted Sway, Hyprland, and GNOME/KDE multi-output
+portal/bounds evidence. Permission-granted macOS remains explicitly
+evidence-pending and outside the supported RC scope; optional operator-driven
+jobs cannot silently promote it.
 
 The additive `X11 default suite` workflow runs the complete CGO default suite
 inside a private GitHub-hosted Xvfb and explicitly proves that the display-aware
@@ -1016,6 +1075,9 @@ for that exact candidate and are likewise required before the 29-check manifest
 can be packaged.
 The last pre-API-freeze 28-check contract passes on exact merged `main` in
 [`Release Evidence` run 30272753885](https://github.com/marang/robotgo/actions/runs/30272753885).
+The current post-freeze 29-check contract passes on exact merged `main` in
+[`Release Evidence` run 30284816440](https://github.com/marang/robotgo/actions/runs/30284816440)
+at commit `912722cd480bd542419bd16e7267bbf22201e1ff`.
 
 On a clean Linux native checkout, reproduce the generator/verifier path with:
 

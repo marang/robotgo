@@ -67,7 +67,17 @@ repository code; it only verifies the already packaged SHA-256 and uploads the
 two assets. Manual runs retain the bundle as a GitHub Actions artifact for 90
 days and do not modify a release.
 
-The last pre-API-freeze 28-check exact-candidate contract passes in
+The current post-API-freeze candidate contract passes in
+[`Release Evidence` run 30284816440](https://github.com/marang/robotgo/actions/runs/30284816440)
+on merged `main` commit
+`912722cd480bd542419bd16e7267bbf22201e1ff`. Its bundle contains all six
+native/Pure-Go snapshots and exactly 29 successful checks, including
+`api-compat`, all GNOME/KDE multi-output release lanes, Sway, and Hyprland. The
+bundle SHA-256, exact commit/tree/ref, six evidence documents, and 29-check
+manifest were independently reverified after download; the temporary
+verification directory was then removed.
+
+The preceding pre-API-freeze 28-check exact-candidate contract passes in
 [`Release Evidence` run 30272753885](https://github.com/marang/robotgo/actions/runs/30272753885)
 on merged `main` commit
 `a641236b1b8f8bd80d4fbffc526a10aa5862b001`. The packaged schema-v1

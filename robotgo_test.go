@@ -9,8 +9,9 @@
 // This file may not be copied, modified, or distributed
 // except according to those terms.
 
-//go:build cgo && (darwin || windows)
+//go:build cgo && desktopintegration && (darwin || windows)
 // +build cgo
+// +build desktopintegration
 // +build darwin windows
 
 package robotgo
@@ -25,6 +26,8 @@ import (
 )
 
 func TestColor(t *testing.T) {
+	requireSelfOwnedDesktop(t)
+
 	s, err := GetPixelColor(10, 10)
 	if err != nil {
 		t.Skip("GetPixelColor error: " + err.Error())
@@ -51,6 +54,7 @@ func TestSize(t *testing.T) {
 }
 
 func TestMoveMouse(t *testing.T) {
+	requireSelfOwnedDesktop(t)
 	preservePointerLocation(t)
 
 	if err := MoveE(20, 20); err != nil {
@@ -60,6 +64,7 @@ func TestMoveMouse(t *testing.T) {
 }
 
 func TestMoveMouseSmooth(t *testing.T) {
+	requireSelfOwnedDesktop(t)
 	preservePointerLocation(t)
 
 	b := MoveSmooth(100, 100)
@@ -68,13 +73,17 @@ func TestMoveMouseSmooth(t *testing.T) {
 }
 
 func TestDragMouse(t *testing.T) {
+	requireSelfOwnedDesktop(t)
 	preservePointerLocation(t)
+	t.Cleanup(func() { _ = MouseUp("left") })
 
 	DragSmooth(500, 500)
 	requirePointerPosition(t, pointerPosition{x: 500, y: 500})
 }
 
 func TestScrollMouse(t *testing.T) {
+	requireSelfOwnedDesktop(t)
+
 	ScrollDir(120, "up")
 	ScrollDir(100, "right")
 
@@ -86,6 +95,7 @@ func TestScrollMouse(t *testing.T) {
 }
 
 func TestMoveRelative(t *testing.T) {
+	requireSelfOwnedDesktop(t)
 	preservePointerLocation(t)
 
 	if err := MoveE(200, 200); err != nil {
@@ -101,6 +111,7 @@ func TestMoveRelative(t *testing.T) {
 }
 
 func TestMoveSmoothRelative(t *testing.T) {
+	requireSelfOwnedDesktop(t)
 	preservePointerLocation(t)
 
 	if err := MoveE(200, 200); err != nil {
@@ -159,6 +170,12 @@ func requirePointerPosition(t *testing.T, want pointerPosition) {
 }
 
 func TestMouseToggle(t *testing.T) {
+	requireSelfOwnedDesktop(t)
+	t.Cleanup(func() {
+		_ = MouseUp("right")
+		_ = MouseUp("left")
+	})
+
 	e := Toggle("right")
 	tt.Nil(t, e)
 
@@ -173,6 +190,14 @@ func TestMouseToggle(t *testing.T) {
 }
 
 func TestKey(t *testing.T) {
+	requireSelfOwnedDesktop(t)
+	t.Cleanup(func() {
+		_ = KeyUp("a")
+		_ = KeyUp("b")
+		_ = KeyUp("enter")
+		_ = KeyUp("v")
+	})
+
 	e := KeyTap("v", "cmd")
 	tt.Nil(t, e)
 
@@ -192,6 +217,9 @@ func TestKey(t *testing.T) {
 }
 
 func TestClip(t *testing.T) {
+	requireSelfOwnedDesktop(t)
+	preserveTextClipboard(t)
+
 	err := WriteAll("s")
 	tt.Nil(t, err)
 
@@ -203,9 +231,6 @@ func TestClip(t *testing.T) {
 func TestTypeStr(t *testing.T) {
 	c := CharCodeAt("s", 0)
 	tt.Equal(t, 115, c)
-
-	e := PasteStr("s")
-	tt.Nil(t, e)
 
 	s1 := "abc\\\\cd/s@世界"
 	uc := ToUC(s1)
@@ -227,6 +252,8 @@ func TestKeyCode(t *testing.T) {
 }
 
 func TestImage(t *testing.T) {
+	requireSelfOwnedDesktop(t)
+
 	bit, err := CaptureScreen()
 	if err != nil {
 		t.Skip("screen capture error: " + err.Error())
@@ -282,14 +309,41 @@ func TestPs(t *testing.T) {
 	tt.IsType(t, "[]int", id)
 	tt.Nil(t, err)
 
-	if len(id) > 0 {
-		e := KeyTap("v", id[0], "cmd")
-		tt.Nil(t, e)
-	}
-
 	// n, e = FindPath(id[0])
 	// tt.NotEmpty(t, n)
 	// tt.Nil(t, e)
+}
+
+func requireSelfOwnedDesktop(t *testing.T) {
+	t.Helper()
+	if os.Getenv("ROBOTGO_REQUIRE_DESKTOP_INTEGRATION") != "1" {
+		t.Skip(
+			"live desktop integration requires " +
+				"ROBOTGO_REQUIRE_DESKTOP_INTEGRATION=1 on a disposable, self-owned desktop",
+		)
+	}
+}
+
+func preserveTextClipboard(t *testing.T) {
+	t.Helper()
+	previous, err := ReadAll()
+	if err != nil {
+		t.Skipf("cannot preserve the existing text clipboard: %v", err)
+	}
+	t.Cleanup(func() {
+		if err := WriteAll(previous); err != nil {
+			t.Errorf("restore text clipboard: %v", err)
+			return
+		}
+		restored, err := ReadAll()
+		if err != nil {
+			t.Errorf("verify restored text clipboard: %v", err)
+			return
+		}
+		if restored != previous {
+			t.Error("restored text clipboard does not match its previous value")
+		}
+	})
 }
 
 // func TestAlert(t *testing.T) {
