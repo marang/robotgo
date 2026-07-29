@@ -165,6 +165,10 @@ recover_shell_once() {
 
 claim_session_ready() {
   acquire_session_decision
+  if [[ -d "$session_ready_marker" ]]; then
+    release_session_decision
+    return 0
+  fi
   if [[ -d "$shell_recovery_marker" ]] &&
     ((!shell_recovery_observed)); then
     release_session_decision

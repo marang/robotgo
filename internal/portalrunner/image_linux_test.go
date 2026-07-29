@@ -563,6 +563,9 @@ func TestRepositoryKDEGuestActivatesPortalFrontendAndBackend(t *testing.T) {
 		"mkdir -m 0700 \"$shell_recovery_marker\"",
 		"flock --exclusive --wait 5 9",
 		"claim_session_ready",
+		"if [[ -d \"$session_ready_marker\" ]]; then\n" +
+			"    release_session_decision\n" +
+			"    return 0",
 		"timeout --kill-after=1s 2s systemctl --user is-failed",
 		"wait_for_shell_recovery",
 		"continue 2",
