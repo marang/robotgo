@@ -1232,6 +1232,30 @@ func approveHostedPortal(
 		}
 		return errors.Join(approvalError, qmp.close())
 	}
+	if lane == portalLaneGNOME {
+		target, err := gnomePortalDialogFocusTarget(display, topology)
+		if err != nil {
+			return err
+		}
+		qmp, err := connectQMP(ctx, qmpSocket)
+		if err != nil {
+			return err
+		}
+		approvalError := qmp.clickAbsolute(
+			ctx,
+			target.x,
+			target.y,
+			target.width,
+			target.height,
+		)
+		if approvalError == nil {
+			approvalError = waitQMPChord(ctx)
+		}
+		if approvalError == nil {
+			approvalError = qmp.approvePortal(ctx, lane, cell, topology)
+		}
+		return errors.Join(approvalError, qmp.close())
+	}
 	if lane == portalLaneKDE && cell == "screencast" {
 		geometry, err := locateHostedKDEScreenCast(
 			ctx,
@@ -1351,6 +1375,7 @@ func approveHostedPortal(
 const (
 	gnomePortalDialogWidth        = 660
 	gnomePortalDialogHeight       = 500
+	gnomePortalHeaderTargetY      = 32
 	gnomePortalHorizontalInset    = 43
 	gnomePortalTargetYNumerator   = 3
 	gnomePortalTargetYDenominator = 5
@@ -1365,6 +1390,61 @@ type hostedPortalTarget struct {
 
 type hostedPortalTargetSet struct {
 	points [2]hostedPortalTarget
+}
+
+func gnomePortalDialogFocusTarget(
+	display HostedDisplay,
+	topology string,
+) (hostedPortalTarget, error) {
+	if err := display.Validate(); err != nil {
+		return hostedPortalTarget{}, err
+	}
+	outputCount := 1
+	switch topology {
+	case HostedTopologySingle:
+	case HostedTopologyMulti:
+		outputCount = len(display.Outputs)
+	default:
+		return hostedPortalTarget{}, errors.New(
+			"hosted GNOME portal topology is invalid",
+		)
+	}
+	minX, minY := display.Outputs[0].X, display.Outputs[0].Y
+	maxX := minX + display.Outputs[0].Width
+	maxY := minY + display.Outputs[0].Height
+	for _, output := range display.Outputs[1:outputCount] {
+		minX = min(minX, output.X)
+		minY = min(minY, output.Y)
+		maxX = max(maxX, output.X+output.Width)
+		maxY = max(maxY, output.Y+output.Height)
+	}
+	width, height := maxX-minX, maxY-minY
+	primary := display.Outputs[0]
+	if primary.Width < gnomePortalDialogWidth ||
+		primary.Height < gnomePortalDialogHeight {
+		return hostedPortalTarget{}, errors.New(
+			"hosted GNOME primary output cannot contain the portal dialog",
+		)
+	}
+	dialogX := primary.X - minX +
+		(primary.Width-gnomePortalDialogWidth)/2
+	dialogY := primary.Y - minY +
+		(primary.Height-gnomePortalDialogHeight)/2
+	target := hostedPortalTarget{
+		x:      dialogX + gnomePortalDialogWidth/2,
+		y:      dialogY + gnomePortalHeaderTargetY,
+		width:  width,
+		height: height,
+	}
+	if target.x < dialogX ||
+		target.x >= dialogX+gnomePortalDialogWidth ||
+		target.y < dialogY ||
+		target.y >= dialogY+gnomePortalDialogHeight {
+		return hostedPortalTarget{}, errors.New(
+			"hosted GNOME portal focus target is outside the expected dialog",
+		)
+	}
+	return target, nil
 }
 
 func gnomePortalPhysicalCardTargets(

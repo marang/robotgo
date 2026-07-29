@@ -777,6 +777,44 @@ func TestGNOMEPortalPhysicalCardTargetsUseManifestGeometry(t *testing.T) {
 	}
 }
 
+func TestGNOMEPortalFocusTargetUsesNeutralHeaderGeometry(t *testing.T) {
+	t.Parallel()
+	display := validManifest().HostedDisplay
+	for _, test := range []struct {
+		topology string
+		want     hostedPortalTarget
+	}{
+		{
+			topology: HostedTopologySingle,
+			want: hostedPortalTarget{
+				x: 640, y: 142, width: 1280, height: 720,
+			},
+		},
+		{
+			topology: HostedTopologyMulti,
+			want: hostedPortalTarget{
+				x: 640, y: 142, width: 2304, height: 768,
+			},
+		},
+	} {
+		target, err := gnomePortalDialogFocusTarget(display, test.topology)
+		if err != nil {
+			t.Fatalf("%s target: %v", test.topology, err)
+		}
+		if target != test.want {
+			t.Errorf(
+				"%s GNOME focus target = %+v, want %+v",
+				test.topology,
+				target,
+				test.want,
+			)
+		}
+	}
+	if _, err := gnomePortalDialogFocusTarget(display, "invalid"); err == nil {
+		t.Fatal("GNOME focus target accepted invalid topology")
+	}
+}
+
 func TestKDEPortalPointerCalibration(t *testing.T) {
 	t.Parallel()
 	geometry := hostedPortalGeometry{

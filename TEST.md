@@ -1029,7 +1029,11 @@ exports the transient D-Bus request object that immediately precedes dialog
 creation. The object tree remains inside the disposable guest; only an `ok`
 marker or an allowlisted failure stage can reach the host. This removes the
 startup race between the test's pre-request marker and an on-demand portal
-backend without inspecting any window title or content.
+backend without inspecting any window title or content. For parentless GNOME
+dialogs, the host first clicks the neutral center of the pinned dialog
+headerbar through QMP's private tablet, then sends the documented button
+mnemonics; multi-output ScreenCast already establishes focus through its first
+physical-output card click.
 RobotGo never approves its own request or patches a portal. No Actions token,
 checkout credential, `.git` directory, untracked file, screen frame, restore
 token, or raw log enters retained guest state.
@@ -1050,15 +1054,15 @@ registration occurs only after the immutable image is complete. The normal
 `always()` cleanup still removes the bounded log, VM state, and helper binary.
 The GNOME image installs the focused `ubuntu-session`, GDM, Shell, and portal
 contract, binds the disposable account to that session through AccountsService,
-sets and runtime-verifies a fixed US XKB input source for the virtual keyboard,
-and rejects both generic `gnome-session` and `ubuntu-desktop-minimal`. The KDE
-image likewise installs the explicit Plasma Workspace/Wayland contract and
-rejects `plasma-desktop`. This avoids pulling unrelated applications and
-services through the throttled, reproducibility-pinned snapshot while
-retaining the real desktop sessions under test. The large kernel-extra package
-remains version- and SHA-256-pinned but is fetched first from an Ubuntu-listed
-HTTPS mirror with a shorter budget, then from its immutable Launchpad artifact
-URL as a verified fallback, instead of the throttled snapshot. Partial and
+sets a fixed US XKB input source for the virtual keyboard, and rejects both
+generic `gnome-session` and `ubuntu-desktop-minimal`. The KDE image likewise
+installs the explicit Plasma Workspace/Wayland contract and rejects
+`plasma-desktop`. This avoids pulling unrelated applications and services
+through the throttled, reproducibility-pinned snapshot while retaining the
+real desktop sessions under test. The large kernel-extra package remains
+version- and SHA-256-pinned but is fetched first from an Ubuntu-listed HTTPS
+mirror with a shorter budget, then from its immutable Launchpad artifact URL
+as a verified fallback, instead of the throttled snapshot. Partial and
 installed archives are removed from temporary guest storage. APT downloads
 only signed package indexes, omitting translations, desktop metadata, and
 command-not-found indexes that cannot affect the pinned headless image package

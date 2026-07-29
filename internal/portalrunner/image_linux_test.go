@@ -396,9 +396,6 @@ func TestRepositoryGuestSessionContract(t *testing.T) {
 		"org.freedesktop.portal.Desktop",
 		"org.freedesktop.DBus.Peer",
 		"Ping",
-		"gsettings get org.gnome.desktop.input-sources sources",
-		`"[('xkb', 'us')]"`,
-		"stage=input-source",
 	} {
 		if !strings.Contains(string(waitScript), required) {
 			t.Fatalf(

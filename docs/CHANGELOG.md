@@ -11,13 +11,15 @@
   only the explicit Ubuntu GNOME session or Plasma Workspace/Wayland contract
   required by their real-desktop tests. The GNOME guest preserves the
   originally proven Ubuntu Shell mode without restoring the broad desktop
-  metapackage and runtime-verifies the fixed XKB source used by its virtual
-  consent keyboard. The 113 MB kernel-extra package remains
+  metapackage and sets the fixed XKB source used by its virtual consent
+  keyboard. The 113 MB kernel-extra package remains
   exact-version/SHA-256 pinned but uses an Ubuntu-listed HTTPS mirror with an
   immutable Launchpad fallback rather than the throttled snapshot; unused APT
   translation, desktop-metadata, and command-not-found indexes are skipped.
   GNOME consent input now waits for a content-free portal request-readiness
-  result instead of racing an on-demand portal backend with a fixed delay.
+  result instead of racing an on-demand portal backend with a fixed delay, and
+  parentless dialogs receive an independent neutral QMP focus click before
+  their documented mnemonics.
 - Made the seven-day stable qualification window a fail-closed release
   preflight gate: `v1.0.0` cannot pass before
   `2026-08-05T10:13:46Z`; the gate validates GitHub's authoritative API time
