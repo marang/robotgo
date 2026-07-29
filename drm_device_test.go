@@ -6,8 +6,8 @@ package robotgo
 import (
 	"os"
 	"path/filepath"
-	"syscall"
 	"strings"
+	"syscall"
 	"testing"
 
 	"golang.org/x/sys/unix"

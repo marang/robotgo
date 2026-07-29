@@ -28,6 +28,10 @@ Current implementation baseline:
   window resolution, title, AX frame bounds, activation, minimize/restore,
   minimized-state query, and close. Permission is preflighted without prompting;
   maximize/topmost remain explicitly unsupported.
+- These permission-dependent macOS operations are implemented but not part of
+  the RC-supported scope until LAB-69 provides self-owned, permission-granted
+  remote runtime evidence. Consent-free display/scale and permission/error
+  contracts remain blocking.
 - Linux/X11 non-CGO builds provide a Pure-Go XGB/XTEST keyboard and pointer
   backend with live readiness probes, text/Unicode, smooth movement/drag,
   scrolling, pointer location, explicit state errors, and deterministic
@@ -200,7 +204,8 @@ backends.
     Evidence v1 binds that report and test-log digests to exact source across
     the six native/Pure-Go hosted platform cells; `v1.0.0-beta.2` additionally
     records its historical protected 25-check manifest. The current candidate
-    contract passes with 28 checks on exact merged `main`.
+    contract passes with 29 checks, including `api-compat`, on exact merged
+    `main`.
   - 7. Keep race/vet and the manifest-checked native ASan/LeakSanitizer ownership
     suites blocking. Hosted Sway and GNOME/KDE single-/multi-output jobs are
     defined and evidenced. The six hosted Sway checks, four GNOME/KDE

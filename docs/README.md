@@ -9,9 +9,14 @@ Use the following documents as the primary entry points:
 - [Stable release readiness](plan/stable-release-readiness.md) for the
   `v1.0.0-rc.1` to `v1.0.0` decision, API freeze, platform claims, and
   exact-evidence gates.
+- [v1.0.0-rc.1 draft notes](releases/v1.0.0-rc.1.md) for installation,
+  support-scope, migration, privacy, and final tag-evidence requirements.
 - [Public Go API compatibility](compatibility/public-api.md) for stable package
   discovery, platform/build-tag manifests, the blocking CI gate, and the
   intentional baseline-update policy.
+- [Runtime Compatibility Matrix v1](compatibility/runtime-v1.md) and its
+  [machine-readable contract](compatibility/runtime-v1.json) for the exact
+  supported, evidence-pending, and not-claimed platform scopes.
 - [Protected real-compositor evidence plan](plan/real-compositor-evidence.md)
   for ephemeral GNOME/KDE portal and Sway/wlroots native runner contracts,
   sanitized manifests, real portal consent where supported, and protected

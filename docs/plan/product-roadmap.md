@@ -165,7 +165,7 @@ fallbacks, and actionable reasons without opening consent dialogs. `Capture`,
 color APIs provide non-CGO capture through CoreGraphics on macOS, Windows and
 X11 screenshot paths, and the hardened screenshot portal on Wayland. macOS
 display enumeration, Screen Recording preflight, RGBA conversion, and
-CoreGraphics ownership are covered hermetically on both supported
+CoreGraphics ownership are covered hermetically on both configured macOS
 architectures. Non-CGO macOS also reports the real Retina display-mode factor,
 returns scaled pixel dimensions with `GetScaleSize`, releases copied display
 modes deterministically, and verifies the real symbols/display query in the
@@ -192,8 +192,11 @@ not expose trustworthy cross-application equivalents. CGWindowID mapping uses
 the same runtime-resolved macOS bridge as the CGO backend and fails explicitly
 if that bridge is unavailable. Hermetic tests cover the contract and hosted
 macOS resolves the real symbols and permission preflight.
-Permission-granted mutations still require a self-owned runtime window before
-they can become blocking evidence.
+Permission-granted capture/input/window operations are explicitly implemented /
+evidence pending rather than RC-supported. They require the self-owned remote
+runtime in
+[LAB-69](https://linear.app/riotbox/issue/LAB-69/add-permission-granted-self-owned-macos-runtime-evidence)
+before they can become blocking evidence.
 
 Windows non-CGO builds now provide a foreground-layout-aware `SendInput` keyboard and text
 backend, clipboard-assisted Unicode paste, pixel-at-pointer queries, plus exact pointer movement/location, smooth movement and drag,
@@ -410,8 +413,9 @@ Current status: `GetRuntimeDiagnostics` schema v1 and its runnable JSON example
 report selected feature backends, fallbacks, negotiated Wayland/portal/XTEST
 versions, non-prompting permission state, and remediation without exposing
 display addresses, restore tokens, stream identifiers, or unrelated environment
-values. The published `docs/compatibility/runtime-v1.md` matrix distinguishes
-blocking support from pending runtime evidence. CI covers three operating
+values. The published `docs/compatibility/runtime-v1.md` matrix and checked
+`runtime-v1.json` contract distinguish blocking support from pending runtime
+evidence and map every supported row to exact release checks. CI covers three operating
 systems, non-CGO, tagged Wayland/portal, Weston integration, and a blocking
 Linux native ASan/LeakSanitizer gate. The sanitizer job verifies its hermetic
 Wayland ownership-test manifest and covers allocation/free, timeout cleanup,
@@ -422,13 +426,13 @@ requires and records the complete protected `x11-default-suite`, lint, vet,
 race, sanitizer, platform, Wayland, targeted X11, and six-cell hosted Sway
 check set for the exact commit.
 The release workflow additionally invokes the isolated Hyprland
-active-window-geometry proof plus the GNOME/KDE multi-output bounds proof,
-bringing the current exact-candidate manifest to 28 checks while preserving
-the published beta.2 bundle as historical
+active-window-geometry proof plus the GNOME/KDE multi-output bounds proof and
+the stable public API gate, bringing the current exact-candidate manifest to
+29 checks while preserving the published beta.2 bundle as historical
 25-check evidence. The complete current contract passes in
-[`Release Evidence` run 30272753885](https://github.com/marang/robotgo/actions/runs/30272753885)
+[`Release Evidence` run 30284816440](https://github.com/marang/robotgo/actions/runs/30284816440)
 on exact merged `main` commit
-`a641236b1b8f8bd80d4fbffc526a10aa5862b001`.
+`912722cd480bd542419bd16e7267bbf22201e1ff`.
 The first public
 pre-release, [`v1.0.0-beta.1`](https://github.com/marang/robotgo/releases/tag/v1.0.0-beta.1),
 publishes that verified six-cell bundle and checksum for exact commit

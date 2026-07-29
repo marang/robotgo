@@ -2,12 +2,25 @@
 
 ## Unreleased
 
+- Reduced noisy and wasteful Actions runs by limiting feature-branch
+  validation to pull-request events while retaining `main` and release-tag
+  pushes, separating manual Sway/Hyprland evidence from `main`-push
+  concurrency, and adding a repository-local CI preflight that detects
+  formatting, workflow, baseline, support-contract, test, vet, and lint
+  failures before push.
 - Added a checked-in, human-reviewable public Go API freeze across every
   importable library package, Linux native/Wayland/portal/PipeWire,
   native macOS/Windows, and Linux/Windows/macOS Pure-Go variants; package-name,
   exported, or package-discovery drift now fails CI and the expanded 29-check
   exact-release manifest. Native Linux X11 now also exports the existing
   `GetXidByPid` compatibility name consistently with the Wayland build.
+- Added a checked, machine-readable Runtime Compatibility Matrix that maps
+  every supported platform scope to exact release checks and rejects mixed
+  supported/evidence-pending states. Native and Pure-Go macOS
+  permission-granted capture/input/window behavior is now truthfully classified
+  as implemented/evidence-pending, with self-owned remote evidence tracked in
+  LAB-69; consent-free macOS build/API/display/permission contracts remain
+  supported.
 - Selected `v1.0.0-rc.1` then `v1.0.0` as the independent module's stable
   release line after verifying the authoritative origin contains only the fork
   beta tags; documented safe handling of local upstream-derived tags and

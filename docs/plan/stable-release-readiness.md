@@ -35,9 +35,9 @@ preparation issue changes code, tests, notes, tag, and evidence together.
   2026-07-27. Explicit versions remain required for reproducible installs and
   custom/caching proxies can lag.
 - Exact merged-main
-  [`Release Evidence` run 30272753885](https://github.com/marang/robotgo/actions/runs/30272753885)
-  passed six native/Pure-Go platform snapshots and the 28-check manifest on
-  commit `a641236b1b8f8bd80d4fbffc526a10aa5862b001`.
+  [`Release Evidence` run 30284816440](https://github.com/marang/robotgo/actions/runs/30284816440)
+  passed six native/Pure-Go platform snapshots and the 29-check manifest on
+  commit `912722cd480bd542419bd16e7267bbf22201e1ff`.
 - P005 is complete with all five milestones at 100%.
 - `go doc` currently exposes 259 root declarations, 44 `agent` declarations,
   and 12 `input/portal` declarations. That breadth makes an automated API
@@ -58,28 +58,30 @@ preparation issue changes code, tests, notes, tag, and evidence together.
      beta/RC/stable sequence, document both proxy observations, and require an
      origin-tag preflight in LAB-67 and LAB-68.
 
-### Blocking
+### Resolved in LAB-65 and LAB-66
 
-1. **No stable public-API compatibility gate**
+1. **Stable public-API compatibility gate**
    - Location: `.github/workflows/go.yml:17`, `robotgo.go:93`
    - Category: architecture and maintainability
-   - Severity: major
-   - Vet, race, sanitizer, platform, and runtime gates are strong, but none
-     rejects an incompatible exported removal or signature change. The large
-     root compatibility surface makes manual review insufficient after stable.
-   - Action: [LAB-65](https://linear.app/riotbox/issue/LAB-65/add-a-stable-public-go-api-compatibility-gate)
-     creates a checked-in, platform-aware baseline and blocking CI check.
+   - Severity: resolved major
+   - [LAB-65](https://linear.app/riotbox/issue/LAB-65/add-a-stable-public-go-api-compatibility-gate)
+     added deterministic package discovery, checked platform/tag baselines, and
+     the protected `api-compat` check. Exact merged-main release evidence is
+     linked above.
 
-2. **Pure-Go macOS support claim mixes pass and pending**
-   - Location: `docs/compatibility/runtime-v1.md:6`,
-     `docs/compatibility/runtime-v1.md:24`
+2. **macOS permission-dependent claims mixed pass and pending**
+   - Location: `docs/compatibility/runtime-v1.md`,
+     `docs/compatibility/runtime-v1.json`
    - Category: compatibility contract
-   - Severity: major
-   - The matrix defines `supported` as blocking evidence, but the Pure-Go
-     macOS row says both supported and permission-granted evidence pending.
-   - Action: [LAB-66](https://linear.app/riotbox/issue/LAB-66/resolve-stable-platform-support-claims-and-macos-evidence-scope)
-     must add suitable remote evidence or classify the unevidenced mutations as
-     implemented/evidence-pending before the RC.
+   - Severity: resolved major
+   - [LAB-66](https://linear.app/riotbox/issue/LAB-66/resolve-stable-platform-support-claims-and-macos-evidence-scope)
+     split both native and Pure-Go macOS into consent-free supported scopes and
+     permission-granted `implemented / evidence pending` scopes. A checked
+     machine-readable contract rejects mixed states and maps every supported
+     row to exact release checks.
+   - Permission-granted promotion is isolated in
+     [LAB-69](https://linear.app/riotbox/issue/LAB-69/add-permission-granted-self-owned-macos-runtime-evidence)
+     and is not an RC blocker.
 
 ### Ready strengths
 
@@ -113,8 +115,8 @@ preparation issue changes code, tests, notes, tag, and evidence together.
 - Universal foreign-window operations on Wayland core. Stable scope is the
   capability-gated behavior in the compatibility matrix, not invented parity.
 - Additional Pure-Go backends beyond the supported matrix.
-- Permission-granted Pure-Go macOS mutations if LAB-66 truthfully marks them
-  evidence-pending instead of supported.
+- Permission-granted native and Pure-Go macOS capture/input/window operations,
+  which remain explicitly evidence-pending under LAB-69 rather than supported.
 - New agent transports: `robotgo-mcp` remains a local stdio adapter, not a
   network or multi-tenant security boundary.
 
@@ -123,9 +125,9 @@ preparation issue changes code, tests, notes, tag, and evidence together.
 | Gate | Requirement | Owner | Status | P009 milestone |
 |---|---|---|---|---|
 | G1 Version line | Authoritative origin preflight, v1.0 decision, and truthful `@latest` guidance | LAB-64 | Complete — LAB-64 | M1 Contract and API Freeze |
-| G2 API freeze | Checked-in public API baseline plus blocking compatibility CI | [LAB-65](https://linear.app/riotbox/issue/LAB-65/add-a-stable-public-go-api-compatibility-gate) | Implemented; merge and exact evidence pending | M1 Contract and API Freeze |
-| G3 Platform claims | Every supported row backed by blocking/approved evidence; pending rows explicit | [LAB-66](https://linear.app/riotbox/issue/LAB-66/resolve-stable-platform-support-claims-and-macos-evidence-scope) | Open | M1 Contract and API Freeze |
-| G4 Release candidate | Clean origin `v1.0.0-rc.1` tag, exact evidence, notes, migration, checksums | [LAB-67](https://linear.app/riotbox/issue/LAB-67/prepare-and-publish-robotgo-v100-rc1) | Blocked by G2/G3 | M2 v1.0.0 Release Candidate |
+| G2 API freeze | Checked-in public API baseline plus blocking compatibility CI | [LAB-65](https://linear.app/riotbox/issue/LAB-65/add-a-stable-public-go-api-compatibility-gate) | Complete — 14 variants and exact 29-check evidence | M1 Contract and API Freeze |
+| G3 Platform claims | Every supported row backed by blocking/approved evidence; pending rows explicit | [LAB-66](https://linear.app/riotbox/issue/LAB-66/resolve-stable-platform-support-claims-and-macos-evidence-scope) | Complete — checked runtime-v1 contract; macOS permission scope pending under LAB-69 | M1 Contract and API Freeze |
+| G4 Release candidate | Clean origin `v1.0.0-rc.1` tag, exact evidence, notes, migration, checksums | [LAB-67](https://linear.app/riotbox/issue/LAB-67/prepare-and-publish-robotgo-v100-rc1) | Ready — G1/G2/G3 complete | M2 v1.0.0 Release Candidate |
 | G5 Stable qualification | At least seven calendar days, no unresolved critical/high regression, no API drift, final exact evidence | [LAB-68](https://linear.app/riotbox/issue/LAB-68/qualify-and-publish-robotgo-v100-stable) | Blocked by G4 | M3 v1.0.0 Stable Qualification |
 
 ## RC and stable rules
