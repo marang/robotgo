@@ -36,6 +36,7 @@ download_verified() {
   local url=$1
   local digest=$2
   local output=$3
+  local maximum_time=${4:-300}
   case "$url" in
     https://*) ;;
     *)
@@ -44,10 +45,12 @@ download_verified() {
       ;;
   esac
   curl --fail --silent --show-error --location \
-    --connect-timeout 15 --max-time 300 \
-    --retry 5 --retry-delay 2 --retry-max-time 300 --retry-all-errors \
+    --connect-timeout 15 --max-time "$maximum_time" \
+    --retry 5 --retry-delay 2 --retry-max-time "$maximum_time" \
+    --retry-all-errors \
     --proto '=https' --tlsv1.2 \
-    --output "$output" "$url"
+    --output "$output" "$url" ||
+    return 1
   printf '%s  %s\n' "$digest" "$output" | sha256sum --check --status
 }
 
@@ -66,7 +69,8 @@ test "$(jq -r --arg package "$kernel_modules_package" \
   '[.packages[] | select(. == $package)] | length' "$manifest")" = 1
 case "$kernel_release" in
   6.8.0-134-generic)
-    kernel_modules_url=https://launchpadlibrarian.net/866579255/linux-modules-extra-6.8.0-134-generic_6.8.0-134.134_amd64.deb
+    kernel_modules_url=https://mirrors.kernel.org/ubuntu/pool/main/l/linux/linux-modules-extra-6.8.0-134-generic_6.8.0-134.134_amd64.deb
+    kernel_modules_fallback_url=https://launchpadlibrarian.net/866579255/linux-modules-extra-6.8.0-134-generic_6.8.0-134.134_amd64.deb
     kernel_modules_sha256=f445185d1664025f4ea95d24757baf398fd4a47b6caadcf1bd3b15a1205929f6
     ;;
   *)
@@ -94,7 +98,12 @@ apt-get "${apt_options[@]}" update
 apt-get "${apt_options[@]}" install -y --no-install-recommends \
   ca-certificates curl
 trap 'rm -f -- "$kernel_archive"' EXIT
-download_verified "$kernel_modules_url" "$kernel_modules_sha256" "$kernel_archive"
+if ! download_verified \
+  "$kernel_modules_url" "$kernel_modules_sha256" "$kernel_archive" 180; then
+  rm -f -- "$kernel_archive"
+  download_verified \
+    "$kernel_modules_fallback_url" "$kernel_modules_sha256" "$kernel_archive"
+fi
 apt-get "${apt_options[@]}" install -y --no-install-recommends "${packages[@]}"
 apt-get "${apt_options[@]}" install -y --no-install-recommends "$kernel_archive"
 rm -f -- "$kernel_archive"

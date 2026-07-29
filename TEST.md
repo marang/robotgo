@@ -1048,11 +1048,12 @@ the explicit Plasma Workspace/Wayland contract and rejects `plasma-desktop`.
 This avoids pulling unrelated applications and services through the throttled,
 reproducibility-pinned snapshot while retaining the real desktop sessions
 under test. The large kernel-extra package remains version- and SHA-256-pinned
-but is fetched from its immutable Ubuntu Launchpad artifact URL instead of the
-throttled snapshot and removed from temporary guest storage after local
-installation. APT downloads only signed package indexes, omitting translations,
-desktop metadata, and command-not-found indexes that cannot affect the pinned
-headless image package set.
+but is fetched first from an Ubuntu-listed HTTPS mirror with a shorter budget,
+then from its immutable Launchpad artifact URL as a verified fallback, instead
+of the throttled snapshot. Partial and installed archives are removed from
+temporary guest storage. APT downloads only signed package indexes, omitting
+translations, desktop metadata, and command-not-found indexes that cannot
+affect the pinned headless image package set.
 
 The reproducible images, hosted supervisor, independent consent drivers,
 exact-tree transfer, and mandatory cleanup checks are documented in

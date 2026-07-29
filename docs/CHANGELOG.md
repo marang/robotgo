@@ -10,8 +10,8 @@
   `plasma-desktop` dependency closures, so the images now install and verify
   only the explicit GNOME session or Plasma Workspace/Wayland contract
   required by their real-desktop tests. The 113 MB kernel-extra package remains
-  exact-version/SHA-256 pinned but downloads from its immutable Ubuntu
-  Launchpad artifact URL rather than the throttled snapshot; unused APT
+  exact-version/SHA-256 pinned but uses an Ubuntu-listed HTTPS mirror with an
+  immutable Launchpad fallback rather than the throttled snapshot; unused APT
   translation, desktop-metadata, and command-not-found indexes are skipped.
 - Made the seven-day stable qualification window a fail-closed release
   preflight gate: `v1.0.0` cannot pass before
