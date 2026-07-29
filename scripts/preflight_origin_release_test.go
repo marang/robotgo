@@ -44,6 +44,13 @@ func TestOriginReleasePreflight(t *testing.T) {
 			wantError: "refusing existing local tag collision",
 		},
 		{
+			name: "local tag lookup error",
+			environment: map[string]string{
+				"FAKE_LOCAL_TAG_LOOKUP_STATUS": "128",
+			},
+			wantError: "failed to inspect local tag",
+		},
+		{
 			name: "origin tag already exists",
 			environment: map[string]string{
 				"FAKE_ORIGIN_TAGS": releaseCommit + "\trefs/tags/v1.0.0-rc.1\n",
@@ -147,6 +154,9 @@ case "$1" in
   show-ref)
     if [[ "$2" != "--verify" || "$3" != "--quiet" ]]; then
       exit 2
+    fi
+    if [[ -n "${FAKE_LOCAL_TAG_LOOKUP_STATUS:-}" ]]; then
+      exit "$FAKE_LOCAL_TAG_LOOKUP_STATUS"
     fi
     if [[ "${FAKE_LOCAL_TAG:-}" == "${4#refs/tags/}" ]]; then
       exit 0

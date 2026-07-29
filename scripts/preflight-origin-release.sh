@@ -71,6 +71,13 @@ if "$git_bin" show-ref --verify --quiet "refs/tags/$tag"; then
   printf 'refusing existing local tag collision: refs/tags/%s\n' "$tag" >&2
   printf 'inspect and delete the non-authoritative local tag before retrying; never force-replace it\n' >&2
   exit 1
+else
+  local_tag_status=$?
+  if ((local_tag_status != 1)); then
+    printf 'failed to inspect local tag refs/tags/%s (status %d)\n' \
+      "$tag" "$local_tag_status" >&2
+    exit 1
+  fi
 fi
 
 remote_tag_rows="$(
