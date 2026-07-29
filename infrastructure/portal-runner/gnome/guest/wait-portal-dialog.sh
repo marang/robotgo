@@ -7,8 +7,7 @@ if [[ $# -ne 1 ]]; then
 fi
 
 case "$1" in
-  remote-desktop) readonly expected_title="Remote Desktop" ;;
-  screencast) readonly expected_title="Share Screen" ;;
+  remote-desktop | screencast) ;;
   *)
     printf 'error invalid-cell\n'
     exit 1
@@ -16,15 +15,12 @@ case "$1" in
 esac
 
 for _ in {1..160}; do
-  windows=
-  if windows="$(
-    busctl --address=unix:path=/run/user/1100/bus --no-pager call \
-      org.gnome.Shell.Introspect \
-      /org/gnome/Shell/Introspect \
-      org.gnome.Shell.Introspect \
-      GetWindows 2>/dev/null
+  objects=
+  if objects="$(
+    busctl --address=unix:path=/run/user/1100/bus --no-pager tree \
+      org.freedesktop.impl.portal.desktop.gnome 2>/dev/null
   )" &&
-    [[ $windows == *"\"title\" s \"$expected_title\""* ]]; then
+    [[ $objects =~ /org/freedesktop/portal/desktop/request/[^/[:space:]]+/[^/[:space:]]+ ]]; then
     printf 'ok\n'
     exit 0
   fi

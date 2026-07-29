@@ -437,10 +437,9 @@ func TestRepositoryGuestSessionContract(t *testing.T) {
 	}
 	dialogScript := string(dialogWait)
 	for _, required := range []string{
-		"org.gnome.Shell.Introspect",
-		"GetWindows",
-		`remote-desktop) readonly expected_title="Remote Desktop"`,
-		`screencast) readonly expected_title="Share Screen"`,
+		"org.freedesktop.impl.portal.desktop.gnome",
+		"/org/freedesktop/portal/desktop/request/",
+		"remote-desktop | screencast",
 		"error dialog-unavailable",
 	} {
 		if !strings.Contains(dialogScript, required) {
@@ -450,7 +449,8 @@ func TestRepositoryGuestSessionContract(t *testing.T) {
 	for _, forbidden := range []string{
 		"journalctl",
 		"screenshot",
-		`printf '%s' "$windows"`,
+		"title",
+		`printf '%s' "$objects"`,
 	} {
 		if strings.Contains(dialogScript, forbidden) {
 			t.Errorf("GNOME dialog readiness contains %q", forbidden)

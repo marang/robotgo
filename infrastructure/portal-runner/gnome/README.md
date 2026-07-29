@@ -61,13 +61,13 @@ separate host-side QMP client sends GNOME's real dialog mnemonics through the
 VM's virtual keyboard for RemoteDesktop. For the pinned two-output ScreenCast
 dialog, it selects both manifest-declared monitor buttons through the VM's
 virtual pointer. The target coordinates are derived from the validated output
-manifest and pinned dialog contract. Before QMP input, the host waits for Shell
-introspection to observe the exact expected portal dialog; the complete window
-list stays in guest memory and only a fixed readiness result may cross SSH. No
-pixels, accessibility data, or window contents leave the guest. RobotGo does
-not patch or auto-approve the portal backend and is not the consent-input
-actor. The display-bounds cell never creates the marker or enters this consent
-path.
+manifest and pinned dialog contract. Before QMP input, the host waits for the
+GNOME portal backend to export the transient D-Bus request object that
+immediately precedes dialog creation. The object tree stays in guest memory and
+only a fixed readiness result may cross SSH. No pixels, titles, accessibility
+data, or window contents leave the guest. RobotGo does not patch or
+auto-approve the portal backend and is not the consent-input actor. The
+display-bounds cell never creates the marker or enters this consent path.
 
 Build and runtime logs, serial output, SSH keys, cloud-init inputs, seed disks,
 and overlays remain inside a private per-run directory. The command removes
