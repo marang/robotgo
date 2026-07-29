@@ -2,6 +2,7 @@ package scripts
 
 import (
 	"os"
+	"slices"
 	"strings"
 	"testing"
 
@@ -36,16 +37,55 @@ func TestRuntimeSupportContractMatchesDocsAndReleaseGate(t *testing.T) {
 		)
 	}
 
+	manifest, err := os.ReadFile("../.github/release-required-checks.txt")
+	if err != nil {
+		t.Fatalf("read release check manifest: %v", err)
+	}
+	manifestChecks := releaseCheckManifestLines(t, manifest)
+	if !slices.Equal(manifestChecks, contract.ReleaseChecks) {
+		t.Fatalf(
+			"release check manifest does not exactly match runtime contract\nmanifest: %q\ncontract: %q",
+			manifestChecks,
+			contract.ReleaseChecks,
+		)
+	}
+
 	workflow, err := os.ReadFile("../.github/workflows/release-evidence.yml")
 	if err != nil {
 		t.Fatalf("read release-evidence workflow: %v", err)
 	}
 	workflowText := string(workflow)
-	for _, check := range contract.ReleaseChecks {
-		if !strings.Contains(workflowText, check) {
-			t.Errorf("release workflow omits contract check %q", check)
+	for _, use := range []string{
+		"done < .github/release-required-checks.txt",
+		"LC_ALL=C sort .github/release-required-checks.txt",
+	} {
+		if count := strings.Count(workflowText, use); count != 1 {
+			t.Fatalf(
+				"release workflow contains canonical manifest use %q %d times, want exactly once",
+				use,
+				count,
+			)
 		}
 	}
+}
+
+func releaseCheckManifestLines(t *testing.T, body []byte) []string {
+	t.Helper()
+	normalized := strings.ReplaceAll(string(body), "\r\n", "\n")
+	if !strings.HasSuffix(normalized, "\n") {
+		t.Fatal("release check manifest must end with a newline")
+	}
+	normalized = strings.TrimSuffix(normalized, "\n")
+	lines := strings.Split(normalized, "\n")
+	for index, line := range lines {
+		if line == "" || strings.TrimSpace(line) != line {
+			t.Fatalf(
+				"release check manifest line %d is empty or not trimmed",
+				index+1,
+			)
+		}
+	}
+	return lines
 }
 
 func TestRuntimeSupportContractKeepsPermissionGrantedMacOSPending(t *testing.T) {

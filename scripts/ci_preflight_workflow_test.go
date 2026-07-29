@@ -87,6 +87,14 @@ func TestLocalCIPreflightCoversFastFailureContracts(t *testing.T) {
 		`run_logged "Pure-Go vet" env CGO_ENABLED=0 go vet ./...`,
 		"go run ./internal/cmd/supportmatrix",
 		"go run ./internal/cmd/apicompat",
+		`readonly host_os="$(go env GOOS)"`,
+		`readonly host_arch="$(go env GOARCH)"`,
+		"linux/amd64)",
+		"darwin/arm64)",
+		"windows/amd64)",
+		"api_variants+=(darwin-cgo)",
+		"api_variants+=(windows-cgo)",
+		`go run ./internal/cmd/apicompat "${api_compat_args[@]}"`,
 		`run_logged "native lint" env CGO_ENABLED=1`,
 		`run_logged "Pure-Go lint" env CGO_ENABLED=0`,
 	} {
@@ -100,6 +108,48 @@ func TestLocalCIPreflightCoversFastFailureContracts(t *testing.T) {
 	}
 	if runtime.GOOS != "windows" && info.Mode().Perm()&0o111 == 0 {
 		t.Fatal("local CI preflight is not executable")
+	}
+}
+
+func TestDefaultPreflightExcludesLiveDesktopMutation(t *testing.T) {
+	t.Parallel()
+
+	for _, path := range []string{
+		"../robotgo_test.go",
+		"../clipboard/clipboard_test.go",
+	} {
+		body, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatalf("read %s: %v", path, err)
+		}
+		text := string(body)
+		for _, required := range []string{
+			"//go:build ",
+			"desktopintegration",
+			`os.Getenv("ROBOTGO_REQUIRE_DESKTOP_INTEGRATION") != "1"`,
+		} {
+			if !strings.Contains(text, required) {
+				t.Errorf("%s omits live-desktop safety gate %q", path, required)
+			}
+		}
+	}
+}
+
+func TestNativeWindowsDesktopEvidenceIsExplicitAndDisposable(t *testing.T) {
+	t.Parallel()
+
+	workflow := readWorkflow(t, "../.github/workflows/go.yml")
+	for _, required := range []string{
+		"name: Test native Windows pointer and capture on disposable desktop",
+		"if: runner.os == 'Windows'",
+		`ROBOTGO_REQUIRE_DESKTOP_INTEGRATION: "1"`,
+		"go test -tags desktopintegration",
+		"TestMoveMouse",
+		"TestImage",
+	} {
+		if !strings.Contains(workflow, required) {
+			t.Errorf("native Windows desktop evidence omits %q", required)
+		}
 	}
 }
 

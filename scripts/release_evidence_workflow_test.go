@@ -13,11 +13,17 @@ func TestReleaseEvidenceRequiresEveryPromotedHostedCheck(t *testing.T) {
 		t.Fatalf("read release-evidence workflow: %v", err)
 	}
 	text := string(workflow)
-	if count := strings.Count(text, "api-compat"); count != 2 {
-		t.Fatalf(
-			"release evidence contains api-compat %d times, want collector and package allowlist",
-			count,
-		)
+	for _, use := range []string{
+		"done < .github/release-required-checks.txt",
+		"LC_ALL=C sort .github/release-required-checks.txt",
+	} {
+		if count := strings.Count(text, use); count != 1 {
+			t.Fatalf(
+				"release evidence contains canonical manifest use %q %d times, want exactly once",
+				use,
+				count,
+			)
+		}
 	}
 	for _, check := range []string{
 		"native-capture",
@@ -39,16 +45,32 @@ func TestReleaseEvidenceRequiresEveryPromotedHostedCheck(t *testing.T) {
 		if !strings.Contains(check, " ") {
 			count = 0
 			for _, field := range strings.Fields(text) {
-				if strings.Trim(field, "'\"\\()") == check {
+				if strings.Trim(field, "'\"\\(),") == check {
 					count++
 				}
 			}
 		}
-		if count != 3 {
+		if count != 1 {
 			t.Fatalf(
-				"release evidence contains %q %d times, want collector, package allowlist, and provider binding",
+				"release evidence contains hosted provider binding %q %d times, want exactly once",
 				check,
 				count,
+			)
+		}
+	}
+	manifest, err := os.ReadFile("../.github/release-required-checks.txt")
+	if err != nil {
+		t.Fatalf("read release check manifest: %v", err)
+	}
+	checks := releaseCheckManifestLines(t, manifest)
+	if len(checks) != 29 {
+		t.Fatalf("release check manifest contains %d checks, want 29", len(checks))
+	}
+	for index, check := range checks {
+		if index > 0 && check <= checks[index-1] {
+			t.Fatalf(
+				"release check manifest is not strictly sorted at %q",
+				check,
 			)
 		}
 	}

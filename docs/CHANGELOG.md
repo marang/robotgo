@@ -20,7 +20,9 @@
   permission-granted capture/input/window behavior is now truthfully classified
   as implemented/evidence-pending, with self-owned remote evidence tracked in
   LAB-69; consent-free macOS build/API/display/permission contracts remain
-  supported.
+  supported. The contract also distinguishes Pure-Go one-shot Wayland
+  Screenshot capture from persistent ScreenCast frames, which require Linux
+  CGO plus the `pipewire` build tag.
 - Selected `v1.0.0-rc.1` then `v1.0.0` as the independent module's stable
   release line after verifying the authoritative origin contains only the fork
   beta tags; documented safe handling of local upstream-derived tags and

@@ -174,6 +174,14 @@ jobs:
         run: go build -v .
       - name: Test
         run: go test -v ./...
+      - name: Test native Windows pointer and capture on disposable desktop
+        if: runner.os == 'Windows'
+        env:
+          ROBOTGO_REQUIRE_DESKTOP_INTEGRATION: "1"
+        run: >-
+          go test -tags desktopintegration
+          -run "^(TestColor|TestSize|TestMoveMouse|TestMoveMouseSmooth|TestDragMouse|TestMoveRelative|TestMoveSmoothRelative|TestImage)$"
+          -count=1 -timeout=60s -v .
       - name: Check native macOS public Go API
         if: runner.os == 'macOS'
         run: go run ./internal/cmd/apicompat -variant darwin-cgo

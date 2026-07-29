@@ -7,6 +7,8 @@ readonly repository_root="$(cd -- "$script_dir/.." && pwd)"
 readonly lint_version="2.11.4"
 readonly temporary_root="$(mktemp -d "${TMPDIR:-/tmp}/robotgo-ci-preflight.XXXXXX")"
 readonly base_ref="${ROBOTGO_PREFLIGHT_BASE_REF:-origin/main}"
+readonly host_os="$(go env GOOS)"
+readonly host_arch="$(go env GOARCH)"
 
 cleanup() {
   rm -rf -- "$temporary_root"
@@ -74,18 +76,37 @@ run_logged "Pure-Go default tests" env CGO_ENABLED=0 go test ./...
 run_logged "native vet" go vet ./...
 run_logged "Pure-Go vet" env CGO_ENABLED=0 go vet ./...
 run_logged "runtime support contract" go run ./internal/cmd/supportmatrix
-run_logged "public API compatibility" go run ./internal/cmd/apicompat \
-  -variant linux-cgo \
-  -variant linux-cgo-wayland \
-  -variant linux-cgo-portal \
-  -variant linux-cgo-pipewire \
-  -variant linux-cgo-full \
-  -variant linux-nocgo \
-  -variant linux-nocgo-arm64 \
-  -variant windows-nocgo \
-  -variant windows-nocgo-arm64 \
-  -variant darwin-nocgo \
-  -variant darwin-nocgo-amd64
+api_variants=(
+  linux-nocgo
+  linux-nocgo-arm64
+  windows-nocgo
+  windows-nocgo-arm64
+  darwin-nocgo
+  darwin-nocgo-amd64
+)
+case "$host_os/$host_arch" in
+  linux/amd64)
+    api_variants+=(
+      linux-cgo
+      linux-cgo-wayland
+      linux-cgo-portal
+      linux-cgo-pipewire
+      linux-cgo-full
+    )
+    ;;
+  darwin/arm64)
+    api_variants+=(darwin-cgo)
+    ;;
+  windows/amd64)
+    api_variants+=(windows-cgo)
+    ;;
+esac
+api_compat_args=()
+for variant in "${api_variants[@]}"; do
+  api_compat_args+=(-variant "$variant")
+done
+run_logged "public API compatibility" \
+  go run ./internal/cmd/apicompat "${api_compat_args[@]}"
 run_logged "native lint" env CGO_ENABLED=1 \
   golangci-lint run --timeout=5m ./...
 run_logged "Pure-Go lint" env CGO_ENABLED=0 \

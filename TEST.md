@@ -5,16 +5,22 @@ This repository has both default tests and special test suites behind build tags
 Before pushing a branch, run the repository-local CI predictor:
 
 ```bash
-scripts/run-local-ci-preflight.sh
+bash scripts/run-local-ci-preflight.sh
 ```
 
 It checks formatting and diff hygiene, module integrity, workflow syntax,
 native and Pure-Go default tests/vet/lint, reconstruction of every checked-in
-API baseline, all Linux-hosted/cross-compiled API variants, and the generated
-runtime-support contract. It deliberately fails when the pinned
+API baseline supported by the current native host plus all cross-compiled
+Pure-Go variants, and the generated runtime-support contract. It deliberately
+fails when the pinned
 `golangci-lint` version is missing or different. Native CGO macOS/Windows
 execution and real compositor evidence still require their hosted jobs, but a
 missing or malformed native API baseline is rejected locally before a push.
+The default suites never post desktop input or change the clipboard. Legacy
+live desktop coverage is opt-in and requires both the `desktopintegration`
+build tag and `ROBOTGO_REQUIRE_DESKTOP_INTEGRATION=1`; run it only on a
+disposable, self-owned desktop. Clipboard and pointer state are restored by
+test cleanup.
 
 ## Default Test Suite
 
@@ -25,6 +31,23 @@ go test ./...
 ```
 
 This is the baseline suite used for regular development and should stay green.
+It is safe to run from an interactive developer session: real desktop
+mutation is excluded unless the explicit integration tag and environment gate
+are both enabled.
+
+On a disposable, self-owned native Windows desktop, the protected Windows job
+also runs pointer and capture behavior with cleanup enabled:
+
+```bash
+ROBOTGO_REQUIRE_DESKTOP_INTEGRATION=1 \
+  go test -tags desktopintegration \
+  -run '^(TestColor|TestSize|TestMoveMouse|TestMoveMouseSmooth|TestDragMouse|TestMoveRelative|TestMoveSmoothRelative|TestImage)$' \
+  -count=1 -timeout=60s -v .
+```
+
+Do not set this opt-in variable on a developer workstation. Pointer state is
+restored and captured images exist only under `t.TempDir`, which Go removes
+after the test.
 
 The stable public Go API is an exact, blocking contract across native Linux,
 Wayland/portal/PipeWire, Pure-Go Linux, Windows, and macOS. Run the locally

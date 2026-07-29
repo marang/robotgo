@@ -98,13 +98,11 @@
       "id": "linux-wayland-purego",
       "platform": "Linux/Wayland",
       "buildMode": "Pure Go",
-      "scope": "Consent-aware Screenshot/ScreenCast capture, RemoteDesktop input, and bounded native logical output enumeration",
+      "scope": "Consent-aware one-shot Screenshot capture and RemoteDesktop input, plus bounded native logical output enumeration",
       "status": "supported",
       "blockingChecks": [
         "Display bounds evidence / GitHub-hosted gnome multi-output Wayland bounds",
         "Display bounds evidence / GitHub-hosted kde multi-output Wayland bounds",
-        "Portal capture evidence / GitHub-hosted gnome multi-output persistent capture",
-        "Portal capture evidence / GitHub-hosted kde multi-output persistent capture",
         "Portal input evidence / GitHub-hosted gnome multi-output portal input",
         "Portal input evidence / GitHub-hosted kde multi-output portal input",
         "api-compat",
@@ -112,13 +110,13 @@
         "portal-availability",
         "wayland-integration"
       ],
-      "limits": "Capture and input require explicit portal consent and an available desktop portal; implicit Xwayland is refused."
+      "limits": "Capture and input require explicit portal consent and an available desktop portal; persistent ScreenCast frames require a Linux CGO build with the `pipewire` tag, and implicit Xwayland is refused."
     },
     {
       "id": "gnome-wayland-portal",
       "platform": "GNOME/Wayland",
-      "buildMode": "CGO and Pure-Go portal paths",
-      "scope": "Multi-output portal input, persistent capture, and logical display bounds",
+      "buildMode": "Shared Go portal input, CGO with `pipewire` for ScreenCast, and native CGO/Pure-Go bounds",
+      "scope": "Multi-output RemoteDesktop input, CGO-only persistent ScreenCast capture, and logical display bounds",
       "status": "supported",
       "blockingChecks": [
         "Display bounds evidence / GitHub-hosted gnome multi-output Wayland bounds",
@@ -131,8 +129,8 @@
     {
       "id": "kde-wayland-portal",
       "platform": "KDE Plasma/Wayland",
-      "buildMode": "CGO and Pure-Go portal paths",
-      "scope": "Multi-output portal input, persistent capture, and logical display bounds",
+      "buildMode": "Shared Go portal input, CGO with `pipewire` for ScreenCast, and native CGO/Pure-Go bounds",
+      "scope": "Multi-output RemoteDesktop input, CGO-only persistent ScreenCast capture, and logical display bounds",
       "status": "supported",
       "blockingChecks": [
         "Display bounds evidence / GitHub-hosted kde multi-output Wayland bounds",
