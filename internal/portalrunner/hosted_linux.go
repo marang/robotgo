@@ -22,7 +22,7 @@ import (
 
 const (
 	maximumSourceArchive    = 128 * 1024 * 1024
-	gnomePortalDialogSettle = 500 * time.Millisecond
+	gnomePortalDialogSettle = 2 * time.Second
 	kdePortalDialogSettle   = 5 * time.Second
 	gnomePortalDialogWait   = 45 * time.Second
 	gnomePortalOutputLimit  = 64

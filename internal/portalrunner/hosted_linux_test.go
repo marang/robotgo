@@ -918,6 +918,12 @@ func TestPortalDialogSettleUsesLongerKDEWindow(t *testing.T) {
 	if got := portalDialogSettle(portalLaneGNOME); got != gnomePortalDialogSettle {
 		t.Fatalf("GNOME portal dialog settle = %s", got)
 	}
+	if gnomePortalDialogSettle != 2*time.Second {
+		t.Fatalf(
+			"GNOME post-request dialog settle = %s, want 2s",
+			gnomePortalDialogSettle,
+		)
+	}
 	if got := portalDialogSettle(portalLaneKDE); got != kdePortalDialogSettle {
 		t.Fatalf("KDE portal dialog settle = %s", got)
 	}
