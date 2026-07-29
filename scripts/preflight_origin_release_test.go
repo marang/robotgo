@@ -8,7 +8,12 @@ import (
 	"testing"
 )
 
-const releaseCommit = "0123456789abcdef0123456789abcdef01234567"
+const (
+	releaseCommit                = "0123456789abcdef0123456789abcdef01234567"
+	stableQualificationBoundary  = "1785924826"
+	stableQualificationTooEarly  = "1785924825"
+	stableQualificationAfterGate = "1785924827"
+)
 
 func TestOriginReleasePreflight(t *testing.T) {
 	t.Parallel()
@@ -20,7 +25,55 @@ func TestOriginReleasePreflight(t *testing.T) {
 		wantError   string
 	}{
 		{name: "clean authoritative origin"},
-		{name: "clean stable release", tag: "v1.0.0"},
+		{
+			name: "clean stable release at qualification boundary",
+			tag:  "v1.0.0",
+		},
+		{
+			name: "clean stable release after qualification boundary",
+			tag:  "v1.0.0",
+			environment: map[string]string{
+				"FAKE_NOW_EPOCH": stableQualificationAfterGate,
+			},
+		},
+		{
+			name: "stable release before qualification boundary",
+			tag:  "v1.0.0",
+			environment: map[string]string{
+				"FAKE_NOW_EPOCH": stableQualificationTooEarly,
+			},
+			wantError: "stable qualification window is still open",
+		},
+		{
+			name: "stable release rejects invalid current time",
+			tag:  "v1.0.0",
+			environment: map[string]string{
+				"FAKE_NOW_EPOCH": "not-an-epoch",
+			},
+			wantError: "invalid current UTC epoch for stable qualification",
+		},
+		{
+			name: "stable release rejects overflowing current time",
+			tag:  "v1.0.0",
+			environment: map[string]string{
+				"FAKE_NOW_EPOCH": "99999999999",
+			},
+			wantError: "invalid current UTC epoch for stable qualification",
+		},
+		{
+			name: "stable release fails closed when current time lookup fails",
+			tag:  "v1.0.0",
+			environment: map[string]string{
+				"FAKE_DATE_STATUS": "17",
+			},
+			wantError: "failed to obtain current UTC epoch",
+		},
+		{
+			name: "release candidate does not require stable qualification time",
+			environment: map[string]string{
+				"FAKE_DATE_STATUS": "17",
+			},
+		},
 		{
 			name: "wrong origin repository",
 			environment: map[string]string{
@@ -90,6 +143,16 @@ func TestOriginReleasePreflight(t *testing.T) {
 					!strings.Contains(output, "commit="+releaseCommit) {
 					t.Fatalf("preflight output missing success identity:\n%s", output)
 				}
+				if test.tag == "v1.0.0" &&
+					!strings.Contains(
+						output,
+						"stable-not-before=2026-08-05T10:13:46Z",
+					) {
+					t.Fatalf(
+						"stable preflight output missing qualification boundary:\n%s",
+						output,
+					)
+				}
 				return
 			}
 			if err == nil {
@@ -132,6 +195,7 @@ func runOriginReleasePreflight(
 	temporaryDirectory := t.TempDir()
 	gitStub := filepath.Join(temporaryDirectory, "git")
 	ghStub := filepath.Join(temporaryDirectory, "gh")
+	dateStub := filepath.Join(temporaryDirectory, "date")
 	writeExecutable(t, gitStub, `#!/usr/bin/env bash
 set -euo pipefail
 case "$1" in
@@ -182,10 +246,21 @@ case "$2" in
     ;;
 esac
 `)
+	writeExecutable(t, dateStub, `#!/usr/bin/env bash
+set -euo pipefail
+if (($# != 2)) || [[ "$1" != "-u" || "$2" != "+%s" ]]; then
+  exit 2
+fi
+if [[ -n "${FAKE_DATE_STATUS:-}" ]]; then
+  exit "$FAKE_DATE_STATUS"
+fi
+printf '%s\n' "${FAKE_NOW_EPOCH:-1785924826}"
+`)
 
 	environment := append(os.Environ(),
 		"ROBOTGO_RELEASE_GIT_BIN="+gitStub,
 		"ROBOTGO_RELEASE_GH_BIN="+ghStub,
+		"ROBOTGO_RELEASE_DATE_BIN="+dateStub,
 		"FAKE_MAIN_COMMIT="+releaseCommit,
 	)
 	for key, value := range overrides {

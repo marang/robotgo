@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Made the seven-day stable qualification window a fail-closed release
+  preflight gate: `v1.0.0` cannot pass before
+  `2026-08-05T10:13:46Z`, and deterministic boundary/error tests prevent
+  clock lookup failures from silently permitting publication.
 - Classified permission-granted macOS runtime evidence as an externally blocked,
   non-release-blocking promotion under LAB-69. Native and Pure-Go permission
   scopes remain implemented/evidence-pending until an isolated project-owned,

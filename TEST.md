@@ -1134,6 +1134,13 @@ test "$(git ls-remote --heads origin refs/heads/main | awk '{print $1}')" = "$co
 ./scripts/preflight-origin-release.sh v1.0.0 "$commit"
 ```
 
+For `v1.0.0`, the preflight fails closed before
+`2026-08-05T10:13:46Z`, the first instant after seven full days from the
+published RC. Its regression suite covers one second before the boundary, the
+exact boundary, later execution, malformed time output, and clock-command
+failure. RC-tag preflight remains independent of the stable qualification
+gate.
+
 The preflight checks `origin/main`, exact origin tag refs, GitHub tag refs, and
 GitHub releases. It rejects a non-`marang/robotgo` remote. A colliding local
 tag may have been fetched from `go-vgo/robotgo`; the preflight rejects it

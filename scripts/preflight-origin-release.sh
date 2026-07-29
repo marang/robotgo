@@ -6,6 +6,9 @@ readonly repository="marang/robotgo"
 readonly remote="origin"
 readonly git_bin="${ROBOTGO_RELEASE_GIT_BIN:-git}"
 readonly gh_bin="${ROBOTGO_RELEASE_GH_BIN:-gh}"
+readonly date_bin="${ROBOTGO_RELEASE_DATE_BIN:-date}"
+readonly stable_qualification_not_before="2026-08-05T10:13:46Z"
+readonly stable_qualification_not_before_epoch=1785924826
 
 usage() {
   printf 'usage: %s <tag> <40-character-origin-main-commit>\n' \
@@ -36,6 +39,24 @@ fi
 if [[ ! "$expected_commit" =~ ^[0-9a-f]{40}$ ]]; then
   printf 'expected commit must be a lowercase 40-character Git SHA\n' >&2
   exit 1
+fi
+
+if [[ "$tag" == "$stable_tag" ]]; then
+  if ! current_epoch="$("$date_bin" -u +%s)"; then
+    printf 'failed to obtain current UTC epoch for stable qualification\n' >&2
+    exit 1
+  fi
+  if [[ ! "$current_epoch" =~ ^[0-9]{1,10}$ ]]; then
+    printf 'invalid current UTC epoch for stable qualification: %s\n' \
+      "$current_epoch" >&2
+    exit 1
+  fi
+  if ((10#$current_epoch < stable_qualification_not_before_epoch)); then
+    printf 'stable qualification window is still open\n' >&2
+    printf 'not-before=%s\ncurrent-epoch=%s\n' \
+      "$stable_qualification_not_before" "$current_epoch" >&2
+    exit 1
+  fi
 fi
 
 remote_url="$("$git_bin" remote get-url "$remote")"
@@ -112,4 +133,7 @@ fi
 printf 'release preflight passed\n'
 printf 'repository=%s\nremote=%s\ntag=%s\ncommit=%s\n' \
   "$repository" "$remote" "$tag" "$expected_commit"
+if [[ "$tag" == "$stable_tag" ]]; then
+  printf 'stable-not-before=%s\n' "$stable_qualification_not_before"
+fi
 printf 'publish only the explicit tag ref; never use git push --tags\n'

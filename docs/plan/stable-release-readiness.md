@@ -35,6 +35,10 @@ than `2026-08-05T10:13:46Z`.
   authoritative `origin/main`, and rejected a non-fork remote. The resulting
   annotated RC tag peels to
   `281d8cee29d696e334fe9d4a6f6a7069ab291083`; `v1.0.0` remains absent.
+- The same preflight now rejects `v1.0.0` before
+  `2026-08-05T10:13:46Z` and fails closed when UTC time cannot be obtained or
+  parsed. Deterministic tests cover the second before the boundary, the exact
+  boundary, and later execution without applying the stable gate to RC tags.
 - `go list -m -json github.com/marang/robotgo@latest` resolved
   `v1.0.0-rc.1` with the default proxy and `GOPROXY=direct` on 2026-07-29.
   `proxy.golang.org` identifies the exact tag commit and `sum.golang.org`
@@ -62,6 +66,7 @@ than `2026-08-05T10:13:46Z`.
 | 2026-07-29T10:32Z | Default proxy, `proxy.golang.org`, `GOPROXY=direct`, and `sum.golang.org` resolved the RC | Pass |
 | 2026-07-29T10:34Z | Linear RobotGo audit found no unresolved critical/high defect; LAB-69 remains a medium, explicitly unsupported-scope evidence task | Pass |
 | 2026-07-29T12:38Z | LAB-69 was classified externally blocked with four explicit reactivation paths; permission-granted macOS scopes remain evidence-pending and non-blocking for stable | Pass |
+| 2026-07-29T15:35Z | Stable preflight rejected an actual early `v1.0.0` attempt; deterministic before/at/after-boundary and clock-failure tests passed | Pass |
 
 GitHub Issues are disabled for this repository, so qualification findings are
 triaged in the Linear RobotGo project. LAB-68 stays open through the full
@@ -161,7 +166,7 @@ and requalified.
 | G2 API freeze | Checked-in public API baseline plus blocking compatibility CI | [LAB-65](https://linear.app/riotbox/issue/LAB-65/add-a-stable-public-go-api-compatibility-gate) | Complete — 14 variants and exact 29-check evidence | M1 Contract and API Freeze |
 | G3 Platform claims | Every supported row backed by blocking/approved evidence; pending rows explicit | [LAB-66](https://linear.app/riotbox/issue/LAB-66/resolve-stable-platform-support-claims-and-macos-evidence-scope) | Complete — checked runtime-v1 contract; macOS permission scope pending under LAB-69 | M1 Contract and API Freeze |
 | G4 Release candidate | Clean origin `v1.0.0-rc.1` tag, exact evidence, notes, migration, checksums | [LAB-67](https://linear.app/riotbox/issue/LAB-67/prepare-and-publish-robotgo-v100-rc1) | Complete — published tag, 29-check exact evidence, checksummed assets, and module resolution verified | M2 v1.0.0 Release Candidate |
-| G5 Stable qualification | At least seven calendar days, no unresolved critical/high regression, no API drift, final exact evidence | [LAB-68](https://linear.app/riotbox/issue/LAB-68/qualify-and-publish-robotgo-v100-stable) | In progress — window opened 2026-07-29T10:13:46Z; earliest stable 2026-08-05T10:13:46Z | M3 v1.0.0 Stable Qualification |
+| G5 Stable qualification | At least seven calendar days, no unresolved critical/high regression, no API drift, final exact evidence | [LAB-68](https://linear.app/riotbox/issue/LAB-68/qualify-and-publish-robotgo-v100-stable) | In progress — fail-closed preflight enforces the window opened 2026-07-29T10:13:46Z; earliest stable 2026-08-05T10:13:46Z | M3 v1.0.0 Stable Qualification |
 
 ## RC and stable rules
 
