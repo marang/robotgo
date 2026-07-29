@@ -413,9 +413,12 @@ func TestRepositoryGuestSessionContract(t *testing.T) {
 		t.Fatalf("read install.sh: %v", err)
 	}
 	for _, required := range []string{
-		"dpkg-query -W -f='${db:Status-Status}' gnome-session",
-		"test -f /usr/share/wayland-sessions/gnome.desktop",
+		"dpkg-query -W -f='${db:Status-Status}' ubuntu-session",
+		"test -f /usr/share/wayland-sessions/ubuntu.desktop",
+		"test -f /usr/share/wayland-sessions/ubuntu-wayland.desktop",
+		"test -f /usr/share/gnome-shell/modes/ubuntu.json",
 		"test -x /usr/bin/gnome-shell",
+		"DefaultSession=ubuntu.desktop",
 		"/usr/local/libexec/robotgo-runner-wait-portal-dialog",
 		"chmod 0644 /etc/dconf/profile/user",
 		"chmod 0644 /etc/dconf/db/robotgo.d/00-runner",

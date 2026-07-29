@@ -8,11 +8,12 @@ workstation or register a self-hosted Actions runner.
 
 The host builds an immutable, digest-addressed Ubuntu image from
 `manifest.json`. Every hosted run boots a private copy-on-write overlay, starts
-a real GNOME Wayland session, transfers only `git archive` output for the exact
-clean commit, runs one test cell, and destroys the guest state afterward. The
-guest receives no checkout credential, Actions token, `.git` directory, or
-untracked host file. Captured frames, input data, portal restore tokens, SSH
-keys, and raw logs never enter the immutable image or uploaded artifacts.
+a real Ubuntu GNOME Wayland session, transfers only `git archive` output for
+the exact clean commit, runs one test cell, and destroys the guest state
+afterward. The guest receives no checkout credential, Actions token, `.git`
+directory, or untracked host file. Captured frames, input data, portal restore
+tokens, SSH keys, and raw logs never enter the immutable image or uploaded
+artifacts.
 
 ## Host requirements
 
@@ -49,6 +50,10 @@ Use `-cell screencast` for the persistent PipeWire cell. The separate
 Pure-Go public output APIs with `DISPLAY` unset and creates no portal session.
 
 `build` verifies every downloaded artifact against the pinned SHA-256 digest.
+The package contract uses the focused `ubuntu-session` package, not
+`ubuntu-desktop-minimal`: this retains the Ubuntu Shell mode and portal-dialog
+keyboard behavior exercised by the consent controller without installing the
+broader desktop application closure.
 The image identity also covers the manifest, provisioning implementation, guest
 scripts, their executable modes, and content. A changed input therefore cannot
 silently reuse an older image.

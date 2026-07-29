@@ -108,10 +108,12 @@ apt-get "${apt_options[@]}" install -y --no-install-recommends "${packages[@]}"
 apt-get "${apt_options[@]}" install -y --no-install-recommends "$kernel_archive"
 rm -f -- "$kernel_archive"
 trap - EXIT
-test "$(dpkg-query -W -f='${db:Status-Status}' gnome-session)" = installed
+test "$(dpkg-query -W -f='${db:Status-Status}' ubuntu-session)" = installed
 test "$(dpkg-query -W -f='${db:Status-Status}' \
   xdg-desktop-portal-gnome)" = installed
-test -f /usr/share/wayland-sessions/gnome.desktop
+test -f /usr/share/wayland-sessions/ubuntu.desktop
+test -f /usr/share/wayland-sessions/ubuntu-wayland.desktop
+test -f /usr/share/gnome-shell/modes/ubuntu.json
 test -x /usr/bin/gnome-shell
 test "$(uname -r)" = "$kernel_release"
 test "$(dpkg-query -W -f='${db:Status-Status}' \
@@ -284,6 +286,7 @@ cat >/etc/gdm3/custom.conf <<'EOF'
 [daemon]
 AutomaticLoginEnable=true
 AutomaticLogin=robotgo
+DefaultSession=ubuntu.desktop
 WaylandEnable=true
 
 [security]

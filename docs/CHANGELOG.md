@@ -8,8 +8,10 @@
   bounded pre-registration build-log tail before mandatory transient cleanup.
   The resulting evidence identified the broad `ubuntu-desktop-minimal` and
   `plasma-desktop` dependency closures, so the images now install and verify
-  only the explicit GNOME session or Plasma Workspace/Wayland contract
-  required by their real-desktop tests. The 113 MB kernel-extra package remains
+  only the explicit Ubuntu GNOME session or Plasma Workspace/Wayland contract
+  required by their real-desktop tests. The GNOME guest preserves the
+  originally proven Ubuntu Shell mode without restoring the broad desktop
+  metapackage. The 113 MB kernel-extra package remains
   exact-version/SHA-256 pinned but uses an Ubuntu-listed HTTPS mirror with an
   immutable Launchpad fallback rather than the throttled snapshot; unused APT
   translation, desktop-metadata, and command-not-found indexes are skipped.

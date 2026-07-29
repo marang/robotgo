@@ -49,7 +49,6 @@ func validManifest() Manifest {
 			"ca-certificates",
 			"curl",
 			"gdm3",
-			"gnome-session",
 			"gnome-shell",
 			"libdrm-dev",
 			"libgbm-dev",
@@ -59,6 +58,7 @@ func validManifest() Manifest {
 			"libxkbcommon-dev",
 			"linux-modules-extra-6.8.0-134-generic",
 			"pipewire",
+			"ubuntu-session",
 			"wireplumber",
 			"xdg-desktop-portal",
 			"xdg-desktop-portal-gnome",
@@ -302,6 +302,17 @@ func TestManifestRejectsUnsafeContract(t *testing.T) {
 				slices.Sort(manifest.Packages)
 			},
 			want: `must not include "ubuntu-desktop-minimal"`,
+		},
+		{
+			name: "generic GNOME session",
+			change: func(manifest *Manifest) {
+				manifest.Packages = append(
+					manifest.Packages,
+					"gnome-session",
+				)
+				slices.Sort(manifest.Packages)
+			},
+			want: `must not include "gnome-session"`,
 		},
 		{
 			name: "missing Wayland development package",

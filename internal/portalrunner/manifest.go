@@ -266,17 +266,22 @@ func (manifest Manifest) Validate() error {
 	}
 	switch manifest.Lane {
 	case portalLaneGNOME:
-		if slices.Contains(manifest.Packages, "ubuntu-desktop-minimal") {
-			return errors.New(
-				`portal runner GNOME package set must not include ` +
-					`"ubuntu-desktop-minimal"`,
-			)
+		for _, forbidden := range []string{
+			"gnome-session",
+			"ubuntu-desktop-minimal",
+		} {
+			if slices.Contains(manifest.Packages, forbidden) {
+				return fmt.Errorf(
+					"portal runner GNOME package set must not include %q",
+					forbidden,
+				)
+			}
 		}
 		requiredPackages = append(requiredPackages,
 			"gdm3",
-			"gnome-session",
 			"gnome-shell",
 			"libpam-gnome-keyring",
+			"ubuntu-session",
 			"xdg-desktop-portal-gnome",
 		)
 	case portalLaneKDE:
