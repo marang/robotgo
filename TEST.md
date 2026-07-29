@@ -1063,11 +1063,16 @@ frontend bounce may settle only inside the current bounded phase. If the
 verified `plasma-plasmashell.service` reaches terminal `failed`, RobotGo may
 restart that unit exactly once under a 10-second command bound and emits only
 `ROBOTGO_SESSION_RECOVERY=desktop-shell`. A second failure is terminal, and the
-final stability probes still reject a crash loop. The normal KDE phase
-deadlines total 220 seconds; the one-recovery path adds at most a 10-second
-restart and 30-second settle phase. The 300-second host guard is the hard cap
-including bounded probe overhead beneath the 320-second systemd runner bound.
-GNOME retains its shorter 130-second host guard and 150-second systemd bound.
+final stability probes still reject a crash loop. Concurrent waiters share
+attempt, completion, and failure markers; each begins its full 30-second settle
+phase only after the winning 10-second restart completes. A terminal failure
+during stability repeats the portal phases before stability can pass. The
+normal KDE phase deadlines total 220 seconds; the one-recovery path adds at
+most the 10-second restart plus a fresh 30-second portal frontend, 30-second
+backend, and 10-second stability cycle. The 340-second host guard is the hard
+cap including bounded probe overhead beneath the 360-second systemd runner
+bound. GNOME retains its shorter 130-second host guard and 150-second systemd
+bound.
 
 Hosted workflow calls share
 `scripts/run_hosted_portal_e2e_ci.sh` as their fixed 30-minute outer guard.

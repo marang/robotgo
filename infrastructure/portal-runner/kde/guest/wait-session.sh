@@ -20,6 +20,8 @@ fail_stage() {
 shell_recovery_observed=0
 shell_recovery_reported=0
 shell_recovery_marker=/run/user/1100/robotgo-shell-recovery-attempted
+shell_recovery_complete=/run/user/1100/robotgo-shell-recovery-complete
+shell_recovery_failed=/run/user/1100/robotgo-shell-recovery-failed
 
 base_ready() {
   systemctl is-active --quiet sddm.service &&
@@ -78,12 +80,27 @@ report_shell_recovery() {
   fi
 }
 
+wait_for_shell_recovery() {
+  local deadline=$((SECONDS + 12))
+  while ((SECONDS < deadline)); do
+    if [[ -d "$shell_recovery_complete" ]]; then
+      return 0
+    fi
+    if [[ -d "$shell_recovery_failed" ]]; then
+      fail_stage desktop-shell-recovery-failed
+    fi
+    sleep 1
+  done
+  fail_stage desktop-shell-recovery-failed
+}
+
 recover_shell_once() {
   if ((shell_recovery_observed)); then
     return 1
   fi
   if [[ -d "$shell_recovery_marker" ]]; then
     shell_recovery_observed=1
+    wait_for_shell_recovery
     report_shell_recovery
     return 0
   fi
@@ -93,12 +110,18 @@ recover_shell_once() {
   fi
   if ! mkdir -m 0700 "$shell_recovery_marker" 2>/dev/null; then
     shell_recovery_observed=1
+    wait_for_shell_recovery
     report_shell_recovery
     return 0
   fi
   shell_recovery_observed=1
   if ! timeout 10 systemctl --user restart \
     plasma-plasmashell.service >/dev/null 2>&1; then
+    mkdir -m 0700 "$shell_recovery_failed" 2>/dev/null || true
+    fail_stage desktop-shell-recovery-failed
+  fi
+  if ! mkdir -m 0700 "$shell_recovery_complete" 2>/dev/null; then
+    mkdir -m 0700 "$shell_recovery_failed" 2>/dev/null || true
     fail_stage desktop-shell-recovery-failed
   fi
   report_shell_recovery
@@ -137,87 +160,95 @@ while true; do
   sleep 1
 done
 
-deadline=$((SECONDS + 30))
+# A recovery during the final full-contract probes must repeat both portal
+# phases before stability can pass. The guest-wide marker makes this outer
+# cycle repeatable at most once with a mutating restart.
 while true; do
-  require_base_ready
-  if ! pgrep -u robotgo -x plasmashell >/dev/null 2>&1; then
-    if ((SECONDS >= deadline)); then
-      if recover_shell_once; then
-        deadline=$((SECONDS + 30))
-        continue
+  deadline=$((SECONDS + 30))
+  while true; do
+    require_base_ready
+    if ! pgrep -u robotgo -x plasmashell >/dev/null 2>&1; then
+      if ((SECONDS >= deadline)); then
+        if recover_shell_once; then
+          deadline=$((SECONDS + 30))
+          continue
+        fi
+        fail_shell_stage
       fi
-      fail_shell_stage
+      sleep 1
+      continue
+    fi
+    if portal_ping org.freedesktop.portal.Desktop; then
+      break
+    fi
+    if ((SECONDS >= deadline)); then
+      fail_stage portal
     fi
     sleep 1
-    continue
-  fi
-  if portal_ping org.freedesktop.portal.Desktop; then
-    break
-  fi
-  if ((SECONDS >= deadline)); then
-    fail_stage portal
-  fi
-  sleep 1
-done
+  done
 
-deadline=$((SECONDS + 30))
-while true; do
-  require_base_ready
-  if ! pgrep -u robotgo -x plasmashell >/dev/null 2>&1; then
-    if ((SECONDS >= deadline)); then
-      if recover_shell_once; then
-        deadline=$((SECONDS + 30))
-        continue
+  deadline=$((SECONDS + 30))
+  while true; do
+    require_base_ready
+    if ! pgrep -u robotgo -x plasmashell >/dev/null 2>&1; then
+      if ((SECONDS >= deadline)); then
+        if recover_shell_once; then
+          deadline=$((SECONDS + 30))
+          continue
+        fi
+        fail_shell_stage
       fi
-      fail_shell_stage
+      sleep 1
+      continue
     fi
-    sleep 1
-    continue
-  fi
-  if ! portal_ping org.freedesktop.portal.Desktop; then
+    if ! portal_ping org.freedesktop.portal.Desktop; then
+      if ((SECONDS >= deadline)); then
+        fail_stage portal-unstable
+      fi
+      sleep 1
+      continue
+    fi
+    if portal_ping org.freedesktop.impl.portal.desktop.kde; then
+      break
+    fi
     if ((SECONDS >= deadline)); then
-      fail_stage portal-unstable
+      fail_stage portal-backend
     fi
     sleep 1
-    continue
-  fi
-  if portal_ping org.freedesktop.impl.portal.desktop.kde; then
-    break
-  fi
-  if ((SECONDS >= deadline)); then
-    fail_stage portal-backend
-  fi
-  sleep 1
-done
+  done
 
-# Require the complete contract to remain true for consecutive probes. This
-# prevents a one-poll process appearance or portal activation from starting
-# evidence while the session is still collapsing.
-stable=0
-deadline=$((SECONDS + 10))
-while ((SECONDS < deadline)); do
-  if all_ready; then
-    ((stable += 1))
-    if ((stable >= 3)); then
-      if [[ -d "$shell_recovery_marker" ]]; then
-        report_shell_recovery
+  # Require the complete contract to remain true for consecutive probes. This
+  # prevents a one-poll process appearance or portal activation from starting
+  # evidence while the session is still collapsing.
+  stable=0
+  deadline=$((SECONDS + 10))
+  while ((SECONDS < deadline)); do
+    if all_ready; then
+      ((stable += 1))
+      if ((stable >= 3)); then
+        if [[ -d "$shell_recovery_marker" ]]; then
+          report_shell_recovery
+        fi
+        exit 0
       fi
-      exit 0
+    else
+      stable=0
     fi
+    sleep 1
+  done
+
+  if ! base_ready; then
+    fail_base_stage
+  elif ! pgrep -u robotgo -x plasmashell >/dev/null 2>&1; then
+    if recover_shell_once; then
+      continue
+    fi
+    fail_shell_stage
+  elif ! portal_ping org.freedesktop.portal.Desktop; then
+    fail_stage portal-unstable
+  elif ! portal_ping org.freedesktop.impl.portal.desktop.kde; then
+    fail_stage portal-backend-unstable
   else
-    stable=0
+    fail_stage session-unstable
   fi
-  sleep 1
 done
-
-if ! base_ready; then
-  fail_base_stage
-elif ! pgrep -u robotgo -x plasmashell >/dev/null 2>&1; then
-  fail_shell_stage
-elif ! portal_ping org.freedesktop.portal.Desktop; then
-  fail_stage portal-unstable
-elif ! portal_ping org.freedesktop.impl.portal.desktop.kde; then
-  fail_stage portal-backend-unstable
-else
-  fail_stage session-unstable
-fi

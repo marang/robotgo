@@ -28,7 +28,7 @@ const (
 	qemuExitGrace                = 15 * time.Second
 	gnomeSessionReadinessCommand = "timeout 130 " +
 		"/usr/local/libexec/robotgo-runner-wait-session"
-	kdeSessionReadinessCommand = "timeout 300 " +
+	kdeSessionReadinessCommand = "timeout 340 " +
 		"/usr/local/libexec/robotgo-runner-wait-session"
 )
 
