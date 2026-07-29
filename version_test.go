@@ -3,7 +3,7 @@ package robotgo
 import "testing"
 
 func TestReleaseVersion(t *testing.T) {
-	const expected = "v1.0.0-beta.2"
+	const expected = "v1.0.0-rc.1"
 	if Version != expected {
 		t.Fatalf("Version = %q, want %q", Version, expected)
 	}

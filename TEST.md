@@ -1076,16 +1076,19 @@ can be packaged.
 The last pre-API-freeze 28-check contract passes on exact merged `main` in
 [`Release Evidence` run 30272753885](https://github.com/marang/robotgo/actions/runs/30272753885).
 The current post-freeze 29-check contract passes on exact merged `main` in
-[`Release Evidence` run 30284816440](https://github.com/marang/robotgo/actions/runs/30284816440)
-at commit `912722cd480bd542419bd16e7267bbf22201e1ff`.
+[`Release Evidence` run 30434061380](https://github.com/marang/robotgo/actions/runs/30434061380)
+at commit `cd204c663e4ff5c8d33504d8cbf8b4dce1d8cc59`.
 
 On a clean Linux native checkout, reproduce the generator/verifier path with:
 
 ```bash
 set -euo pipefail
-output=/tmp/robotgo-release-evidence-local
-rm -rf "$output"
-mkdir -p "$output"
+output="$(mktemp -d "${TMPDIR:-/tmp}/robotgo-release-evidence-local.XXXXXX")"
+cleanup() {
+  rm -rf -- "$output"
+}
+trap cleanup EXIT INT TERM
+chmod 700 "$output"
 test_command='go test -count=1 ./internal/releaseevidence ./internal/cmd/releaseevidence'
 go test -count=1 \
   ./internal/releaseevidence ./internal/cmd/releaseevidence \
@@ -1109,6 +1112,40 @@ go run ./internal/cmd/releaseevidence verify \
   -expected-tree "$(git rev-parse 'HEAD^{tree}')" \
   -expected-ref "refs/heads/$(git branch --show-current)" \
   -expected-test-command "$test_command"
+```
+
+Before creating a stable-line tag, synchronize `main`, use its full
+authoritative origin commit, and run:
+
+```bash
+commit="$(git ls-remote --heads origin refs/heads/main | awk '{print $1}')"
+./scripts/preflight-origin-release.sh v1.0.0-rc.1 "$commit"
+```
+
+The preflight checks `origin/main`, exact origin tag refs, GitHub tag refs, and
+GitHub releases. It rejects a non-`marang/robotgo` remote and deliberately
+ignores local tags, which may have been fetched from `go-vgo/robotgo`. Only
+after the preparation PR, review, CI, and an exact manual release-evidence run
+on that merged commit pass may a release operator create the annotated tag,
+verify its peeled commit, and push that one ref:
+
+```bash
+git tag -a v1.0.0-rc.1 "$commit" -m "RobotGo v1.0.0-rc.1"
+test "$(git rev-parse 'v1.0.0-rc.1^{}')" = "$commit"
+git push origin refs/tags/v1.0.0-rc.1:refs/tags/v1.0.0-rc.1
+```
+
+Never use `git push --tags`. Create the GitHub prerelease with `--verify-tag`;
+its `release.published` event reruns exact-tag evidence and attaches the
+checksum-bound archive:
+
+```bash
+gh release create v1.0.0-rc.1 \
+  --repo marang/robotgo \
+  --verify-tag \
+  --prerelease \
+  --title "RobotGo v1.0.0-rc.1" \
+  --notes-file docs/releases/v1.0.0-rc.1.md
 ```
 
 The versioned schema, matrix, release-asset behavior, and consumer verification

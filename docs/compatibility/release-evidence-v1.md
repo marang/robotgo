@@ -68,9 +68,9 @@ two assets. Manual runs retain the bundle as a GitHub Actions artifact for 90
 days and do not modify a release.
 
 The current post-API-freeze candidate contract passes in
-[`Release Evidence` run 30284816440](https://github.com/marang/robotgo/actions/runs/30284816440)
+[`Release Evidence` run 30434061380](https://github.com/marang/robotgo/actions/runs/30434061380)
 on merged `main` commit
-`912722cd480bd542419bd16e7267bbf22201e1ff`. Its bundle contains all six
+`cd204c663e4ff5c8d33504d8cbf8b4dce1d8cc59`. Its bundle contains all six
 native/Pure-Go snapshots and exactly 29 successful checks, including
 `api-compat`, all GNOME/KDE multi-output release lanes, Sway, and Hyprland. The
 bundle SHA-256, exact commit/tree/ref, six evidence documents, and 29-check

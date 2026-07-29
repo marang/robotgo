@@ -1,7 +1,7 @@
 # Runtime Compatibility Matrix v1
 
 Matrix version: **1**
-Published: **2026-07-27**
+Published: **2026-07-29**
 
 This matrix separates implemented behavior from blocking runtime evidence.
 `supported` means every operation in that deliberately bounded row maps to the
@@ -13,8 +13,8 @@ pending row is not a passing row.
 The machine-readable source is
 [`runtime-v1.json`](runtime-v1.json). The generated table below is checked by
 the default suite, and every evidence name must exist in the exact 29-check
-[`Release Evidence` run 30284816440](https://github.com/marang/robotgo/actions/runs/30284816440)
-for merged commit `912722cd480bd542419bd16e7267bbf22201e1ff`.
+[`Release Evidence` run 30434061380](https://github.com/marang/robotgo/actions/runs/30434061380)
+for merged commit `cd204c663e4ff5c8d33504d8cbf8b4dce1d8cc59`.
 
 ## Platform and build matrix
 

@@ -15,29 +15,33 @@ The independent `github.com/marang/robotgo` module will use:
 1. `v1.0.0-rc.1` for the first stable-line release candidate.
 2. `v1.0.0` for the first stable release after qualification.
 
-The authoritative `marang/robotgo` origin currently contains only
+Before RC publication, the authoritative `marang/robotgo` origin contains only
 `v1.0.0-beta.1` and `v1.0.0-beta.2`. Development clones can also contain
 `v1.0.0`, `v1.0.1`, and `v1.0.2` tags fetched from the separate
 `go-vgo/robotgo` upstream remote. Local tag names are therefore not evidence
 of origin state. Release preflight must use `git ls-remote --tags origin` and
 the GitHub repository API, and must never push an upstream-derived local tag.
 
-The package `Version` remains `v1.0.0-beta.2` until the release-candidate
-preparation issue changes code, tests, notes, tag, and evidence together.
+The release-candidate preparation branch changes package `Version`, tests,
+notes, tag, and evidence together to `v1.0.0-rc.1`.
 
 ## Current evidence
 
-- `git ls-remote --tags origin` and the GitHub tags API showed only the two
-  independent beta tags on 2026-07-27. The similarly named stable refs in the
-  development clone came from `upstream`, not `origin`.
+- `git ls-remote --tags origin`, the GitHub tag-ref API, and the GitHub release
+  API showed neither `v1.0.0-rc.1` nor `v1.0.0` on 2026-07-29. The similarly
+  named stable refs in the development clone came from `upstream`, not
+  `origin`. `scripts/preflight-origin-release.sh` now reproduces this check,
+  binds the selected commit to authoritative `origin/main`, and rejects a
+  non-fork remote.
 - `go list -m -json github.com/marang/robotgo@latest` resolved
   `v1.0.0-beta.2` with both the default proxy and `GOPROXY=direct` on
   2026-07-27. Explicit versions remain required for reproducible installs and
   custom/caching proxies can lag.
 - Exact merged-main
-  [`Release Evidence` run 30284816440](https://github.com/marang/robotgo/actions/runs/30284816440)
+  [`Release Evidence` run 30434061380](https://github.com/marang/robotgo/actions/runs/30434061380)
   passed six native/Pure-Go platform snapshots and the 29-check manifest on
-  commit `912722cd480bd542419bd16e7267bbf22201e1ff`.
+  commit `cd204c663e4ff5c8d33504d8cbf8b4dce1d8cc59`, including all promoted
+  GNOME/KDE portal/bounds lanes and Hyprland.
 - P005 is complete with all five milestones at 100%.
 - `go doc` currently exposes 259 root declarations, 44 `agent` declarations,
   and 12 `input/portal` declarations. That breadth makes an automated API
@@ -127,7 +131,7 @@ preparation issue changes code, tests, notes, tag, and evidence together.
 | G1 Version line | Authoritative origin preflight, v1.0 decision, and truthful `@latest` guidance | LAB-64 | Complete — LAB-64 | M1 Contract and API Freeze |
 | G2 API freeze | Checked-in public API baseline plus blocking compatibility CI | [LAB-65](https://linear.app/riotbox/issue/LAB-65/add-a-stable-public-go-api-compatibility-gate) | Complete — 14 variants and exact 29-check evidence | M1 Contract and API Freeze |
 | G3 Platform claims | Every supported row backed by blocking/approved evidence; pending rows explicit | [LAB-66](https://linear.app/riotbox/issue/LAB-66/resolve-stable-platform-support-claims-and-macos-evidence-scope) | Complete — checked runtime-v1 contract; macOS permission scope pending under LAB-69 | M1 Contract and API Freeze |
-| G4 Release candidate | Clean origin `v1.0.0-rc.1` tag, exact evidence, notes, migration, checksums | [LAB-67](https://linear.app/riotbox/issue/LAB-67/prepare-and-publish-robotgo-v100-rc1) | Ready — G1/G2/G3 complete | M2 v1.0.0 Release Candidate |
+| G4 Release candidate | Clean origin `v1.0.0-rc.1` tag, exact evidence, notes, migration, checksums | [LAB-67](https://linear.app/riotbox/issue/LAB-67/prepare-and-publish-robotgo-v100-rc1) | In progress — origin preflight passed; preparing tag commit | M2 v1.0.0 Release Candidate |
 | G5 Stable qualification | At least seven calendar days, no unresolved critical/high regression, no API drift, final exact evidence | [LAB-68](https://linear.app/riotbox/issue/LAB-68/qualify-and-publish-robotgo-v100-stable) | Blocked by G4 | M3 v1.0.0 Stable Qualification |
 
 ## RC and stable rules

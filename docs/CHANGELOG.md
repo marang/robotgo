@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+No changes yet.
+
+## RobotGo v1.0.0-rc.1 — 2026-07-29
+
+This first stable-line release candidate freezes the reviewed public Go API,
+makes every supported platform claim traceable to blocking evidence, and
+hardens release publication against local tags inherited from the separate
+upstream repository.
+
+Highlights since `v1.0.0-beta.2`:
+
 - Reduced noisy and wasteful Actions runs by limiting feature-branch
   validation to pull-request events while retaining `main` and release-tag
   pushes, separating manual Sway/Hyprland evidence from `main`-push
@@ -36,6 +47,14 @@
 - Added privacy-safe hosted GNOME/KDE multi-output bounds evidence for native
   CGO and Pure-Go Wayland builds, then promoted both lanes into the exact
   release gate, expanding the current candidate manifest from 26 to 28 checks.
+- Added an authoritative origin release preflight that requires the selected
+  commit to equal `origin/main`, checks both Git and GitHub for an existing RC
+  or stable tag/release, rejects non-fork remotes, ignores local
+  upstream-derived tags, and permits publishing only the explicit tag ref.
+
+See the [complete release notes](releases/v1.0.0-rc.1.md) for installation,
+migration, supported and evidence-pending scopes, qualification rules, and
+evidence verification.
 
 ## RobotGo v1.0.0-beta.2 — 2026-07-27
 

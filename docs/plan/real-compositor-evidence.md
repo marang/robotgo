@@ -301,9 +301,9 @@ P005 completed after all of the following became blocking evidence:
   `runtime-v1.md` link the retained evidence
 
 The current completed contract passes in
-[`Release Evidence` run 30284816440](https://github.com/marang/robotgo/actions/runs/30284816440)
+[`Release Evidence` run 30434061380](https://github.com/marang/robotgo/actions/runs/30434061380)
 on exact merged `main` commit
-`912722cd480bd542419bd16e7267bbf22201e1ff`. Its schema-v1 manifest contains
+`cd204c663e4ff5c8d33504d8cbf8b4dce1d8cc59`. Its schema-v1 manifest contains
 exactly 29 successful checks, including both hosted GNOME/KDE bounds lanes and
 the stable public API gate.
 

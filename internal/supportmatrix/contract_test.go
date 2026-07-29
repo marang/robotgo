@@ -224,7 +224,7 @@ func TestReplaceMarkdownPreservesCRLFDocument(t *testing.T) {
 func validContract() Contract {
 	return Contract{
 		SchemaVersion: SchemaVersion,
-		Published:     "2026-07-27",
+		Published:     "2026-07-29",
 		ReleaseRun:    "https://github.com/marang/robotgo/actions/runs/1",
 		ReleaseCommit: strings.Repeat("a", 40),
 		ReleaseChecks: []string{"test"},
