@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/godbus/dbus/v5"
 )
 
 func TestOpenRemoteDesktopLifecycleAndNotify(t *testing.T) {
@@ -45,6 +47,82 @@ func TestOpenRemoteDesktopLifecycleAndNotify(t *testing.T) {
 	}
 	if !portal.closed {
 		t.Fatal("portal connection was not closed")
+	}
+}
+
+func TestOpenRemoteDesktopBeforeStartRunsAfterSelections(t *testing.T) {
+	portal := newFakeRemoteDesktopPortal()
+	portal.streams = []rawStream{{NodeID: 77}}
+	options := OpenOptions{
+		Devices: DeviceKeyboard | DevicePointer,
+		Sources: SourceMonitor,
+	}
+	calls := 0
+	session, err := openRemoteDesktopBeforeStart(
+		context.Background(),
+		portal,
+		options,
+		fixedTokens("create", "session", "select", "sources", "start"),
+		func(startRequest dbus.ObjectPath) error {
+			portal.mu.Lock()
+			defer portal.mu.Unlock()
+			if portal.selectDeviceOptions == nil ||
+				portal.selectSourceOptions == nil {
+				return errors.New("start hook ran before selections")
+			}
+			if portal.startCalls != 0 {
+				return errors.New("start hook ran after Start")
+			}
+			if !strings.HasSuffix(string(startRequest), "/start") {
+				return errors.New("start hook received the wrong request path")
+			}
+			calls++
+			return nil
+		},
+	)
+	if err != nil {
+		t.Fatalf("openRemoteDesktopBeforeStart error: %v", err)
+	}
+	if calls != 1 {
+		t.Fatalf("before-Start calls = %d, want 1", calls)
+	}
+	portal.mu.Lock()
+	startCalls := portal.startCalls
+	portal.mu.Unlock()
+	if startCalls != 1 {
+		t.Fatalf("Start calls = %d, want 1", startCalls)
+	}
+	if err := session.Close(); err != nil {
+		t.Fatalf("Close error: %v", err)
+	}
+}
+
+func TestOpenRemoteDesktopBeforeStartFailurePreventsStartAndCleansUp(
+	t *testing.T,
+) {
+	portal := newFakeRemoteDesktopPortal()
+	hookErr := errors.New("prepare consent")
+	_, err := openRemoteDesktopBeforeStart(
+		context.Background(),
+		portal,
+		OpenOptions{Devices: DevicePointer, Sources: SourceMonitor},
+		fixedTokens("create", "session", "select", "sources", "start"),
+		func(dbus.ObjectPath) error { return hookErr },
+	)
+	if !errors.Is(err, hookErr) {
+		t.Fatalf("openRemoteDesktopBeforeStart error = %v, want hook error", err)
+	}
+	portal.mu.Lock()
+	defer portal.mu.Unlock()
+	if portal.startCalls != 0 {
+		t.Fatalf("Start calls = %d, want 0", portal.startCalls)
+	}
+	if len(portal.closeSessions) != 1 || !portal.closed {
+		t.Fatalf(
+			"cleanup: sessions=%v closed=%v",
+			portal.closeSessions,
+			portal.closed,
+		)
 	}
 }
 

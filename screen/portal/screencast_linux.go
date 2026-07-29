@@ -157,6 +157,14 @@ type screenCastNegotiation struct {
 }
 
 func openScreenCast(ctx context.Context, options ScreenCastOptions) (ScreenCast, error) {
+	return openScreenCastBeforeStart(ctx, options, nil)
+}
+
+func openScreenCastBeforeStart(
+	ctx context.Context,
+	options ScreenCastOptions,
+	beforeStart func(dbus.ObjectPath) error,
+) (ScreenCast, error) {
 	if os.Getenv(envDisablePortal) != "" {
 		return nil, ErrScreenCastUnavailable
 	}
@@ -170,7 +178,12 @@ func openScreenCast(ctx context.Context, options ScreenCastOptions) (ScreenCast,
 	if err != nil {
 		return nil, err
 	}
-	return openScreenCastWithPortal(ctx, portal, options)
+	return openScreenCastWithPortalBeforeStart(
+		ctx,
+		portal,
+		options,
+		beforeStart,
+	)
 }
 
 func connectScreenCastPortal() (screenCastPortal, error) {
@@ -186,6 +199,20 @@ func connectScreenCastPortal() (screenCastPortal, error) {
 }
 
 func openScreenCastWithPortal(ctx context.Context, portal screenCastPortal, options ScreenCastOptions) (_ ScreenCast, retErr error) {
+	return openScreenCastWithPortalBeforeStart(
+		ctx,
+		portal,
+		options,
+		nil,
+	)
+}
+
+func openScreenCastWithPortalBeforeStart(
+	ctx context.Context,
+	portal screenCastPortal,
+	options ScreenCastOptions,
+	beforeStart func(dbus.ObjectPath) error,
+) (_ ScreenCast, retErr error) {
 	signals := make(chan *dbus.Signal, 16)
 	portal.registerSignals(signals)
 	cleanupPortal := true
@@ -232,7 +259,7 @@ func openScreenCastWithPortal(ctx context.Context, portal screenCastPortal, opti
 	if err := negotiation.selectSources(sessionPath, options); err != nil {
 		return nil, err
 	}
-	results, err := negotiation.start(sessionPath)
+	results, err := negotiation.start(sessionPath, beforeStart)
 	if err != nil {
 		return nil, err
 	}
@@ -327,10 +354,36 @@ func (n screenCastNegotiation) selectSources(session dbus.ObjectPath, options Sc
 	return nil
 }
 
-func (n screenCastNegotiation) start(session dbus.ObjectPath) (map[string]dbus.Variant, error) {
-	results, err := n.request(session, func(token string) (dbus.ObjectPath, error) {
-		return n.portal.start(n.ctx, session, map[string]dbus.Variant{screenCastOptionHandle: dbus.MakeVariant(token)})
-	})
+func (n screenCastNegotiation) start(
+	session dbus.ObjectPath,
+	beforeStart func(dbus.ObjectPath) error,
+) (map[string]dbus.Variant, error) {
+	token, err := newScreenCastToken(screenCastRequestPrefix)
+	if err != nil {
+		return nil, err
+	}
+	predicted := screenCastRequestPath(n.portal.uniqueName(), token)
+	if beforeStart != nil {
+		if err := beforeStart(predicted); err != nil {
+			return nil, fmt.Errorf(
+				"screencast portal: prepare start: %w",
+				err,
+			)
+		}
+	}
+	results, err := n.waitRequest(
+		token,
+		map[dbus.ObjectPath]struct{}{session: {}},
+		func() (dbus.ObjectPath, error) {
+			return n.portal.start(
+				n.ctx,
+				session,
+				map[string]dbus.Variant{
+					screenCastOptionHandle: dbus.MakeVariant(token),
+				},
+			)
+		},
+	)
 	if err != nil {
 		return nil, fmt.Errorf("screencast portal: start session: %w", err)
 	}

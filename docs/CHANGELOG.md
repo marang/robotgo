@@ -2,6 +2,25 @@
 
 ## Unreleased
 
+- Made hosted GNOME/KDE image-install stalls fail earlier and diagnostically:
+  all three portal workflows now share one tested outer timeout wrapper, guest
+  installation has a shorter phase deadline, and failures expose only a
+  bounded pre-registration build-log tail before mandatory transient cleanup.
+  The resulting evidence identified the broad `ubuntu-desktop-minimal` and
+  `plasma-desktop` dependency closures, so the images now install and verify
+  only the explicit Ubuntu GNOME session or Plasma Workspace/Wayland contract
+  required by their real-desktop tests. The GNOME guest preserves the
+  originally proven Ubuntu Shell mode without restoring the broad desktop
+  metapackage and sets the fixed XKB source used by its virtual consent
+  keyboard. The 113 MB kernel-extra package remains
+  exact-version/SHA-256 pinned but uses an Ubuntu-listed HTTPS mirror with an
+  immutable Launchpad fallback rather than the throttled snapshot; unused APT
+  translation, desktop-metadata, and command-not-found indexes are skipped.
+  GNOME consent input now emits readiness only after non-modal negotiation has
+  completed, uses a two-way start gate bound to the exact random `Start` request
+  path, ignores lingering earlier request objects, and no longer races an
+  on-demand portal backend with a fixed delay. Parentless dialogs receive an
+  independent neutral QMP focus click before their documented mnemonics.
 - Made the seven-day stable qualification window a fail-closed release
   preflight gate: `v1.0.0` cannot pass before
   `2026-08-05T10:13:46Z`; the gate validates GitHub's authoritative API time

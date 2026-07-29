@@ -54,14 +54,26 @@ func (c *PipeWireCapture) Ready() error {
 // OpenPipeWireCapture presents the ScreenCast consent dialog once and creates
 // a reusable frame consumer for streamIndex.
 func OpenPipeWireCapture(ctx context.Context, options ScreenCastOptions, streamIndex int) (*PipeWireCapture, error) {
-	return openPipeWireCapture(ctx, options, streamIndex, nil)
+	return openPipeWireCapture(
+		ctx,
+		options,
+		streamIndex,
+		nil,
+		OpenScreenCast,
+	)
 }
+
+type screenCastOpenFunc func(
+	context.Context,
+	ScreenCastOptions,
+) (ScreenCast, error)
 
 func openPipeWireCapture(
 	ctx context.Context,
 	options ScreenCastOptions,
 	streamIndex int,
 	reportStage pipeWireOpenStageReporter,
+	openSession screenCastOpenFunc,
 ) (*PipeWireCapture, error) {
 	if streamIndex < 0 {
 		return nil, fmt.Errorf("%w: stream index=%d", ErrScreenCastNoStreams, streamIndex)
@@ -73,7 +85,7 @@ func openPipeWireCapture(
 		return nil, ErrPipeWireUnavailable
 	}
 	reportPipeWireOpenStage(reportStage, "portal-open")
-	session, err := OpenScreenCast(ctx, options)
+	session, err := openSession(ctx, options)
 	if err != nil {
 		return nil, err
 	}

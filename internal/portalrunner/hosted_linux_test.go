@@ -182,6 +182,8 @@ func TestHostedPortalCommandsAreCredentialFreeAndCellSpecific(t *testing.T) {
 			test.extra,
 			test.pattern,
 			"ROBOTGO_PORTAL_CONSENT_READY_FILE=/run/user/1100/",
+			"ROBOTGO_PORTAL_CONSENT_START_GATE_FILE=/run/user/1100/",
+			"ROBOTGO_PORTAL_CONSENT_TARGET_FILE=/run/user/1100/",
 			"HTTP_PROXY=http://10.0.2.2:3128",
 		} {
 			if required == "" {
@@ -212,12 +214,14 @@ func TestHostedPortalCommandsSelectDesktopLane(t *testing.T) {
 		current   string
 		session   string
 		forbidden string
+		startGate bool
 	}{
 		{
 			lane:      portalLaneGNOME,
 			current:   "XDG_CURRENT_DESKTOP=GNOME",
 			session:   "XDG_SESSION_DESKTOP=gnome",
 			forbidden: "XDG_CURRENT_DESKTOP=KDE",
+			startGate: true,
 		},
 		{
 			lane:      portalLaneKDE,
@@ -239,6 +243,30 @@ func TestHostedPortalCommandsSelectDesktopLane(t *testing.T) {
 		}
 		if strings.Contains(command, test.forbidden) {
 			t.Errorf("%s command contains %q", test.lane, test.forbidden)
+		}
+		hasStartGate := strings.Contains(
+			command,
+			"ROBOTGO_PORTAL_CONSENT_START_GATE_FILE=",
+		)
+		if hasStartGate != test.startGate {
+			t.Errorf(
+				"%s start gate presence = %v, want %v",
+				test.lane,
+				hasStartGate,
+				test.startGate,
+			)
+		}
+		hasStartTarget := strings.Contains(
+			command,
+			"ROBOTGO_PORTAL_CONSENT_TARGET_FILE=",
+		)
+		if hasStartTarget != test.startGate {
+			t.Errorf(
+				"%s start target presence = %v, want %v",
+				test.lane,
+				hasStartTarget,
+				test.startGate,
+			)
 		}
 	}
 	if command := hostedPortalTestCommand(
@@ -579,6 +607,131 @@ func TestHostedKDEScreenCastLocatorUsesContentFreeKWinGeometry(
 	}
 }
 
+func TestHostedGNOMEPortalDialogWaitUsesContentFreeRequestReadiness(
+	t *testing.T,
+) {
+	t.Parallel()
+	for _, test := range []struct {
+		cell string
+	}{
+		{cell: HostedCellRemoteDesktop},
+		{cell: HostedCellScreenCast},
+	} {
+		test := test
+		t.Run(test.cell, func(t *testing.T) {
+			t.Parallel()
+			executor := &scriptedCommandExecutor{outputs: []string{"ok\n"}}
+			if err := waitForHostedGNOMEPortalDialog(
+				context.Background(),
+				executor,
+				[]string{"-p", "22222"},
+				test.cell,
+				hostedTestPortalStartGate(test.cell),
+				hostedTestPortalStartTarget(test.cell),
+			); err != nil {
+				t.Fatalf("waitForHostedGNOMEPortalDialog: %v", err)
+			}
+			if len(executor.calls) != 1 {
+				t.Fatalf("GNOME dialog readiness calls = %v", executor.calls)
+			}
+			call := strings.Join(executor.calls[0], " ")
+			for _, required := range []string{
+				"ssh",
+				"root@127.0.0.1",
+				"runuser -u robotgo",
+				"XDG_RUNTIME_DIR=/run/user/1100",
+				"DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1100/bus",
+				"/usr/local/libexec/robotgo-runner-wait-portal-dialog",
+				test.cell,
+				hostedTestPortalStartGate(test.cell),
+				hostedTestPortalStartTarget(test.cell),
+			} {
+				if !strings.Contains(call, required) {
+					t.Errorf("GNOME dialog readiness omits %q", required)
+				}
+			}
+			for _, forbidden := range []string{
+				"screenshot",
+				"journalctl",
+				"cat /",
+			} {
+				if strings.Contains(call, forbidden) {
+					t.Errorf("GNOME dialog readiness contains %q", forbidden)
+				}
+			}
+		})
+	}
+}
+
+func TestHostedGNOMEPortalDialogWaitSanitizesFailure(t *testing.T) {
+	t.Parallel()
+	executor := &scriptedCommandExecutor{
+		outputs: []string{"private window data\n"},
+		errors:  []error{errors.New("private SSH failure")},
+	}
+	err := waitForHostedGNOMEPortalDialog(
+		context.Background(),
+		executor,
+		nil,
+		HostedCellScreenCast,
+		hostedTestPortalStartGate(HostedCellScreenCast),
+		hostedTestPortalStartTarget(HostedCellScreenCast),
+	)
+	if err == nil || err.Error() != "locate hosted GNOME portal dialog" {
+		t.Fatalf("GNOME dialog readiness error = %v", err)
+	}
+	for _, private := range []string{"private window data", "private SSH failure"} {
+		if strings.Contains(err.Error(), private) {
+			t.Fatalf("GNOME dialog readiness leaks %q: %v", private, err)
+		}
+	}
+
+	executor = &scriptedCommandExecutor{
+		outputs: []string{"error dialog-unavailable\n"},
+		errors:  []error{errors.New("private SSH failure")},
+	}
+	err = waitForHostedGNOMEPortalDialog(
+		context.Background(),
+		executor,
+		nil,
+		HostedCellRemoteDesktop,
+		hostedTestPortalStartGate(HostedCellRemoteDesktop),
+		hostedTestPortalStartTarget(HostedCellRemoteDesktop),
+	)
+	if err == nil || !strings.Contains(
+		err.Error(),
+		`stage "dialog-unavailable"`,
+	) {
+		t.Fatalf("GNOME dialog readiness stage = %v", err)
+	}
+	if strings.Contains(err.Error(), "private SSH failure") {
+		t.Fatalf("GNOME dialog readiness leaks private failure: %v", err)
+	}
+}
+
+func TestHostedGNOMEPortalDialogWaitRejectsInvalidCell(t *testing.T) {
+	t.Parallel()
+	err := waitForHostedGNOMEPortalDialog(
+		context.Background(),
+		&scriptedCommandExecutor{},
+		nil,
+		HostedCellDisplayBounds,
+		hostedTestPortalStartGate(HostedCellDisplayBounds),
+		hostedTestPortalStartTarget(HostedCellDisplayBounds),
+	)
+	if err == nil || !strings.Contains(err.Error(), "cell is invalid") {
+		t.Fatalf("invalid GNOME dialog cell error = %v", err)
+	}
+}
+
+func hostedTestPortalStartGate(cell string) string {
+	return "/run/user/1100/robotgo-portal-consent-" + cell + ".start"
+}
+
+func hostedTestPortalStartTarget(cell string) string {
+	return "/run/user/1100/robotgo-portal-consent-" + cell + ".target"
+}
+
 func TestHostedKDEScreenCastLocatorRejectsUnsafeGeometry(t *testing.T) {
 	t.Parallel()
 	for _, output := range []string{
@@ -667,6 +820,44 @@ func TestGNOMEPortalPhysicalCardTargetsUseManifestGeometry(t *testing.T) {
 	}}
 	if targets != want {
 		t.Fatalf("GNOME physical card targets = %+v, want %+v", targets, want)
+	}
+}
+
+func TestGNOMEPortalFocusTargetUsesNeutralHeaderGeometry(t *testing.T) {
+	t.Parallel()
+	display := validManifest().HostedDisplay
+	for _, test := range []struct {
+		topology string
+		want     hostedPortalTarget
+	}{
+		{
+			topology: HostedTopologySingle,
+			want: hostedPortalTarget{
+				x: 640, y: 142, width: 1280, height: 720,
+			},
+		},
+		{
+			topology: HostedTopologyMulti,
+			want: hostedPortalTarget{
+				x: 640, y: 142, width: 2304, height: 768,
+			},
+		},
+	} {
+		target, err := gnomePortalDialogFocusTarget(display, test.topology)
+		if err != nil {
+			t.Fatalf("%s target: %v", test.topology, err)
+		}
+		if target != test.want {
+			t.Errorf(
+				"%s GNOME focus target = %+v, want %+v",
+				test.topology,
+				target,
+				test.want,
+			)
+		}
+	}
+	if _, err := gnomePortalDialogFocusTarget(display, "invalid"); err == nil {
+		t.Fatal("GNOME focus target accepted invalid topology")
 	}
 }
 
@@ -810,6 +1001,12 @@ func TestPortalDialogSettleUsesLongerKDEWindow(t *testing.T) {
 	t.Parallel()
 	if got := portalDialogSettle(portalLaneGNOME); got != gnomePortalDialogSettle {
 		t.Fatalf("GNOME portal dialog settle = %s", got)
+	}
+	if gnomePortalDialogSettle != 2*time.Second {
+		t.Fatalf(
+			"GNOME post-request dialog settle = %s, want 2s",
+			gnomePortalDialogSettle,
+		)
 	}
 	if got := portalDialogSettle(portalLaneKDE); got != kdePortalDialogSettle {
 		t.Fatalf("KDE portal dialog settle = %s", got)

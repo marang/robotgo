@@ -69,7 +69,7 @@
     "pipewire",
     "pkg-config",
     "sudo",
-    "ubuntu-desktop-minimal",
+    "ubuntu-session",
     "wireplumber",
     "xdg-desktop-portal",
     "xdg-desktop-portal-gnome"

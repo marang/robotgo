@@ -3,11 +3,53 @@
 package portalrunner
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
+
+func TestBuildFailureLogTailIsBounded(t *testing.T) {
+	t.Parallel()
+
+	path := filepath.Join(t.TempDir(), "build.log")
+	prefix := bytes.Repeat([]byte("p"), 1024)
+	tail := bytes.Repeat([]byte("t"), buildLogTailLimit)
+	if err := os.WriteFile(path, append(prefix, tail...), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	var output bytes.Buffer
+	if err := writeBuildLogTail(&output, path); err != nil {
+		t.Fatal(err)
+	}
+	got := output.String()
+	if strings.Contains(got, string(prefix)) {
+		t.Fatal("failure diagnostic exposed data before the bounded tail")
+	}
+	if !strings.Contains(got, string(tail)) {
+		t.Fatal("failure diagnostic omitted the bounded log tail")
+	}
+	if !strings.Contains(
+		got,
+		"portal runner build failure log (last 65536 bytes)",
+	) || !strings.HasSuffix(got, "end portal runner build failure log\n") {
+		t.Fatalf("failure diagnostic delimiters missing:\n%s", got)
+	}
+}
+
+func TestGuestInstallTimeoutPrecedesHostedWorkflowGuard(t *testing.T) {
+	t.Parallel()
+
+	if guestInstallTimeout != 20*time.Minute {
+		t.Fatalf("guestInstallTimeout = %s, want 20m", guestInstallTimeout)
+	}
+	if guestInstallTimeout >= 30*time.Minute {
+		t.Fatal("guest install timeout must precede the hosted workflow guard")
+	}
+}
 
 func TestComputeImageIdentityBindsEveryBuildInput(t *testing.T) {
 	t.Parallel()
@@ -371,17 +413,65 @@ func TestRepositoryGuestSessionContract(t *testing.T) {
 		t.Fatalf("read install.sh: %v", err)
 	}
 	for _, required := range []string{
+		"dpkg-query -W -f='${db:Status-Status}' ubuntu-session",
+		"test -f /usr/share/wayland-sessions/ubuntu.desktop",
+		"test -f /usr/share/wayland-sessions/ubuntu-wayland.desktop",
+		"test -f /usr/share/gnome-shell/modes/ubuntu.json",
+		"test -x /usr/bin/gnome-shell",
+		"/var/lib/AccountsService/users/robotgo",
+		"XSession=ubuntu",
+		"chmod 0600 /var/lib/AccountsService/users/robotgo",
+		"/usr/local/libexec/robotgo-runner-wait-portal-dialog",
 		"chmod 0644 /etc/dconf/profile/user",
 		"chmod 0644 /etc/dconf/db/robotgo.d/00-runner",
 		"chmod 0644 /etc/dconf/db/robotgo",
+		"[org/gnome/desktop/input-sources]",
+		"sources=[('xkb', 'us')]",
+		"mru-sources=[('xkb', 'us')]",
 		"ACTIONS_RUNNER_HOOK_JOB_STARTED=/usr/local/libexec/robotgo-runner-job-started-hook.sh",
 		"ACTIONS_RUNNER_HOOK_JOB_COMPLETED=/usr/local/libexec/robotgo-runner-job-completed-hook.sh",
 		"systemctl enable robotgo-runner-egress.service",
 	} {
 		if !strings.Contains(string(installScript), required) {
-			t.Fatalf("install.sh omits readable DConf contract %q", required)
+			t.Fatalf("install.sh omits GNOME guest contract %q", required)
 		}
 	}
+	if strings.Contains(string(installScript), "DefaultSession=") {
+		t.Fatal("install.sh uses unsupported GDM default-session configuration")
+	}
+
+	dialogWait, err := os.ReadFile(
+		filepath.Join(guestRoot, "wait-portal-dialog.sh"),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dialogScript := string(dialogWait)
+	for _, required := range []string{
+		"org.freedesktop.impl.portal.desktop.gnome",
+		"/org/freedesktop/portal/desktop/request/",
+		"remote-desktop | screencast",
+		"CreateSession",
+		"every Select* request has completed",
+		"exact random Start request path",
+		"only this exact path can satisfy readiness",
+		"error dialog-unavailable",
+	} {
+		if !strings.Contains(dialogScript, required) {
+			t.Errorf("GNOME dialog readiness omits %q", required)
+		}
+	}
+	for _, forbidden := range []string{
+		"journalctl",
+		"screenshot",
+		"title",
+		`printf '%s' "$objects"`,
+	} {
+		if strings.Contains(dialogScript, forbidden) {
+			t.Errorf("GNOME dialog readiness contains %q", forbidden)
+		}
+	}
+
 	for _, forbidden := range []string{
 		"ACTIONS_RUNNER_HOOK_JOB_STARTED=/usr/local/libexec/robotgo-runner-job-started-hook\n",
 		"ACTIONS_RUNNER_HOOK_JOB_COMPLETED=/usr/local/libexec/robotgo-runner-job-completed-hook\n",
@@ -469,6 +559,8 @@ func TestRepositoryKDEGuestActivatesPortalFrontendAndBackend(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, required := range []string{
+		"dpkg-query -W -f='${db:Status-Status}' plasma-workspace",
+		"test -x /usr/bin/plasmashell",
 		"/usr/local/libexec/robotgo-runner-locate-screencast",
 		"/usr/local/libexec/robotgo-runner-report-screencast-geometry",
 		"/usr/local/share/robotgo/report-screencast-geometry.js",
@@ -565,15 +657,26 @@ func TestRepositoryGuestProvisioningRetriesBoundedDownloads(t *testing.T) {
 			script := string(data)
 			for _, required := range []string{
 				"Acquire::Retries=5",
+				"Acquire::Languages=none",
+				"Acquire::IndexTargets::deb::DEP-11::DefaultEnabled=false",
+				"Acquire::IndexTargets::deb::CNF::DefaultEnabled=false",
 				"Acquire::http::Timeout=30",
 				"Acquire::https::Timeout=30",
 				"DPkg::Lock::Timeout=60",
 				`apt-get "${apt_options[@]}" update`,
 				`apt-get "${apt_options[@]}" install`,
-				"--connect-timeout 15 --max-time 300",
-				"--retry 5 --retry-delay 2 --retry-max-time 300 --retry-all-errors",
+				`--connect-timeout 15 --max-time "$maximum_time"`,
+				`--retry 5 --retry-delay 2 --retry-max-time "$maximum_time"`,
+				"--retry-all-errors",
 				"--proto '=https' --tlsv1.2",
 				"sha256sum --check --status",
+				"mirrors.kernel.org/ubuntu/pool/main/l/linux/",
+				"launchpadlibrarian.net/866579255/",
+				"f445185d1664025f4ea95d24757baf398fd4a47b6caadcf1bd3b15a1205929f6",
+				`"$kernel_modules_url" "$kernel_modules_sha256" "$kernel_archive" 180`,
+				"'.packages[] | select(. != $package)'",
+				`install -y --no-install-recommends "$kernel_archive"`,
+				`trap 'rm -f -- "$kernel_archive"' EXIT`,
 			} {
 				if !strings.Contains(script, required) {
 					t.Errorf(

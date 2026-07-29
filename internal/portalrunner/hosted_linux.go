@@ -24,6 +24,8 @@ const (
 	maximumSourceArchive    = 128 * 1024 * 1024
 	gnomePortalDialogSettle = 2 * time.Second
 	kdePortalDialogSettle   = 5 * time.Second
+	gnomePortalDialogWait   = 65 * time.Second
+	gnomePortalOutputLimit  = 64
 	consentPollInterval     = 250 * time.Millisecond
 	hostedTestTimeout       = 4 * time.Minute
 	hostedTestLogLimit      = 2 * 1024 * 1024
@@ -471,9 +473,15 @@ func RunHosted(
 	}
 
 	marker := ""
+	startGate := ""
+	startTarget := ""
 	if hostedCellUsesPortal(options.Cell) {
 		marker = "/run/user/1100/robotgo-portal-consent-" +
 			options.Cell + ".ready"
+		if manifest.Lane == portalLaneGNOME {
+			startGate = hostedPortalStartGate(marker)
+			startTarget = hostedPortalStartTarget(marker)
+		}
 	}
 	testLogPath := filepath.Join(runDirectory, "hosted-test.log")
 	testLog, err := os.OpenFile(
@@ -546,6 +554,19 @@ func RunHosted(
 			}
 			return err
 		}
+		if manifest.Lane == portalLaneGNOME {
+			if err := waitForHostedGNOMEPortalDialog(
+				guestContext,
+				options.Commands,
+				sshArguments,
+				options.Cell,
+				startGate,
+				startTarget,
+			); err != nil {
+				stopProcessGroup(testCommand, testResult.done)
+				return err
+			}
+		}
 		if err := waitForPortalDialog(
 			guestContext,
 			testResult.done,
@@ -573,11 +594,13 @@ func RunHosted(
 	testError := testResult.err
 	var cleanupError error
 	if marker != "" {
-		cleanupError = assertConsentMarkerRemoved(
+		cleanupError = assertPortalSyncFilesRemoved(
 			guestContext,
 			options.Commands,
 			sshArguments,
 			marker,
+			startGate,
+			startTarget,
 			logWriter,
 		)
 	}
@@ -1099,6 +1122,15 @@ func hostedPortalTestCommandForTopology(
 			"DISPLAY=:0",
 			"ROBOTGO_PORTAL_CONSENT_READY_FILE="+marker,
 		)
+		if lane == portalLaneGNOME {
+			environmentParts = append(
+				environmentParts,
+				"ROBOTGO_PORTAL_CONSENT_START_GATE_FILE="+
+					hostedPortalStartGate(marker),
+				"ROBOTGO_PORTAL_CONSENT_TARGET_FILE="+
+					hostedPortalStartTarget(marker),
+			)
+		}
 	}
 	environment := strings.Join(environmentParts, " ")
 	if topology == HostedTopologyMulti {
@@ -1216,6 +1248,30 @@ func approveHostedPortal(
 		}
 		if approvalError == nil {
 			approvalError = qmp.sendChord(ctx, qmpKeyAlt, qmpKeyS)
+		}
+		return errors.Join(approvalError, qmp.close())
+	}
+	if lane == portalLaneGNOME {
+		target, err := gnomePortalDialogFocusTarget(display, topology)
+		if err != nil {
+			return err
+		}
+		qmp, err := connectQMP(ctx, qmpSocket)
+		if err != nil {
+			return err
+		}
+		approvalError := qmp.clickAbsolute(
+			ctx,
+			target.x,
+			target.y,
+			target.width,
+			target.height,
+		)
+		if approvalError == nil {
+			approvalError = waitQMPChord(ctx)
+		}
+		if approvalError == nil {
+			approvalError = qmp.approvePortal(ctx, lane, cell, topology)
 		}
 		return errors.Join(approvalError, qmp.close())
 	}
@@ -1338,6 +1394,7 @@ func approveHostedPortal(
 const (
 	gnomePortalDialogWidth        = 660
 	gnomePortalDialogHeight       = 500
+	gnomePortalHeaderTargetY      = 32
 	gnomePortalHorizontalInset    = 43
 	gnomePortalTargetYNumerator   = 3
 	gnomePortalTargetYDenominator = 5
@@ -1352,6 +1409,61 @@ type hostedPortalTarget struct {
 
 type hostedPortalTargetSet struct {
 	points [2]hostedPortalTarget
+}
+
+func gnomePortalDialogFocusTarget(
+	display HostedDisplay,
+	topology string,
+) (hostedPortalTarget, error) {
+	if err := display.Validate(); err != nil {
+		return hostedPortalTarget{}, err
+	}
+	outputCount := 1
+	switch topology {
+	case HostedTopologySingle:
+	case HostedTopologyMulti:
+		outputCount = len(display.Outputs)
+	default:
+		return hostedPortalTarget{}, errors.New(
+			"hosted GNOME portal topology is invalid",
+		)
+	}
+	minX, minY := display.Outputs[0].X, display.Outputs[0].Y
+	maxX := minX + display.Outputs[0].Width
+	maxY := minY + display.Outputs[0].Height
+	for _, output := range display.Outputs[1:outputCount] {
+		minX = min(minX, output.X)
+		minY = min(minY, output.Y)
+		maxX = max(maxX, output.X+output.Width)
+		maxY = max(maxY, output.Y+output.Height)
+	}
+	width, height := maxX-minX, maxY-minY
+	primary := display.Outputs[0]
+	if primary.Width < gnomePortalDialogWidth ||
+		primary.Height < gnomePortalDialogHeight {
+		return hostedPortalTarget{}, errors.New(
+			"hosted GNOME primary output cannot contain the portal dialog",
+		)
+	}
+	dialogX := primary.X - minX +
+		(primary.Width-gnomePortalDialogWidth)/2
+	dialogY := primary.Y - minY +
+		(primary.Height-gnomePortalDialogHeight)/2
+	target := hostedPortalTarget{
+		x:      dialogX + gnomePortalDialogWidth/2,
+		y:      dialogY + gnomePortalHeaderTargetY,
+		width:  width,
+		height: height,
+	}
+	if target.x < dialogX ||
+		target.x >= dialogX+gnomePortalDialogWidth ||
+		target.y < dialogY ||
+		target.y >= dialogY+gnomePortalDialogHeight {
+		return hostedPortalTarget{}, errors.New(
+			"hosted GNOME portal focus target is outside the expected dialog",
+		)
+	}
+	return target, nil
 }
 
 func gnomePortalPhysicalCardTargets(
@@ -1494,6 +1606,81 @@ func locateHostedKDEScreenCast(
 		)
 	}
 	return geometry, nil
+}
+
+func waitForHostedGNOMEPortalDialog(
+	ctx context.Context,
+	commands CommandExecutor,
+	sshArguments []string,
+	cell,
+	startGate,
+	startTarget string,
+) error {
+	if cell != HostedCellRemoteDesktop && cell != HostedCellScreenCast {
+		return errors.New("hosted GNOME portal dialog cell is invalid")
+	}
+	if startGate != hostedPortalStartGate(
+		"/run/user/1100/robotgo-portal-consent-"+cell+".ready",
+	) {
+		return errors.New("hosted GNOME portal start gate is invalid")
+	}
+	if startTarget != hostedPortalStartTarget(
+		"/run/user/1100/robotgo-portal-consent-"+cell+".ready",
+	) {
+		return errors.New("hosted GNOME portal start target is invalid")
+	}
+
+	command := "exec runuser -u robotgo -- env " +
+		"XDG_RUNTIME_DIR=/run/user/1100 " +
+		"DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1100/bus " +
+		"/usr/local/libexec/robotgo-runner-wait-portal-dialog " +
+		shellQuote(cell) + " " + shellQuote(startGate) + " " +
+		shellQuote(startTarget)
+
+	dialogContext, cancel := context.WithTimeout(ctx, gnomePortalDialogWait)
+	defer cancel()
+	var output bytes.Buffer
+	err := commands.Run(
+		dialogContext,
+		"ssh",
+		append(
+			append([]string{}, sshArguments...),
+			"root@127.0.0.1",
+			command,
+		),
+		nil,
+		&boundedWriter{
+			destination: &output,
+			remaining:   gnomePortalOutputLimit,
+		},
+	)
+	if err == nil && output.String() == "ok\n" {
+		return nil
+	}
+	if output.String() == "error dialog-unavailable\n" {
+		return errors.New(
+			`locate hosted GNOME portal dialog at stage "dialog-unavailable"`,
+		)
+	}
+	if output.String() == "error target-invalid\n" {
+		return errors.New(
+			`locate hosted GNOME portal dialog at stage "target-invalid"`,
+		)
+	}
+	if output.String() == "error start-gate\n" {
+		return errors.New(
+			`locate hosted GNOME portal dialog at stage "start-gate"`,
+		)
+	}
+	return errors.New("locate hosted GNOME portal dialog")
+}
+
+func hostedPortalStartGate(marker string) string {
+	return strings.TrimSuffix(marker, ".ready") + ".start"
+}
+
+func hostedPortalStartTarget(marker string) string {
+	return strings.TrimSuffix(marker, ".ready") + ".target"
 }
 
 const (
@@ -1741,25 +1928,36 @@ func waitForPortalDialog(
 	}
 }
 
-func assertConsentMarkerRemoved(
+func assertPortalSyncFilesRemoved(
 	ctx context.Context,
 	commands CommandExecutor,
 	sshArguments []string,
-	marker string,
+	marker,
+	startGate,
+	startTarget string,
 	output io.Writer,
 ) error {
-	if err := commands.Run(
-		ctx,
-		"ssh",
-		append(
-			append([]string{}, sshArguments...),
-			"root@127.0.0.1",
-			"test ! -e "+shellQuote(marker),
-		),
-		nil,
-		output,
-	); err != nil {
-		return errors.New("hosted portal test left its consent marker")
+	paths := []string{marker}
+	if startGate != "" {
+		paths = append(paths, startGate)
+	}
+	if startTarget != "" {
+		paths = append(paths, startTarget)
+	}
+	for _, path := range paths {
+		if err := commands.Run(
+			ctx,
+			"ssh",
+			append(
+				append([]string{}, sshArguments...),
+				"root@127.0.0.1",
+				"test ! -e "+shellQuote(path),
+			),
+			nil,
+			output,
+		); err != nil {
+			return errors.New("hosted portal test left a synchronization file")
+		}
 	}
 	return nil
 }

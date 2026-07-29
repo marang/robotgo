@@ -32,6 +32,28 @@ case "$apt_snapshot" in
     ;;
 esac
 
+download_verified() {
+  local url=$1
+  local digest=$2
+  local output=$3
+  local maximum_time=${4:-300}
+  case "$url" in
+    https://*) ;;
+    *)
+      echo "refusing non-HTTPS artifact URL" >&2
+      exit 1
+      ;;
+  esac
+  curl --fail --silent --show-error --location \
+    --connect-timeout 15 --max-time "$maximum_time" \
+    --retry 5 --retry-delay 2 --retry-max-time "$maximum_time" \
+    --retry-all-errors \
+    --proto '=https' --tlsv1.2 \
+    --output "$output" "$url" ||
+    return 1
+  printf '%s  %s\n' "$digest" "$output" | sha256sum --check --status
+}
+
 cat >/etc/apt/sources.list.d/ubuntu.sources <<EOF
 Types: deb
 URIs: $apt_snapshot
@@ -41,22 +63,58 @@ Signed-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg
 EOF
 rm -f /etc/apt/sources.list
 
-mapfile -t packages < <(jq -r '.packages[]' "$manifest")
+kernel_release=$(jq -r '.vm.kernel_release' "$manifest")
+kernel_modules_package="linux-modules-extra-$kernel_release"
+test "$(jq -r --arg package "$kernel_modules_package" \
+  '[.packages[] | select(. == $package)] | length' "$manifest")" = 1
+case "$kernel_release" in
+  6.8.0-134-generic)
+    kernel_modules_url=https://mirrors.kernel.org/ubuntu/pool/main/l/linux/linux-modules-extra-6.8.0-134-generic_6.8.0-134.134_amd64.deb
+    kernel_modules_fallback_url=https://launchpadlibrarian.net/866579255/linux-modules-extra-6.8.0-134-generic_6.8.0-134.134_amd64.deb
+    kernel_modules_sha256=f445185d1664025f4ea95d24757baf398fd4a47b6caadcf1bd3b15a1205929f6
+    ;;
+  *)
+    echo "no pinned kernel modules artifact for $kernel_release" >&2
+    exit 1
+    ;;
+esac
+kernel_archive=/var/tmp/robotgo-linux-modules-extra.deb
+
+mapfile -t packages < <(
+  jq -r --arg package "$kernel_modules_package" \
+    '.packages[] | select(. != $package)' "$manifest"
+)
 test "${#packages[@]}" -gt 0
 apt_options=(
   -o Acquire::Retries=5
+  -o Acquire::Languages=none
+  -o Acquire::IndexTargets::deb::DEP-11::DefaultEnabled=false
+  -o Acquire::IndexTargets::deb::CNF::DefaultEnabled=false
   -o Acquire::http::Timeout=30
   -o Acquire::https::Timeout=30
   -o DPkg::Lock::Timeout=60
 )
 apt-get "${apt_options[@]}" update
+apt-get "${apt_options[@]}" install -y --no-install-recommends \
+  ca-certificates curl
+trap 'rm -f -- "$kernel_archive"' EXIT
+if ! download_verified \
+  "$kernel_modules_url" "$kernel_modules_sha256" "$kernel_archive" 180; then
+  rm -f -- "$kernel_archive"
+  download_verified \
+    "$kernel_modules_fallback_url" "$kernel_modules_sha256" "$kernel_archive"
+fi
 apt-get "${apt_options[@]}" install -y --no-install-recommends "${packages[@]}"
-kernel_release=$(jq -r '.vm.kernel_release' "$manifest")
+apt-get "${apt_options[@]}" install -y --no-install-recommends "$kernel_archive"
+rm -f -- "$kernel_archive"
+trap - EXIT
+test "$(dpkg-query -W -f='${db:Status-Status}' plasma-workspace)" = installed
 test "$(uname -r)" = "$kernel_release"
 test "$(dpkg-query -W -f='${db:Status-Status}' \
   "linux-modules-extra-$kernel_release")" = installed
 test -f /usr/share/wayland-sessions/plasmawayland.desktop
 test -x /usr/bin/kwin_wayland
+test -x /usr/bin/plasmashell
 test -x /usr/lib/x86_64-linux-gnu/libexec/xdg-desktop-portal-kde
 
 if ! id robotgo >/dev/null 2>&1; then
@@ -65,25 +123,6 @@ fi
 test "$(id -u robotgo)" = 1100
 passwd --lock robotgo
 gpasswd --delete robotgo sudo >/dev/null 2>&1 || true
-
-download_verified() {
-  local url=$1
-  local digest=$2
-  local output=$3
-  case "$url" in
-    https://*) ;;
-    *)
-      echo "refusing non-HTTPS artifact URL" >&2
-      exit 1
-      ;;
-  esac
-  curl --fail --silent --show-error --location \
-    --connect-timeout 15 --max-time 300 \
-    --retry 5 --retry-delay 2 --retry-max-time 300 --retry-all-errors \
-    --proto '=https' --tlsv1.2 \
-    --output "$output" "$url"
-  printf '%s  %s\n' "$digest" "$output" | sha256sum --check --status
-}
 
 go_archive=/var/tmp/robotgo-go.tar.gz
 download_verified \

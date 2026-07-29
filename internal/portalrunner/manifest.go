@@ -252,6 +252,8 @@ func (manifest Manifest) Validate() error {
 		}
 	}
 	requiredPackages := []string{
+		"ca-certificates",
+		"curl",
 		"libdrm-dev",
 		"libgbm-dev",
 		"libpipewire-0.3-dev",
@@ -264,17 +266,35 @@ func (manifest Manifest) Validate() error {
 	}
 	switch manifest.Lane {
 	case portalLaneGNOME:
+		for _, forbidden := range []string{
+			"gnome-session",
+			"ubuntu-desktop-minimal",
+		} {
+			if slices.Contains(manifest.Packages, forbidden) {
+				return fmt.Errorf(
+					"portal runner GNOME package set must not include %q",
+					forbidden,
+				)
+			}
+		}
 		requiredPackages = append(requiredPackages,
 			"gdm3",
 			"gnome-shell",
 			"libpam-gnome-keyring",
+			"ubuntu-session",
 			"xdg-desktop-portal-gnome",
 		)
 	case portalLaneKDE:
+		if slices.Contains(manifest.Packages, "plasma-desktop") {
+			return errors.New(
+				`portal runner KDE package set must not include ` +
+					`"plasma-desktop"`,
+			)
+		}
 		requiredPackages = append(requiredPackages,
 			"kwin-wayland",
 			"libkf5screen-bin",
-			"plasma-desktop",
+			"plasma-workspace",
 			"plasma-workspace-wayland",
 			"sddm",
 			"xdg-desktop-portal-kde",

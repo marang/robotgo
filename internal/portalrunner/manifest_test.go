@@ -46,6 +46,8 @@ func validManifest() Manifest {
 			},
 		},
 		Packages: []string{
+			"ca-certificates",
+			"curl",
 			"gdm3",
 			"gnome-shell",
 			"libdrm-dev",
@@ -56,6 +58,7 @@ func validManifest() Manifest {
 			"libxkbcommon-dev",
 			"linux-modules-extra-6.8.0-134-generic",
 			"pipewire",
+			"ubuntu-session",
 			"wireplumber",
 			"xdg-desktop-portal",
 			"xdg-desktop-portal-gnome",
@@ -99,6 +102,8 @@ func TestKDEManifestContract(t *testing.T) {
 	manifest.Lane = portalLaneKDE
 	manifest.Labels = []string{"self-hosted", "linux", "wayland", portalLaneKDE}
 	manifest.Packages = []string{
+		"ca-certificates",
+		"curl",
 		"kwin-wayland",
 		"libdrm-dev",
 		"libgbm-dev",
@@ -108,7 +113,7 @@ func TestKDEManifestContract(t *testing.T) {
 		"libxkbcommon-dev",
 		"linux-modules-extra-6.8.0-134-generic",
 		"pipewire",
-		"plasma-desktop",
+		"plasma-workspace",
 		"plasma-workspace-wayland",
 		"sddm",
 		"wireplumber",
@@ -117,6 +122,12 @@ func TestKDEManifestContract(t *testing.T) {
 	}
 	if err := manifest.Validate(); err != nil {
 		t.Fatalf("KDE manifest rejected: %v", err)
+	}
+	manifest.Packages = append(manifest.Packages, "plasma-desktop")
+	slices.Sort(manifest.Packages)
+	if err := manifest.Validate(); err == nil ||
+		!strings.Contains(err.Error(), `must not include "plasma-desktop"`) {
+		t.Fatalf("KDE broad package validation error = %v", err)
 	}
 }
 
@@ -280,6 +291,28 @@ func TestManifestRejectsUnsafeContract(t *testing.T) {
 				manifest.Packages = manifest.Packages[:len(manifest.Packages)-1]
 			},
 			want: `package set omits "xdg-desktop-portal-gnome"`,
+		},
+		{
+			name: "broad GNOME desktop metapackage",
+			change: func(manifest *Manifest) {
+				manifest.Packages = append(
+					manifest.Packages,
+					"ubuntu-desktop-minimal",
+				)
+				slices.Sort(manifest.Packages)
+			},
+			want: `must not include "ubuntu-desktop-minimal"`,
+		},
+		{
+			name: "generic GNOME session",
+			change: func(manifest *Manifest) {
+				manifest.Packages = append(
+					manifest.Packages,
+					"gnome-session",
+				)
+				slices.Sort(manifest.Packages)
+			},
+			want: `must not include "gnome-session"`,
 		},
 		{
 			name: "missing Wayland development package",

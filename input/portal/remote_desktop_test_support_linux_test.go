@@ -41,6 +41,7 @@ type fakeRemoteDesktopPortal struct {
 	selectCode          uint32
 	selectSourcesCode   uint32
 	startCode           uint32
+	startCalls          int
 	granted             DeviceType
 	streams             []rawStream
 	restoreToken        string
@@ -191,6 +192,9 @@ func (p *fakeRemoteDesktopPortal) selectSources(_ context.Context, session dbus.
 }
 
 func (p *fakeRemoteDesktopPortal) start(_ context.Context, session dbus.ObjectPath, options map[string]dbus.Variant) (dbus.ObjectPath, error) {
+	p.mu.Lock()
+	p.startCalls++
+	p.mu.Unlock()
 	request := requestPath(p.name, variantString(options, "handle_token"))
 	if p.closeOnStart {
 		if err := p.emitSessionClosed(session); err != nil {
