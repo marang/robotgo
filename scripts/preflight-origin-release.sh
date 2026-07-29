@@ -6,10 +6,22 @@ readonly repository="marang/robotgo"
 readonly remote="origin"
 readonly git_bin="${ROBOTGO_RELEASE_GIT_BIN:-git}"
 readonly gh_bin="${ROBOTGO_RELEASE_GH_BIN:-gh}"
+readonly date_bin="${ROBOTGO_RELEASE_DATE_BIN:-date}"
+readonly stable_qualification_not_before="2026-08-05T10:13:46Z"
+readonly stable_qualification_not_before_epoch=1785924826
 
 usage() {
   printf 'usage: %s <tag> <40-character-origin-main-commit>\n' \
     "$(basename -- "$0")" >&2
+}
+
+parse_http_date_epoch() {
+  local http_date="$1"
+  if LC_ALL=C "$date_bin" -u -d "$http_date" +%s 2>/dev/null; then
+    return 0
+  fi
+  LC_ALL=C "$date_bin" -j -u -f "%a, %d %b %Y %H:%M:%S GMT" \
+    "$http_date" +%s
 }
 
 if (($# != 2)); then
@@ -51,6 +63,43 @@ case "$remote_url" in
     exit 1
     ;;
 esac
+
+if [[ "$tag" == "$stable_tag" ]]; then
+  if ! github_headers="$(
+    "$gh_bin" api "repos/$repository" --include --jq empty
+  )"; then
+    printf 'failed to obtain authoritative GitHub time for stable qualification\n' >&2
+    exit 1
+  fi
+  github_date="$(
+    awk '
+      tolower($1) == "date:" {
+        sub(/^[^:]*:[[:space:]]*/, "")
+        sub(/\r$/, "")
+        print
+      }
+    ' <<<"$github_headers"
+  )"
+  if [[ -z "$github_date" ]] || [[ "$(wc -l <<<"$github_date")" -ne 1 ]]; then
+    printf 'authoritative GitHub response did not contain exactly one Date header\n' >&2
+    exit 1
+  fi
+  if ! current_epoch="$(parse_http_date_epoch "$github_date")"; then
+    printf 'failed to parse authoritative GitHub time for stable qualification\n' >&2
+    exit 1
+  fi
+  if [[ ! "$current_epoch" =~ ^[0-9]{1,10}$ ]]; then
+    printf 'invalid authoritative GitHub epoch for stable qualification: %s\n' \
+      "$current_epoch" >&2
+    exit 1
+  fi
+  if ((10#$current_epoch < stable_qualification_not_before_epoch)); then
+    printf 'stable qualification window is still open\n' >&2
+    printf 'not-before=%s\ngithub-date=%s\n' \
+      "$stable_qualification_not_before" "$github_date" >&2
+    exit 1
+  fi
+fi
 
 main_rows="$("$git_bin" ls-remote --heads "$remote" refs/heads/main)"
 main_commit="$(awk '$2 == "refs/heads/main" { print $1 }' <<<"$main_rows")"
@@ -112,4 +161,7 @@ fi
 printf 'release preflight passed\n'
 printf 'repository=%s\nremote=%s\ntag=%s\ncommit=%s\n' \
   "$repository" "$remote" "$tag" "$expected_commit"
+if [[ "$tag" == "$stable_tag" ]]; then
+  printf 'stable-not-before=%s\n' "$stable_qualification_not_before"
+fi
 printf 'publish only the explicit tag ref; never use git push --tags\n'
