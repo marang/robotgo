@@ -15,37 +15,58 @@ The independent `github.com/marang/robotgo` module will use:
 1. `v1.0.0-rc.1` for the first stable-line release candidate.
 2. `v1.0.0` for the first stable release after qualification.
 
-Before RC publication, the authoritative `marang/robotgo` origin contains only
-`v1.0.0-beta.1` and `v1.0.0-beta.2`. Development clones can also contain
+The authoritative `marang/robotgo` origin now contains the published,
+annotated `v1.0.0-rc.1` tag in addition to `v1.0.0-beta.1` and
+`v1.0.0-beta.2`; `v1.0.0` remains unused. Development clones can also contain
 `v1.0.0`, `v1.0.1`, and `v1.0.2` tags fetched from the separate
 `go-vgo/robotgo` upstream remote. Local tag names are therefore not evidence
 of origin state. Release preflight must use `git ls-remote --tags origin` and
 the GitHub repository API, and must never push an upstream-derived local tag.
 
-The release-candidate preparation branch changes package `Version`, tests,
-notes, tag, and evidence together to `v1.0.0-rc.1`.
+The release candidate changed package `Version`, tests, notes, tag, and
+evidence together to `v1.0.0-rc.1`. Stable qualification started at its
+publication time, `2026-07-29T10:13:46Z`; stable publication is no earlier
+than `2026-08-05T10:13:46Z`.
 
 ## Current evidence
 
-- `git ls-remote --tags origin`, the GitHub tag-ref API, and the GitHub release
-  API showed neither `v1.0.0-rc.1` nor `v1.0.0` on 2026-07-29. The similarly
-  named stable refs in the development clone came from `upstream`, not
-  `origin`. `scripts/preflight-origin-release.sh` now reproduces this check,
-  binds the selected commit to authoritative `origin/main`, and rejects a
-  non-fork remote.
+- `scripts/preflight-origin-release.sh` proved that neither `v1.0.0-rc.1` nor
+  `v1.0.0` existed in the fork before publication, bound the selected commit to
+  authoritative `origin/main`, and rejected a non-fork remote. The resulting
+  annotated RC tag peels to
+  `281d8cee29d696e334fe9d4a6f6a7069ab291083`; `v1.0.0` remains absent.
 - `go list -m -json github.com/marang/robotgo@latest` resolved
-  `v1.0.0-beta.2` with both the default proxy and `GOPROXY=direct` on
-  2026-07-27. Explicit versions remain required for reproducible installs and
-  custom/caching proxies can lag.
-- Exact merged-main
-  [`Release Evidence` run 30434061380](https://github.com/marang/robotgo/actions/runs/30434061380)
+  `v1.0.0-rc.1` with the default proxy and `GOPROXY=direct` on 2026-07-29.
+  `proxy.golang.org` identifies the exact tag commit and `sum.golang.org`
+  publishes both module and `go.mod` hashes. Explicit versions remain required
+  for reproducible installs and custom/caching proxies can lag.
+- Exact published-tag
+  [`Release Evidence` run 30442843617](https://github.com/marang/robotgo/actions/runs/30442843617)
   passed six native/Pure-Go platform snapshots and the 29-check manifest on
-  commit `cd204c663e4ff5c8d33504d8cbf8b4dce1d8cc59`, including all promoted
-  GNOME/KDE portal/bounds lanes and Hyprland.
+  commit `281d8cee29d696e334fe9d4a6f6a7069ab291083`, including all promoted
+  GNOME/KDE portal/bounds lanes and Hyprland. Its two public assets have the
+  independently verified archive SHA-256
+  `7761b673a8f6a8de8e36e74232149a24491fe8ef87dabd8023a665f313f31738`.
 - P005 is complete with all five milestones at 100%.
 - `go doc` currently exposes 259 root declarations, 44 `agent` declarations,
   and 12 `input/portal` declarations. That breadth makes an automated API
   freeze a stable-release requirement.
+
+## Stable qualification log
+
+| Observed at (UTC) | Observation | Result |
+|---|---|---|
+| 2026-07-29T10:13:46Z | GitHub published the immutable annotated `v1.0.0-rc.1` prerelease | Qualification window opened |
+| 2026-07-29T10:30:36Z | Exact tag run `30442843617` completed; 17 workflow jobs, six snapshots, and all 29 required checks succeeded | Pass |
+| 2026-07-29T10:31Z | Public archive/checksum, six manifests, tag ref, tree, commit, and release run were independently streamed and verified | Pass |
+| 2026-07-29T10:32Z | Default proxy, `proxy.golang.org`, `GOPROXY=direct`, and `sum.golang.org` resolved the RC | Pass |
+| 2026-07-29T10:34Z | Linear RobotGo audit found no unresolved critical/high defect; LAB-69 remains a medium, explicitly unsupported-scope evidence task | Pass |
+
+GitHub Issues are disabled for this repository, so qualification findings are
+triaged in the Linear RobotGo project. LAB-68 stays open through the full
+window. A later observation cannot shorten the minimum duration, and any
+critical/high regression resets the release decision to no-go until resolved
+and requalified.
 
 ## Codebase review findings
 
@@ -131,8 +152,8 @@ notes, tag, and evidence together to `v1.0.0-rc.1`.
 | G1 Version line | Authoritative origin preflight, v1.0 decision, and truthful `@latest` guidance | LAB-64 | Complete — LAB-64 | M1 Contract and API Freeze |
 | G2 API freeze | Checked-in public API baseline plus blocking compatibility CI | [LAB-65](https://linear.app/riotbox/issue/LAB-65/add-a-stable-public-go-api-compatibility-gate) | Complete — 14 variants and exact 29-check evidence | M1 Contract and API Freeze |
 | G3 Platform claims | Every supported row backed by blocking/approved evidence; pending rows explicit | [LAB-66](https://linear.app/riotbox/issue/LAB-66/resolve-stable-platform-support-claims-and-macos-evidence-scope) | Complete — checked runtime-v1 contract; macOS permission scope pending under LAB-69 | M1 Contract and API Freeze |
-| G4 Release candidate | Clean origin `v1.0.0-rc.1` tag, exact evidence, notes, migration, checksums | [LAB-67](https://linear.app/riotbox/issue/LAB-67/prepare-and-publish-robotgo-v100-rc1) | In progress — origin preflight passed; preparing tag commit | M2 v1.0.0 Release Candidate |
-| G5 Stable qualification | At least seven calendar days, no unresolved critical/high regression, no API drift, final exact evidence | [LAB-68](https://linear.app/riotbox/issue/LAB-68/qualify-and-publish-robotgo-v100-stable) | Blocked by G4 | M3 v1.0.0 Stable Qualification |
+| G4 Release candidate | Clean origin `v1.0.0-rc.1` tag, exact evidence, notes, migration, checksums | [LAB-67](https://linear.app/riotbox/issue/LAB-67/prepare-and-publish-robotgo-v100-rc1) | Complete — published tag, 29-check exact evidence, checksummed assets, and module resolution verified | M2 v1.0.0 Release Candidate |
+| G5 Stable qualification | At least seven calendar days, no unresolved critical/high regression, no API drift, final exact evidence | [LAB-68](https://linear.app/riotbox/issue/LAB-68/qualify-and-publish-robotgo-v100-stable) | In progress — window opened 2026-07-29T10:13:46Z; earliest stable 2026-08-05T10:13:46Z | M3 v1.0.0 Stable Qualification |
 
 ## RC and stable rules
 

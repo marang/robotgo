@@ -2,7 +2,9 @@
 
 ## Unreleased
 
-No changes yet.
+- Hardened stable-line publication against local tags inherited from another
+  remote: origin preflight now rejects an exact local tag collision, and the
+  operator procedure aborts on every error before it can push a tag.
 
 ## RobotGo v1.0.0-rc.1 — 2026-07-29
 

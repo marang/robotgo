@@ -1075,9 +1075,9 @@ for that exact candidate and are likewise required before the 29-check manifest
 can be packaged.
 The last pre-API-freeze 28-check contract passes on exact merged `main` in
 [`Release Evidence` run 30272753885](https://github.com/marang/robotgo/actions/runs/30272753885).
-The current post-freeze 29-check contract passes on exact merged `main` in
-[`Release Evidence` run 30434061380](https://github.com/marang/robotgo/actions/runs/30434061380)
-at commit `cd204c663e4ff5c8d33504d8cbf8b4dce1d8cc59`.
+The current post-freeze 29-check contract passes on the exact published tag in
+[`v1.0.0-rc.1` Release Evidence run 30442843617](https://github.com/marang/robotgo/actions/runs/30442843617)
+at commit `281d8cee29d696e334fe9d4a6f6a7069ab291083`.
 
 On a clean Linux native checkout, reproduce the generator/verifier path with:
 
@@ -1114,38 +1114,50 @@ go run ./internal/cmd/releaseevidence verify \
   -expected-test-command "$test_command"
 ```
 
-Before creating a stable-line tag, synchronize `main`, use its full
-authoritative origin commit, and run:
+Before creating the stable tag, complete the documented seven-day RC
+qualification window with no unresolved critical/high regression. A reviewed
+stable-preparation PR must update the package version, tests, changelog, and
+add the non-empty `docs/releases/v1.0.0.md` release notes. After that PR is
+merged, run from the clean `main` worktree:
 
 ```bash
-commit="$(git ls-remote --heads origin refs/heads/main | awk '{print $1}')"
-./scripts/preflight-origin-release.sh v1.0.0-rc.1 "$commit"
+set -euo pipefail
+git pull --ff-only origin main
+test "$(git branch --show-current)" = main
+test -z "$(git status --porcelain --untracked-files=all)"
+test -s docs/releases/v1.0.0.md
+commit="$(git rev-parse HEAD)"
+test "$(git ls-remote --heads origin refs/heads/main | awk '{print $1}')" = "$commit"
+./scripts/preflight-origin-release.sh v1.0.0 "$commit"
 ```
 
 The preflight checks `origin/main`, exact origin tag refs, GitHub tag refs, and
-GitHub releases. It rejects a non-`marang/robotgo` remote and deliberately
-ignores local tags, which may have been fetched from `go-vgo/robotgo`. Only
-after the preparation PR, review, CI, and an exact manual release-evidence run
-on that merged commit pass may a release operator create the annotated tag,
-verify its peeled commit, and push that one ref:
+GitHub releases. It rejects a non-`marang/robotgo` remote. A colliding local
+tag may have been fetched from `go-vgo/robotgo`; the preflight rejects it
+without treating it as origin evidence. Inspect and explicitly delete that
+non-authoritative local ref before rerunning the preflight, and never
+force-replace it. Only after the stable-preparation PR, review, CI, and an exact
+manual release-evidence run on that merged commit pass may a release operator
+create the annotated tag, verify its peeled commit, and push that one ref:
 
 ```bash
-git tag -a v1.0.0-rc.1 "$commit" -m "RobotGo v1.0.0-rc.1"
-test "$(git rev-parse 'v1.0.0-rc.1^{}')" = "$commit"
-git push origin refs/tags/v1.0.0-rc.1:refs/tags/v1.0.0-rc.1
+set -euo pipefail
+git tag -a v1.0.0 "$commit" -m "RobotGo v1.0.0"
+test "$(git rev-parse 'v1.0.0^{}')" = "$commit"
+git push origin refs/tags/v1.0.0:refs/tags/v1.0.0
 ```
 
-Never use `git push --tags`. Create the GitHub prerelease with `--verify-tag`;
-its `release.published` event reruns exact-tag evidence and attaches the
-checksum-bound archive:
+Never use `git push --tags`. Create the GitHub stable release with
+`--verify-tag`; its `release.published` event reruns exact-tag evidence and
+attaches the checksum-bound archive:
 
 ```bash
-gh release create v1.0.0-rc.1 \
+set -euo pipefail
+gh release create v1.0.0 \
   --repo marang/robotgo \
   --verify-tag \
-  --prerelease \
-  --title "RobotGo v1.0.0-rc.1" \
-  --notes-file docs/releases/v1.0.0-rc.1.md
+  --title "RobotGo v1.0.0" \
+  --notes-file docs/releases/v1.0.0.md
 ```
 
 The versioned schema, matrix, release-asset behavior, and consumer verification

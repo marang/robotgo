@@ -67,15 +67,15 @@ repository code; it only verifies the already packaged SHA-256 and uploads the
 two assets. Manual runs retain the bundle as a GitHub Actions artifact for 90
 days and do not modify a release.
 
-The current post-API-freeze candidate contract passes in
-[`Release Evidence` run 30434061380](https://github.com/marang/robotgo/actions/runs/30434061380)
-on merged `main` commit
-`cd204c663e4ff5c8d33504d8cbf8b4dce1d8cc59`. Its bundle contains all six
+The published post-API-freeze RC contract passes in
+[`v1.0.0-rc.1` Release Evidence run 30442843617](https://github.com/marang/robotgo/actions/runs/30442843617)
+on tagged commit
+`281d8cee29d696e334fe9d4a6f6a7069ab291083`. Its bundle contains all six
 native/Pure-Go snapshots and exactly 29 successful checks, including
 `api-compat`, all GNOME/KDE multi-output release lanes, Sway, and Hyprland. The
 bundle SHA-256, exact commit/tree/ref, six evidence documents, and 29-check
-manifest were independently reverified after download; the temporary
-verification directory was then removed.
+manifest were independently reverified from the public release streams without
+persisting a local verification directory.
 
 The preceding pre-API-freeze 28-check exact-candidate contract passes in
 [`Release Evidence` run 30272753885](https://github.com/marang/robotgo/actions/runs/30272753885)
@@ -86,7 +86,21 @@ multi-output bounds rows. This manual candidate evidence does not alter the
 immutable assets of an already published release.
 
 The latest published bundle is attached to
-[`v1.0.0-beta.2`](https://github.com/marang/robotgo/releases/tag/v1.0.0-beta.2):
+[`v1.0.0-rc.1`](https://github.com/marang/robotgo/releases/tag/v1.0.0-rc.1):
+
+- [`robotgo-release-evidence-v1.0.0-rc.1-281d8cee29d6.tar.gz`](https://github.com/marang/robotgo/releases/download/v1.0.0-rc.1/robotgo-release-evidence-v1.0.0-rc.1-281d8cee29d6.tar.gz)
+- [`robotgo-release-evidence-v1.0.0-rc.1-281d8cee29d6.tar.gz.sha256`](https://github.com/marang/robotgo/releases/download/v1.0.0-rc.1/robotgo-release-evidence-v1.0.0-rc.1-281d8cee29d6.tar.gz.sha256)
+
+It records exact source commit
+`281d8cee29d696e334fe9d4a6f6a7069ab291083`, tree
+`a362b429ebabb064fd7b55dc9b230579bc1f3134`, tag ref
+`refs/tags/v1.0.0-rc.1`, and release run `30442843617`. The published archive
+has SHA-256
+`7761b673a8f6a8de8e36e74232149a24491fe8ef87dabd8023a665f313f31738`.
+
+The preceding published bundle remains attached to
+[`v1.0.0-beta.2`](https://github.com/marang/robotgo/releases/tag/v1.0.0-beta.2)
+as immutable historical evidence:
 
 - [`robotgo-release-evidence-v1.0.0-beta.2-f3530594f30b.tar.gz`](https://github.com/marang/robotgo/releases/download/v1.0.0-beta.2/robotgo-release-evidence-v1.0.0-beta.2-f3530594f30b.tar.gz)
 - [`robotgo-release-evidence-v1.0.0-beta.2-f3530594f30b.tar.gz.sha256`](https://github.com/marang/robotgo/releases/download/v1.0.0-beta.2/robotgo-release-evidence-v1.0.0-beta.2-f3530594f30b.tar.gz.sha256)

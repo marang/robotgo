@@ -300,10 +300,10 @@ P005 completed after all of the following became blocking evidence:
 - `docs/compatibility/wayland-input.md`, `wayland-capture.md`, and
   `runtime-v1.md` link the retained evidence
 
-The current completed contract passes in
-[`Release Evidence` run 30434061380](https://github.com/marang/robotgo/actions/runs/30434061380)
-on exact merged `main` commit
-`cd204c663e4ff5c8d33504d8cbf8b4dce1d8cc59`. Its schema-v1 manifest contains
+The current completed contract passes in the published
+[`v1.0.0-rc.1` Release Evidence run 30442843617](https://github.com/marang/robotgo/actions/runs/30442843617)
+on exact tagged commit
+`281d8cee29d696e334fe9d4a6f6a7069ab291083`. Its schema-v1 manifest contains
 exactly 29 successful checks, including both hosted GNOME/KDE bounds lanes and
 the stable public API gate.
 
