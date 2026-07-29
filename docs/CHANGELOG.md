@@ -15,7 +15,7 @@
   exact-version/SHA-256 pinned but uses an Ubuntu-listed HTTPS mirror with an
   immutable Launchpad fallback rather than the throttled snapshot; unused APT
   translation, desktop-metadata, and command-not-found indexes are skipped.
-  GNOME consent input now waits for a content-free Shell dialog-readiness
+  GNOME consent input now waits for a content-free portal request-readiness
   result instead of racing an on-demand portal backend with a fixed delay.
 - Made the seven-day stable qualification window a fail-closed release
   preflight gate: `v1.0.0` cannot pass before

@@ -1048,18 +1048,20 @@ image provisioning fails or stalls, the builder prints at most the final
 screen frames, and input evidence cannot enter that log because runner
 registration occurs only after the immutable image is complete. The normal
 `always()` cleanup still removes the bounded log, VM state, and helper binary.
-The GNOME image installs the explicit `gnome-session`, GDM, Shell, and portal
-contract and rejects `ubuntu-desktop-minimal`. The KDE image likewise installs
-the explicit Plasma Workspace/Wayland contract and rejects `plasma-desktop`.
-This avoids pulling unrelated applications and services through the throttled,
-reproducibility-pinned snapshot while retaining the real desktop sessions
-under test. The large kernel-extra package remains version- and SHA-256-pinned
-but is fetched first from an Ubuntu-listed HTTPS mirror with a shorter budget,
-then from its immutable Launchpad artifact URL as a verified fallback, instead
-of the throttled snapshot. Partial and installed archives are removed from
-temporary guest storage. APT downloads only signed package indexes, omitting
-translations, desktop metadata, and command-not-found indexes that cannot
-affect the pinned headless image package set.
+The GNOME image installs the focused `ubuntu-session`, GDM, Shell, and portal
+contract, binds the disposable account to that session through AccountsService,
+and rejects both generic `gnome-session` and `ubuntu-desktop-minimal`. The KDE
+image likewise installs the explicit Plasma Workspace/Wayland contract and
+rejects `plasma-desktop`. This avoids pulling unrelated applications and
+services through the throttled, reproducibility-pinned snapshot while
+retaining the real desktop sessions under test. The large kernel-extra package
+remains version- and SHA-256-pinned but is fetched first from an Ubuntu-listed
+HTTPS mirror with a shorter budget, then from its immutable Launchpad artifact
+URL as a verified fallback, instead of the throttled snapshot. Partial and
+installed archives are removed from temporary guest storage. APT downloads
+only signed package indexes, omitting translations, desktop metadata, and
+command-not-found indexes that cannot affect the pinned headless image package
+set.
 
 The reproducible images, hosted supervisor, independent consent drivers,
 exact-tree transfer, and mandatory cleanup checks are documented in
