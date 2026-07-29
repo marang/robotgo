@@ -50,9 +50,10 @@ jobs:
       github.event_name == 'release'
     name: GitHub-hosted ${{ matrix.desktop }} ${{ matrix.topology }} portal input
     runs-on: ubuntu-24.04
-    timeout-minutes: 25
+    timeout-minutes: 35
     strategy:
       fail-fast: false
+      max-parallel: 1
       matrix:
         desktop: >-
           ${{
@@ -141,7 +142,7 @@ jobs:
           go build -o "$portal_runner" ./internal/cmd/portalrunner
           test -x "$portal_runner"
           exec timeout --preserve-status \
-            --signal=TERM --kill-after=2m 20m \
+            --signal=TERM --kill-after=2m 30m \
             bash scripts/run_hosted_portal_e2e.sh \
               "$portal_runner" "$manifest" "$GITHUB_WORKSPACE" \
               "$state_root" "$GITHUB_SHA" remote-desktop \

@@ -43,8 +43,14 @@ rm -f /etc/apt/sources.list
 
 mapfile -t packages < <(jq -r '.packages[]' "$manifest")
 test "${#packages[@]}" -gt 0
-apt-get update
-apt-get install -y --no-install-recommends "${packages[@]}"
+apt_options=(
+  -o Acquire::Retries=5
+  -o Acquire::http::Timeout=30
+  -o Acquire::https::Timeout=30
+  -o DPkg::Lock::Timeout=60
+)
+apt-get "${apt_options[@]}" update
+apt-get "${apt_options[@]}" install -y --no-install-recommends "${packages[@]}"
 kernel_release=$(jq -r '.vm.kernel_release' "$manifest")
 test "$(uname -r)" = "$kernel_release"
 test "$(dpkg-query -W -f='${db:Status-Status}' \
@@ -69,6 +75,8 @@ download_verified() {
       ;;
   esac
   curl --fail --silent --show-error --location \
+    --connect-timeout 15 --max-time 300 \
+    --retry 5 --retry-delay 2 --retry-max-time 300 --retry-all-errors \
     --proto '=https' --tlsv1.2 \
     --output "$output" "$url"
   printf '%s  %s\n' "$digest" "$output" | sha256sum --check --status

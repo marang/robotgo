@@ -542,6 +542,51 @@ func TestRepositoryKDEGuestActivatesPortalFrontendAndBackend(t *testing.T) {
 	}
 }
 
+func TestRepositoryGuestProvisioningRetriesBoundedDownloads(t *testing.T) {
+	t.Parallel()
+
+	for _, desktop := range []string{"gnome", "kde"} {
+		desktop := desktop
+		t.Run(desktop, func(t *testing.T) {
+			t.Parallel()
+			path := filepath.Join(
+				"..",
+				"..",
+				"infrastructure",
+				"portal-runner",
+				desktop,
+				"guest",
+				"install.sh",
+			)
+			data, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatalf("read %s guest installer: %v", desktop, err)
+			}
+			script := string(data)
+			for _, required := range []string{
+				"Acquire::Retries=5",
+				"Acquire::http::Timeout=30",
+				"Acquire::https::Timeout=30",
+				"DPkg::Lock::Timeout=60",
+				`apt-get "${apt_options[@]}" update`,
+				`apt-get "${apt_options[@]}" install`,
+				"--connect-timeout 15 --max-time 300",
+				"--retry 5 --retry-delay 2 --retry-max-time 300 --retry-all-errors",
+				"--proto '=https' --tlsv1.2",
+				"sha256sum --check --status",
+			} {
+				if !strings.Contains(script, required) {
+					t.Errorf(
+						"%s guest installer omits bounded retry contract %q",
+						desktop,
+						required,
+					)
+				}
+			}
+		})
+	}
+}
+
 func writeImageIdentityFixture(t *testing.T, repositoryRoot, guestRoot string) {
 	t.Helper()
 
