@@ -252,6 +252,8 @@ func (manifest Manifest) Validate() error {
 		}
 	}
 	requiredPackages := []string{
+		"ca-certificates",
+		"curl",
 		"libdrm-dev",
 		"libgbm-dev",
 		"libpipewire-0.3-dev",

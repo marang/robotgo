@@ -1047,7 +1047,10 @@ contract and rejects `ubuntu-desktop-minimal`. The KDE image likewise installs
 the explicit Plasma Workspace/Wayland contract and rejects `plasma-desktop`.
 This avoids pulling unrelated applications and services through the throttled,
 reproducibility-pinned snapshot while retaining the real desktop sessions
-under test.
+under test. The large kernel-extra package remains version- and SHA-256-pinned
+but is fetched from its immutable Ubuntu Launchpad artifact URL instead of the
+throttled snapshot and removed from temporary guest storage after local
+installation.
 
 The reproducible images, hosted supervisor, independent consent drivers,
 exact-tree transfer, and mandatory cleanup checks are documented in

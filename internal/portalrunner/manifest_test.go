@@ -46,6 +46,8 @@ func validManifest() Manifest {
 			},
 		},
 		Packages: []string{
+			"ca-certificates",
+			"curl",
 			"gdm3",
 			"gnome-session",
 			"gnome-shell",
@@ -100,6 +102,8 @@ func TestKDEManifestContract(t *testing.T) {
 	manifest.Lane = portalLaneKDE
 	manifest.Labels = []string{"self-hosted", "linux", "wayland", portalLaneKDE}
 	manifest.Packages = []string{
+		"ca-certificates",
+		"curl",
 		"kwin-wayland",
 		"libdrm-dev",
 		"libgbm-dev",

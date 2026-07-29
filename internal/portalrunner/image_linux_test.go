@@ -621,6 +621,11 @@ func TestRepositoryGuestProvisioningRetriesBoundedDownloads(t *testing.T) {
 				"--retry 5 --retry-delay 2 --retry-max-time 300 --retry-all-errors",
 				"--proto '=https' --tlsv1.2",
 				"sha256sum --check --status",
+				"launchpadlibrarian.net/866579255/",
+				"f445185d1664025f4ea95d24757baf398fd4a47b6caadcf1bd3b15a1205929f6",
+				"'.packages[] | select(. != $package)'",
+				`install -y --no-install-recommends "$kernel_archive"`,
+				`trap 'rm -f -- "$kernel_archive"' EXIT`,
 			} {
 				if !strings.Contains(script, required) {
 					t.Errorf(
