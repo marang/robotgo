@@ -193,10 +193,10 @@ the same runtime-resolved macOS bridge as the CGO backend and fails explicitly
 if that bridge is unavailable. Hermetic tests cover the contract and hosted
 macOS resolves the real symbols and permission preflight.
 Permission-granted capture/input/window operations are explicitly implemented /
-evidence pending rather than RC-supported. They require the self-owned remote
-runtime in
+evidence pending rather than stable-supported. Promotion requires an isolated,
+permission-granted runtime after one of the reactivation conditions in
 [LAB-69](https://linear.app/riotbox/issue/LAB-69/add-permission-granted-self-owned-macos-runtime-evidence)
-before they can become blocking evidence.
+is met. LAB-69 is externally blocked and does not block the stable release.
 
 Windows non-CGO builds now provide a foreground-layout-aware `SendInput` keyboard and text
 backend, clipboard-assisted Unicode paste, pixel-at-pointer queries, plus exact pointer movement/location, smooth movement and drag,

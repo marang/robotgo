@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Classified permission-granted macOS runtime evidence as an externally blocked,
+  non-release-blocking promotion under LAB-69. Native and Pure-Go permission
+  scopes remain implemented/evidence-pending until an isolated project-owned,
+  maintainer/community, donated/sponsored, or officially capable GitHub-hosted
+  environment becomes available.
 - Hardened stable-line publication against local tags inherited from another
   remote: origin preflight now rejects an exact local tag collision, and the
   operator procedure aborts on every error before it can push a tag.
