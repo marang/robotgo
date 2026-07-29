@@ -1115,20 +1115,27 @@ go run ./internal/cmd/releaseevidence verify \
 ```
 
 Before creating the stable tag, complete the documented seven-day RC
-qualification window with no unresolved critical/high regression, synchronize
-`main`, use its full authoritative origin commit, and run:
+qualification window with no unresolved critical/high regression. A reviewed
+stable-preparation PR must update the package version, tests, changelog, and
+add the non-empty `docs/releases/v1.0.0.md` release notes. After that PR is
+merged, run from the clean `main` worktree:
 
 ```bash
-commit="$(git ls-remote --heads origin refs/heads/main | awk '{print $1}')"
+git pull --ff-only origin main
+test "$(git branch --show-current)" = main
+test -z "$(git status --porcelain --untracked-files=all)"
+test -s docs/releases/v1.0.0.md
+commit="$(git rev-parse HEAD)"
+test "$(git ls-remote --heads origin refs/heads/main | awk '{print $1}')" = "$commit"
 ./scripts/preflight-origin-release.sh v1.0.0 "$commit"
 ```
 
 The preflight checks `origin/main`, exact origin tag refs, GitHub tag refs, and
 GitHub releases. It rejects a non-`marang/robotgo` remote and deliberately
 ignores local tags, which may have been fetched from `go-vgo/robotgo`. Only
-after the preparation PR, review, CI, and an exact manual release-evidence run
-on that merged commit pass may a release operator create the annotated tag,
-verify its peeled commit, and push that one ref:
+after the stable-preparation PR, review, CI, and an exact manual
+release-evidence run on that merged commit pass may a release operator create
+the annotated tag, verify its peeled commit, and push that one ref:
 
 ```bash
 git tag -a v1.0.0 "$commit" -m "RobotGo v1.0.0"
