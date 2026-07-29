@@ -396,6 +396,9 @@ func TestRepositoryGuestSessionContract(t *testing.T) {
 		"org.freedesktop.portal.Desktop",
 		"org.freedesktop.DBus.Peer",
 		"Ping",
+		"gsettings get org.gnome.desktop.input-sources sources",
+		`"[('xkb', 'us')]"`,
+		"stage=input-source",
 	} {
 		if !strings.Contains(string(waitScript), required) {
 			t.Fatalf(
@@ -425,6 +428,9 @@ func TestRepositoryGuestSessionContract(t *testing.T) {
 		"chmod 0644 /etc/dconf/profile/user",
 		"chmod 0644 /etc/dconf/db/robotgo.d/00-runner",
 		"chmod 0644 /etc/dconf/db/robotgo",
+		"[org/gnome/desktop/input-sources]",
+		"sources=[('xkb', 'us')]",
+		"mru-sources=[('xkb', 'us')]",
 		"ACTIONS_RUNNER_HOOK_JOB_STARTED=/usr/local/libexec/robotgo-runner-job-started-hook.sh",
 		"ACTIONS_RUNNER_HOOK_JOB_COMPLETED=/usr/local/libexec/robotgo-runner-job-completed-hook.sh",
 		"systemctl enable robotgo-runner-egress.service",

@@ -54,7 +54,10 @@ The package contract uses the focused `ubuntu-session` package, not
 `ubuntu-desktop-minimal`: this retains the Ubuntu Shell mode and portal-dialog
 keyboard behavior exercised by the consent controller without installing the
 broader desktop application closure. The disposable `robotgo` account selects
-that session through its root-owned AccountsService record.
+that session through its root-owned AccountsService record. Its system DConf
+profile fixes the virtual keyboard to the US XKB source used by the QMP consent
+driver, and session readiness verifies that exact non-sensitive value before a
+test may start.
 The image identity also covers the manifest, provisioning implementation, guest
 scripts, their executable modes, and content. A changed input therefore cannot
 silently reuse an older image.

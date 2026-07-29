@@ -1050,6 +1050,7 @@ registration occurs only after the immutable image is complete. The normal
 `always()` cleanup still removes the bounded log, VM state, and helper binary.
 The GNOME image installs the focused `ubuntu-session`, GDM, Shell, and portal
 contract, binds the disposable account to that session through AccountsService,
+sets and runtime-verifies a fixed US XKB input source for the virtual keyboard,
 and rejects both generic `gnome-session` and `ubuntu-desktop-minimal`. The KDE
 image likewise installs the explicit Plasma Workspace/Wayland contract and
 rejects `plasma-desktop`. This avoids pulling unrelated applications and

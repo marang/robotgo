@@ -282,6 +282,10 @@ idle-delay=uint32 0
 [org/gnome/desktop/screensaver]
 lock-enabled=false
 
+[org/gnome/desktop/input-sources]
+sources=[('xkb', 'us')]
+mru-sources=[('xkb', 'us')]
+
 [org/gnome/settings-daemon/plugins/power]
 sleep-inactive-ac-type='nothing'
 sleep-inactive-battery-type='nothing'
