@@ -6,9 +6,10 @@ if [ "$#" -ne 7 ]; then
   exit 2
 fi
 
-readonly script_directory="$(
-  CDPATH= cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd
+script_directory="$(
+  CDPATH='' cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd
 )"
+readonly script_directory
 
 exec timeout --preserve-status \
   --signal=TERM --kill-after=2m 30m \
