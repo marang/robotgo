@@ -125,7 +125,7 @@ func OpenWithOptions(ctx context.Context, options OpenOptions) (*Session, error)
 func openWithOptionsBeforeStart(
 	ctx context.Context,
 	options OpenOptions,
-	beforeStart func() error,
+	beforeStart func(dbus.ObjectPath) error,
 ) (*Session, error) {
 	if ctx == nil {
 		ctx = context.Background()

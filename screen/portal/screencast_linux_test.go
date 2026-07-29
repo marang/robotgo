@@ -268,7 +268,7 @@ func TestOpenScreenCastBeforeStartRunsAfterSourceSelection(t *testing.T) {
 		context.Background(),
 		portal,
 		ScreenCastOptions{Sources: ScreenCastSourceMonitor},
-		func() error {
+		func(startRequest dbus.ObjectPath) error {
 			portal.mu.Lock()
 			defer portal.mu.Unlock()
 			if portal.selectOptions == nil {
@@ -276,6 +276,9 @@ func TestOpenScreenCastBeforeStartRunsAfterSourceSelection(t *testing.T) {
 			}
 			if portal.startCalls != 0 {
 				return errors.New("start hook ran after Start")
+			}
+			if !startRequest.IsValid() {
+				return errors.New("start hook received an invalid request path")
 			}
 			calls++
 			return nil
@@ -307,7 +310,7 @@ func TestOpenScreenCastBeforeStartFailurePreventsStartAndCleansUp(
 		context.Background(),
 		portal,
 		ScreenCastOptions{Sources: ScreenCastSourceMonitor},
-		func() error { return hookErr },
+		func(dbus.ObjectPath) error { return hookErr },
 	)
 	if !errors.Is(err, hookErr) {
 		t.Fatalf(

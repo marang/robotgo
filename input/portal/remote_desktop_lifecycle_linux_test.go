@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/godbus/dbus/v5"
 )
 
 func TestOpenRemoteDesktopLifecycleAndNotify(t *testing.T) {
@@ -61,7 +63,7 @@ func TestOpenRemoteDesktopBeforeStartRunsAfterSelections(t *testing.T) {
 		portal,
 		options,
 		fixedTokens("create", "session", "select", "sources", "start"),
-		func() error {
+		func(startRequest dbus.ObjectPath) error {
 			portal.mu.Lock()
 			defer portal.mu.Unlock()
 			if portal.selectDeviceOptions == nil ||
@@ -70,6 +72,9 @@ func TestOpenRemoteDesktopBeforeStartRunsAfterSelections(t *testing.T) {
 			}
 			if portal.startCalls != 0 {
 				return errors.New("start hook ran after Start")
+			}
+			if !strings.HasSuffix(string(startRequest), "/start") {
+				return errors.New("start hook received the wrong request path")
 			}
 			calls++
 			return nil
@@ -102,7 +107,7 @@ func TestOpenRemoteDesktopBeforeStartFailurePreventsStartAndCleansUp(
 		portal,
 		OpenOptions{Devices: DevicePointer, Sources: SourceMonitor},
 		fixedTokens("create", "session", "select", "sources", "start"),
-		func() error { return hookErr },
+		func(dbus.ObjectPath) error { return hookErr },
 	)
 	if !errors.Is(err, hookErr) {
 		t.Fatalf("openRemoteDesktopBeforeStart error = %v, want hook error", err)

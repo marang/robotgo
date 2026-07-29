@@ -1019,11 +1019,11 @@ runners, transfer only the exact clean commit through `git archive`, and
 execute inside disposable guests with live Wayland/user-bus sessions. A private
 readiness marker is created only after `CreateSession` and every `Select*`
 request has completed, immediately before the dialog-producing portal `Start`.
-The GNOME controller first waits until the backend exports no earlier request
-objects, then creates a private start gate. The blocked client consumes that
-gate and invokes `Start`; only that new request can satisfy the controller's
-subsequent readiness probe. The independent host-side controller operates modal
-consent through QMP keyboard or
+The GNOME client stores the exact random path of the pending `Start` request in
+a private target file and blocks. The controller validates that target, creates
+a private start gate, and then accepts only the matching new request object;
+older exported negotiation objects cannot satisfy the probe. The independent
+host-side controller operates modal consent through QMP keyboard or
 manifest-bound pointer input on GNOME. For KDE ScreenCast, an immutable guest
 helper reports only
 control geometry and the host performs both actions through QMP's private
@@ -1032,10 +1032,10 @@ notification policy and therefore has no modal approval to drive.
 Before sending GNOME's QMP input, the controller waits until the backend
 exports the new transient `Start` request object that immediately precedes
 dialog creation. The two-way marker/gate handshake proves the earlier non-modal
-requests have completed and their exported request objects have disappeared.
-The object tree remains inside the disposable guest; only an `ok` marker or an
-allowlisted failure stage can reach the host. This removes the startup race
-between the test's pre-`Start` marker and an on-demand portal
+requests have completed and binds readiness to the exact random `Start` path.
+The target and object tree remain inside the disposable guest; only an `ok`
+marker or an allowlisted failure stage can reach the host. This removes the
+startup race between the test's pre-`Start` marker and an on-demand portal
 backend without inspecting any window title or content. For parentless GNOME
 dialogs, the host first clicks the neutral center of the pinned dialog
 headerbar through QMP's private tablet, then sends the documented button

@@ -36,7 +36,7 @@ func openRemoteDesktopBeforeStart(
 	portal remoteDesktopPortal,
 	options OpenOptions,
 	token tokenFunc,
-	beforeStart func() error,
+	beforeStart func(dbus.ObjectPath) error,
 ) (_ *Session, retErr error) {
 	devices := options.Devices
 	signals := make(chan *dbus.Signal, 16)
@@ -94,15 +94,7 @@ func openRemoteDesktopBeforeStart(
 	if err := negotiation.selectSources(actualSession, options); err != nil {
 		return nil, err
 	}
-	if beforeStart != nil {
-		if err := beforeStart(); err != nil {
-			return nil, fmt.Errorf(
-				"remote desktop portal: prepare start: %w",
-				err,
-			)
-		}
-	}
-	startResults, err := negotiation.start(actualSession)
+	startResults, err := negotiation.start(actualSession, beforeStart)
 	if err != nil {
 		return nil, err
 	}
@@ -237,10 +229,30 @@ func (n remoteDesktopNegotiation) selectSources(session dbus.ObjectPath, options
 	return nil
 }
 
-func (n remoteDesktopNegotiation) start(session dbus.ObjectPath) (map[string]dbus.Variant, error) {
-	results, err := n.request(session, func(requestToken string) (dbus.ObjectPath, error) {
-		return n.portal.start(n.ctx, session, map[string]dbus.Variant{"handle_token": dbus.MakeVariant(requestToken)})
-	})
+func (n remoteDesktopNegotiation) start(
+	session dbus.ObjectPath,
+	beforeStart func(dbus.ObjectPath) error,
+) (map[string]dbus.Variant, error) {
+	requestToken, err := n.token(requestTokenPrefix)
+	if err != nil {
+		return nil, err
+	}
+	predicted := requestPath(n.portal.uniqueName(), requestToken)
+	if beforeStart != nil {
+		if err := beforeStart(predicted); err != nil {
+			return nil, fmt.Errorf(
+				"remote desktop portal: prepare start: %w",
+				err,
+			)
+		}
+	}
+	results, err := n.waitRequest(
+		requestToken,
+		map[dbus.ObjectPath]struct{}{session: {}},
+		func() (dbus.ObjectPath, error) {
+			return n.portal.start(n.ctx, session, map[string]dbus.Variant{"handle_token": dbus.MakeVariant(requestToken)})
+		},
+	)
 	if err != nil {
 		return nil, fmt.Errorf("remote desktop portal: start session: %w", err)
 	}

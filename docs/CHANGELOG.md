@@ -17,9 +17,9 @@
   immutable Launchpad fallback rather than the throttled snapshot; unused APT
   translation, desktop-metadata, and command-not-found indexes are skipped.
   GNOME consent input now emits readiness only after non-modal negotiation has
-  completed, uses a two-way start gate to exclude lingering earlier request
-  objects, waits for the dialog-producing `Start` request, and no longer races
-  an on-demand portal backend with a fixed delay. Parentless dialogs receive an
+  completed, uses a two-way start gate bound to the exact random `Start` request
+  path, ignores lingering earlier request objects, and no longer races an
+  on-demand portal backend with a fixed delay. Parentless dialogs receive an
   independent neutral QMP focus click before their documented mnemonics.
 - Made the seven-day stable qualification window a fail-closed release
   preflight gate: `v1.0.0` cannot pass before

@@ -183,6 +183,7 @@ func TestHostedPortalCommandsAreCredentialFreeAndCellSpecific(t *testing.T) {
 			test.pattern,
 			"ROBOTGO_PORTAL_CONSENT_READY_FILE=/run/user/1100/",
 			"ROBOTGO_PORTAL_CONSENT_START_GATE_FILE=/run/user/1100/",
+			"ROBOTGO_PORTAL_CONSENT_TARGET_FILE=/run/user/1100/",
 			"HTTP_PROXY=http://10.0.2.2:3128",
 		} {
 			if required == "" {
@@ -252,6 +253,18 @@ func TestHostedPortalCommandsSelectDesktopLane(t *testing.T) {
 				"%s start gate presence = %v, want %v",
 				test.lane,
 				hasStartGate,
+				test.startGate,
+			)
+		}
+		hasStartTarget := strings.Contains(
+			command,
+			"ROBOTGO_PORTAL_CONSENT_TARGET_FILE=",
+		)
+		if hasStartTarget != test.startGate {
+			t.Errorf(
+				"%s start target presence = %v, want %v",
+				test.lane,
+				hasStartTarget,
 				test.startGate,
 			)
 		}
@@ -614,6 +627,7 @@ func TestHostedGNOMEPortalDialogWaitUsesContentFreeRequestReadiness(
 				[]string{"-p", "22222"},
 				test.cell,
 				hostedTestPortalStartGate(test.cell),
+				hostedTestPortalStartTarget(test.cell),
 			); err != nil {
 				t.Fatalf("waitForHostedGNOMEPortalDialog: %v", err)
 			}
@@ -630,6 +644,7 @@ func TestHostedGNOMEPortalDialogWaitUsesContentFreeRequestReadiness(
 				"/usr/local/libexec/robotgo-runner-wait-portal-dialog",
 				test.cell,
 				hostedTestPortalStartGate(test.cell),
+				hostedTestPortalStartTarget(test.cell),
 			} {
 				if !strings.Contains(call, required) {
 					t.Errorf("GNOME dialog readiness omits %q", required)
@@ -660,6 +675,7 @@ func TestHostedGNOMEPortalDialogWaitSanitizesFailure(t *testing.T) {
 		nil,
 		HostedCellScreenCast,
 		hostedTestPortalStartGate(HostedCellScreenCast),
+		hostedTestPortalStartTarget(HostedCellScreenCast),
 	)
 	if err == nil || err.Error() != "locate hosted GNOME portal dialog" {
 		t.Fatalf("GNOME dialog readiness error = %v", err)
@@ -680,6 +696,7 @@ func TestHostedGNOMEPortalDialogWaitSanitizesFailure(t *testing.T) {
 		nil,
 		HostedCellRemoteDesktop,
 		hostedTestPortalStartGate(HostedCellRemoteDesktop),
+		hostedTestPortalStartTarget(HostedCellRemoteDesktop),
 	)
 	if err == nil || !strings.Contains(
 		err.Error(),
@@ -700,6 +717,7 @@ func TestHostedGNOMEPortalDialogWaitRejectsInvalidCell(t *testing.T) {
 		nil,
 		HostedCellDisplayBounds,
 		hostedTestPortalStartGate(HostedCellDisplayBounds),
+		hostedTestPortalStartTarget(HostedCellDisplayBounds),
 	)
 	if err == nil || !strings.Contains(err.Error(), "cell is invalid") {
 		t.Fatalf("invalid GNOME dialog cell error = %v", err)
@@ -708,6 +726,10 @@ func TestHostedGNOMEPortalDialogWaitRejectsInvalidCell(t *testing.T) {
 
 func hostedTestPortalStartGate(cell string) string {
 	return "/run/user/1100/robotgo-portal-consent-" + cell + ".start"
+}
+
+func hostedTestPortalStartTarget(cell string) string {
+	return "/run/user/1100/robotgo-portal-consent-" + cell + ".target"
 }
 
 func TestHostedKDEScreenCastLocatorRejectsUnsafeGeometry(t *testing.T) {

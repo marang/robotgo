@@ -474,11 +474,13 @@ func RunHosted(
 
 	marker := ""
 	startGate := ""
+	startTarget := ""
 	if hostedCellUsesPortal(options.Cell) {
 		marker = "/run/user/1100/robotgo-portal-consent-" +
 			options.Cell + ".ready"
 		if manifest.Lane == portalLaneGNOME {
 			startGate = hostedPortalStartGate(marker)
+			startTarget = hostedPortalStartTarget(marker)
 		}
 	}
 	testLogPath := filepath.Join(runDirectory, "hosted-test.log")
@@ -559,6 +561,7 @@ func RunHosted(
 				sshArguments,
 				options.Cell,
 				startGate,
+				startTarget,
 			); err != nil {
 				stopProcessGroup(testCommand, testResult.done)
 				return err
@@ -597,6 +600,7 @@ func RunHosted(
 			sshArguments,
 			marker,
 			startGate,
+			startTarget,
 			logWriter,
 		)
 	}
@@ -1123,6 +1127,8 @@ func hostedPortalTestCommandForTopology(
 				environmentParts,
 				"ROBOTGO_PORTAL_CONSENT_START_GATE_FILE="+
 					hostedPortalStartGate(marker),
+				"ROBOTGO_PORTAL_CONSENT_TARGET_FILE="+
+					hostedPortalStartTarget(marker),
 			)
 		}
 	}
@@ -1607,7 +1613,8 @@ func waitForHostedGNOMEPortalDialog(
 	commands CommandExecutor,
 	sshArguments []string,
 	cell,
-	startGate string,
+	startGate,
+	startTarget string,
 ) error {
 	if cell != HostedCellRemoteDesktop && cell != HostedCellScreenCast {
 		return errors.New("hosted GNOME portal dialog cell is invalid")
@@ -1617,12 +1624,18 @@ func waitForHostedGNOMEPortalDialog(
 	) {
 		return errors.New("hosted GNOME portal start gate is invalid")
 	}
+	if startTarget != hostedPortalStartTarget(
+		"/run/user/1100/robotgo-portal-consent-"+cell+".ready",
+	) {
+		return errors.New("hosted GNOME portal start target is invalid")
+	}
 
 	command := "exec runuser -u robotgo -- env " +
 		"XDG_RUNTIME_DIR=/run/user/1100 " +
 		"DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1100/bus " +
 		"/usr/local/libexec/robotgo-runner-wait-portal-dialog " +
-		shellQuote(cell) + " " + shellQuote(startGate)
+		shellQuote(cell) + " " + shellQuote(startGate) + " " +
+		shellQuote(startTarget)
 
 	dialogContext, cancel := context.WithTimeout(ctx, gnomePortalDialogWait)
 	defer cancel()
@@ -1649,9 +1662,9 @@ func waitForHostedGNOMEPortalDialog(
 			`locate hosted GNOME portal dialog at stage "dialog-unavailable"`,
 		)
 	}
-	if output.String() == "error negotiation-busy\n" {
+	if output.String() == "error target-invalid\n" {
 		return errors.New(
-			`locate hosted GNOME portal dialog at stage "negotiation-busy"`,
+			`locate hosted GNOME portal dialog at stage "target-invalid"`,
 		)
 	}
 	if output.String() == "error start-gate\n" {
@@ -1664,6 +1677,10 @@ func waitForHostedGNOMEPortalDialog(
 
 func hostedPortalStartGate(marker string) string {
 	return strings.TrimSuffix(marker, ".ready") + ".start"
+}
+
+func hostedPortalStartTarget(marker string) string {
+	return strings.TrimSuffix(marker, ".ready") + ".target"
 }
 
 const (
@@ -1916,12 +1933,16 @@ func assertPortalSyncFilesRemoved(
 	commands CommandExecutor,
 	sshArguments []string,
 	marker,
-	startGate string,
+	startGate,
+	startTarget string,
 	output io.Writer,
 ) error {
 	paths := []string{marker}
 	if startGate != "" {
 		paths = append(paths, startGate)
+	}
+	if startTarget != "" {
+		paths = append(paths, startTarget)
 	}
 	for _, path := range paths {
 		if err := commands.Run(

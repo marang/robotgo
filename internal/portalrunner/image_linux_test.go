@@ -453,9 +453,8 @@ func TestRepositoryGuestSessionContract(t *testing.T) {
 		"remote-desktop | screencast",
 		"CreateSession",
 		"every Select* request has completed",
-		"waits on start_gate",
-		"all earlier request objects have disappeared",
-		"Start immediately after consuming the gate",
+		"exact random Start request path",
+		"only this exact path can satisfy readiness",
 		"error dialog-unavailable",
 	} {
 		if !strings.Contains(dialogScript, required) {

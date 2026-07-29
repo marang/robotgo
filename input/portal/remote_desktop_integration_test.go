@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/godbus/dbus/v5"
 	"github.com/marang/robotgo/internal/portalrunner"
 )
 
@@ -18,6 +19,7 @@ const envRemoteDesktopE2E = "ROBOTGO_REMOTE_DESKTOP_E2E"
 const (
 	envPortalConsentReadyFile = "ROBOTGO_PORTAL_CONSENT_READY_FILE"
 	envPortalConsentStartGate = "ROBOTGO_PORTAL_CONSENT_START_GATE_FILE"
+	envPortalConsentTarget    = "ROBOTGO_PORTAL_CONSENT_TARGET_FILE"
 )
 
 func TestRemoteDesktopPortalRuntime(t *testing.T) {
@@ -59,8 +61,12 @@ func TestRemoteDesktopPortalRuntime(t *testing.T) {
 	session, err := openWithOptionsBeforeStart(
 		ctx,
 		options,
-		func() error {
-			signalPortalConsentReady(t, "remote-desktop")
+		func(startRequest dbus.ObjectPath) error {
+			signalPortalConsentReady(
+				t,
+				"remote-desktop",
+				startRequest,
+			)
 			waitForPortalConsentStart(t, ctx, "remote-desktop")
 			return nil
 		},
@@ -282,14 +288,23 @@ func TestRemoteDesktopConsentMarkerCleanup(t *testing.T) {
 		runtimeDirectory,
 		"robotgo-portal-consent-remote-desktop.start",
 	)
+	target := filepath.Join(
+		runtimeDirectory,
+		"robotgo-portal-consent-remote-desktop.target",
+	)
 	if err := os.WriteFile(startGate, []byte("start\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	t.Setenv("XDG_RUNTIME_DIR", runtimeDirectory)
 	t.Setenv(envPortalConsentReadyFile, marker)
 	t.Setenv(envPortalConsentStartGate, startGate)
+	t.Setenv(envPortalConsentTarget, target)
 	t.Run("lifecycle", func(t *testing.T) {
-		signalPortalConsentReady(t, "remote-desktop")
+		signalPortalConsentReady(
+			t,
+			"remote-desktop",
+			"/org/freedesktop/portal/desktop/request/1_42/start",
+		)
 		waitForPortalConsentStart(
 			t,
 			context.Background(),
@@ -309,6 +324,14 @@ func TestRemoteDesktopConsentMarkerCleanup(t *testing.T) {
 		if string(content) != "remote-desktop\n" {
 			t.Fatalf("consent marker content = %q", content)
 		}
+		targetContent, err := os.ReadFile(target)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if string(targetContent) !=
+			"/org/freedesktop/portal/desktop/request/1_42/start\n" {
+			t.Fatalf("consent target content = %q", targetContent)
+		}
 	})
 	if _, err := os.Lstat(marker); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("consent marker survived test cleanup: %v", err)
@@ -316,15 +339,56 @@ func TestRemoteDesktopConsentMarkerCleanup(t *testing.T) {
 	if _, err := os.Lstat(startGate); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("consent start gate survived test cleanup: %v", err)
 	}
+	if _, err := os.Lstat(target); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("consent target survived test cleanup: %v", err)
+	}
 }
 
-func signalPortalConsentReady(t *testing.T, cell string) {
+func signalPortalConsentReady(
+	t *testing.T,
+	cell string,
+	startRequest dbus.ObjectPath,
+) {
 	t.Helper()
 	path := os.Getenv(envPortalConsentReadyFile)
 	if path == "" {
 		return
 	}
 	runtimeDirectory := filepath.Clean(os.Getenv("XDG_RUNTIME_DIR"))
+	target := os.Getenv(envPortalConsentTarget)
+	if target != "" {
+		if !filepath.IsAbs(target) ||
+			filepath.Clean(target) != target ||
+			filepath.Dir(target) != runtimeDirectory ||
+			filepath.Base(target) !=
+				"robotgo-portal-consent-"+cell+".target" ||
+			!startRequest.IsValid() {
+			t.Fatal("portal consent target is invalid")
+		}
+		targetFile, err := os.OpenFile(
+			target,
+			os.O_WRONLY|os.O_CREATE|os.O_EXCL,
+			0o600,
+		)
+		if err != nil {
+			t.Fatalf("create portal consent target: %v", err)
+		}
+		if _, err := targetFile.WriteString(string(startRequest) + "\n"); err != nil {
+			_ = targetFile.Close()
+			_ = os.Remove(target)
+			t.Fatalf("write portal consent target: %v", err)
+		}
+		if err := targetFile.Close(); err != nil {
+			_ = os.Remove(target)
+			t.Fatalf("close portal consent target: %v", err)
+		}
+		t.Cleanup(func() {
+			if err := os.Remove(target); err != nil &&
+				!errors.Is(err, os.ErrNotExist) {
+				t.Errorf("remove portal consent target: %v", err)
+			}
+		})
+	}
 	if !filepath.IsAbs(path) ||
 		filepath.Clean(path) != path ||
 		filepath.Dir(path) != runtimeDirectory ||
