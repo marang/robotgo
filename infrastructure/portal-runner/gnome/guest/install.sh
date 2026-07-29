@@ -51,6 +51,11 @@ apt_options=(
 )
 apt-get "${apt_options[@]}" update
 apt-get "${apt_options[@]}" install -y --no-install-recommends "${packages[@]}"
+test "$(dpkg-query -W -f='${db:Status-Status}' gnome-session)" = installed
+test "$(dpkg-query -W -f='${db:Status-Status}' \
+  xdg-desktop-portal-gnome)" = installed
+test -f /usr/share/wayland-sessions/gnome.desktop
+test -x /usr/bin/gnome-shell
 kernel_release=$(jq -r '.vm.kernel_release' "$manifest")
 test "$(uname -r)" = "$kernel_release"
 test "$(dpkg-query -W -f='${db:Status-Status}' \

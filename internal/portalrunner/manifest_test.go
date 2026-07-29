@@ -47,6 +47,7 @@ func validManifest() Manifest {
 		},
 		Packages: []string{
 			"gdm3",
+			"gnome-session",
 			"gnome-shell",
 			"libdrm-dev",
 			"libgbm-dev",
@@ -280,6 +281,17 @@ func TestManifestRejectsUnsafeContract(t *testing.T) {
 				manifest.Packages = manifest.Packages[:len(manifest.Packages)-1]
 			},
 			want: `package set omits "xdg-desktop-portal-gnome"`,
+		},
+		{
+			name: "broad GNOME desktop metapackage",
+			change: func(manifest *Manifest) {
+				manifest.Packages = append(
+					manifest.Packages,
+					"ubuntu-desktop-minimal",
+				)
+				slices.Sort(manifest.Packages)
+			},
+			want: `must not include "ubuntu-desktop-minimal"`,
 		},
 		{
 			name: "missing Wayland development package",

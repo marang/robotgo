@@ -413,6 +413,9 @@ func TestRepositoryGuestSessionContract(t *testing.T) {
 		t.Fatalf("read install.sh: %v", err)
 	}
 	for _, required := range []string{
+		"dpkg-query -W -f='${db:Status-Status}' gnome-session",
+		"test -f /usr/share/wayland-sessions/gnome.desktop",
+		"test -x /usr/bin/gnome-shell",
 		"chmod 0644 /etc/dconf/profile/user",
 		"chmod 0644 /etc/dconf/db/robotgo.d/00-runner",
 		"chmod 0644 /etc/dconf/db/robotgo",
@@ -421,7 +424,7 @@ func TestRepositoryGuestSessionContract(t *testing.T) {
 		"systemctl enable robotgo-runner-egress.service",
 	} {
 		if !strings.Contains(string(installScript), required) {
-			t.Fatalf("install.sh omits readable DConf contract %q", required)
+			t.Fatalf("install.sh omits GNOME guest contract %q", required)
 		}
 	}
 	for _, forbidden := range []string{

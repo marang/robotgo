@@ -55,6 +55,7 @@
     "gcc",
     "gdm3",
     "git",
+    "gnome-session",
     "gnome-shell",
     "jq",
     "libdrm-dev",
@@ -69,7 +70,6 @@
     "pipewire",
     "pkg-config",
     "sudo",
-    "ubuntu-desktop-minimal",
     "wireplumber",
     "xdg-desktop-portal",
     "xdg-desktop-portal-gnome"

@@ -1042,6 +1042,10 @@ image provisioning fails or stalls, the builder prints at most the final
 screen frames, and input evidence cannot enter that log because runner
 registration occurs only after the immutable image is complete. The normal
 `always()` cleanup still removes the bounded log, VM state, and helper binary.
+The GNOME image installs the explicit `gnome-session`, GDM, Shell, and portal
+contract and rejects `ubuntu-desktop-minimal`; this avoids pulling unrelated
+applications and services through the throttled, reproducibility-pinned
+snapshot while retaining the real GNOME Wayland session under test.
 
 The reproducible images, hosted supervisor, independent consent drivers,
 exact-tree transfer, and mandatory cleanup checks are documented in
