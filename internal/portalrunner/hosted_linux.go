@@ -978,6 +978,9 @@ func readSessionFailureStage(data []byte) string {
 		return ""
 	}
 	stage := string(matches[len(matches)-1][1])
+	if stage == "unknown" {
+		return "session-unstable"
+	}
 	if _, allowed := sessionFailureStages[stage]; !allowed {
 		return ""
 	}

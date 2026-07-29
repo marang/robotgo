@@ -1111,6 +1111,29 @@ func TestHostedSessionFailureReportsOnlyAllowlistedStage(t *testing.T) {
 
 	executor = &scriptedCommandExecutor{
 		outputs: []string{
+			"ROBOTGO_SESSION_STAGE=unknown\n",
+		},
+		errors: []error{errors.New("exit status 1")},
+	}
+	output.Reset()
+	err = waitForHostedSession(
+		context.Background(),
+		executor,
+		nil,
+		&output,
+		portalLaneGNOME,
+	)
+	if err == nil ||
+		!strings.Contains(err.Error(), `stage "session-unstable"`) {
+		t.Fatalf("normalized GNOME session failure = %v", err)
+	}
+	if got := output.String(); got !=
+		"ROBOTGO_SESSION_STAGE=session-unstable\n" {
+		t.Fatalf("normalized GNOME session output = %q", got)
+	}
+
+	executor = &scriptedCommandExecutor{
+		outputs: []string{
 			"ROBOTGO_SESSION_STAGE=private-token\n",
 		},
 		errors: []error{errors.New("exit status 1")},

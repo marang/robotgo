@@ -8,7 +8,8 @@
   their prerequisites, allow naturally managed shell/portal bounces to settle
   only within the current phase, and expose only explicitly allowlisted failure
   stages outside the disposable guest. KDE receives its own bounded timeout
-  hierarchy while GNOME retains its shorter guard. This prevents slow early
+  hierarchy while GNOME retains its shorter guard and maps its legacy
+  `unknown` terminal marker to `session-unstable`. This prevents slow early
   startup from consuming the shell's budget or exposing private diagnostics.
 - Made hosted GNOME/KDE image-install stalls fail earlier and diagnostically:
   all three portal workflows now share one tested outer timeout wrapper, guest
