@@ -117,12 +117,10 @@ jobs:
           portal_runner="$RUNNER_TEMP/robotgo-portalrunner"
           go build -o "$portal_runner" ./internal/cmd/portalrunner
           test -x "$portal_runner"
-          exec timeout --preserve-status \
-            --signal=TERM --kill-after=2m 30m \
-            bash scripts/run_hosted_portal_e2e.sh \
-              "$portal_runner" "$manifest" "$GITHUB_WORKSPACE" \
-              "$state_root" "$GITHUB_SHA" display-bounds \
-              multi-output
+          exec bash scripts/run_hosted_portal_e2e_ci.sh \
+            "$portal_runner" "$manifest" "$GITHUB_WORKSPACE" \
+            "$state_root" "$GITHUB_SHA" display-bounds \
+            multi-output
       - name: Reject transient runner artifacts
         if: always()
         shell: bash

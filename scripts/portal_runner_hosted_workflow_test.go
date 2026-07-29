@@ -12,7 +12,22 @@ func TestHostedPortalProofUsesEphemeralGitHubKVM(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	script := normalizeWorkflowText(scriptData)
+	wrapperData, err := os.ReadFile("run_hosted_portal_e2e_ci.sh")
+	if err != nil {
+		t.Fatal(err)
+	}
+	wrapperInfo, err := os.Stat("run_hosted_portal_e2e_ci.sh")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if wrapperInfo.Mode().Perm() != 0o755 {
+		t.Fatalf(
+			"hosted CI timeout wrapper mode = %o, want 755",
+			wrapperInfo.Mode().Perm(),
+		)
+	}
+	script := normalizeWorkflowText(scriptData) +
+		"\n" + normalizeWorkflowText(wrapperData)
 	for path, cell := range map[string]string{
 		"../.github/workflows/remote-desktop-e2e.yml": "remote-desktop",
 		"../.github/workflows/screencast-e2e.yml":     "screencast",
@@ -59,9 +74,10 @@ func TestHostedPortalProofUsesEphemeralGitHubKVM(t *testing.T) {
 			"packages+=(qemu-system-gui xauth xvfb)",
 			`if [[ "${{ matrix.topology }}" == "multi-output" ]]`,
 			`go build -o "$portal_runner" ./internal/cmd/portalrunner`,
+			"exec bash scripts/run_hosted_portal_e2e_ci.sh",
 			"exec timeout --preserve-status",
 			"--signal=TERM --kill-after=2m 30m",
-			"scripts/run_hosted_portal_e2e.sh",
+			`"$script_directory/run_hosted_portal_e2e.sh"`,
 			"xvfb-run -a",
 			"-screen 0 1280x800x24 -nolisten tcp -noreset",
 			`env ROBOTGO_HOSTED_XVFB=1 "${hosted_run[@]}"`,
@@ -98,6 +114,7 @@ func TestHostedPortalProofUsesEphemeralGitHubKVM(t *testing.T) {
 		for _, forbidden := range []string{
 			"self-hosted",
 			"environment:",
+			"exec timeout --preserve-status",
 			"generate-jitconfig",
 			"registration-token",
 			"ROBOTGO_REMOTE_DESKTOP_E2E",
@@ -132,8 +149,13 @@ func TestHostedBoundsProofIsMultiOutputWaylandOnly(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	wrapperData, err := os.ReadFile("run_hosted_portal_e2e_ci.sh")
+	if err != nil {
+		t.Fatal(err)
+	}
 	workflow := normalizeWorkflowText(workflowData)
-	script := normalizeWorkflowText(scriptData)
+	script := normalizeWorkflowText(scriptData) +
+		"\n" + normalizeWorkflowText(wrapperData)
 	start := strings.Index(workflow, "  hosted-bounds:")
 	if start < 0 {
 		t.Fatal("display bounds workflow does not isolate its hosted job")
@@ -161,9 +183,10 @@ func TestHostedBoundsProofIsMultiOutputWaylandOnly(t *testing.T) {
 		"xauth",
 		"xvfb",
 		`go build -o "$portal_runner" ./internal/cmd/portalrunner`,
+		"exec bash scripts/run_hosted_portal_e2e_ci.sh",
 		"exec timeout --preserve-status",
 		"--signal=TERM --kill-after=2m 30m",
-		"scripts/run_hosted_portal_e2e.sh",
+		`"$script_directory/run_hosted_portal_e2e.sh"`,
 		"display-bounds",
 		"multi-output",
 		"xvfb-run -a",
@@ -190,6 +213,7 @@ func TestHostedBoundsProofIsMultiOutputWaylandOnly(t *testing.T) {
 	for _, forbidden := range []string{
 		"self-hosted",
 		"environment:",
+		"exec timeout --preserve-status",
 		"generate-jitconfig",
 		"registration-token",
 		"ROBOTGO_PORTAL_CONSENT_READY_FILE",

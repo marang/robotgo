@@ -28,10 +28,12 @@ import (
 const (
 	maximumArtifactBytes = 2 * 1024 * 1024 * 1024
 	imageBuildTimeout    = 45 * time.Minute
+	guestInstallTimeout  = 20 * time.Minute
 	sshReadyTimeout      = 5 * time.Minute
 	sshProbeInterval     = 2 * time.Second
 	qemuStopTimeout      = 2 * time.Minute
 	buildLogLimit        = 32 * 1024 * 1024
+	buildLogTailLimit    = 64 * 1024
 	maximumBuildInput    = 1024 * 1024
 	imageIdentitySchema  = "1"
 )
@@ -255,6 +257,20 @@ func BuildImage(
 		return "", fmt.Errorf("create portal runner build log: %w", err)
 	}
 	defer func() { _ = logFile.Close() }()
+	defer func() {
+		if returnError == nil {
+			return
+		}
+		if err := logFile.Sync(); err != nil {
+			returnError = errors.Join(
+				returnError,
+				errors.New("sync portal runner failure log"),
+			)
+		}
+		if err := writeBuildLogTail(options.Output, logPath); err != nil {
+			returnError = errors.Join(returnError, err)
+		}
+	}()
 	logWriter := &boundedWriter{destination: logFile, remaining: buildLogLimit}
 
 	if err := writeStatus(options.Output, "image overlay create\n"); err != nil {
@@ -443,19 +459,37 @@ func BuildImage(
 		"echo ROBOTGO_IMAGE_READY",
 		"systemctl poweroff --no-wall",
 	}, " && ")
-	if err := writeStatus(options.Output, "image guest install\n"); err != nil {
+	if err := writeStatus(
+		options.Output,
+		"image guest install timeout=%s\n",
+		guestInstallTimeout,
+	); err != nil {
 		return "", err
 	}
 	var installOutput bytes.Buffer
 	combinedOutput := io.MultiWriter(logWriter, &installOutput)
-	if err := options.Commands.Run(
+	installContext, cancelInstall := context.WithTimeout(
 		buildContext,
+		guestInstallTimeout,
+	)
+	installError := options.Commands.Run(
+		installContext,
 		"ssh",
 		append(sshArguments, "root@127.0.0.1", installCommand),
 		nil,
 		combinedOutput,
-	); err != nil && !strings.Contains(installOutput.String(), "ROBOTGO_IMAGE_READY") {
-		return "", err
+	)
+	cancelInstall()
+	if installError != nil &&
+		!strings.Contains(installOutput.String(), "ROBOTGO_IMAGE_READY") {
+		if errors.Is(installError, context.DeadlineExceeded) {
+			return "", fmt.Errorf(
+				"portal runner guest installation exceeded %s: %w",
+				guestInstallTimeout,
+				installError,
+			)
+		}
+		return "", installError
 	}
 	if !strings.Contains(installOutput.String(), "ROBOTGO_IMAGE_READY") {
 		return "", errors.New("portal runner guest did not confirm image completion")
@@ -491,6 +525,43 @@ func BuildImage(
 		return "", err
 	}
 	return finalImage, nil
+}
+
+// writeBuildLogTail exposes only bounded image-provisioning output. Image
+// creation runs before runner registration, so this log cannot contain the
+// short-lived GitHub registration token or user capture/input evidence.
+func writeBuildLogTail(output io.Writer, path string) error {
+	file, err := os.Open(path)
+	if err != nil {
+		return fmt.Errorf("open portal runner failure log: %w", err)
+	}
+	defer func() { _ = file.Close() }()
+
+	info, err := file.Stat()
+	if err != nil {
+		return fmt.Errorf("inspect portal runner failure log: %w", err)
+	}
+	start := info.Size() - buildLogTailLimit
+	if start < 0 {
+		start = 0
+	}
+	if _, err := file.Seek(start, io.SeekStart); err != nil {
+		return fmt.Errorf("seek portal runner failure log: %w", err)
+	}
+	if _, err := fmt.Fprintf(
+		output,
+		"portal runner build failure log (last %d bytes):\n",
+		info.Size()-start,
+	); err != nil {
+		return errors.New("write portal runner failure log header")
+	}
+	if _, err := io.Copy(output, io.LimitReader(file, buildLogTailLimit)); err != nil {
+		return errors.New("write portal runner failure log")
+	}
+	if _, err := io.WriteString(output, "\nend portal runner build failure log\n"); err != nil {
+		return errors.New("write portal runner failure log footer")
+	}
+	return nil
 }
 
 func writeStatus(output io.Writer, format string, arguments ...any) error {

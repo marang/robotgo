@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Made hosted GNOME/KDE image-install stalls fail earlier and diagnostically:
+  all three portal workflows now share one tested outer timeout wrapper, guest
+  installation has a shorter phase deadline, and failures expose only a
+  bounded pre-registration build-log tail before mandatory transient cleanup.
 - Classified permission-granted macOS runtime evidence as an externally blocked,
   non-release-blocking promotion under LAB-69. Native and Pure-Go permission
   scopes remain implemented/evidence-pending until an isolated project-owned,

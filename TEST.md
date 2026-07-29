@@ -1034,6 +1034,15 @@ cancellation/timeout boundary, and an `always()` workflow step terminates only
 verified runner-owned QEMU processes, removes sentinel-owned `run-*`
 directories, and rejects leftovers.
 
+Hosted workflow calls share
+`scripts/run_hosted_portal_e2e_ci.sh` as their fixed 30-minute outer guard.
+Guest package/image installation has an earlier 20-minute phase deadline. If
+image provisioning fails or stalls, the builder prints at most the final
+64 KiB of its pre-registration build log before cleanup. Registration tokens,
+screen frames, and input evidence cannot enter that log because runner
+registration occurs only after the immutable image is complete. The normal
+`always()` cleanup still removes the bounded log, VM state, and helper binary.
+
 The reproducible images, hosted supervisor, independent consent drivers,
 exact-tree transfer, and mandatory cleanup checks are documented in
 [GitHub-Hosted GNOME Portal Runner](infrastructure/portal-runner/gnome/README.md)

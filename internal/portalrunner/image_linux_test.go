@@ -3,11 +3,53 @@
 package portalrunner
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
+
+func TestBuildFailureLogTailIsBounded(t *testing.T) {
+	t.Parallel()
+
+	path := filepath.Join(t.TempDir(), "build.log")
+	prefix := bytes.Repeat([]byte("p"), 1024)
+	tail := bytes.Repeat([]byte("t"), buildLogTailLimit)
+	if err := os.WriteFile(path, append(prefix, tail...), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	var output bytes.Buffer
+	if err := writeBuildLogTail(&output, path); err != nil {
+		t.Fatal(err)
+	}
+	got := output.String()
+	if strings.Contains(got, string(prefix)) {
+		t.Fatal("failure diagnostic exposed data before the bounded tail")
+	}
+	if !strings.Contains(got, string(tail)) {
+		t.Fatal("failure diagnostic omitted the bounded log tail")
+	}
+	if !strings.Contains(
+		got,
+		"portal runner build failure log (last 65536 bytes)",
+	) || !strings.HasSuffix(got, "end portal runner build failure log\n") {
+		t.Fatalf("failure diagnostic delimiters missing:\n%s", got)
+	}
+}
+
+func TestGuestInstallTimeoutPrecedesHostedWorkflowGuard(t *testing.T) {
+	t.Parallel()
+
+	if guestInstallTimeout != 20*time.Minute {
+		t.Fatalf("guestInstallTimeout = %s, want 20m", guestInstallTimeout)
+	}
+	if guestInstallTimeout >= 30*time.Minute {
+		t.Fatal("guest install timeout must precede the hosted workflow guard")
+	}
+}
 
 func TestComputeImageIdentityBindsEveryBuildInput(t *testing.T) {
 	t.Parallel()
