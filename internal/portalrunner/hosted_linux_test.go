@@ -579,7 +579,7 @@ func TestHostedKDEScreenCastLocatorUsesContentFreeKWinGeometry(
 	}
 }
 
-func TestHostedGNOMEPortalDialogWaitUsesContentFreeShellReadiness(
+func TestHostedGNOMEPortalDialogWaitUsesContentFreeRequestReadiness(
 	t *testing.T,
 ) {
 	t.Parallel()
