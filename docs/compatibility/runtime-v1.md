@@ -13,8 +13,8 @@ pending row is not a passing row.
 The machine-readable source is
 [`runtime-v1.json`](runtime-v1.json). The generated table below is checked by
 the default suite, and every evidence name must exist in the exact 29-check
-[`Release Evidence` run 30434061380](https://github.com/marang/robotgo/actions/runs/30434061380)
-for merged commit `cd204c663e4ff5c8d33504d8cbf8b4dce1d8cc59`.
+[`v1.0.0-rc.1` Release Evidence run 30442843617](https://github.com/marang/robotgo/actions/runs/30442843617)
+for tagged commit `281d8cee29d696e334fe9d4a6f6a7069ab291083`.
 
 ## Platform and build matrix
 

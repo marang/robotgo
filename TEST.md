@@ -1075,9 +1075,9 @@ for that exact candidate and are likewise required before the 29-check manifest
 can be packaged.
 The last pre-API-freeze 28-check contract passes on exact merged `main` in
 [`Release Evidence` run 30272753885](https://github.com/marang/robotgo/actions/runs/30272753885).
-The current post-freeze 29-check contract passes on exact merged `main` in
-[`Release Evidence` run 30434061380](https://github.com/marang/robotgo/actions/runs/30434061380)
-at commit `cd204c663e4ff5c8d33504d8cbf8b4dce1d8cc59`.
+The current post-freeze 29-check contract passes on the exact published tag in
+[`v1.0.0-rc.1` Release Evidence run 30442843617](https://github.com/marang/robotgo/actions/runs/30442843617)
+at commit `281d8cee29d696e334fe9d4a6f6a7069ab291083`.
 
 On a clean Linux native checkout, reproduce the generator/verifier path with:
 
