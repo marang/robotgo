@@ -541,11 +541,21 @@ func TestRepositoryKDEGuestActivatesPortalFrontendAndBackend(t *testing.T) {
 	script := string(waitScript)
 	for _, required := range []string{
 		"busctl --address=unix:path=/run/user/1100/bus",
-		"--no-pager call",
+		"--no-pager --timeout=2s call",
 		"org.freedesktop.portal.Desktop",
 		"org.freedesktop.impl.portal.desktop.kde",
 		"org.freedesktop.DBus.Peer",
 		"Ping",
+		"deadline=$((SECONDS + 60))",
+		"deadline=$((SECONDS + 90))",
+		"deadline=$((SECONDS + 30))",
+		"deadline=$((SECONDS + 10))",
+		"stable >= 3",
+		"desktop-shell-never-seen",
+		"desktop-shell-failed",
+		"desktop-shell-process-missing",
+		"desktop-shell-unstable",
+		"portal-backend-unstable",
 	} {
 		if !strings.Contains(script, required) {
 			t.Errorf("KDE session readiness omits %q", required)
@@ -560,7 +570,9 @@ func TestRepositoryKDEGuestActivatesPortalFrontendAndBackend(t *testing.T) {
 	}
 	for _, required := range []string{
 		"dpkg-query -W -f='${db:Status-Status}' plasma-workspace",
+		"test -f /usr/lib/systemd/user/plasma-plasmashell.service",
 		"test -x /usr/bin/plasmashell",
+		"TimeoutStartSec=270",
 		"/usr/local/libexec/robotgo-runner-locate-screencast",
 		"/usr/local/libexec/robotgo-runner-report-screencast-geometry",
 		"/usr/local/share/robotgo/report-screencast-geometry.js",

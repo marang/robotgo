@@ -1089,10 +1089,36 @@ func TestHostedSessionFailureReportsOnlyAllowlistedStage(t *testing.T) {
 		!strings.Contains(err.Error(), `stage "desktop-shell"`) {
 		t.Fatalf("session failure = %v", err)
 	}
+	if len(executor.calls) != 1 ||
+		!strings.Contains(
+			executor.calls[0][len(executor.calls[0])-1],
+			sessionReadinessCommand,
+		) {
+		t.Fatalf("session readiness calls = %v", executor.calls)
+	}
 	for _, private := range []string{"private diagnostic", "token", "exit status"} {
 		if strings.Contains(err.Error(), private) {
 			t.Fatalf("session failure leaks %q: %v", private, err)
 		}
+	}
+
+	executor = &scriptedCommandExecutor{
+		outputs: []string{
+			"ROBOTGO_SESSION_STAGE=private-token\n",
+		},
+		errors: []error{errors.New("exit status 1")},
+	}
+	err = waitForHostedSession(
+		context.Background(),
+		executor,
+		nil,
+		&strings.Builder{},
+	)
+	if err == nil || err.Error() != "wait for hosted portal session" {
+		t.Fatalf("unallowlisted session failure = %v", err)
+	}
+	if strings.Contains(err.Error(), "private-token") {
+		t.Fatalf("unallowlisted session stage escaped: %v", err)
 	}
 }
 

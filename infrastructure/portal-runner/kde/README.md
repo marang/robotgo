@@ -16,6 +16,14 @@ untracked host file. Captured frames, input data, portal restore tokens, SSH
 keys, QMP sockets, and raw logs never enter the immutable image or uploaded
 artifacts.
 
+Session startup is fail-closed and phase-bounded. SDDM/runtime/Wayland/KWin,
+Plasma Shell, the portal frontend, and the KDE backend receive separate
+budgets, so a slow prerequisite cannot silently consume the shell's wait time.
+The runner starts only after the complete contract remains ready for three
+consecutive probes. A failure returns one allowlisted stage; raw journals,
+process arguments, environment values, and other session details remain inside
+the disposable guest.
+
 ## Hosted proof
 
 The workflows invoke the equivalent of:

@@ -306,8 +306,7 @@ func ProbeImage(
 		{"GDM", "systemctl is-active --quiet gdm3"},
 		{
 			"GNOME portal session readiness",
-			sessionCommand +
-				"timeout 130 /usr/local/libexec/robotgo-runner-wait-session",
+			sessionCommand + sessionReadinessCommand,
 		},
 		{
 			"PipeWire",

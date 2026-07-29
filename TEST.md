@@ -1051,6 +1051,17 @@ cancellation/timeout boundary, and an `always()` workflow step terminates only
 verified runner-owned QEMU processes, removes sentinel-owned `run-*`
 directories, and rejects leftovers.
 
+KDE session readiness uses independent bounded budgets for SDDM/runtime/Wayland
+and KWin, Plasma Shell, the portal frontend, and the KDE portal backend. This
+prevents a slow early phase from consuming the shell's entire budget and then
+being misreported as a shell failure. The complete contract must remain true
+for three consecutive probes before source transfer begins. Failures expose
+only an allowlisted stage such as `desktop-shell-never-seen` or
+`portal-backend-unstable`; process arguments, journals, environment values, and
+other guest data do not cross SSH. The shared host-side guard remains shorter
+than the systemd runner start bound and longer than the sum of guest phase
+budgets.
+
 Hosted workflow calls share
 `scripts/run_hosted_portal_e2e_ci.sh` as their fixed 30-minute outer guard.
 Guest package/image installation has an earlier 20-minute phase deadline. If

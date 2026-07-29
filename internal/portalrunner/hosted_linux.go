@@ -103,6 +103,24 @@ var sessionFailureStagePattern = regexp.MustCompile(
 	`ROBOTGO_SESSION_STAGE=([a-z0-9-]{1,32})`,
 )
 
+var sessionFailureStages = map[string]struct{}{
+	"compositor":                    {},
+	"desktop-shell":                 {},
+	"desktop-shell-failed":          {},
+	"desktop-shell-never-seen":      {},
+	"desktop-shell-process-missing": {},
+	"desktop-shell-unstable":        {},
+	"display-manager":               {},
+	"portal":                        {},
+	"portal-backend":                {},
+	"portal-backend-unstable":       {},
+	"portal-unstable":               {},
+	"runtime-directory":             {},
+	"session-unstable":              {},
+	"user-bus":                      {},
+	"wayland":                       {},
+}
+
 var errHostedPortalTestExitedBeforeConsent = errors.New(
 	"hosted portal test exited before requesting consent",
 )
@@ -918,7 +936,7 @@ func waitForHostedSession(
 	command := "set -euo pipefail; runuser -u robotgo -- env " +
 		"XDG_RUNTIME_DIR=/run/user/1100 " +
 		"DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1100/bus " +
-		"timeout 130 /usr/local/libexec/robotgo-runner-wait-session"
+		sessionReadinessCommand
 	if err := commands.Run(
 		ctx,
 		"ssh",
@@ -949,7 +967,11 @@ func readSessionFailureStage(data []byte) string {
 	if len(matches) == 0 {
 		return ""
 	}
-	return string(matches[len(matches)-1][1])
+	stage := string(matches[len(matches)-1][1])
+	if _, allowed := sessionFailureStages[stage]; !allowed {
+		return ""
+	}
+	return stage
 }
 
 type truncatingWriter struct {

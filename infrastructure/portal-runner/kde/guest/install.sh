@@ -113,6 +113,7 @@ test "$(uname -r)" = "$kernel_release"
 test "$(dpkg-query -W -f='${db:Status-Status}' \
   "linux-modules-extra-$kernel_release")" = installed
 test -f /usr/share/wayland-sessions/plasmawayland.desktop
+test -f /usr/lib/systemd/user/plasma-plasmashell.service
 test -x /usr/bin/kwin_wayland
 test -x /usr/bin/plasmashell
 test -x /usr/lib/x86_64-linux-gnu/libexec/xdg-desktop-portal-kde
@@ -238,7 +239,7 @@ ExecStartPre=/usr/local/libexec/robotgo-runner-wait-session
 ExecStart=/opt/actions-runner/run.sh
 ExecStopPost=+/usr/local/sbin/robotgo-runner-job-completed
 ExecStopPost=+/usr/bin/systemctl poweroff --no-wall
-TimeoutStartSec=150
+TimeoutStartSec=270
 TimeoutStopSec=30
 KillMode=control-group
 Restart=no
