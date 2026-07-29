@@ -1114,12 +1114,13 @@ go run ./internal/cmd/releaseevidence verify \
   -expected-test-command "$test_command"
 ```
 
-Before creating a stable-line tag, synchronize `main`, use its full
-authoritative origin commit, and run:
+Before creating the stable tag, complete the documented seven-day RC
+qualification window with no unresolved critical/high regression, synchronize
+`main`, use its full authoritative origin commit, and run:
 
 ```bash
 commit="$(git ls-remote --heads origin refs/heads/main | awk '{print $1}')"
-./scripts/preflight-origin-release.sh v1.0.0-rc.1 "$commit"
+./scripts/preflight-origin-release.sh v1.0.0 "$commit"
 ```
 
 The preflight checks `origin/main`, exact origin tag refs, GitHub tag refs, and
@@ -1130,22 +1131,21 @@ on that merged commit pass may a release operator create the annotated tag,
 verify its peeled commit, and push that one ref:
 
 ```bash
-git tag -a v1.0.0-rc.1 "$commit" -m "RobotGo v1.0.0-rc.1"
-test "$(git rev-parse 'v1.0.0-rc.1^{}')" = "$commit"
-git push origin refs/tags/v1.0.0-rc.1:refs/tags/v1.0.0-rc.1
+git tag -a v1.0.0 "$commit" -m "RobotGo v1.0.0"
+test "$(git rev-parse 'v1.0.0^{}')" = "$commit"
+git push origin refs/tags/v1.0.0:refs/tags/v1.0.0
 ```
 
-Never use `git push --tags`. Create the GitHub prerelease with `--verify-tag`;
-its `release.published` event reruns exact-tag evidence and attaches the
-checksum-bound archive:
+Never use `git push --tags`. Create the GitHub stable release with
+`--verify-tag`; its `release.published` event reruns exact-tag evidence and
+attaches the checksum-bound archive:
 
 ```bash
-gh release create v1.0.0-rc.1 \
+gh release create v1.0.0 \
   --repo marang/robotgo \
   --verify-tag \
-  --prerelease \
-  --title "RobotGo v1.0.0-rc.1" \
-  --notes-file docs/releases/v1.0.0-rc.1.md
+  --title "RobotGo v1.0.0" \
+  --notes-file docs/releases/v1.0.0.md
 ```
 
 The versioned schema, matrix, release-asset behavior, and consumer verification
