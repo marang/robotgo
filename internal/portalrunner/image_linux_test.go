@@ -418,7 +418,9 @@ func TestRepositoryGuestSessionContract(t *testing.T) {
 		"test -f /usr/share/wayland-sessions/ubuntu-wayland.desktop",
 		"test -f /usr/share/gnome-shell/modes/ubuntu.json",
 		"test -x /usr/bin/gnome-shell",
-		"DefaultSession=ubuntu.desktop",
+		"/var/lib/AccountsService/users/robotgo",
+		"XSession=ubuntu",
+		"chmod 0600 /var/lib/AccountsService/users/robotgo",
 		"/usr/local/libexec/robotgo-runner-wait-portal-dialog",
 		"chmod 0644 /etc/dconf/profile/user",
 		"chmod 0644 /etc/dconf/db/robotgo.d/00-runner",
@@ -430,6 +432,9 @@ func TestRepositoryGuestSessionContract(t *testing.T) {
 		if !strings.Contains(string(installScript), required) {
 			t.Fatalf("install.sh omits GNOME guest contract %q", required)
 		}
+	}
+	if strings.Contains(string(installScript), "DefaultSession=") {
+		t.Fatal("install.sh uses unsupported GDM default-session configuration")
 	}
 
 	dialogWait, err := os.ReadFile(

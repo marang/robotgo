@@ -53,7 +53,8 @@ Pure-Go public output APIs with `DISPLAY` unset and creates no portal session.
 The package contract uses the focused `ubuntu-session` package, not
 `ubuntu-desktop-minimal`: this retains the Ubuntu Shell mode and portal-dialog
 keyboard behavior exercised by the consent controller without installing the
-broader desktop application closure.
+broader desktop application closure. The disposable `robotgo` account selects
+that session through its root-owned AccountsService record.
 The image identity also covers the manifest, provisioning implementation, guest
 scripts, their executable modes, and content. A changed input therefore cannot
 silently reuse an older image.

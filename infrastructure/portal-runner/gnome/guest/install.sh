@@ -125,6 +125,14 @@ fi
 test "$(id -u robotgo)" = 1100
 passwd --lock robotgo
 gpasswd --delete robotgo sudo >/dev/null 2>&1 || true
+install -d -m 0755 /var/lib/AccountsService/users
+cat >/var/lib/AccountsService/users/robotgo <<'EOF'
+[User]
+Language=
+XSession=ubuntu
+SystemAccount=false
+EOF
+chmod 0600 /var/lib/AccountsService/users/robotgo
 
 go_archive=/var/tmp/robotgo-go.tar.gz
 download_verified \
@@ -286,7 +294,6 @@ cat >/etc/gdm3/custom.conf <<'EOF'
 [daemon]
 AutomaticLoginEnable=true
 AutomaticLogin=robotgo
-DefaultSession=ubuntu.desktop
 WaylandEnable=true
 
 [security]
