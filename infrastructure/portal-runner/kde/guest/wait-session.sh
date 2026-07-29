@@ -226,6 +226,13 @@ while true; do
     if all_ready; then
       ((stable += 1))
       if ((stable >= 3)); then
+        if [[ -d "$shell_recovery_marker" ]] &&
+          ((!shell_recovery_observed)); then
+          if recover_shell_once; then
+            continue 2
+          fi
+          fail_shell_stage
+        fi
         if [[ -d "$shell_recovery_complete" ]]; then
           report_shell_recovery
         fi
