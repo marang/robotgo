@@ -1121,6 +1121,7 @@ add the non-empty `docs/releases/v1.0.0.md` release notes. After that PR is
 merged, run from the clean `main` worktree:
 
 ```bash
+set -euo pipefail
 git pull --ff-only origin main
 test "$(git branch --show-current)" = main
 test -z "$(git status --porcelain --untracked-files=all)"
@@ -1131,13 +1132,16 @@ test "$(git ls-remote --heads origin refs/heads/main | awk '{print $1}')" = "$co
 ```
 
 The preflight checks `origin/main`, exact origin tag refs, GitHub tag refs, and
-GitHub releases. It rejects a non-`marang/robotgo` remote and deliberately
-ignores local tags, which may have been fetched from `go-vgo/robotgo`. Only
-after the stable-preparation PR, review, CI, and an exact manual
-release-evidence run on that merged commit pass may a release operator create
-the annotated tag, verify its peeled commit, and push that one ref:
+GitHub releases. It rejects a non-`marang/robotgo` remote. A colliding local
+tag may have been fetched from `go-vgo/robotgo`; the preflight rejects it
+without treating it as origin evidence. Inspect and explicitly delete that
+non-authoritative local ref before rerunning the preflight, and never
+force-replace it. Only after the stable-preparation PR, review, CI, and an exact
+manual release-evidence run on that merged commit pass may a release operator
+create the annotated tag, verify its peeled commit, and push that one ref:
 
 ```bash
+set -euo pipefail
 git tag -a v1.0.0 "$commit" -m "RobotGo v1.0.0"
 test "$(git rev-parse 'v1.0.0^{}')" = "$commit"
 git push origin refs/tags/v1.0.0:refs/tags/v1.0.0
@@ -1148,6 +1152,7 @@ Never use `git push --tags`. Create the GitHub stable release with
 attaches the checksum-bound archive:
 
 ```bash
+set -euo pipefail
 gh release create v1.0.0 \
   --repo marang/robotgo \
   --verify-tag \

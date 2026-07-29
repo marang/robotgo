@@ -15,10 +15,12 @@ func TestOriginReleasePreflight(t *testing.T) {
 
 	tests := []struct {
 		name        string
+		tag         string
 		environment map[string]string
 		wantError   string
 	}{
 		{name: "clean authoritative origin"},
+		{name: "clean stable release", tag: "v1.0.0"},
 		{
 			name: "wrong origin repository",
 			environment: map[string]string{
@@ -32,6 +34,14 @@ func TestOriginReleasePreflight(t *testing.T) {
 				"FAKE_MAIN_COMMIT": "abcdef0123456789abcdef0123456789abcdef01",
 			},
 			wantError: "release commit is not authoritative origin/main",
+		},
+		{
+			name: "local stable tag collision",
+			tag:  "v1.0.0",
+			environment: map[string]string{
+				"FAKE_LOCAL_TAG": "v1.0.0",
+			},
+			wantError: "refusing existing local tag collision",
 		},
 		{
 			name: "origin tag already exists",
@@ -60,7 +70,11 @@ func TestOriginReleasePreflight(t *testing.T) {
 		test := test
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
-			output, err := runOriginReleasePreflight(t, test.environment)
+			output, err := runOriginReleasePreflight(
+				t,
+				test.tag,
+				test.environment,
+			)
 			if test.wantError == "" {
 				if err != nil {
 					t.Fatalf("preflight failed: %v\n%s", err, output)
@@ -100,9 +114,13 @@ func TestOriginReleasePreflightRejectsMalformedInputs(t *testing.T) {
 
 func runOriginReleasePreflight(
 	t *testing.T,
+	tag string,
 	overrides map[string]string,
 ) (string, error) {
 	t.Helper()
+	if tag == "" {
+		tag = "v1.0.0-rc.1"
+	}
 
 	temporaryDirectory := t.TempDir()
 	gitStub := filepath.Join(temporaryDirectory, "git")
@@ -125,6 +143,15 @@ case "$1" in
         exit 2
         ;;
     esac
+    ;;
+  show-ref)
+    if [[ "$2" != "--verify" || "$3" != "--quiet" ]]; then
+      exit 2
+    fi
+    if [[ "${FAKE_LOCAL_TAG:-}" == "${4#refs/tags/}" ]]; then
+      exit 0
+    fi
+    exit 1
     ;;
   *)
     exit 2
@@ -157,7 +184,7 @@ esac
 	command := exec.Command(
 		"bash",
 		filepath.Join(".", "preflight-origin-release.sh"),
-		"v1.0.0-rc.1",
+		tag,
 		releaseCommit,
 	)
 	command.Env = environment
