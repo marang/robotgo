@@ -203,6 +203,24 @@ func TestRenderAndReplaceMarkdown(t *testing.T) {
 	}
 }
 
+func TestReplaceMarkdownPreservesCRLFDocument(t *testing.T) {
+	t.Parallel()
+
+	document := "before\r\n" + MarkdownStart + "\r\nstale\r\n" +
+		MarkdownEnd + "\r\nafter\r\n"
+	replaced, err := ReplaceMarkdown(document, RenderMarkdown(validContract()))
+	if err != nil {
+		t.Fatalf("ReplaceMarkdown: %v", err)
+	}
+	withoutCRLF := strings.ReplaceAll(replaced, "\r\n", "")
+	if strings.Contains(withoutCRLF, "\n") {
+		t.Fatalf("replaced document contains mixed line endings: %q", replaced)
+	}
+	if !strings.HasSuffix(replaced, "\r\nafter\r\n") {
+		t.Fatalf("replaced document lost CRLF suffix: %q", replaced)
+	}
+}
+
 func validContract() Contract {
 	return Contract{
 		SchemaVersion: SchemaVersion,

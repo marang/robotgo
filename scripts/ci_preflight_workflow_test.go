@@ -2,6 +2,7 @@ package scripts
 
 import (
 	"os"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -94,7 +95,7 @@ func TestLocalCIPreflightCoversFastFailureContracts(t *testing.T) {
 	if err != nil {
 		t.Fatalf("stat local CI preflight: %v", err)
 	}
-	if info.Mode().Perm()&0o111 == 0 {
+	if runtime.GOOS != "windows" && info.Mode().Perm()&0o111 == 0 {
 		t.Fatal("local CI preflight is not executable")
 	}
 }
@@ -105,5 +106,5 @@ func readWorkflow(t *testing.T, path string) string {
 	if err != nil {
 		t.Fatalf("read %s: %v", path, err)
 	}
-	return string(body)
+	return normalizeWorkflowText(body)
 }

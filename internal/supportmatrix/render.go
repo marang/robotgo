@@ -45,6 +45,10 @@ func ReplaceMarkdown(document string, rendered string) (string, error) {
 		strings.Count(document, MarkdownEnd) != 1 {
 		return "", fmt.Errorf("runtime support matrix markers must occur exactly once")
 	}
+	if strings.Contains(document, "\r\n") {
+		rendered = strings.ReplaceAll(rendered, "\r\n", "\n")
+		rendered = strings.ReplaceAll(rendered, "\n", "\r\n")
+	}
 	end += len(MarkdownEnd)
 	return document[:start] + rendered + document[end:], nil
 }
