@@ -51,6 +51,10 @@ Highlights since `v1.0.0-beta.2`:
   commit to equal `origin/main`, checks both Git and GitHub for an existing RC
   or stable tag/release, rejects non-fork remotes, ignores local
   upstream-derived tags, and permits publishing only the explicit tag ref.
+- Stabilized hosted GNOME/KDE guest provisioning under transient snapshot
+  throttling with bounded APT/Curl retries and network timeouts, serialized
+  per-workflow desktop image builds, and a larger but still bounded
+  execution/cleanup window.
 
 See the [complete release notes](releases/v1.0.0-rc.1.md) for installation,
 migration, supported and evidence-pending scopes, qualification rules, and
