@@ -15,6 +15,15 @@ usage() {
     "$(basename -- "$0")" >&2
 }
 
+parse_http_date_epoch() {
+  local http_date="$1"
+  if LC_ALL=C "$date_bin" -u -d "$http_date" +%s 2>/dev/null; then
+    return 0
+  fi
+  LC_ALL=C "$date_bin" -j -u -f "%a, %d %b %Y %H:%M:%S GMT" \
+    "$http_date" +%s
+}
+
 if (($# != 2)); then
   usage
   exit 2
@@ -41,24 +50,6 @@ if [[ ! "$expected_commit" =~ ^[0-9a-f]{40}$ ]]; then
   exit 1
 fi
 
-if [[ "$tag" == "$stable_tag" ]]; then
-  if ! current_epoch="$("$date_bin" -u +%s)"; then
-    printf 'failed to obtain current UTC epoch for stable qualification\n' >&2
-    exit 1
-  fi
-  if [[ ! "$current_epoch" =~ ^[0-9]{1,10}$ ]]; then
-    printf 'invalid current UTC epoch for stable qualification: %s\n' \
-      "$current_epoch" >&2
-    exit 1
-  fi
-  if ((10#$current_epoch < stable_qualification_not_before_epoch)); then
-    printf 'stable qualification window is still open\n' >&2
-    printf 'not-before=%s\ncurrent-epoch=%s\n' \
-      "$stable_qualification_not_before" "$current_epoch" >&2
-    exit 1
-  fi
-fi
-
 remote_url="$("$git_bin" remote get-url "$remote")"
 case "$remote_url" in
   "git@github.com:${repository}.git" | \
@@ -72,6 +63,43 @@ case "$remote_url" in
     exit 1
     ;;
 esac
+
+if [[ "$tag" == "$stable_tag" ]]; then
+  if ! github_headers="$(
+    "$gh_bin" api "repos/$repository" --include --jq empty
+  )"; then
+    printf 'failed to obtain authoritative GitHub time for stable qualification\n' >&2
+    exit 1
+  fi
+  github_date="$(
+    awk '
+      tolower($1) == "date:" {
+        sub(/^[^:]*:[[:space:]]*/, "")
+        sub(/\r$/, "")
+        print
+      }
+    ' <<<"$github_headers"
+  )"
+  if [[ -z "$github_date" ]] || [[ "$(wc -l <<<"$github_date")" -ne 1 ]]; then
+    printf 'authoritative GitHub response did not contain exactly one Date header\n' >&2
+    exit 1
+  fi
+  if ! current_epoch="$(parse_http_date_epoch "$github_date")"; then
+    printf 'failed to parse authoritative GitHub time for stable qualification\n' >&2
+    exit 1
+  fi
+  if [[ ! "$current_epoch" =~ ^[0-9]{1,10}$ ]]; then
+    printf 'invalid authoritative GitHub epoch for stable qualification: %s\n' \
+      "$current_epoch" >&2
+    exit 1
+  fi
+  if ((10#$current_epoch < stable_qualification_not_before_epoch)); then
+    printf 'stable qualification window is still open\n' >&2
+    printf 'not-before=%s\ngithub-date=%s\n' \
+      "$stable_qualification_not_before" "$github_date" >&2
+    exit 1
+  fi
+fi
 
 main_rows="$("$git_bin" ls-remote --heads "$remote" refs/heads/main)"
 main_commit="$(awk '$2 == "refs/heads/main" { print $1 }' <<<"$main_rows")"

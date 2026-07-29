@@ -33,45 +33,79 @@ func TestOriginReleasePreflight(t *testing.T) {
 			name: "clean stable release after qualification boundary",
 			tag:  "v1.0.0",
 			environment: map[string]string{
-				"FAKE_NOW_EPOCH": stableQualificationAfterGate,
+				"FAKE_GITHUB_DATE":  "Wed, 05 Aug 2026 10:13:47 GMT",
+				"FAKE_GITHUB_EPOCH": stableQualificationAfterGate,
+			},
+		},
+		{
+			name: "clean stable release with BSD date parser",
+			tag:  "v1.0.0",
+			environment: map[string]string{
+				"FAKE_GNU_DATE_STATUS": "1",
 			},
 		},
 		{
 			name: "stable release before qualification boundary",
 			tag:  "v1.0.0",
 			environment: map[string]string{
-				"FAKE_NOW_EPOCH": stableQualificationTooEarly,
+				"FAKE_GITHUB_DATE":  "Wed, 05 Aug 2026 10:13:45 GMT",
+				"FAKE_GITHUB_EPOCH": stableQualificationTooEarly,
 			},
 			wantError: "stable qualification window is still open",
 		},
 		{
-			name: "stable release rejects invalid current time",
+			name: "stable release rejects missing GitHub date header",
 			tag:  "v1.0.0",
 			environment: map[string]string{
-				"FAKE_NOW_EPOCH": "not-an-epoch",
+				"FAKE_GITHUB_DATE_MISSING": "1",
 			},
-			wantError: "invalid current UTC epoch for stable qualification",
+			wantError: "did not contain exactly one Date header",
 		},
 		{
-			name: "stable release rejects overflowing current time",
+			name: "stable release rejects duplicate GitHub date headers",
 			tag:  "v1.0.0",
 			environment: map[string]string{
-				"FAKE_NOW_EPOCH": "99999999999",
+				"FAKE_GITHUB_DATE_DUPLICATE": "1",
 			},
-			wantError: "invalid current UTC epoch for stable qualification",
+			wantError: "did not contain exactly one Date header",
 		},
 		{
-			name: "stable release fails closed when current time lookup fails",
+			name: "stable release rejects invalid authoritative time",
+			tag:  "v1.0.0",
+			environment: map[string]string{
+				"FAKE_GITHUB_EPOCH": "not-an-epoch",
+			},
+			wantError: "invalid authoritative GitHub epoch",
+		},
+		{
+			name: "stable release rejects overflowing authoritative time",
+			tag:  "v1.0.0",
+			environment: map[string]string{
+				"FAKE_GITHUB_EPOCH": "99999999999",
+			},
+			wantError: "invalid authoritative GitHub epoch",
+		},
+		{
+			name: "stable release fails closed when GitHub time lookup fails",
+			tag:  "v1.0.0",
+			environment: map[string]string{
+				"FAKE_GITHUB_CLOCK_STATUS": "17",
+			},
+			wantError: "failed to obtain authoritative GitHub time",
+		},
+		{
+			name: "stable release fails closed when GitHub time parsing fails",
 			tag:  "v1.0.0",
 			environment: map[string]string{
 				"FAKE_DATE_STATUS": "17",
 			},
-			wantError: "failed to obtain current UTC epoch",
+			wantError: "failed to parse authoritative GitHub time",
 		},
 		{
 			name: "release candidate does not require stable qualification time",
 			environment: map[string]string{
-				"FAKE_DATE_STATUS": "17",
+				"FAKE_GITHUB_CLOCK_STATUS": "17",
+				"FAKE_DATE_STATUS":         "17",
 			},
 		},
 		{
@@ -235,6 +269,23 @@ esac
 	writeExecutable(t, ghStub, `#!/usr/bin/env bash
 set -euo pipefail
 case "$2" in
+  repos/marang/robotgo)
+    if [[ "$3" != "--include" || "$4" != "--jq" || "$5" != "empty" ]]; then
+      exit 2
+    fi
+    if [[ -n "${FAKE_GITHUB_CLOCK_STATUS:-}" ]]; then
+      exit "$FAKE_GITHUB_CLOCK_STATUS"
+    fi
+    printf 'HTTP/2.0 200 OK\n'
+    if [[ -z "${FAKE_GITHUB_DATE_MISSING:-}" ]]; then
+      printf 'Date: %s\n' \
+        "${FAKE_GITHUB_DATE:-Wed, 05 Aug 2026 10:13:46 GMT}"
+      if [[ -n "${FAKE_GITHUB_DATE_DUPLICATE:-}" ]]; then
+        printf 'date: Wed, 05 Aug 2026 10:13:47 GMT\n'
+      fi
+    fi
+    printf '\n'
+    ;;
   */git/matching-refs/tags/v1.0.0)
     printf '%s' "${FAKE_GITHUB_TAGS:-}"
     ;;
@@ -248,13 +299,24 @@ esac
 `)
 	writeExecutable(t, dateStub, `#!/usr/bin/env bash
 set -euo pipefail
-if (($# != 2)) || [[ "$1" != "-u" || "$2" != "+%s" ]]; then
+expected_date="${FAKE_GITHUB_DATE:-Wed, 05 Aug 2026 10:13:46 GMT}"
+if (($# == 4)) &&
+  [[ "$1" == "-u" && "$2" == "-d" && "$3" == "$expected_date" && "$4" == "+%s" ]]; then
+  if [[ -n "${FAKE_GNU_DATE_STATUS:-}" ]]; then
+    exit "$FAKE_GNU_DATE_STATUS"
+  fi
+elif (($# == 6)) &&
+  [[ "$1" == "-j" && "$2" == "-u" && "$3" == "-f" ]] &&
+  [[ "$4" == "%a, %d %b %Y %H:%M:%S GMT" ]] &&
+  [[ "$5" == "$expected_date" && "$6" == "+%s" ]]; then
+  :
+else
   exit 2
 fi
 if [[ -n "${FAKE_DATE_STATUS:-}" ]]; then
   exit "$FAKE_DATE_STATUS"
 fi
-printf '%s\n' "${FAKE_NOW_EPOCH:-1785924826}"
+printf '%s\n' "${FAKE_GITHUB_EPOCH:-1785924826}"
 `)
 
 	environment := append(os.Environ(),

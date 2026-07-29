@@ -37,7 +37,8 @@ than `2026-08-05T10:13:46Z`.
   `281d8cee29d696e334fe9d4a6f6a7069ab291083`; `v1.0.0` remains absent.
 - The same preflight now rejects `v1.0.0` before
   `2026-08-05T10:13:46Z` and fails closed when UTC time cannot be obtained or
-  parsed. Deterministic tests cover the second before the boundary, the exact
+  parsed from GitHub's authoritative API `Date` header. Deterministic tests
+  cover missing/duplicate headers, the second before the boundary, the exact
   boundary, and later execution without applying the stable gate to RC tags.
 - `go list -m -json github.com/marang/robotgo@latest` resolved
   `v1.0.0-rc.1` with the default proxy and `GOPROXY=direct` on 2026-07-29.

@@ -1136,10 +1136,12 @@ test "$(git ls-remote --heads origin refs/heads/main | awk '{print $1}')" = "$co
 
 For `v1.0.0`, the preflight fails closed before
 `2026-08-05T10:13:46Z`, the first instant after seven full days from the
-published RC. Its regression suite covers one second before the boundary, the
-exact boundary, later execution, malformed time output, and clock-command
-failure. RC-tag preflight remains independent of the stable qualification
-gate.
+published RC. It obtains the current time from the authoritative GitHub API
+`Date` header over the existing authenticated HTTPS path rather than trusting
+the operator machine's clock. Its regression suite covers one second before
+the boundary, the exact boundary, later execution, missing or duplicate remote
+time headers, malformed parsed time output, and remote/time-parser failure.
+RC-tag preflight remains independent of the stable qualification gate.
 
 The preflight checks `origin/main`, exact origin tag refs, GitHub tag refs, and
 GitHub releases. It rejects a non-`marang/robotgo` remote. A colliding local
