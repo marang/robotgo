@@ -82,7 +82,7 @@ group.
 
 | Platform/session | Build | Current behavior |
 |---|---|---|
-| macOS | CGO-enabled default build | Native implementation plus blocking build/API/display and non-prompting permission/error contracts; Screen Recording- or Accessibility-granted capture/input/window behavior is implemented but remains evidence-pending for the RC |
+| macOS | CGO-enabled default build | Native implementation plus blocking build/API/display and non-prompting permission/error contracts; Screen Recording- or Accessibility-granted capture/input/window behavior is implemented but remains outside the stable supported scope pending runtime evidence |
 | macOS | `CGO_ENABLED=0` | Blocking CoreGraphics bounds/Retina-scale and non-prompting permission diagnostics; pixel capture, Quartz input, and Accessibility window operations are implemented but permission-granted runtime evidence remains pending; maximize/topmost and media keys without stable native semantics return `ErrNotSupported` |
 | Windows | CGO-enabled default build | Native mouse, keyboard, capture, window, and process paths |
 | Windows | `CGO_ENABLED=0` | Pure-Go capture/display bounds, real Win32 DPI scale and pixel-at-pointer queries, foreground-layout-aware `SendInput` keyboard/text plus clipboard paste, complete pointer input, and Win32 window title/PID/handle/geometry/state/control operations with explicit errors |
@@ -95,9 +95,11 @@ group.
 [Runtime Compatibility Matrix v1](docs/compatibility/runtime-v1.md) splits each
 bounded scope into `supported` or `implemented / evidence pending` and maps
 every supported row to exact release checks. In particular, permission-granted
-macOS capture/input/window operations are not in the RC-supported scope until
+macOS capture/input/window operations are outside the stable supported scope.
+Their promotion is tracked by the externally blocked
 [LAB-69](https://linear.app/riotbox/issue/LAB-69/add-permission-granted-self-owned-macos-runtime-evidence)
-provides sanitized evidence on a self-owned remote desktop.
+and requires sanitized evidence from an isolated permission-granted runtime;
+LAB-69 does not block the stable release.
 
 Wayland compositors intentionally restrict global automation. GNOME and KDE can
 use consent-aware Screenshot and RemoteDesktop portal paths. The explicit
@@ -119,8 +121,8 @@ Accessibility preflight: if
 access is missing, they return/report `ErrPermissionDenied` with the relevant
 System Settings location. RobotGo never opens the consent dialog implicitly.
 The APIs described below are implemented and remain available, but operations
-that require an Accessibility grant are not part of the RC-supported scope
-until their self-owned permission-granted evidence is blocking.
+that require an Accessibility grant are not part of the stable supported scope.
+Promotion requires the isolated runtime evidence tracked by LAB-69.
 
 Keyboard support includes key taps, combinations, ownership-checked persistent
 key states, optional process targeting, exact UTF-16 text (including non-BMP

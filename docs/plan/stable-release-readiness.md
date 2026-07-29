@@ -61,6 +61,7 @@ than `2026-08-05T10:13:46Z`.
 | 2026-07-29T10:31Z | Public archive/checksum, six manifests, tag ref, tree, commit, and release run were independently streamed and verified | Pass |
 | 2026-07-29T10:32Z | Default proxy, `proxy.golang.org`, `GOPROXY=direct`, and `sum.golang.org` resolved the RC | Pass |
 | 2026-07-29T10:34Z | Linear RobotGo audit found no unresolved critical/high defect; LAB-69 remains a medium, explicitly unsupported-scope evidence task | Pass |
+| 2026-07-29T12:38Z | LAB-69 was classified externally blocked with four explicit reactivation paths; permission-granted macOS scopes remain evidence-pending and non-blocking for stable | Pass |
 
 GitHub Issues are disabled for this repository, so qualification findings are
 triaged in the Linear RobotGo project. LAB-68 stays open through the full
@@ -106,7 +107,10 @@ and requalified.
      row to exact release checks.
    - Permission-granted promotion is isolated in
      [LAB-69](https://linear.app/riotbox/issue/LAB-69/add-permission-granted-self-owned-macos-runtime-evidence)
-     and is not an RC blocker.
+     and is not an RC or stable-release blocker. LAB-69 is externally blocked
+     because RobotGo has no dedicated macOS runtime, renting one is not an
+     option, and hosted runners cannot currently provide repeatable
+     permission-granted Screen Recording and Accessibility evidence.
 
 ### Ready strengths
 
@@ -142,6 +146,10 @@ and requalified.
 - Additional Pure-Go backends beyond the supported matrix.
 - Permission-granted native and Pure-Go macOS capture/input/window operations,
   which remain explicitly evidence-pending under LAB-69 rather than supported.
+  Resume promotion only when a dedicated project test Mac, a trusted isolated
+  maintainer/community fixture, donated or sponsored isolated capacity, or
+  official reproducible permission-granted GitHub-hosted macOS support becomes
+  available.
 - New agent transports: `robotgo-mcp` remains a local stdio adapter, not a
   network or multi-tenant security boundary.
 

@@ -301,8 +301,8 @@ GitHub-hosted macOS runs this preflight without controlling another
 application. Permission-granted activation, minimize/restore, and close remain
 implemented / evidence pending until
 [LAB-69](https://linear.app/riotbox/issue/LAB-69/add-permission-granted-self-owned-macos-runtime-evidence)
-provides a self-owned remote macOS test-window harness. Tests must not mutate an
-unrelated developer window.
+is reactivated and provides an isolated macOS test-window harness. Tests must
+not mutate an unrelated developer window.
 
 Pure-Go `CloseWindowKill` tests use fake window/process backends. They cover
 PID, handle and active-window resolution, graceful exit, the bounded force-kill
@@ -328,9 +328,12 @@ CGO_ENABLED=0 ROBOTGO_REQUIRE_DARWIN_INPUT_INTEGRATION=1 \
 
 These integration tests are not part of the release gate because GitHub-hosted
 macOS does not grant Accessibility control to repository test binaries. Run
-them only on isolated, self-owned infrastructure; they must never target a
-developer desktop. The non-prompting symbol and permission contract remains
-blocking on the hosted runner.
+them only after a LAB-69 reactivation condition provides an isolated
+project-owned, trusted maintainer/community, donated/sponsored, or officially
+permission-capable GitHub-hosted environment. They must use synthetic fixtures,
+must never target a developer desktop or unrelated content, and must clean up
+all artifacts and restored state on every exit path. The non-prompting symbol
+and permission contract remains blocking on the current hosted runner.
 
 Linux CI additionally runs the non-CGO X11 input backend against a real Xvfb
 server with XTEST 2.2 or newer and `us,de` keyboard layouts. A separate X11

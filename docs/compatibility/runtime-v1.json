@@ -162,8 +162,8 @@
         "api-compat",
         "test (macOS-latest)"
       ],
-      "limits": "Implemented APIs remain available with explicit permission diagnostics, but this scope is not an RC support claim.",
-      "missingEvidence": "repeatable permission-granted execution against a self-owned remote macOS desktop and window",
+      "limits": "Implemented APIs remain available with explicit permission diagnostics, but this scope is not an RC or stable support claim.",
+      "missingEvidence": "repeatable permission-granted execution against an isolated macOS desktop and fixture after a LAB-69 reactivation condition becomes available",
       "followUp": "https://linear.app/riotbox/issue/LAB-69/add-permission-granted-self-owned-macos-runtime-evidence"
     },
     {
@@ -188,8 +188,8 @@
         "api-compat",
         "nocgo (macOS-latest)"
       ],
-      "limits": "Hermetic implementation and denial contracts are blocking, but permission-granted behavior is not an RC support claim.",
-      "missingEvidence": "repeatable permission-granted execution against a self-owned remote macOS desktop and window",
+      "limits": "Hermetic implementation and denial contracts are blocking, but permission-granted behavior is not an RC or stable support claim.",
+      "missingEvidence": "repeatable permission-granted execution against an isolated macOS desktop and fixture after a LAB-69 reactivation condition becomes available",
       "followUp": "https://linear.app/riotbox/issue/LAB-69/add-permission-granted-self-owned-macos-runtime-evidence"
     },
     {

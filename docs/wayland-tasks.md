@@ -29,9 +29,10 @@ Current implementation baseline:
   minimized-state query, and close. Permission is preflighted without prompting;
   maximize/topmost remain explicitly unsupported.
 - These permission-dependent macOS operations are implemented but not part of
-  the RC-supported scope until LAB-69 provides self-owned, permission-granted
-  remote runtime evidence. Consent-free display/scale and permission/error
-  contracts remain blocking.
+  the stable supported scope. LAB-69 is externally blocked until an isolated,
+  permission-granted runtime becomes available; it does not block the stable
+  release. Consent-free display/scale and permission/error contracts remain
+  blocking.
 - Linux/X11 non-CGO builds provide a Pure-Go XGB/XTEST keyboard and pointer
   backend with live readiness probes, text/Unicode, smooth movement/drag,
   scrolling, pointer location, explicit state errors, and deterministic
