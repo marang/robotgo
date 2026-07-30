@@ -1065,9 +1065,11 @@ reset that unit's failed/start-limit state under a three-second hard bound and
 queue exactly one restart under a three-second hard bound. The helper then
 waits at most 30 seconds for the user unit and process to become ready, emitting
 only `ROBOTGO_SESSION_RECOVERY=desktop-shell`. A second failure is terminal,
-and the final stability probes still reject a crash loop. Concurrent waiters share
-attempt, completion, and failure markers; each begins its full 30-second settle
-phase only after the winning bounded recovery completes. A terminal failure
+and both winner and observers continuously revalidate the base session during
+settlement. The final stability probes still reject a crash loop. Concurrent
+waiters share attempt, completion, and failure markers. Each begins its full
+30-second settle phase only after the winning bounded recovery completes. A
+terminal failure
 during stability repeats the portal phases before stability can pass. Recovery
 and readiness claims are serialized under one 15-second-bounded guest lock:
 a ready claim revalidates the complete contract inside the lock and prevents

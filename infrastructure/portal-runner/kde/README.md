@@ -25,11 +25,13 @@ within the current bounded phase. If the verified Plasma Shell user unit
 reaches terminal `failed`, the helper may reset its failed/start-limit state
 under a three-second hard bound, queue exactly one restart under a three-second
 hard bound, wait at most 30 seconds for the unit and process, and emit one
-allowlisted recovery marker. A second failure is terminal. Concurrent waiters
-distinguish attempt, completion, reset, queue, start, and generic failures, so
-every waiter receives the full post-restart settle budget. A recovery during
-final stability repeats both portal phases before stability can pass. Recovery
-and readiness claims share a 15-second-bounded guest lock. Every ready claim
+allowlisted recovery marker. Winner and observers continuously revalidate the
+base session throughout settlement. A second failure is terminal. Concurrent
+waiters distinguish attempt, completion, reset, queue, start, and generic
+failures, so every waiter receives the full post-restart settle budget. A
+recovery during final stability repeats both portal phases before stability can
+pass. Recovery and readiness claims share a 15-second-bounded guest lock. Every
+ready claim
 revalidates the complete contract inside that lock, preventing a restart from
 racing a successful readiness decision. A failed locked revalidation is
 classified without resetting the phase budgets. Raw journals, process

@@ -9,10 +9,11 @@
   and expose only explicitly allowlisted failure stages outside the disposable
   guest. A terminal Plasma Shell failure gets one bounded failed/start-limit
   reset and at most one bounded, non-blocking user-unit restart followed by an
-  explicit bounded readiness wait; reset, queue, and start failures remain
-  distinguishable. Recovery and ready claims are serialized with in-lock
-  contract revalidation without unbounded phase resets, and a second failure
-  remains terminal. KDE receives its own bounded timeout hierarchy while GNOME
+  explicit bounded readiness wait that continuously revalidates the base
+  session; reset, queue, and start failures remain distinguishable. Recovery
+  and ready claims are serialized with in-lock contract revalidation without
+  unbounded phase resets, and a second failure remains terminal. KDE receives
+  its own bounded timeout hierarchy while GNOME
   retains its shorter guard and maps its legacy `unknown` terminal marker to
   `session-unstable`. This prevents slow early startup from consuming the
   shell's budget or exposing private diagnostics.

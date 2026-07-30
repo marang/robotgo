@@ -119,6 +119,7 @@ release_session_decision() {
 wait_for_shell_recovery() {
   local deadline=$((SECONDS + 45))
   while ((SECONDS < deadline)); do
+    require_base_ready
     if [[ -d "$shell_recovery_reset_failed" ]]; then
       fail_stage desktop-shell-reset-failed
     fi
@@ -151,6 +152,7 @@ fail_shell_recovery() {
 wait_for_restarted_shell() {
   local deadline=$((SECONDS + 30))
   while ((SECONDS < deadline)); do
+    require_base_ready
     if shell_unit_active &&
       pgrep -u robotgo -x plasmashell >/dev/null 2>&1; then
       return 0

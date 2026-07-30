@@ -575,7 +575,14 @@ func TestRepositoryKDEGuestActivatesPortalFrontendAndBackend(t *testing.T) {
 		"timeout --kill-after=1s 2s systemctl --user is-failed",
 		"local deadline=$((SECONDS + 45))",
 		"timeout --kill-after=1s 2s systemctl --user reset-failed",
-		"wait_for_restarted_shell",
+		"wait_for_shell_recovery() {\n" +
+			"  local deadline=$((SECONDS + 45))\n" +
+			"  while ((SECONDS < deadline)); do\n" +
+			"    require_base_ready",
+		"wait_for_restarted_shell() {\n" +
+			"  local deadline=$((SECONDS + 30))\n" +
+			"  while ((SECONDS < deadline)); do\n" +
+			"    require_base_ready",
 		"if ((claim_status != 0)); then",
 		"continue 2",
 		"timeout --kill-after=1s 2s systemctl --user --no-block restart",
