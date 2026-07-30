@@ -294,6 +294,7 @@ func (manifest Manifest) Validate() error {
 		requiredPackages = append(requiredPackages,
 			"kwin-wayland",
 			"libkf5screen-bin",
+			"plasma-desktop-data",
 			"plasma-workspace",
 			"plasma-workspace-wayland",
 			"sddm",

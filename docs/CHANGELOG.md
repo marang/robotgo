@@ -23,6 +23,11 @@
   retains its shorter guard and maps its legacy `unknown` terminal marker to
   `session-unstable`. This prevents slow early startup from consuming the
   shell's budget or exposing private diagnostics.
+- Restore the standalone `plasma-desktop-data` runtime dependency and validate
+  its default desktop-shell metadata in the minimized KDE image. The broad
+  `plasma-desktop` package remains forbidden, but a failed Plasma Shell restart
+  can no longer be caused by omitting its required `org.kde.plasma.desktop`
+  shell package.
 - Made hosted GNOME/KDE image-install stalls fail earlier and diagnostically:
   all three portal workflows now share one tested outer timeout wrapper, guest
   installation has a shorter phase deadline, and failures expose only a

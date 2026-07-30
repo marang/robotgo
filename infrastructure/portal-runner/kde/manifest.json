@@ -66,6 +66,7 @@
     "openssh-server",
     "pipewire",
     "pkg-config",
+    "plasma-desktop-data",
     "plasma-workspace",
     "plasma-workspace-wayland",
     "python3-dbus",

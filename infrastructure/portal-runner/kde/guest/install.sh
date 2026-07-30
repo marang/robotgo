@@ -109,10 +109,12 @@ apt-get "${apt_options[@]}" install -y --no-install-recommends "$kernel_archive"
 rm -f -- "$kernel_archive"
 trap - EXIT
 test "$(dpkg-query -W -f='${db:Status-Status}' plasma-workspace)" = installed
+test "$(dpkg-query -W -f='${db:Status-Status}' plasma-desktop-data)" = installed
 test "$(uname -r)" = "$kernel_release"
 test "$(dpkg-query -W -f='${db:Status-Status}' \
   "linux-modules-extra-$kernel_release")" = installed
 test -f /usr/share/wayland-sessions/plasmawayland.desktop
+test -f /usr/share/plasma/shells/org.kde.plasma.desktop/metadata.json
 test -f /usr/lib/systemd/user/plasma-plasmashell.service
 test -x /usr/bin/flock
 test -x /usr/bin/kwin_wayland

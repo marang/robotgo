@@ -11,6 +11,11 @@ Plasma Wayland session with `xdg-desktop-portal-kde`, transfers only
 `git archive` output for the exact clean commit, runs one portal test cell, and
 destroys all transient guest state afterward.
 
+The minimized package contract includes the standalone
+`plasma-desktop-data` runtime payload that provides Plasma's default desktop
+shell package, while continuing to exclude the broad `plasma-desktop`
+metapackage and its unrelated desktop applications.
+
 The guest receives no checkout credential, Actions token, `.git` directory, or
 untracked host file. Captured frames, input data, portal restore tokens, SSH
 keys, QMP sockets, and raw logs never enter the immutable image or uploaded

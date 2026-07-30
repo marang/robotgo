@@ -634,6 +634,8 @@ func TestRepositoryKDEGuestActivatesPortalFrontendAndBackend(t *testing.T) {
 	}
 	for _, required := range []string{
 		"dpkg-query -W -f='${db:Status-Status}' plasma-workspace",
+		"dpkg-query -W -f='${db:Status-Status}' plasma-desktop-data",
+		"/usr/share/plasma/shells/org.kde.plasma.desktop/metadata.json",
 		"test -f /usr/lib/systemd/user/plasma-plasmashell.service",
 		"test -x /usr/bin/flock",
 		"test -x /usr/bin/plasmashell",
