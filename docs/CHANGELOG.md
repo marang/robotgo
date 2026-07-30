@@ -14,7 +14,9 @@
   and ready claims are serialized with in-lock contract revalidation without
   unbounded phase resets. Volatile shared outcome markers live outside the
   per-user runtime directory so its disappearance remains diagnosable, and a
-  second failure remains terminal. KDE receives its own bounded timeout
+  second failure remains terminal. Failed recovery now exposes only an
+  allowlisted systemd result category and bounded numeric exit or signal
+  status; raw unit output remains private. KDE receives its own bounded timeout
   hierarchy while GNOME
   retains its shorter guard and maps its legacy `unknown` terminal marker to
   `session-unstable`. This prevents slow early startup from consuming the

@@ -26,6 +26,7 @@ shell_recovery_failed=$session_state_root/shell-recovery-failed
 shell_recovery_reset_failed=$session_state_root/shell-reset-failed
 shell_recovery_queue_failed=$session_state_root/shell-queue-failed
 shell_recovery_start_failed=$session_state_root/shell-start-failed
+shell_start_result_prefix=$session_state_root/shell-start-result-
 recovery_display_manager_failed=$session_state_root/recovery-display-manager
 recovery_runtime_directory_failed=$session_state_root/recovery-runtime-directory
 recovery_user_bus_failed=$session_state_root/recovery-user-bus
@@ -157,6 +158,7 @@ require_recovery_base_ready() {
 }
 
 wait_for_shell_recovery() {
+  local stage
   local deadline=$((SECONDS + 45))
   while ((SECONDS < deadline)); do
     require_recovery_base_ready
@@ -165,6 +167,9 @@ wait_for_shell_recovery() {
     fi
     if [[ -d "$shell_recovery_queue_failed" ]]; then
       fail_stage desktop-shell-queue-failed
+    fi
+    if stage=$(shared_shell_start_failure_stage); then
+      fail_stage "$stage"
     fi
     if [[ -d "$shell_recovery_start_failed" ]]; then
       fail_stage desktop-shell-start-failed
@@ -178,6 +183,92 @@ wait_for_shell_recovery() {
     sleep 1
   done
   fail_stage desktop-shell-recovery-failed
+}
+
+valid_shell_status() {
+  [[ $1 =~ ^[0-9]{1,3}$ ]] && ((10#$1 <= 255))
+}
+
+shell_start_failure_stage() {
+  local result
+  local status
+  result=$(timeout --kill-after=1s 2s systemctl --user show \
+    --property=Result --value plasma-plasmashell.service 2>/dev/null) ||
+    return 1
+  case "$result" in
+    exit-code)
+      status=$(timeout --kill-after=1s 2s systemctl --user show \
+        --property=ExecMainStatus --value \
+        plasma-plasmashell.service 2>/dev/null) || return 1
+      valid_shell_status "$status" || return 1
+      printf 'desktop-shell-start-exit-%d\n' "$((10#$status))"
+      ;;
+    signal)
+      status=$(timeout --kill-after=1s 2s systemctl --user show \
+        --property=ExecMainStatus --value \
+        plasma-plasmashell.service 2>/dev/null) || return 1
+      valid_shell_status "$status" || return 1
+      printf 'desktop-shell-start-signal-%d\n' "$((10#$status))"
+      ;;
+    core-dump)
+      status=$(timeout --kill-after=1s 2s systemctl --user show \
+        --property=ExecMainStatus --value \
+        plasma-plasmashell.service 2>/dev/null) || return 1
+      valid_shell_status "$status" || return 1
+      printf 'desktop-shell-start-core-%d\n' "$((10#$status))"
+      ;;
+    timeout)
+      printf '%s\n' desktop-shell-start-timeout
+      ;;
+    start-limit-hit)
+      printf '%s\n' desktop-shell-start-limit
+      ;;
+    protocol)
+      printf '%s\n' desktop-shell-start-protocol
+      ;;
+    watchdog)
+      printf '%s\n' desktop-shell-start-watchdog
+      ;;
+    oom-kill)
+      printf '%s\n' desktop-shell-start-oom
+      ;;
+    resources)
+      printf '%s\n' desktop-shell-start-resources
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
+shared_shell_start_failure_stage() {
+  local marker
+  local stage
+  local status
+  for stage in \
+    desktop-shell-start-timeout \
+    desktop-shell-start-limit \
+    desktop-shell-start-protocol \
+    desktop-shell-start-watchdog \
+    desktop-shell-start-oom \
+    desktop-shell-start-resources; do
+    if [[ -d "$shell_start_result_prefix$stage" ]]; then
+      printf '%s\n' "$stage"
+      return 0
+    fi
+  done
+  for marker in \
+    "$shell_start_result_prefix"desktop-shell-start-exit-* \
+    "$shell_start_result_prefix"desktop-shell-start-signal-* \
+    "$shell_start_result_prefix"desktop-shell-start-core-*; do
+    [[ -d "$marker" ]] || continue
+    stage=${marker#"$shell_start_result_prefix"}
+    status=${stage##*-}
+    valid_shell_status "$status" || continue
+    printf '%s\n' "$stage"
+    return 0
+  done
+  return 1
 }
 
 fail_shell_recovery() {
@@ -206,6 +297,7 @@ wait_for_restarted_shell() {
 }
 
 recover_shell_once() {
+  local stage
   if ((shell_recovery_observed)); then
     return 1
   fi
@@ -245,6 +337,9 @@ recover_shell_once() {
       "$shell_recovery_queue_failed" desktop-shell-queue-failed
   fi
   if ! wait_for_restarted_shell; then
+    if stage=$(shell_start_failure_stage); then
+      fail_shell_recovery "$shell_start_result_prefix$stage" "$stage"
+    fi
     fail_shell_recovery \
       "$shell_recovery_start_failed" desktop-shell-start-failed
   fi

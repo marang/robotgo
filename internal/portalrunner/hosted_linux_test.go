@@ -1111,6 +1111,31 @@ func TestHostedSessionFailureReportsOnlyAllowlistedStage(t *testing.T) {
 		}
 	}
 
+	for _, stage := range []string{
+		"desktop-shell-start-exit-1",
+		"desktop-shell-start-signal-9",
+		"desktop-shell-start-core-11",
+		"desktop-shell-start-timeout",
+		"desktop-shell-start-limit",
+	} {
+		if got := readSessionFailureStage(
+			[]byte("private\nROBOTGO_SESSION_STAGE=" + stage + "\n"),
+		); got != stage {
+			t.Errorf("safe shell start stage = %q, want %q", got, stage)
+		}
+	}
+	for _, stage := range []string{
+		"desktop-shell-start-exit-256",
+		"desktop-shell-start-signal-999",
+		"desktop-shell-start-core-secret",
+	} {
+		if got := readSessionFailureStage(
+			[]byte("ROBOTGO_SESSION_STAGE=" + stage + "\n"),
+		); got != "" {
+			t.Errorf("unsafe shell start stage escaped as %q", got)
+		}
+	}
+
 	executor = &scriptedCommandExecutor{
 		outputs: []string{
 			"ROBOTGO_SESSION_STAGE=unknown\n",

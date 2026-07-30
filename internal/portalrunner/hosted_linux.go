@@ -103,6 +103,10 @@ var sessionFailureStagePattern = regexp.MustCompile(
 	`ROBOTGO_SESSION_STAGE=([a-z0-9-]{1,32})`,
 )
 
+var shellStartStatusStagePattern = regexp.MustCompile(
+	`^desktop-shell-start-(?:exit|signal|core)-([0-9]{1,3})$`,
+)
+
 var sessionRecoveryPattern = regexp.MustCompile(
 	`ROBOTGO_SESSION_RECOVERY=([a-z0-9-]{1,32})`,
 )
@@ -117,6 +121,12 @@ var sessionFailureStages = map[string]struct{}{
 	"desktop-shell-recovery-failed":    {},
 	"desktop-shell-reset-failed":       {},
 	"desktop-shell-start-failed":       {},
+	"desktop-shell-start-limit":        {},
+	"desktop-shell-start-oom":          {},
+	"desktop-shell-start-protocol":     {},
+	"desktop-shell-start-resources":    {},
+	"desktop-shell-start-timeout":      {},
+	"desktop-shell-start-watchdog":     {},
 	"desktop-shell-unstable":           {},
 	"display-manager":                  {},
 	"portal":                           {},
@@ -1021,7 +1031,15 @@ func readSessionFailureStage(data []byte) string {
 	if stage == "unknown" {
 		return "session-unstable"
 	}
-	if _, allowed := sessionFailureStages[stage]; !allowed {
+	if _, allowed := sessionFailureStages[stage]; allowed {
+		return stage
+	}
+	statusMatch := shellStartStatusStagePattern.FindStringSubmatch(stage)
+	if len(statusMatch) != 2 {
+		return ""
+	}
+	status, err := strconv.Atoi(statusMatch[1])
+	if err != nil || status > 255 {
 		return ""
 	}
 	return stage

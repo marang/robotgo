@@ -36,7 +36,10 @@ revalidates the complete contract inside that lock, preventing a restart from
 racing a successful readiness decision. A failed locked revalidation is
 classified without resetting the phase budgets. Raw journals, process
 arguments, environment values, and other session details remain inside the
-disposable guest. Claims and outcome markers use the mode-0700
+disposable guest. A failed shell restart publishes only an allowlisted systemd
+result category and, for an exit or signal, a numeric status from 0 through
+255. Free-form unit output never crosses the guest boundary. Claims and outcome
+markers use the mode-0700
 tmpfiles-managed `/run/robotgo-session-state`, not the user runtime directory,
 so runtime-directory failures remain publishable and all state disappears with
 the guest. Normal phase deadlines total 220 seconds; the latest possible

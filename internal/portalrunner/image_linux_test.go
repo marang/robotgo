@@ -562,6 +562,7 @@ func TestRepositoryKDEGuestActivatesPortalFrontendAndBackend(t *testing.T) {
 		"$session_state_root/shell-reset-failed",
 		"$session_state_root/shell-queue-failed",
 		"$session_state_root/shell-start-failed",
+		"$session_state_root/shell-start-result-",
 		"$session_state_root/recovery-display-manager",
 		"$session_state_root/recovery-runtime-directory",
 		"$session_state_root/recovery-user-bus",
@@ -583,6 +584,7 @@ func TestRepositoryKDEGuestActivatesPortalFrontendAndBackend(t *testing.T) {
 		"local deadline=$((SECONDS + 45))",
 		"timeout --kill-after=1s 2s systemctl --user reset-failed",
 		"wait_for_shell_recovery() {\n" +
+			"  local stage\n" +
 			"  local deadline=$((SECONDS + 45))\n" +
 			"  while ((SECONDS < deadline)); do\n" +
 			"    require_recovery_base_ready",
@@ -593,6 +595,19 @@ func TestRepositoryKDEGuestActivatesPortalFrontendAndBackend(t *testing.T) {
 		"if ((claim_status != 0)); then",
 		"continue 2",
 		"timeout --kill-after=1s 2s systemctl --user --no-block restart",
+		"--property=Result --value plasma-plasmashell.service",
+		"--property=ExecMainStatus --value",
+		"valid_shell_status",
+		"shared_shell_start_failure_stage",
+		"desktop-shell-start-exit-%d",
+		"desktop-shell-start-signal-%d",
+		"desktop-shell-start-core-%d",
+		"desktop-shell-start-timeout",
+		"desktop-shell-start-limit",
+		"desktop-shell-start-protocol",
+		"desktop-shell-start-watchdog",
+		"desktop-shell-start-oom",
+		"desktop-shell-start-resources",
 		"ROBOTGO_SESSION_RECOVERY=desktop-shell",
 		"desktop-shell-never-seen",
 		"desktop-shell-failed",
