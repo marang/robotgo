@@ -22,6 +22,9 @@ shell_recovery_reported=0
 shell_recovery_marker=/run/user/1100/robotgo-shell-recovery-attempted
 shell_recovery_complete=/run/user/1100/robotgo-shell-recovery-complete
 shell_recovery_failed=/run/user/1100/robotgo-shell-recovery-failed
+shell_recovery_reset_failed=/run/user/1100/robotgo-shell-reset-failed
+shell_recovery_queue_failed=/run/user/1100/robotgo-shell-queue-failed
+shell_recovery_start_failed=/run/user/1100/robotgo-shell-start-failed
 session_ready_marker=/run/user/1100/robotgo-session-ready
 session_decision_lock=/run/user/1100/robotgo-session-decision.lock
 session_decision_lock_open=0
@@ -114,17 +117,50 @@ release_session_decision() {
 }
 
 wait_for_shell_recovery() {
-  local deadline=$((SECONDS + 20))
+  local deadline=$((SECONDS + 45))
   while ((SECONDS < deadline)); do
-    if [[ -d "$shell_recovery_complete" ]]; then
-      return 0
+    if [[ -d "$shell_recovery_reset_failed" ]]; then
+      fail_stage desktop-shell-reset-failed
+    fi
+    if [[ -d "$shell_recovery_queue_failed" ]]; then
+      fail_stage desktop-shell-queue-failed
+    fi
+    if [[ -d "$shell_recovery_start_failed" ]]; then
+      fail_stage desktop-shell-start-failed
     fi
     if [[ -d "$shell_recovery_failed" ]]; then
       fail_stage desktop-shell-recovery-failed
     fi
+    if [[ -d "$shell_recovery_complete" ]]; then
+      return 0
+    fi
     sleep 1
   done
   fail_stage desktop-shell-recovery-failed
+}
+
+fail_shell_recovery() {
+  local marker=$1
+  local stage=$2
+  if ! mkdir -m 0700 "$marker" 2>/dev/null; then
+    mkdir -m 0700 "$shell_recovery_failed" 2>/dev/null || true
+  fi
+  fail_stage "$stage"
+}
+
+wait_for_restarted_shell() {
+  local deadline=$((SECONDS + 30))
+  while ((SECONDS < deadline)); do
+    if shell_unit_active &&
+      pgrep -u robotgo -x plasmashell >/dev/null 2>&1; then
+      return 0
+    fi
+    if shell_unit_failed; then
+      return 1
+    fi
+    sleep 1
+  done
+  return 1
 }
 
 recover_shell_once() {
@@ -158,13 +194,17 @@ recover_shell_once() {
   release_session_decision
   if ! timeout --kill-after=1s 2s systemctl --user reset-failed \
     plasma-plasmashell.service >/dev/null 2>&1; then
-    mkdir -m 0700 "$shell_recovery_failed" 2>/dev/null || true
-    fail_stage desktop-shell-recovery-failed
+    fail_shell_recovery \
+      "$shell_recovery_reset_failed" desktop-shell-reset-failed
   fi
-  if ! timeout --kill-after=1s 9s systemctl --user restart \
+  if ! timeout --kill-after=1s 2s systemctl --user --no-block restart \
     plasma-plasmashell.service >/dev/null 2>&1; then
-    mkdir -m 0700 "$shell_recovery_failed" 2>/dev/null || true
-    fail_stage desktop-shell-recovery-failed
+    fail_shell_recovery \
+      "$shell_recovery_queue_failed" desktop-shell-queue-failed
+  fi
+  if ! wait_for_restarted_shell; then
+    fail_shell_recovery \
+      "$shell_recovery_start_failed" desktop-shell-start-failed
   fi
   if ! mkdir -m 0700 "$shell_recovery_complete" 2>/dev/null; then
     mkdir -m 0700 "$shell_recovery_failed" 2>/dev/null || true

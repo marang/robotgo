@@ -1221,7 +1221,7 @@ func TestHostedSessionReadinessCommandsAreHardBounded(t *testing.T) {
 		},
 		"KDE": {
 			command:  kdeSessionReadinessCommand,
-			deadline: "340s",
+			deadline: "380s",
 		},
 	} {
 		t.Run(name, func(t *testing.T) {
