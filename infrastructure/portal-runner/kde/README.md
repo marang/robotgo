@@ -22,8 +22,9 @@ budgets, so a slow prerequisite cannot silently consume the shell's wait time.
 The runner starts only after the complete contract remains ready for three
 consecutive probes. A naturally managed shell or portal bounce may settle only
 within the current bounded phase. If the verified Plasma Shell user unit
-reaches terminal `failed`, the helper may restart that unit exactly once under
-a 10-second bound and emits one allowlisted recovery marker. A second failure
+reaches terminal `failed`, the helper may reset its failed/start-limit state
+under a three-second hard bound, restart the unit exactly once under a
+10-second hard bound, and emit one allowlisted recovery marker. A second failure
 is terminal. Concurrent waiters distinguish attempt, completion, and failure,
 so every waiter receives the full post-restart settle budget. A recovery during
 final stability repeats both portal phases before stability can pass. Recovery
@@ -33,9 +34,10 @@ racing a successful readiness decision. A failed locked revalidation is
 classified without resetting the phase budgets. Raw journals, process
 arguments, environment values, and other session details remain inside the
 disposable guest. Normal phase deadlines total 220 seconds; the latest possible
-recovery adds at most 80 seconds for restart plus a complete portal/stability
-cycle. The host guard sends `TERM` after 340 seconds and enforces `KILL` five
-seconds later, capping both paths plus probe overhead beneath the 360-second
+recovery adds at most 83 seconds for reset, restart, and a complete
+portal/stability cycle. The host guard sends `TERM` after 340 seconds and
+enforces `KILL` five seconds later, capping both paths plus probe overhead
+beneath the 360-second
 systemd startup limit.
 
 ## Hosted proof

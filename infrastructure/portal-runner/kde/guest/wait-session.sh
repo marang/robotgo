@@ -114,7 +114,7 @@ release_session_decision() {
 }
 
 wait_for_shell_recovery() {
-  local deadline=$((SECONDS + 15))
+  local deadline=$((SECONDS + 20))
   while ((SECONDS < deadline)); do
     if [[ -d "$shell_recovery_complete" ]]; then
       return 0
@@ -156,6 +156,11 @@ recover_shell_once() {
   fi
   shell_recovery_observed=1
   release_session_decision
+  if ! timeout --kill-after=1s 2s systemctl --user reset-failed \
+    plasma-plasmashell.service >/dev/null 2>&1; then
+    mkdir -m 0700 "$shell_recovery_failed" 2>/dev/null || true
+    fail_stage desktop-shell-recovery-failed
+  fi
   if ! timeout --kill-after=1s 9s systemctl --user restart \
     plasma-plasmashell.service >/dev/null 2>&1; then
     mkdir -m 0700 "$shell_recovery_failed" 2>/dev/null || true

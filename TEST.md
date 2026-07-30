@@ -1061,22 +1061,23 @@ only an allowlisted stage such as `desktop-shell-never-seen` or
 other guest data do not cross SSH. A naturally managed Plasma Shell or portal
 frontend bounce may settle only inside the current bounded phase. If the
 verified `plasma-plasmashell.service` reaches terminal `failed`, RobotGo may
-restart that unit exactly once under a 10-second command bound and emits only
+reset that unit's failed/start-limit state under a three-second hard bound and
+restart it exactly once under a 10-second hard bound, emitting only
 `ROBOTGO_SESSION_RECOVERY=desktop-shell`. A second failure is terminal, and the
 final stability probes still reject a crash loop. Concurrent waiters share
 attempt, completion, and failure markers; each begins its full 30-second settle
-phase only after the winning 10-second restart completes. A terminal failure
+phase only after the winning bounded recovery completes. A terminal failure
 during stability repeats the portal phases before stability can pass. Recovery
 and readiness claims are serialized under one 15-second-bounded guest lock:
 a ready claim revalidates the complete contract inside the lock and prevents
 any later restart, while a recovery claim forces every waiter to observe
 completion and revalidate. A failed locked revalidation falls through to the
 allowlisted terminal-stage classifier instead of resetting the phase budgets.
-The normal KDE phase deadlines
-total 220 seconds; the one-recovery path adds at most the 10-second restart plus
-a fresh 30-second portal frontend, 30-second backend, and 10-second stability
-cycle. The KDE host guard sends `TERM` after 340 seconds and enforces `KILL`
-five seconds later, including bounded probe overhead beneath the 360-second
+The normal KDE phase deadlines total 220 seconds; the one-recovery path adds at
+most the three-second reset, 10-second restart, fresh 30-second portal frontend,
+30-second backend, and 10-second stability cycle. The KDE host guard sends
+`TERM` after 340 seconds and enforces `KILL` five seconds later, including
+bounded probe overhead beneath the 360-second
 systemd runner bound. GNOME retains its shorter 130-second deadline with the
 same five-second kill-after beneath its 150-second systemd bound.
 

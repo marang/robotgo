@@ -570,7 +570,8 @@ func TestRepositoryKDEGuestActivatesPortalFrontendAndBackend(t *testing.T) {
 			"    release_session_decision\n" +
 			"    return 0",
 		"timeout --kill-after=1s 2s systemctl --user is-failed",
-		"wait_for_shell_recovery",
+		"local deadline=$((SECONDS + 20))",
+		"timeout --kill-after=1s 2s systemctl --user reset-failed",
 		"if ((claim_status != 0)); then",
 		"continue 2",
 		"timeout --kill-after=1s 9s systemctl --user restart",
