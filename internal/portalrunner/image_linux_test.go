@@ -555,14 +555,21 @@ func TestRepositoryKDEGuestActivatesPortalFrontendAndBackend(t *testing.T) {
 		"fail_shell_stage",
 		"recover_shell_once",
 		"report_shell_recovery",
-		"/run/user/1100/robotgo-shell-recovery-attempted",
-		"/run/user/1100/robotgo-shell-recovery-complete",
-		"/run/user/1100/robotgo-shell-recovery-failed",
-		"/run/user/1100/robotgo-shell-reset-failed",
-		"/run/user/1100/robotgo-shell-queue-failed",
-		"/run/user/1100/robotgo-shell-start-failed",
-		"/run/user/1100/robotgo-session-ready",
-		"/run/user/1100/robotgo-session-decision.lock",
+		"session_state_root=/run/robotgo-session-state",
+		"$session_state_root/shell-recovery-attempted",
+		"$session_state_root/shell-recovery-complete",
+		"$session_state_root/shell-recovery-failed",
+		"$session_state_root/shell-reset-failed",
+		"$session_state_root/shell-queue-failed",
+		"$session_state_root/shell-start-failed",
+		"$session_state_root/recovery-display-manager",
+		"$session_state_root/recovery-runtime-directory",
+		"$session_state_root/recovery-user-bus",
+		"$session_state_root/recovery-wayland",
+		"$session_state_root/recovery-compositor",
+		"$session_state_root/recovery-session",
+		"$session_state_root/session-ready",
+		"$session_state_root/session-decision.lock",
 		"mkdir -m 0700 \"$shell_recovery_marker\"",
 		"flock --exclusive --wait 15 9",
 		"claim_session_ready",
@@ -578,11 +585,11 @@ func TestRepositoryKDEGuestActivatesPortalFrontendAndBackend(t *testing.T) {
 		"wait_for_shell_recovery() {\n" +
 			"  local deadline=$((SECONDS + 45))\n" +
 			"  while ((SECONDS < deadline)); do\n" +
-			"    require_base_ready",
+			"    require_recovery_base_ready",
 		"wait_for_restarted_shell() {\n" +
 			"  local deadline=$((SECONDS + 30))\n" +
 			"  while ((SECONDS < deadline)); do\n" +
-			"    require_base_ready",
+			"    require_recovery_base_ready",
 		"if ((claim_status != 0)); then",
 		"continue 2",
 		"timeout --kill-after=1s 2s systemctl --user --no-block restart",
@@ -615,6 +622,9 @@ func TestRepositoryKDEGuestActivatesPortalFrontendAndBackend(t *testing.T) {
 		"test -f /usr/lib/systemd/user/plasma-plasmashell.service",
 		"test -x /usr/bin/flock",
 		"test -x /usr/bin/plasmashell",
+		"d /run/robotgo-session-state 0700 robotgo robotgo -",
+		"systemd-tmpfiles --create " +
+			"/etc/tmpfiles.d/robotgo-session-state.conf",
 		"TimeoutStartSec=400",
 		"/usr/local/libexec/robotgo-runner-locate-screencast",
 		"/usr/local/libexec/robotgo-runner-report-screencast-geometry",

@@ -36,7 +36,10 @@ revalidates the complete contract inside that lock, preventing a restart from
 racing a successful readiness decision. A failed locked revalidation is
 classified without resetting the phase budgets. Raw journals, process
 arguments, environment values, and other session details remain inside the
-disposable guest. Normal phase deadlines total 220 seconds; the latest possible
+disposable guest. Claims and outcome markers use the mode-0700
+tmpfiles-managed `/run/robotgo-session-state`, not the user runtime directory,
+so runtime-directory failures remain publishable and all state disappears with
+the guest. Normal phase deadlines total 220 seconds; the latest possible
 recovery adds at most 106 seconds for reset, restart queue, shell settlement,
 and a complete portal/stability cycle. The host guard sends `TERM` after 380
 seconds and enforces `KILL` five seconds later, capping both paths plus probe

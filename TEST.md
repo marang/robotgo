@@ -1077,9 +1077,12 @@ any later restart, while a recovery claim forces every waiter to observe
 completion and revalidate. A failed locked revalidation falls through to the
 allowlisted terminal-stage classifier instead of resetting the phase budgets.
 Reset, queue, and start failures receive distinct allowlisted stages shared by
-all waiters. The normal KDE phase deadlines total 220 seconds; the one-recovery
-path adds at most the three-second reset, three-second restart queue, 30-second
-shell settle, fresh 30-second portal frontend, 30-second backend, and 10-second
+all waiters. Claims and outcomes live only in the mode-0700 tmpfiles-managed
+`/run/robotgo-session-state`, outside the per-user runtime directory, so even a
+runtime-directory failure remains publishable and the state vanishes with the
+guest. The normal KDE phase deadlines total 220 seconds; the one-recovery path
+adds at most the three-second reset, three-second restart queue, 30-second shell
+settle, fresh 30-second portal frontend, 30-second backend, and 10-second
 stability cycle. The KDE host guard sends `TERM` after 380 seconds and enforces
 `KILL` five seconds later, including bounded probe overhead beneath the
 400-second systemd runner bound. GNOME retains its shorter 130-second deadline

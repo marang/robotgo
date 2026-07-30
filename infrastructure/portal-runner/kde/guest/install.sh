@@ -166,6 +166,11 @@ install -m 0755 "$(dirname "$0")/configure-egress.sh" \
   /usr/local/sbin/robotgo-runner-configure-egress
 install -m 0755 "$(dirname "$0")/register.sh" \
   /usr/local/sbin/robotgo-runner-register
+cat >/etc/tmpfiles.d/robotgo-session-state.conf <<'EOF'
+d /run/robotgo-session-state 0700 robotgo robotgo -
+EOF
+systemd-tmpfiles --create /etc/tmpfiles.d/robotgo-session-state.conf
+test "$(stat -c '%U:%G:%a' /run/robotgo-session-state)" = robotgo:robotgo:700
 cat >/usr/local/libexec/robotgo-runner-job-started-hook.sh <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail

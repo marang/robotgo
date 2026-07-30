@@ -12,8 +12,10 @@
   explicit bounded readiness wait that continuously revalidates the base
   session; reset, queue, and start failures remain distinguishable. Recovery
   and ready claims are serialized with in-lock contract revalidation without
-  unbounded phase resets, and a second failure remains terminal. KDE receives
-  its own bounded timeout hierarchy while GNOME
+  unbounded phase resets. Volatile shared outcome markers live outside the
+  per-user runtime directory so its disappearance remains diagnosable, and a
+  second failure remains terminal. KDE receives its own bounded timeout
+  hierarchy while GNOME
   retains its shorter guard and maps its legacy `unknown` terminal marker to
   `session-unstable`. This prevents slow early startup from consuming the
   shell's budget or exposing private diagnostics.

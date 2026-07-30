@@ -19,14 +19,21 @@ fail_stage() {
 
 shell_recovery_observed=0
 shell_recovery_reported=0
-shell_recovery_marker=/run/user/1100/robotgo-shell-recovery-attempted
-shell_recovery_complete=/run/user/1100/robotgo-shell-recovery-complete
-shell_recovery_failed=/run/user/1100/robotgo-shell-recovery-failed
-shell_recovery_reset_failed=/run/user/1100/robotgo-shell-reset-failed
-shell_recovery_queue_failed=/run/user/1100/robotgo-shell-queue-failed
-shell_recovery_start_failed=/run/user/1100/robotgo-shell-start-failed
-session_ready_marker=/run/user/1100/robotgo-session-ready
-session_decision_lock=/run/user/1100/robotgo-session-decision.lock
+session_state_root=/run/robotgo-session-state
+shell_recovery_marker=$session_state_root/shell-recovery-attempted
+shell_recovery_complete=$session_state_root/shell-recovery-complete
+shell_recovery_failed=$session_state_root/shell-recovery-failed
+shell_recovery_reset_failed=$session_state_root/shell-reset-failed
+shell_recovery_queue_failed=$session_state_root/shell-queue-failed
+shell_recovery_start_failed=$session_state_root/shell-start-failed
+recovery_display_manager_failed=$session_state_root/recovery-display-manager
+recovery_runtime_directory_failed=$session_state_root/recovery-runtime-directory
+recovery_user_bus_failed=$session_state_root/recovery-user-bus
+recovery_wayland_failed=$session_state_root/recovery-wayland
+recovery_compositor_failed=$session_state_root/recovery-compositor
+recovery_session_failed=$session_state_root/recovery-session
+session_ready_marker=$session_state_root/session-ready
+session_decision_lock=$session_state_root/session-decision.lock
 session_decision_lock_open=0
 
 display_manager_active() {
@@ -116,10 +123,43 @@ release_session_decision() {
     fail_stage session-decision-failed
 }
 
+require_recovery_base_ready() {
+  if [[ -d "$recovery_display_manager_failed" ]]; then
+    fail_stage display-manager
+  elif [[ -d "$recovery_runtime_directory_failed" ]]; then
+    fail_stage runtime-directory
+  elif [[ -d "$recovery_user_bus_failed" ]]; then
+    fail_stage user-bus
+  elif [[ -d "$recovery_wayland_failed" ]]; then
+    fail_stage wayland
+  elif [[ -d "$recovery_compositor_failed" ]]; then
+    fail_stage compositor
+  elif [[ -d "$recovery_session_failed" ]]; then
+    fail_stage session-unstable
+  fi
+  if base_ready; then
+    return 0
+  fi
+  if ! display_manager_active; then
+    fail_shell_recovery "$recovery_display_manager_failed" display-manager
+  elif [[ ! -d /run/user/1100 ]]; then
+    fail_shell_recovery \
+      "$recovery_runtime_directory_failed" runtime-directory
+  elif [[ ! -S /run/user/1100/bus ]]; then
+    fail_shell_recovery "$recovery_user_bus_failed" user-bus
+  elif [[ ! -S /run/user/1100/wayland-0 ]]; then
+    fail_shell_recovery "$recovery_wayland_failed" wayland
+  elif ! pgrep -u robotgo -x kwin_wayland >/dev/null 2>&1; then
+    fail_shell_recovery "$recovery_compositor_failed" compositor
+  else
+    fail_shell_recovery "$recovery_session_failed" session-unstable
+  fi
+}
+
 wait_for_shell_recovery() {
   local deadline=$((SECONDS + 45))
   while ((SECONDS < deadline)); do
-    require_base_ready
+    require_recovery_base_ready
     if [[ -d "$shell_recovery_reset_failed" ]]; then
       fail_stage desktop-shell-reset-failed
     fi
@@ -152,7 +192,7 @@ fail_shell_recovery() {
 wait_for_restarted_shell() {
   local deadline=$((SECONDS + 30))
   while ((SECONDS < deadline)); do
-    require_base_ready
+    require_recovery_base_ready
     if shell_unit_active &&
       pgrep -u robotgo -x plasmashell >/dev/null 2>&1; then
       return 0
@@ -240,6 +280,13 @@ claim_session_ready() {
   fi
   release_session_decision
 }
+
+if [[ ! -d "$session_state_root" ||
+      -L "$session_state_root" ||
+      ! -O "$session_state_root" ||
+      ! -w "$session_state_root" ]]; then
+  fail_stage session-decision-failed
+fi
 
 # Give each startup layer its own bounded budget. A single shared deadline made
 # a slow display-manager/compositor startup consume nearly all of the time
