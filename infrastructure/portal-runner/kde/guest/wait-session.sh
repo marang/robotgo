@@ -159,7 +159,11 @@ require_recovery_base_ready() {
 
 wait_for_shell_recovery() {
   local stage
-  local deadline=$((SECONDS + 45))
+  # The recovery winner may spend up to six additional seconds reading the
+  # strictly allowlisted Result and ExecMainStatus properties after its
+  # 30-second settlement window. Keep observers alive beyond all winner-side
+  # bounded work so they consume the same precise shared outcome.
+  local deadline=$((SECONDS + 60))
   while ((SECONDS < deadline)); do
     require_recovery_base_ready
     if [[ -d "$shell_recovery_reset_failed" ]]; then

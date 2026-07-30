@@ -26,7 +26,9 @@ reaches terminal `failed`, the helper may reset its failed/start-limit state
 under a three-second hard bound, queue exactly one restart under a three-second
 hard bound, wait at most 30 seconds for the unit and process, and emit one
 allowlisted recovery marker. Winner and observers continuously revalidate the
-base session throughout settlement. A second failure is terminal. Concurrent
+base session throughout settlement. Observers retain a 60-second guard that
+covers the winner's settlement and bounded result-property probes. A second
+failure is terminal. Concurrent
 waiters distinguish attempt, completion, reset, queue, start, and generic
 failures, so every waiter receives the full post-restart settle budget. A
 recovery during final stability repeats both portal phases before stability can
@@ -43,8 +45,9 @@ markers use the mode-0700
 tmpfiles-managed `/run/robotgo-session-state`, not the user runtime directory,
 so runtime-directory failures remain publishable and all state disappears with
 the guest. Normal phase deadlines total 220 seconds; the latest possible
-recovery adds at most 106 seconds for reset, restart queue, shell settlement,
-and a complete portal/stability cycle. The host guard sends `TERM` after 380
+recovery adds at most 112 seconds for reset, restart queue, shell settlement,
+safe result classification, and a complete portal/stability cycle. The host
+guard sends `TERM` after 380
 seconds and enforces `KILL` five seconds later, capping both paths plus probe
 overhead beneath the 400-second systemd startup limit.
 

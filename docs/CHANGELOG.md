@@ -16,7 +16,9 @@
   per-user runtime directory so its disappearance remains diagnosable, and a
   second failure remains terminal. Failed recovery now exposes only an
   allowlisted systemd result category and bounded numeric exit or signal
-  status; raw unit output remains private. KDE receives its own bounded timeout
+  status; raw unit output remains private, and recovery observers remain
+  bounded beyond those result probes so every waiter consumes the same precise
+  outcome. KDE receives its own bounded timeout
   hierarchy while GNOME
   retains its shorter guard and maps its legacy `unknown` terminal marker to
   `session-unstable`. This prevents slow early startup from consuming the
