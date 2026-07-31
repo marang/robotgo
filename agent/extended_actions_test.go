@@ -243,11 +243,12 @@ func TestScrollMovesToBoundedTargetAndEmitsExactEvents(t *testing.T) {
 		t.Fatalf("calls = %+v", calls)
 	}
 	if calls[0].operation != OperationMove || calls[0].x != 12 ||
-		calls[0].y != 23 || calls[0].displayID != 0 {
+		calls[0].y != 23 || calls[0].displayID != 0 || !calls[0].immediate {
 		t.Fatalf("target move = %+v", calls[0])
 	}
 	for _, call := range calls[1:] {
-		if call.operation != OperationScroll || call.deltaX != -2 || call.deltaY != 3 {
+		if call.operation != OperationScroll || call.deltaX != -2 ||
+			call.deltaY != 3 || !call.immediate {
 			t.Fatalf("scroll call = %+v", call)
 		}
 	}

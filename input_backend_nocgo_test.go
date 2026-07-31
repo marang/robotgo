@@ -172,6 +172,9 @@ func TestNonCGOInputDispatchUsesSelectedPlatformBackend(t *testing.T) {
 	if err := ScrollE(1, -2, 0); err != nil {
 		t.Fatalf("ScrollE: %v", err)
 	}
+	if err := ScrollImmediateE(1, -2); err != nil {
+		t.Fatalf("ScrollImmediateE: %v", err)
+	}
 	x, y, err := LocationE()
 	if err != nil || x != -12 || y != 34 {
 		t.Fatalf("LocationE = (%d,%d,%v), want (-12,34,nil)", x, y, err)
@@ -197,6 +200,7 @@ func TestNonCGOInputDispatchUsesSelectedPlatformBackend(t *testing.T) {
 		"drag:50:60:1:2",
 		"click:right:true",
 		"toggle:center:false",
+		"scroll:1:-2",
 		"scroll:1:-2",
 		"location",
 	}

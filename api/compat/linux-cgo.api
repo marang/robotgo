@@ -421,6 +421,7 @@ func ScreenCastCaptureStreams() ([]github.com/marang/robotgo/screen/portal.Scree
 func Scroll(int, int, ...int)
 func ScrollDir(int, ...interface{})
 func ScrollE(int, int, ...int) error
+func ScrollImmediateE(int, int) error
 func ScrollRelative(int, int, ...int)
 func ScrollSmooth(int, ...int)
 func SetActive(github.com/marang/robotgo.Handle)

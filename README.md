@@ -847,6 +847,8 @@ blocks further actions and retains the process-exclusive owner until `Close`
 successfully retries the release.
 Drag interpolation uses `MoveImmediateE`, so a legacy global `MouseSleep`
 setting cannot extend the policy-bounded button-hold schedule.
+Scroll positioning and events use `MoveImmediateE` and `ScrollImmediateE`, so
+the same setting cannot delay cooperative cancellation or session expiry.
 Chord key-down and key-up use `KeyToggleImmediate` for the same reason: a
 legacy global `KeySleep` setting cannot silently extend the bounded key hold.
 Direct callers of legacy RobotGo APIs remain outside this exclusivity.

@@ -59,6 +59,8 @@ indivisible. Drag, chord, and activation always require `confirmed: true`, in
 addition to the explicit MCP `mode: "execute"`.
 Drag interpolation uses the delay-free `MoveImmediateE` primitive, so the
 legacy global mouse delay cannot silently extend its bounded hold schedule.
+Scroll positioning and events use `MoveImmediateE` and `ScrollImmediateE`, so
+the same legacy delay cannot defer cooperative cancellation or session expiry.
 Chord key-down and key-up use the delay-free `KeyToggleImmediate` primitive,
 so the legacy global key delay cannot silently extend the bounded key hold.
 Target title checks use `GetTitleTargetE(target, isHandle)` so explicit process

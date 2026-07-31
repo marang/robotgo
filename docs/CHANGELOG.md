@@ -16,8 +16,8 @@
   trigger an immediate release and remain session-owned if cleanup fails.
   Explicit process identities use a separate title-query contract and no
   longer inherit the legacy handle-mode default, while existing `GetTitleE`
-  behavior remains compatible. Self-timed drag and chord primitives bypass
-  global mouse and key delays.
+  behavior remains compatible. Self-timed drag, scroll, and chord primitives
+  bypass global mouse and key delays.
   Partial multi-step outcomes are `unverified`; failed release taints the
   session and retains its exclusive owner until cleanup succeeds. Mutation
   capabilities now provide a stable unavailable, unsupported, or

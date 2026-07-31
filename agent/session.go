@@ -19,7 +19,7 @@ type inputDriver interface {
 	Move(x, y, displayID int) error
 	MoveImmediate(x, y, displayID int) error
 	Click(button MouseButton, double bool) error
-	Scroll(deltaX, deltaY int) error
+	ScrollImmediate(deltaX, deltaY int) error
 	ToggleMouse(button MouseButton, down bool) error
 	TypeText(text string) error
 	ToggleKeyImmediate(key string, modifiers []KeyModifier, targetPID int, down bool) error
@@ -43,8 +43,8 @@ func (robotGoDriver) MoveImmediate(x, y, displayID int) error {
 func (robotGoDriver) Click(button MouseButton, double bool) error {
 	return robotgo.ClickE(string(button), double)
 }
-func (robotGoDriver) Scroll(deltaX, deltaY int) error {
-	return robotgo.ScrollE(deltaX, deltaY)
+func (robotGoDriver) ScrollImmediate(deltaX, deltaY int) error {
+	return robotgo.ScrollImmediateE(deltaX, deltaY)
 }
 func (robotGoDriver) ToggleMouse(button MouseButton, down bool) error {
 	state := "down"

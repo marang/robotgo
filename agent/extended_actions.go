@@ -104,14 +104,14 @@ func (s *Session) executeScroll(ctx context.Context, action ScrollAction) error 
 	if err := s.executionError(ctx); err != nil {
 		return err
 	}
-	if err := s.driver.Move(target.X, target.Y, target.DisplayID); err != nil {
+	if err := s.driver.MoveImmediate(target.X, target.Y, target.DisplayID); err != nil {
 		return err
 	}
 	for event := uint32(0); event < action.Events; event++ {
 		if err := s.executionError(ctx); err != nil {
 			return errors.Join(errPartialAction, err)
 		}
-		if err := s.driver.Scroll(action.DeltaX, action.DeltaY); err != nil {
+		if err := s.driver.ScrollImmediate(action.DeltaX, action.DeltaY); err != nil {
 			return errors.Join(errPartialAction, err)
 		}
 	}

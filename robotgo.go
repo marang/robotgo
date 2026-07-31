@@ -2525,6 +2525,16 @@ func Scroll(x, y int, args ...int) {
 
 // ScrollE scrolls the mouse and reports backend availability errors.
 func ScrollE(x, y int, args ...int) error {
+	return scrollE(x, y, true, args...)
+}
+
+// ScrollImmediateE scrolls without applying a configured or per-call
+// post-event delay. It is intended for callers that provide bounded scheduling.
+func ScrollImmediateE(x, y int) error {
+	return scrollE(x, y, false)
+}
+
+func scrollE(x, y int, applyDelay bool, args ...int) error {
 	msDelay, validationErr := parseScrollDelay(args)
 	if validationErr != nil {
 		return validationErr
@@ -2540,12 +2550,17 @@ func ScrollE(x, y int, args ...int) error {
 		if shouldTryRemoteDesktopAfterNative(server, ready, nativeErr) {
 			used, err := tryRemoteDesktopScroll(x, y)
 			if used {
-				return finishRemoteDesktopMouseEvent(err, msDelay)
+				if applyDelay {
+					return finishRemoteDesktopMouseEvent(err, msDelay)
+				}
+				return err
 			}
 		}
 		return nativeErr
 	}
-	MilliSleep(currentMouseDelay() + msDelay)
+	if applyDelay {
+		MilliSleep(currentMouseDelay() + msDelay)
+	}
 	return nil
 }
 
