@@ -840,6 +840,8 @@ cancellation, timeout, disconnect, and close. An interrupted action that
 already injected input is `unverified`, not safely retryable. A cleanup failure
 blocks further actions and retains the process-exclusive owner until `Close`
 successfully retries the release.
+Drag interpolation uses `MoveImmediateE`, so a legacy global `MouseSleep`
+setting cannot extend the policy-bounded button-hold schedule.
 Direct callers of legacy RobotGo APIs remain outside this exclusivity.
 For pointer actions, `AllowedDisplayIDs` fails closed: the selected display
 must be allowed and every global target coordinate must fall within its live

@@ -17,6 +17,7 @@ import (
 type inputDriver interface {
 	DisplayBounds(displayID int) (displayBounds, error)
 	Move(x, y, displayID int) error
+	MoveImmediate(x, y, displayID int) error
 	Click(button MouseButton, double bool) error
 	Scroll(deltaX, deltaY int) error
 	ToggleMouse(button MouseButton, down bool) error
@@ -36,6 +37,9 @@ func (robotGoDriver) DisplayBounds(displayID int) (displayBounds, error) {
 	return displayBounds{x: x, y: y, width: width, height: height}, err
 }
 func (robotGoDriver) Move(x, y, displayID int) error { return robotgo.MoveE(x, y, displayID) }
+func (robotGoDriver) MoveImmediate(x, y, displayID int) error {
+	return robotgo.MoveImmediateE(x, y, displayID)
+}
 func (robotGoDriver) Click(button MouseButton, double bool) error {
 	return robotgo.ClickE(string(button), double)
 }
@@ -79,7 +83,14 @@ func (robotGoDriver) WindowTitle(target int, kind WindowTargetKind) (string, err
 		}
 		return robotgo.GetTitleE(target, 1)
 	}
-	return robotgo.GetTitleE(target)
+	if nativeMacOSHandleUnsupported() {
+		return robotgo.GetTitleE(target)
+	}
+	handle, err := robotgo.ResolveWindowHandleE(target)
+	if err != nil {
+		return "", err
+	}
+	return robotgo.GetTitleE(handle, 1)
 }
 func (robotGoDriver) ActivateWindow(target int, kind WindowTargetKind) error {
 	if kind == WindowTargetHandle {

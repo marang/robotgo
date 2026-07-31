@@ -130,7 +130,7 @@ func (s *Session) executeDrag(ctx context.Context, action DragAction) (returnErr
 	if err := s.executionError(ctx); err != nil {
 		return err
 	}
-	if err := s.driver.Move(start.X, start.Y, start.DisplayID); err != nil {
+	if err := s.driver.MoveImmediate(start.X, start.Y, start.DisplayID); err != nil {
 		return err
 	}
 	if err := s.executionError(ctx); err != nil {
@@ -154,7 +154,7 @@ func (s *Session) executeDrag(ctx context.Context, action DragAction) (returnErr
 		}
 		x := interpolateCoordinate(action.StartX, action.EndX, step, steps)
 		y := interpolateCoordinate(action.StartY, action.EndY, step, steps)
-		if err := s.driver.Move(x, y, action.DisplayID); err != nil {
+		if err := s.driver.MoveImmediate(x, y, action.DisplayID); err != nil {
 			return errors.Join(errPartialAction, err)
 		}
 	}

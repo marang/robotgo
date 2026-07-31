@@ -404,7 +404,7 @@ func SetActiveE(handle Handle) error {
 func ResolveWindowHandleE(target int, args ...int) (int, error) {
 	handle, err := pureGoWindowResolve(
 		target,
-		len(args) > 0 || currentTreatAsHandle(),
+		len(args) > 0,
 	)
 	if err != nil {
 		return 0, err
@@ -665,17 +665,33 @@ func CharCodeAt(s string, n int) rune {
 
 func Move(x, y int, displayID ...int) { _ = MoveE(x, y, displayID...) }
 func MoveE(x, y int, displayID ...int) error {
+	return moveE(x, y, true, displayID...)
+}
+
+// MoveImmediateE moves the mouse without applying the configured post-move
+// delay. It is intended for callers that provide their own bounded schedule.
+func MoveImmediateE(x, y int, displayID ...int) error {
+	return moveE(x, y, false, displayID...)
+}
+
+func moveE(x, y int, applyDelay bool, displayID ...int) error {
 	used, err := withPureGoInputBackend(func(backend pureGoInputBackend) error {
 		return backend.MoveAbsolute(x, y, append([]int(nil), displayID...))
 	})
 	if used {
-		return finishNonCGOMouseEvent(err, 0)
+		if applyDelay {
+			return finishNonCGOMouseEvent(err, 0)
+		}
+		return err
 	}
 	used, err = tryRemoteDesktopMoveAbsolute(x, y, displayID)
 	if !used {
 		return ErrNotSupported
 	}
-	return finishRemoteDesktopMouseEvent(err, 0)
+	if applyDelay {
+		return finishRemoteDesktopMouseEvent(err, 0)
+	}
+	return err
 }
 func MoveRelative(x, y int) { _ = MoveRelativeE(x, y) }
 func MoveRelativeE(x, y int) error {

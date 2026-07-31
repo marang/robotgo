@@ -126,24 +126,15 @@ func nativeX11WindowGeometryE(
 	return rect.X, rect.Y, rect.W, rect.H, nil
 }
 
-// internalGetTitle get the window title
-func internalGetTitle(pid int, args ...int) string {
-	if !nativeX11BackendCompiled() {
-		return ""
+func strictInternalGetTitle(target int, isHandle bool) string {
+	if isHandle {
+		return cgetTitle(target, 1)
 	}
-	var isPid int
-	if len(args) > 0 || currentTreatAsHandle() {
-		isPid = 1
-		return cgetTitle(pid, isPid)
-	}
-
-	xid, err := GetXid(nil, pid)
+	xid, err := GetXid(nil, target)
 	if err != nil {
-		log.Println("Get Xid from Pid errors is: ", err)
 		return ""
 	}
-
-	return cgetTitle(int(xid), isPid)
+	return cgetTitle(int(xid), 1)
 }
 
 // ActivePidC active the window by Pid,
@@ -227,7 +218,7 @@ func ResolveWindowHandleE(target int, args ...int) (int, error) {
 	if base.DetectDisplayServer() == base.Wayland {
 		return 0, waylandWindowNotSupported("resolve an exact window handle")
 	}
-	isHandle := len(args) > 0 || currentTreatAsHandle()
+	isHandle := len(args) > 0
 	handle := target
 	if !isHandle {
 		xid, err := GetXid(nil, target)

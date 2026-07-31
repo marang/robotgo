@@ -14,6 +14,8 @@
   validates and mutates the same resolved native handle, and the catalog
   structurally reports supported scroll axes. Ambiguous input-down failures
   trigger an immediate release and remain session-owned if cleanup fails.
+  Explicit process identities no longer inherit the legacy handle-mode
+  default, and self-timed drag interpolation bypasses global mouse delay.
   Partial multi-step outcomes are `unverified`; failed release taints the
   session and retains its exclusive owner until cleanup succeeds. Mutation
   capabilities now provide a stable unavailable, unsupported, or

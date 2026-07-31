@@ -57,6 +57,8 @@ across validation and mutation; Pure-Go macOS supports that contract. The
 individual move, click, text, key-toggle, and activation backend calls remain
 indivisible. Drag, chord, and activation always require `confirmed: true`, in
 addition to the explicit MCP `mode: "execute"`.
+Drag interpolation uses the delay-free `MoveImmediateE` primitive, so the
+legacy global mouse delay cannot silently extend its bounded hold schedule.
 
 ## Policy and ownership
 

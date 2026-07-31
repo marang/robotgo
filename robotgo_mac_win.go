@@ -71,15 +71,12 @@ func checkedPlatformWindowGeometry(x, y, width, height int) (int, int, int, int,
 	return rect.X, rect.Y, rect.W, rect.H, nil
 }
 
-// internalGetTitle get the window title
-func internalGetTitle(pid int, args ...int) string {
-	var isPid int
-	if len(args) > 0 || currentTreatAsHandle() {
-		isPid = 1
+func strictInternalGetTitle(target int, isHandle bool) string {
+	flag := 0
+	if isHandle {
+		flag = 1
 	}
-	gtitle := cgetTitle(pid, isPid)
-
-	return gtitle
+	return cgetTitle(target, flag)
 }
 
 // ActivePid active the window by PID,
@@ -115,7 +112,7 @@ func ResolveWindowHandleE(target int, args ...int) (int, error) {
 		)
 	}
 	handle := target
-	if len(args) == 0 && !currentTreatAsHandle() {
+	if len(args) == 0 {
 		handle = GetHWNDByPid(target)
 		if handle <= 0 {
 			return 0, fmt.Errorf(

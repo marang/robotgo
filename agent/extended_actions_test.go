@@ -798,6 +798,34 @@ func TestDragDistanceAndInterpolationRemainSafeAtIntegerEdges(t *testing.T) {
 	}
 }
 
+func TestDragUsesOnlyDelayFreeMovesWhileButtonIsOwned(t *testing.T) {
+	driver := &fakeDriver{}
+	session := newTestSession(t, extendedActionPolicy(OperationDrag), driver)
+	result, err := session.Execute(t.Context(), ActionRequest{
+		Operation: OperationDrag, Confirmed: true,
+		Drag: &DragAction{
+			StartX: 1, StartY: 1, EndX: 4, EndY: 1,
+			DisplayID: 0, Button: MouseButtonLeft, DurationMillis: 3,
+		},
+	})
+	if err != nil || result.Status != ActionSucceeded {
+		t.Fatalf("drag result = %+v, %v", result, err)
+	}
+	moveCalls := 0
+	for _, call := range driver.recordedCalls() {
+		if call.operation != OperationMove {
+			continue
+		}
+		moveCalls++
+		if call.text != "immediate" {
+			t.Fatalf("drag used delayed move: %+v", driver.recordedCalls())
+		}
+	}
+	if moveCalls < 2 {
+		t.Fatalf("drag move calls = %+v", driver.recordedCalls())
+	}
+}
+
 func TestWindowActivationRevalidatesImmutableIdentity(t *testing.T) {
 	driver := &fakeDriver{windowTitle: "fixture", resolvedHandle: 77}
 	session := newTestSession(t, extendedActionPolicy(OperationActivate), driver)

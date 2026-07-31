@@ -366,6 +366,7 @@ func Move(int, int, ...int)
 func MoveArgs(int, int) (int, int)
 func MoveClick(int, int, ...interface{})
 func MoveE(int, int, ...int) error
+func MoveImmediateE(int, int, ...int) error
 func MoveMouse(int, int)
 func MoveMouseSmooth(int, int, ...interface{}) bool
 func MoveRelative(int, int)

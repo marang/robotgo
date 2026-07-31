@@ -111,6 +111,13 @@ func (d *fakeDriver) Move(x, y, displayID int) error {
 	return d.record(driverCall{operation: OperationMove, x: x, y: y, displayID: displayID})
 }
 
+func (d *fakeDriver) MoveImmediate(x, y, displayID int) error {
+	return d.record(driverCall{
+		operation: OperationMove, text: "immediate",
+		x: x, y: y, displayID: displayID,
+	})
+}
+
 func (d *fakeDriver) Click(button MouseButton, _ bool) error {
 	return d.record(driverCall{operation: OperationClick, button: button})
 }

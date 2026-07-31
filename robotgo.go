@@ -2132,6 +2132,16 @@ func moveAbsoluteWithFallback(
 // MoveE moves the mouse to (x, y) and reports backend availability errors.
 // Prefer it over Move when the caller must know whether injection succeeded.
 func MoveE(x, y int, displayId ...int) error {
+	return moveE(x, y, true, displayId...)
+}
+
+// MoveImmediateE moves the mouse without applying the configured post-move
+// delay. It is intended for callers that provide their own bounded schedule.
+func MoveImmediateE(x, y int, displayId ...int) error {
+	return moveE(x, y, false, displayId...)
+}
+
+func moveE(x, y int, applyDelay bool, displayId ...int) error {
 	unlockMouse := lockLinuxMouse()
 	defer unlockMouse()
 	server := selectedDisplayServer()
@@ -2149,13 +2159,18 @@ func MoveE(x, y int, displayId ...int) error {
 		tryRemoteDesktopMoveAbsolute,
 	)
 	if usedPortal {
-		return finishRemoteDesktopMouseEvent(err, 0)
+		if applyDelay {
+			return finishRemoteDesktopMouseEvent(err, 0)
+		}
+		return err
 	}
 	if err != nil {
 		return err
 	}
 
-	MilliSleep(currentMouseDelay())
+	if applyDelay {
+		MilliSleep(currentMouseDelay())
+	}
 	return nil
 }
 
@@ -2774,7 +2789,7 @@ func nativeGetMainTitle() string {
 }
 
 func nativeGetInternalTitle(pid int, isPid int) string {
-	return internalGetTitle(pid, isPid)
+	return strictInternalGetTitle(pid, isPid != 0)
 }
 
 // GetActive get the active window
