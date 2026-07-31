@@ -105,7 +105,7 @@ func (s *Session) executeScroll(ctx context.Context, action ScrollAction) error 
 		return err
 	}
 	if err := s.driver.MoveImmediate(target.X, target.Y, target.DisplayID); err != nil {
-		return err
+		return errors.Join(errPartialAction, err)
 	}
 	for event := uint32(0); event < action.Events; event++ {
 		if err := s.executionError(ctx); err != nil {
@@ -131,7 +131,7 @@ func (s *Session) executeDrag(ctx context.Context, action DragAction) (returnErr
 		return err
 	}
 	if err := s.driver.MoveImmediate(start.X, start.Y, start.DisplayID); err != nil {
-		return err
+		return errors.Join(errPartialAction, err)
 	}
 	if err := s.executionError(ctx); err != nil {
 		return errors.Join(errPartialAction, err)

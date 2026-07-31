@@ -299,6 +299,32 @@ func TestScrollFailureAfterTargetMoveIsUnverified(t *testing.T) {
 	}
 }
 
+func TestScrollTargetMoveFailureIsUnverified(t *testing.T) {
+	driver := &fakeDriver{callError: func(call driverCall) error {
+		if call.operation == OperationMove {
+			return errors.New("ambiguous target move failure")
+		}
+		return nil
+	}}
+	session := newTestSession(t, extendedActionPolicy(OperationScroll), driver)
+	result, err := session.Execute(t.Context(), ActionRequest{
+		Operation: OperationScroll,
+		Scroll: &ScrollAction{
+			TargetX: 1, TargetY: 1, DeltaY: 1, Events: 1, DisplayID: 0,
+		},
+	})
+	var actionErr *ActionError
+	if !errors.As(err, &actionErr) || actionErr.Code != ErrorBackendFailure ||
+		result.Status != ActionUnverified {
+		t.Fatalf("ambiguous target move result = %+v, %v", result, err)
+	}
+	calls := driver.recordedCalls()
+	if len(calls) != 1 || calls[0].operation != OperationMove ||
+		!calls[0].immediate {
+		t.Fatalf("ambiguous target move calls = %+v", calls)
+	}
+}
+
 func TestDragUsesBoundedPathAndAlwaysReleasesButton(t *testing.T) {
 	driver := &fakeDriver{}
 	session := newTestSession(t, extendedActionPolicy(OperationDrag), driver)
@@ -332,6 +358,34 @@ func TestDragUsesBoundedPathAndAlwaysReleasesButton(t *testing.T) {
 	}
 	if len(session.pressedInputs) != 0 {
 		t.Fatalf("pressed ledger = %+v", session.pressedInputs)
+	}
+}
+
+func TestDragStartMoveFailureIsUnverified(t *testing.T) {
+	driver := &fakeDriver{callError: func(call driverCall) error {
+		if call.operation == OperationMove {
+			return errors.New("ambiguous start move failure")
+		}
+		return nil
+	}}
+	session := newTestSession(t, extendedActionPolicy(OperationDrag), driver)
+	result, err := session.Execute(t.Context(), ActionRequest{
+		Operation: OperationDrag,
+		Confirmed: true,
+		Drag: &DragAction{
+			StartX: 1, StartY: 1, EndX: 2, EndY: 1,
+			DisplayID: 0, Button: MouseButtonLeft, DurationMillis: 1,
+		},
+	})
+	var actionErr *ActionError
+	if !errors.As(err, &actionErr) || actionErr.Code != ErrorBackendFailure ||
+		result.Status != ActionUnverified {
+		t.Fatalf("ambiguous start move result = %+v, %v", result, err)
+	}
+	calls := driver.recordedCalls()
+	if len(calls) != 1 || calls[0].operation != OperationMove ||
+		!calls[0].immediate {
+		t.Fatalf("ambiguous start move calls = %+v", calls)
 	}
 }
 
