@@ -1829,6 +1829,62 @@ static inline int robotgo_wayland_type_codepoints(const uint32_t *values,
 		return SendInput(1, &keyInput, sizeof(keyInput)) == 1
 			? ROBOTGO_KEY_OK : ROBOTGO_KEY_INJECTION_FAILED;
 	}
+
+	static int ROBOTGO_WIN32_TOGGLE_KEY_CODE(
+		MMKeyCode code,
+		const bool down,
+		MMKeyFlags flags,
+		uintptr pid,
+		MMKeyCode *successful_sequence,
+		size_t *successful_length
+	) {
+		const DWORD event_flags = down ? 0 : KEYEVENTF_KEYUP;
+		MMKeyCode sequence[5];
+		size_t sequence_length = 0;
+
+		if (successful_length != NULL) {
+			*successful_length = 0;
+		}
+		if (down) {
+			/* Press modifiers before the main key. */
+			if (flags & MOD_META) { sequence[sequence_length++] = K_META; }
+			if (flags & MOD_ALT) { sequence[sequence_length++] = K_ALT; }
+			if (flags & MOD_CONTROL) { sequence[sequence_length++] = K_CONTROL; }
+			if (flags & MOD_SHIFT) { sequence[sequence_length++] = K_SHIFT; }
+			sequence[sequence_length++] = code;
+		} else {
+			/* Release the main key first, followed by modifiers in reverse order. */
+			sequence[sequence_length++] = code;
+			if (flags & MOD_SHIFT) { sequence[sequence_length++] = K_SHIFT; }
+			if (flags & MOD_CONTROL) { sequence[sequence_length++] = K_CONTROL; }
+			if (flags & MOD_ALT) { sequence[sequence_length++] = K_ALT; }
+			if (flags & MOD_META) { sequence[sequence_length++] = K_META; }
+		}
+
+		int first_error = ROBOTGO_KEY_OK;
+		for (size_t index = 0; index < sequence_length; index++) {
+			int status = WIN32_KEY_EVENT_WAIT(sequence[index], event_flags, pid);
+			if (status == ROBOTGO_KEY_OK) {
+				if (down && successful_sequence != NULL &&
+					successful_length != NULL) {
+					successful_sequence[*successful_length] = sequence[index];
+					(*successful_length)++;
+				}
+				continue;
+			}
+			if (first_error == ROBOTGO_KEY_OK) {
+				first_error = status;
+			}
+			/*
+			 * Do not emit a main key after a failed modifier press. Releases
+			 * continue so cleanup has the best chance of clearing every key.
+			 */
+			if (down) {
+				break;
+			}
+		}
+		return first_error;
+	}
 #endif
 
 int toggleKeyCode(MMKeyCode code, const bool down, MMKeyFlags flags, uintptr pid) {
@@ -1864,44 +1920,9 @@ int toggleKeyCode(MMKeyCode code, const bool down, MMKeyFlags flags, uintptr pid
 	}
 	return ROBOTGO_KEY_OK;
 #elif defined(IS_WINDOWS)
-	const DWORD dwFlags = down ? 0 : KEYEVENTF_KEYUP;
-	MMKeyCode sequence[5];
-	size_t sequence_length = 0;
-
-	if (down) {
-		/* Press modifiers before the main key. */
-		if (flags & MOD_META) { sequence[sequence_length++] = K_META; }
-		if (flags & MOD_ALT) { sequence[sequence_length++] = K_ALT; }
-		if (flags & MOD_CONTROL) { sequence[sequence_length++] = K_CONTROL; }
-		if (flags & MOD_SHIFT) { sequence[sequence_length++] = K_SHIFT; }
-		sequence[sequence_length++] = code;
-	} else {
-		/* Release the main key first, followed by modifiers in reverse order. */
-		sequence[sequence_length++] = code;
-		if (flags & MOD_SHIFT) { sequence[sequence_length++] = K_SHIFT; }
-		if (flags & MOD_CONTROL) { sequence[sequence_length++] = K_CONTROL; }
-		if (flags & MOD_ALT) { sequence[sequence_length++] = K_ALT; }
-		if (flags & MOD_META) { sequence[sequence_length++] = K_META; }
-	}
-
-	int first_error = ROBOTGO_KEY_OK;
-	for (size_t index = 0; index < sequence_length; index++) {
-		int status = WIN32_KEY_EVENT_WAIT(sequence[index], dwFlags, pid);
-		if (status == ROBOTGO_KEY_OK) {
-			continue;
-		}
-		if (first_error == ROBOTGO_KEY_OK) {
-			first_error = status;
-		}
-		/*
-		 * Do not emit a main key after a failed modifier press. Releases
-		 * continue so cleanup has the best chance of clearing every key.
-		 */
-		if (down) {
-			break;
-		}
-	}
-	return first_error;
+	return ROBOTGO_WIN32_TOGGLE_KEY_CODE(
+		code, down, flags, pid, NULL, NULL
+	);
 #elif defined(IS_LINUX)
 	#ifdef ROBOTGO_USE_WAYLAND
 	        if (robotgo_wayland_keyboard_backend_selected()) {
@@ -1956,18 +1977,31 @@ int robotgo_tap_key_code(MMKeyCode code, MMKeyFlags flags, uintptr pid) {
 	XUngrabServer(display);
 	XSync(display, false);
 	return status;
+#elif defined(IS_WINDOWS)
+	MMKeyCode successful_sequence[5];
+	size_t successful_length = 0;
+	int status = ROBOTGO_WIN32_TOGGLE_KEY_CODE(
+		code, true, flags, pid,
+		successful_sequence, &successful_length
+	);
+	if (status != ROBOTGO_KEY_OK) {
+		while (successful_length > 0) {
+			successful_length--;
+			(void)WIN32_KEY_EVENT_WAIT(
+				successful_sequence[successful_length],
+				KEYEVENTF_KEYUP,
+				pid
+			);
+		}
+		return status;
+	}
+	microsleep(3.0);
+	return ROBOTGO_WIN32_TOGGLE_KEY_CODE(
+		code, false, flags, pid, NULL, NULL
+	);
 #else
 	int status = toggleKeyCode(code, true, flags, pid);
 	if (status != ROBOTGO_KEY_OK) {
-#if defined(IS_WINDOWS)
-		/*
-		 * Windows modifier dispatch can partially succeed before a later
-		 * PostMessageW/SendInput failure. A tap has no external owner that
-		 * can release that partial state, so make one best-effort release
-		 * pass before returning the original injection failure.
-		 */
-		(void)toggleKeyCode(code, false, flags, pid);
-#endif
 		return status;
 	}
 	microsleep(3.0);

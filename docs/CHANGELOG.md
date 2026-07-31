@@ -28,8 +28,9 @@
   extended keys, release the main key before modifiers, and propagate missing
   targets plus `PostMessageW`/`SendInput` failures instead of reporting a
   successful injection. Failed legacy tap transactions make a best-effort
-  release pass so newly visible partial failures do not leave modifier state
-  behind.
+  reverse-order release pass over only the successfully dispatched prefix, so
+  newly visible partial failures neither leave modifier state behind nor emit
+  orphan key-up events.
 - Split KDE hosted-session readiness into bounded prerequisite, Plasma Shell,
   portal frontend, portal backend, and stability phases. The complete session
   must now pass three consecutive probes, later phases continuously revalidate
