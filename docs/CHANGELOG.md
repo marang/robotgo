@@ -34,7 +34,10 @@
   physical-key reference ledger: overlapping chords cannot release one
   another's modifiers, failed tap or hold releases remain retryable, and an
   attempted tap whose physical main key is already held is rejected rather
-  than reporting an unobservable transition. Native holds still record the
+  than reporting an unobservable transition. Process-targeted references are
+  bound to the exact resolved HWND, so a replacement window in the same
+  process cannot inherit modifier state; destroyed-target ownership is cleared
+  without sending releases to the replacement. Native holds still record the
   exact applied prefix, reject foreign or duplicate releases, and report a
   typed no-state-acquired error after a pre-dispatch failure so agent cleanup
   never touches foreign input.

@@ -331,17 +331,20 @@ successful RobotGo-owned Down, or an Up after its portal session was replaced
 returns `ErrInputOwnership` without sending input on another backend. Native
 Windows records the exact successfully dispatched key prefix, so partial
 failure cleanup releases only RobotGo-owned state and retains failed releases
-for retry. Shared physical keys such as Ctrl in simultaneously held Ctrl+C and
-Ctrl+V chords are reference-counted and released only after their final owner.
-Windows key taps use the same ledger, so they neither release a modifier held
-by another RobotGo operation nor lose a failed release needed by a later
-`KeyUp` retry. Tapping an already held physical main key fails with
-`ErrInputOwnership` instead of creating ambiguous ownership or reporting a tap
-without an observable main-key transition. If a native transition fails before
-acquiring any state, it returns `ErrInputNotApplied`. Callers can distinguish
-both contracts with `errors.Is`. Closing or retargeting the native Linux
-backend releases RobotGo-owned state; closing a portal session delegates that
-release to the compositor.
+for retry while the exact target remains valid. Shared physical keys such as
+Ctrl in simultaneously held Ctrl+C and Ctrl+V chords are reference-counted and
+released only after their final owner. Process-targeted ownership is scoped to
+the concrete HWND resolved for the first down: another window from the same
+process receives its own modifier transitions, while destruction of the
+original window safely clears only that target's obsolete ownership. Windows
+key taps use the same ledger, so they neither release a modifier held by
+another RobotGo operation nor lose a retryable failed release. Tapping an
+already held physical main key fails with `ErrInputOwnership` instead of
+creating ambiguous ownership or reporting a tap without an observable main-key
+transition. If a native transition fails before acquiring any state, it returns
+`ErrInputNotApplied`. Callers can distinguish both contracts with `errors.Is`.
+Closing or retargeting the native Linux backend releases RobotGo-owned state;
+closing a portal session delegates that release to the compositor.
 
 Low-level helpers whose signatures directly expose `C.*` types remain CGO-only.
 Portable callers should use `Bitmap`, `CHex`, `Handle`, the error-returning APIs,

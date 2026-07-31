@@ -136,29 +136,37 @@ func TestNativeWindowsTapPreservesSharedModifierHold(t *testing.T) {
 	assertNativeWindowsKeyMessage(t, messages, win.WM_KEYUP, 0x11)
 }
 
-func TestNativeWindowsFailedReleaseRetainsOwnershipForRetry(t *testing.T) {
+func TestNativeWindowsOwnershipIsScopedToResolvedTarget(t *testing.T) {
 	messages, stop := startNativeWindowsKeyTarget(t)
 	pid := os.Getpid()
 
 	if err := KeyToggleImmediate("delete", "down", "ctrl", pid); err != nil {
 		t.Fatalf("extended key down: %v", err)
 	}
+	t.Cleanup(func() {
+		_ = KeyToggleImmediate("delete", "up", "ctrl", pid)
+	})
 	assertNativeWindowsKeyMessage(t, messages, win.WM_KEYDOWN, 0x11)
 	assertNativeWindowsKeyMessage(t, messages, win.WM_KEYDOWN, 0x2e)
 	stop()
 
-	err := KeyToggleImmediate("delete", "up", "ctrl", pid)
-	if err == nil || errors.Is(err, ErrInputOwnership) ||
-		!strings.Contains(err.Error(), "native keyboard injection failed") {
-		t.Fatalf("release after target loss error = %v", err)
+	replacementMessages, _ := startNativeWindowsKeyTarget(t)
+	if err := KeyTap("v", "ctrl", pid); err != nil {
+		t.Fatalf("tap against replacement target: %v", err)
 	}
+	assertNativeWindowsKeyMessage(t, replacementMessages, win.WM_KEYDOWN, 0x11)
+	assertNativeWindowsKeyMessage(t, replacementMessages, win.WM_KEYDOWN, 'V')
+	assertNativeWindowsKeyMessage(t, replacementMessages, win.WM_KEYUP, 'V')
+	assertNativeWindowsKeyMessage(t, replacementMessages, win.WM_KEYUP, 0x11)
 
-	retryMessages, _ := startNativeWindowsKeyTarget(t)
 	if err := KeyToggleImmediate("delete", "up", "ctrl", pid); err != nil {
-		t.Fatalf("retry extended key up: %v", err)
+		t.Fatalf("release ownership for destroyed original target: %v", err)
 	}
-	assertNativeWindowsKeyMessage(t, retryMessages, win.WM_KEYUP, 0x2e)
-	assertNativeWindowsKeyMessage(t, retryMessages, win.WM_KEYUP, 0x11)
+	assertNoNativeWindowsKeyMessage(t, replacementMessages)
+	if err := KeyToggleImmediate("delete", "up", "ctrl", pid); !errors.Is(err, ErrInputOwnership) {
+		t.Fatalf("duplicate release after target cleanup error = %v", err)
+	}
+	assertNoNativeWindowsKeyMessage(t, replacementMessages)
 }
 
 func assertNativeWindowsKeyMessage(
