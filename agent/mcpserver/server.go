@@ -66,7 +66,7 @@ func New(session Session) (*Server, error) {
 	if nilSession(session) {
 		return nil, fmt.Errorf("mcpserver: nil agent session")
 	}
-	a := &adapter{session: session, closeDone: make(chan struct{})}
+	a := &adapter{session: session}
 	s := &Server{
 		adapter: a,
 		protocol: mcp.NewServer(&mcp.Implementation{
@@ -113,9 +113,9 @@ type adapter struct {
 
 	mu        sync.Mutex
 	closed    bool
-	closeOne  sync.Once
+	closeMu   sync.Mutex
+	closeDone bool
 	closeErr  error
-	closeDone chan struct{}
 }
 
 func (a *adapter) begin() (Session, *ToolError) {
@@ -131,15 +131,17 @@ func (a *adapter) close() error {
 	if a == nil {
 		return nil
 	}
-	a.closeOne.Do(func() {
-		a.mu.Lock()
-		a.closed = true
-		a.mu.Unlock()
+	a.mu.Lock()
+	a.closed = true
+	a.mu.Unlock()
 
-		a.closeErr = a.session.Close()
-		close(a.closeDone)
-	})
-	<-a.closeDone
+	a.closeMu.Lock()
+	defer a.closeMu.Unlock()
+	if a.closeDone {
+		return a.closeErr
+	}
+	a.closeErr = a.session.Close()
+	a.closeDone = a.closeErr == nil
 	return a.closeErr
 }
 
@@ -367,6 +369,11 @@ func safeToolError(err error) *ToolError {
 		return &ToolError{Code: agent.ErrorTimedOut, Message: "RobotGo agent operation timed out"}
 	case errors.Is(err, agent.ErrSessionClosed):
 		return closedToolError()
+	case errors.Is(err, agent.ErrInputCleanup):
+		return &ToolError{
+			Code:    agent.ErrorCleanupFailed,
+			Message: "RobotGo could not release owned input; do not retry the action",
+		}
 	default:
 		return &ToolError{Code: agent.ErrorBackendFailure, Message: errorMessageFailed}
 	}

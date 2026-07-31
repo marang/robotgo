@@ -24,9 +24,10 @@ const (
 
 func observationPolicy() Policy {
 	return Policy{
-		AllowedOperations: []Operation{OperationObserve, OperationClick},
-		AllowedDisplayIDs: []int{0},
-		MaxActions:        3, MaxObservations: 8, MaxCapturePixels: 16,
+		AllowedOperations:   []Operation{OperationObserve, OperationClick},
+		AllowedDisplayIDs:   []int{0},
+		AllowedMouseButtons: []MouseButton{MouseButtonLeft},
+		MaxActions:          3, MaxObservations: 8, MaxCapturePixels: 16,
 		VerificationAttempts: 2, VerificationIntervalMillis: 0,
 		VerificationTimeoutMillis: 100,
 	}

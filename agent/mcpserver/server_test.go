@@ -197,6 +197,20 @@ func TestProtocolInitializesAndListsFocusedTools(t *testing.T) {
 		if tool.InputSchema == nil || tool.OutputSchema == nil {
 			t.Errorf("tool %q has incomplete schemas", tool.Name)
 		}
+		if tool.Name == ToolAct {
+			schema, marshalErr := json.Marshal(tool.InputSchema)
+			if marshalErr != nil {
+				t.Fatalf("marshal act schema: %v", marshalErr)
+			}
+			for _, field := range []string{
+				"scroll", "drag", "key_chord", "activate",
+				"target_x", "duration_ms", "modifiers", "target_pid", "kind",
+			} {
+				if !strings.Contains(string(schema), `"`+field+`"`) {
+					t.Errorf("robotgo_act schema omitted %q: %s", field, schema)
+				}
+			}
+		}
 		switch tool.Name {
 		case ToolFind, ToolWait:
 			if tool.Annotations == nil || !tool.Annotations.ReadOnlyHint {
@@ -217,6 +231,88 @@ func TestProtocolInitializesAndListsFocusedTools(t *testing.T) {
 	slices.Sort(want)
 	if !slices.Equal(names, want) {
 		t.Fatalf("tools = %v, want %v", names, want)
+	}
+}
+
+func TestActProjectsExtendedTypedActionWithoutChangingDryRunDefault(t *testing.T) {
+	var received agent.ActionRequest
+	fake := &fakeSession{
+		dryRunFunc: func(_ context.Context, request agent.ActionRequest) (agent.ActionResult, error) {
+			received = request
+			return agent.ActionResult{
+				ActionID: "planned-drag", Operation: request.Operation,
+				Status: agent.ActionPlanned,
+			}, nil
+		},
+	}
+	client := connectProtocol(t, newProtocolServer(t, fake))
+	request := agent.ActionRequest{
+		Operation: agent.OperationDrag,
+		Confirmed: true,
+		Drag: &agent.DragAction{
+			StartX: 1, StartY: 2, EndX: 3, EndY: 4,
+			DisplayID: 0, Button: agent.MouseButtonLeft, DurationMillis: 50,
+		},
+	}
+	result := callTool(t, client, ToolAct, ActInput{Request: request})
+	if result.IsError {
+		t.Fatalf("extended dry-run returned error: %s", serializedResult(t, result))
+	}
+	output := decodeOutput[ActOutput](t, result)
+	if output.Result == nil || output.Result.Status != agent.ActionPlanned {
+		t.Fatalf("extended dry-run output = %+v", output)
+	}
+	if received.Drag == nil || *received.Drag != *request.Drag {
+		t.Fatalf("projected request = %+v", received)
+	}
+	dryRuns, executes, _ := fake.counts()
+	if dryRuns != 1 || executes != 0 {
+		t.Fatalf("dry runs = %d, executes = %d", dryRuns, executes)
+	}
+}
+
+func TestCloseProjectsInputCleanupFailureWithoutBackendDetails(t *testing.T) {
+	const privateDetail = "private-release-backend-detail"
+	fake := &fakeSession{closeFunc: func() error {
+		return errors.Join(agent.ErrInputCleanup, errors.New(privateDetail))
+	}}
+	client := connectProtocol(t, newProtocolServer(t, fake))
+	result := callTool(t, client, ToolClose, map[string]any{})
+	if !result.IsError {
+		t.Fatal("cleanup failure unexpectedly succeeded")
+	}
+	output := decodeOutput[CloseOutput](t, result)
+	if output.Error == nil || output.Error.Code != agent.ErrorCleanupFailed {
+		t.Fatalf("cleanup output = %+v", output)
+	}
+	if strings.Contains(serializedResult(t, result), privateDetail) {
+		t.Fatal("cleanup output leaked backend detail")
+	}
+}
+
+func TestCloseCanRetryInputCleanupBeforeReleasingAdapter(t *testing.T) {
+	attempts := 0
+	fake := &fakeSession{closeFunc: func() error {
+		attempts++
+		if attempts == 1 {
+			return agent.ErrInputCleanup
+		}
+		return nil
+	}}
+	client := connectProtocol(t, newProtocolServer(t, fake))
+	first := callTool(t, client, ToolClose, map[string]any{})
+	if !first.IsError {
+		t.Fatal("first cleanup attempt unexpectedly succeeded")
+	}
+	second := callTool(t, client, ToolClose, map[string]any{})
+	if second.IsError {
+		t.Fatalf("cleanup retry failed: %s", serializedResult(t, second))
+	}
+	if output := decodeOutput[CloseOutput](t, second); !output.Closed {
+		t.Fatalf("cleanup retry output = %+v", output)
+	}
+	if attempts != 2 {
+		t.Fatalf("close attempts = %d", attempts)
 	}
 }
 

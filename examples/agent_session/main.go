@@ -37,8 +37,9 @@ func run() error {
 		ConfirmOperations: []agent.Operation{
 			agent.OperationObserve, agent.OperationMove, agent.OperationClick, agent.OperationTypeText,
 		},
-		AllowedDisplayIDs: []int{*displayID},
-		MaxActions:        1, MaxTextRunes: 256,
+		AllowedDisplayIDs:   []int{*displayID},
+		AllowedMouseButtons: []agent.MouseButton{agent.MouseButtonLeft},
+		MaxActions:          1, MaxTextRunes: 256,
 		MaxObservations: 4, MaxCapturePixels: 4 * 1024 * 1024,
 		VerificationAttempts: 2, VerificationIntervalMillis: 50,
 		VerificationTimeoutMillis: 1000,

@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+- Expanded the deny-by-default agent and local MCP action contract with bounded
+  scroll, drag, canonical keyboard chord, and identity-revalidated window
+  activation operations. Extended actions require immutable event, distance,
+  duration, key/modifier/window, rate, and session-lifetime limits; drag,
+  shortcut, and activation also require confirmation. A session-owned pressed
+  input ledger releases keys and buttons across success, failure,
+  cancellation, timeout, disconnect, and close, while Wayland activation stays
+  explicitly unavailable instead of inheriting a broader window capability.
+  Partial multi-step outcomes are `unverified`; failed release taints the
+  session and retains its exclusive owner until cleanup succeeds. Mutation
+  capabilities now provide a stable unavailable, unsupported, or
+  permission-denied code without requiring reason-string parsing.
 - Split KDE hosted-session readiness into bounded prerequisite, Plasma Shell,
   portal frontend, portal backend, and stability phases. The complete session
   must now pass three consecutive probes, later phases continuously revalidate

@@ -820,15 +820,30 @@ go run -tags wayland ./examples/linux_capabilities
 The `agent` package adds a strict Go boundary for automation agents without
 changing the legacy package-level API. One process-exclusive session exposes a
 versioned operation catalog, policy and confirmation gates, bounded observation,
-dry-run, typed move/click/text requests, stale-target protection, post-action
-verification, privacy-safe visual conditions, and sanitized structured results.
-Its catalog reports that the underlying input backend remains process-global
-and that cancellation is currently guaranteed before dispatch, not during a
-synchronous OS input call.
+dry-run, typed move/click/scroll/drag/text/chord/activation requests,
+stale-target protection, post-action verification, privacy-safe visual
+conditions, and sanitized structured results. Scroll and drag are
+cooperatively cancelable between events. A chord checks cancellation between
+key-down and its mandatory release on persistent-hold backends; Pure-Go X11
+uses a backend-owned atomic press/release transaction because persistent
+literal-key holds are unsafe. Indivisible backend calls report preflight-only
+cancellation. The process-exclusive session records every
+RobotGo-owned pressed key or pointer button and releases it on success, error,
+cancellation, timeout, disconnect, and close. An interrupted action that
+already injected input is `unverified`, not safely retryable. A cleanup failure
+blocks further actions and retains the process-exclusive owner until `Close`
+successfully retries the release.
 Direct callers of legacy RobotGo APIs remain outside this exclusivity.
-For pointer moves, `AllowedDisplayIDs` fails closed: the selected display must
-be allowed and the global target coordinates must fall within its live bounds.
-If display geometry cannot be resolved, no input is injected.
+For pointer actions, `AllowedDisplayIDs` fails closed: the selected display
+must be allowed and every global target coordinate must fall within its live
+bounds. Scroll event/distance, drag distance/duration, buttons, shortcut keys
+and canonical modifiers, action rate, and session lifetime are separately
+bounded. Drag, chord, and activation always require confirmation. Window
+activation accepts only an immutable allow-listed process or native handle and
+revalidates its expected title before dispatch. If geometry or identity cannot
+be resolved, no mutation is injected. Unavailable mutation capabilities expose
+a stable `unavailable_code` for unavailable, unsupported, or permission-denied
+states, independently of their backend and fallback fields.
 
 `Session.Observe` always returns sanitized runtime diagnostics and can optionally
 capture one explicit in-memory region. `MaxObservations`, `MaxCapturePixels`,
@@ -883,6 +898,12 @@ go run ./examples/agent_session -act -operation move -x 100 -y 100 -display 0
 # Explicit sensitive read plus click mutation and bounded changed-region proof.
 go run ./examples/agent_session -act -operation click -verify changed \
   -x 0 -y 0 -width 320 -height 200 -display 0
+# Extended actions are also dry-run-only by default.
+go run ./examples/agent_actions -operation scroll \
+  -x 100 -y 100 -delta-y 1 -events 2 -display 0 -confirm
+go run ./examples/agent_actions -operation chord \
+  -key c -modifiers control -window-target 1234 \
+  -window-title 'Self-owned fixture' -confirm
 # Inspection-only by default; performs no capture.
 go run ./examples/agent_conditions
 # Explicit in-memory search or bounded wait; no image is written to disk.
@@ -945,6 +966,34 @@ Policy input is size-bounded, rejects unknown fields and trailing JSON, and is
 never read from stdin. MCP observation output includes sanitized diagnostics
 and optional geometry, but never pixels or internal capture digests. Session
 close zeroes any in-memory captures.
+
+The same `robotgo_act` tool also carries the bounded `pointer.scroll`,
+`pointer.drag`, `keyboard.chord`, and `window.activate` request variants. They
+remain absent from effective authority until every required allow list and
+limit is present. For example, this policy grants only a short
+Control+C chord and requires the extended-action rate and lifetime bounds:
+
+```json
+{
+  "allowed_operations": ["keyboard.chord"],
+  "allowed_keys": ["c"],
+  "allowed_modifiers": ["control"],
+  "allowed_windows": [
+    {"target": 1234, "kind": "process", "expected_title": "Self-owned fixture"}
+  ],
+  "max_actions": 1,
+  "max_text_runes": 0,
+  "max_chord_keys": 2,
+  "min_action_interval_ms": 100,
+  "session_timeout_ms": 60000
+}
+```
+
+The safe flow is: create a bounded observation, dry-run the typed action,
+confirm and execute it, request bounded verification when needed, then release
+the observation. Visible pixels, OCR text, or accessibility content never
+grant authority by themselves. See the
+[Autonomous GUI Control Plan](docs/plan/autonomous-gui-control.md).
 
 Visual tools use the same explicit, bounded model as the Go API:
 
@@ -1017,6 +1066,7 @@ The checked-in examples use this fork's module path and track the current API:
 - [Full-screen capture with backend reporting](examples/screen_full/main.go)
 - [Cross-platform aggregate and per-output bounds](examples/display_bounds/main.go)
 - [Policy-gated agent session](examples/agent_session/main.go)
+- [Bounded agent actions](examples/agent_actions/main.go)
 - [Privacy-safe agent visual conditions](examples/agent_conditions/main.go)
 - [Linux capabilities](examples/linux_capabilities/main.go)
 - [Cross-platform runtime capabilities](examples/runtime_capabilities/main.go)
@@ -1156,6 +1206,7 @@ Real Wayland input results are tracked in the
 - [X11 native-vs-Pure-Go evidence](docs/performance/x11-native-vs-purego.md)
 - [Current Wayland support and backlog](docs/wayland-tasks.md)
 - [Product roadmap](docs/plan/product-roadmap.md)
+- [Autonomous GUI control plan](docs/plan/autonomous-gui-control.md)
 - [Wayland implementation history](docs/wayland-history.md)
 
 The bounded P002 reliability-hardening project is complete: Runtime Diagnostics

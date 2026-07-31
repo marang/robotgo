@@ -20,7 +20,10 @@ package robotgo
 */
 import "C"
 
-import "unsafe"
+import (
+	"fmt"
+	"unsafe"
+)
 
 // GetBounds get the window bounds
 func GetBounds(pid int, args ...int) (int, int, int, int) {
@@ -92,7 +95,9 @@ func ActivePid(pid int, args ...int) error {
 		isPid = 1
 	}
 
-	internalActive(pid, isPid)
+	if !internalActive(pid, isPid) {
+		return fmt.Errorf("%w: native backend could not activate target window", errWindowOperationFailed)
+	}
 	return nil
 }
 

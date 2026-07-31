@@ -28,6 +28,9 @@ Use the following documents as the primary entry points:
   privacy guarantees, and hermetic protocol evidence.
 - [Safe agent visual conditions plan](plan/agent-visual-conditions.md) for
   explicit-observation color search, bounded region waits, quotas, and cleanup.
+- [Autonomous GUI control plan](plan/autonomous-gui-control.md) for bounded
+  scroll, drag, shortcut, and activation actions followed by accessibility,
+  explicit image, and OCR observation slices.
 - [Explicit window identity plan](plan/explicit-window-identity.md) for
   error-returning active handle/PID queries and compositor-aware Wayland
   semantics plus protected Hyprland active-window geometry evidence.

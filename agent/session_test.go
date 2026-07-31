@@ -15,28 +15,45 @@ import (
 )
 
 type driverCall struct {
-	operation Operation
-	text      string
+	operation  Operation
+	text       string
+	down       bool
+	x          int
+	y          int
+	displayID  int
+	deltaX     int
+	deltaY     int
+	button     MouseButton
+	key        string
+	modifiers  []KeyModifier
+	target     int
+	targetKind WindowTargetKind
 }
 
 type fakeDriver struct {
-	mu            sync.Mutex
-	calls         []driverCall
-	err           error
-	bounds        map[int]displayBounds
-	boundsErr     error
-	boundsHit     chan struct{}
-	boundsGo      chan struct{}
-	started       chan struct{}
-	release       chan struct{}
-	captureImages []image.Image
-	captureErr    error
-	captureCalls  int
-	captureHit    chan struct{}
-	captureGo     chan struct{}
-	capabilities  *robotgo.RuntimeCapabilities
-	capabilityHit chan struct{}
-	capabilityGo  chan struct{}
+	mu               sync.Mutex
+	calls            []driverCall
+	err              error
+	bounds           map[int]displayBounds
+	boundsErr        error
+	boundsHit        chan struct{}
+	boundsGo         chan struct{}
+	started          chan struct{}
+	release          chan struct{}
+	captureImages    []image.Image
+	captureErr       error
+	captureCalls     int
+	captureHit       chan struct{}
+	captureGo        chan struct{}
+	capabilities     *robotgo.RuntimeCapabilities
+	capabilityHit    chan struct{}
+	capabilityGo     chan struct{}
+	windowTitle      string
+	windowTitles     []string
+	windowTitleCalls int
+	activePID        int
+	callHook         func(driverCall)
+	callError        func(driverCall) error
 }
 
 func (d *fakeDriver) DisplayBounds(displayID int) (displayBounds, error) {
@@ -68,6 +85,9 @@ func (d *fakeDriver) DisplayBounds(displayID int) (displayBounds, error) {
 }
 
 func (d *fakeDriver) record(call driverCall) error {
+	if d.callHook != nil {
+		d.callHook(call)
+	}
 	if d.started != nil {
 		select {
 		case d.started <- struct{}{}:
@@ -79,20 +99,97 @@ func (d *fakeDriver) record(call driverCall) error {
 	}
 	d.mu.Lock()
 	defer d.mu.Unlock()
+	call.modifiers = append([]KeyModifier(nil), call.modifiers...)
 	d.calls = append(d.calls, call)
+	if d.callError != nil {
+		return d.callError(call)
+	}
 	return d.err
 }
 
-func (d *fakeDriver) Move(_, _, _ int) error {
-	return d.record(driverCall{operation: OperationMove})
+func (d *fakeDriver) Move(x, y, displayID int) error {
+	return d.record(driverCall{operation: OperationMove, x: x, y: y, displayID: displayID})
 }
 
-func (d *fakeDriver) Click(_ MouseButton, _ bool) error {
-	return d.record(driverCall{operation: OperationClick})
+func (d *fakeDriver) Click(button MouseButton, _ bool) error {
+	return d.record(driverCall{operation: OperationClick, button: button})
+}
+
+func (d *fakeDriver) Scroll(deltaX, deltaY int) error {
+	return d.record(driverCall{operation: OperationScroll, deltaX: deltaX, deltaY: deltaY})
+}
+
+func (d *fakeDriver) ToggleMouse(button MouseButton, down bool) error {
+	return d.record(driverCall{operation: OperationDrag, button: button, down: down})
 }
 
 func (d *fakeDriver) TypeText(text string) error {
 	return d.record(driverCall{operation: OperationTypeText, text: text})
+}
+
+func (d *fakeDriver) ToggleKey(key string, modifiers []KeyModifier, down bool) error {
+	return d.record(driverCall{
+		operation: OperationKeyChord, key: key, modifiers: modifiers, down: down,
+	})
+}
+
+func (d *fakeDriver) TapKey(key string, modifiers []KeyModifier) error {
+	return d.record(driverCall{
+		operation: OperationKeyChord, text: "tap", key: key, modifiers: modifiers,
+	})
+}
+
+func (d *fakeDriver) ActiveWindowPID() (int, error) {
+	if err := d.record(driverCall{operation: OperationKeyChord, text: "active-pid"}); err != nil {
+		return 0, err
+	}
+	if d.activePID != 0 {
+		return d.activePID, nil
+	}
+	return 42, nil
+}
+
+func (d *fakeDriver) ActiveWindowTitle() (string, error) {
+	call := driverCall{operation: OperationKeyChord, text: "active-title"}
+	if err := d.record(call); err != nil {
+		return "", err
+	}
+	return d.nextWindowTitle(), nil
+}
+
+func (d *fakeDriver) WindowTitle(target int, kind WindowTargetKind) (string, error) {
+	call := driverCall{
+		operation: OperationActivate, text: "title",
+		target: target, targetKind: kind,
+	}
+	if err := d.record(call); err != nil {
+		return "", err
+	}
+	return d.nextWindowTitle(), nil
+}
+
+func (d *fakeDriver) nextWindowTitle() string {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if len(d.windowTitles) > 0 {
+		index := d.windowTitleCalls
+		d.windowTitleCalls++
+		if index >= len(d.windowTitles) {
+			index = len(d.windowTitles) - 1
+		}
+		return d.windowTitles[index]
+	}
+	if d.windowTitle != "" {
+		return d.windowTitle
+	}
+	return "fixture"
+}
+
+func (d *fakeDriver) ActivateWindow(target int, kind WindowTargetKind) error {
+	return d.record(driverCall{
+		operation: OperationActivate, text: "activate",
+		target: target, targetKind: kind,
+	})
 }
 
 func (d *fakeDriver) RuntimeCapabilities() robotgo.RuntimeCapabilities {
@@ -157,12 +254,23 @@ func (d *fakeDriver) callCount() int {
 	return len(d.calls)
 }
 
+func (d *fakeDriver) recordedCalls() []driverCall {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	result := append([]driverCall(nil), d.calls...)
+	for index := range result {
+		result[index].modifiers = append([]KeyModifier(nil), result[index].modifiers...)
+	}
+	return result
+}
+
 func availableCapabilities() robotgo.RuntimeCapabilities {
 	return robotgo.RuntimeCapabilities{
 		Capture:  robotgo.FeatureCapability{Available: true, Backend: "fake-capture"},
 		Bounds:   robotgo.FeatureCapability{Available: true, Backend: "fake-bounds"},
 		Mouse:    robotgo.FeatureCapability{Available: true, Backend: "fake-mouse"},
 		Keyboard: robotgo.FeatureCapability{Available: true, Backend: "fake-keyboard"},
+		Window:   robotgo.FeatureCapability{Available: true, Backend: "fake-window"},
 	}
 }
 
@@ -170,7 +278,8 @@ func testPolicy() Policy {
 	return Policy{
 		AllowedOperations: []Operation{OperationMove, OperationClick, OperationTypeText},
 		AllowedDisplayIDs: []int{0, 2}, MaxActions: 3, MaxTextRunes: 8,
-		AllowDoubleClick: true,
+		AllowedMouseButtons: []MouseButton{MouseButtonLeft, MouseButtonMiddle, MouseButtonRight},
+		AllowDoubleClick:    true,
 	}
 }
 
@@ -196,7 +305,8 @@ func TestCatalogIsStableAndDefensive(t *testing.T) {
 	}
 	want := []Operation{
 		OperationObserve, OperationFindColor, OperationWaitColor,
-		OperationMove, OperationClick, OperationTypeText,
+		OperationMove, OperationClick, OperationScroll, OperationDrag,
+		OperationTypeText, OperationKeyChord, OperationActivate,
 	}
 	for index, operation := range want {
 		got := catalog.Operations[index]
@@ -204,7 +314,9 @@ func TestCatalogIsStableAndDefensive(t *testing.T) {
 			t.Fatalf("operation[%d] = %+v", index, got)
 		}
 		wantCancellation := CancellationPreflightOnly
-		if operation == OperationFindColor || operation == OperationWaitColor {
+		if operation == OperationFindColor || operation == OperationWaitColor ||
+			operation == OperationScroll || operation == OperationDrag ||
+			operation == OperationKeyChord {
 			wantCancellation = CancellationCooperative
 		}
 		if got.Cancellation != wantCancellation {
