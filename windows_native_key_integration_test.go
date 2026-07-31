@@ -17,7 +17,10 @@ import (
 	"github.com/tailscale/win"
 )
 
-const nativeWindowsKeyMessageTimeout = 3 * time.Second
+const (
+	nativeWindowsKeyMessageTimeout   = 3 * time.Second
+	nativeWindowsNoKeyMessageTimeout = 100 * time.Millisecond
+)
 
 type nativeWindowsKeyMessage struct {
 	message uint32
@@ -61,6 +64,98 @@ func TestNativeWindowsTargetedExtendedKeyDispatch(t *testing.T) {
 	}
 }
 
+func TestNativeWindowsSharedModifierOwnership(t *testing.T) {
+	messages, _ := startNativeWindowsKeyTarget(t)
+	pid := os.Getpid()
+
+	if err := KeyToggleImmediate("c", "down", "ctrl", pid); err != nil {
+		t.Fatalf("Ctrl+C down: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = KeyToggleImmediate("c", "up", "ctrl", pid)
+	})
+	assertNativeWindowsKeyMessage(t, messages, win.WM_KEYDOWN, 0x11)
+	assertNativeWindowsKeyMessage(t, messages, win.WM_KEYDOWN, 'C')
+
+	if err := KeyToggleImmediate("v", "down", "ctrl", pid); err != nil {
+		t.Fatalf("Ctrl+V down: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = KeyToggleImmediate("v", "up", "ctrl", pid)
+	})
+	assertNativeWindowsKeyMessage(t, messages, win.WM_KEYDOWN, 'V')
+	assertNoNativeWindowsKeyMessage(t, messages)
+
+	if err := KeyToggleImmediate("c", "up", "ctrl", pid); err != nil {
+		t.Fatalf("Ctrl+C up: %v", err)
+	}
+	assertNativeWindowsKeyMessage(t, messages, win.WM_KEYUP, 'C')
+	assertNoNativeWindowsKeyMessage(t, messages)
+
+	if err := KeyToggleImmediate("v", "up", "ctrl", pid); err != nil {
+		t.Fatalf("Ctrl+V up: %v", err)
+	}
+	assertNativeWindowsKeyMessage(t, messages, win.WM_KEYUP, 'V')
+	assertNativeWindowsKeyMessage(t, messages, win.WM_KEYUP, 0x11)
+}
+
+func TestNativeWindowsTapPreservesSharedModifierHold(t *testing.T) {
+	messages, _ := startNativeWindowsKeyTarget(t)
+	pid := os.Getpid()
+
+	if err := KeyToggleImmediate("c", "down", "ctrl", pid); err != nil {
+		t.Fatalf("Ctrl+C down: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = KeyToggleImmediate("c", "up", "ctrl", pid)
+	})
+	assertNativeWindowsKeyMessage(t, messages, win.WM_KEYDOWN, 0x11)
+	assertNativeWindowsKeyMessage(t, messages, win.WM_KEYDOWN, 'C')
+
+	if err := KeyTap("c", "ctrl", pid); !errors.Is(err, ErrInputOwnership) {
+		t.Fatalf("tap exact held chord error = %v", err)
+	}
+	assertNoNativeWindowsKeyMessage(t, messages)
+
+	if err := KeyTap("v", "ctrl", pid); err != nil {
+		t.Fatalf("tap Ctrl+V while Ctrl+C is held: %v", err)
+	}
+	assertNativeWindowsKeyMessage(t, messages, win.WM_KEYDOWN, 'V')
+	assertNativeWindowsKeyMessage(t, messages, win.WM_KEYUP, 'V')
+	assertNoNativeWindowsKeyMessage(t, messages)
+
+	if err := KeyToggleImmediate("c", "up", "ctrl", pid); err != nil {
+		t.Fatalf("Ctrl+C up: %v", err)
+	}
+	assertNativeWindowsKeyMessage(t, messages, win.WM_KEYUP, 'C')
+	assertNativeWindowsKeyMessage(t, messages, win.WM_KEYUP, 0x11)
+}
+
+func TestNativeWindowsFailedReleaseRetainsOwnershipForRetry(t *testing.T) {
+	messages, stop := startNativeWindowsKeyTarget(t)
+	pid := os.Getpid()
+
+	if err := KeyToggleImmediate("delete", "down", "ctrl", pid); err != nil {
+		t.Fatalf("extended key down: %v", err)
+	}
+	assertNativeWindowsKeyMessage(t, messages, win.WM_KEYDOWN, 0x11)
+	assertNativeWindowsKeyMessage(t, messages, win.WM_KEYDOWN, 0x2e)
+	stop()
+
+	err := KeyToggleImmediate("delete", "up", "ctrl", pid)
+	if err == nil || errors.Is(err, ErrInputOwnership) ||
+		!strings.Contains(err.Error(), "native keyboard injection failed") {
+		t.Fatalf("release after target loss error = %v", err)
+	}
+
+	retryMessages, _ := startNativeWindowsKeyTarget(t)
+	if err := KeyToggleImmediate("delete", "up", "ctrl", pid); err != nil {
+		t.Fatalf("retry extended key up: %v", err)
+	}
+	assertNativeWindowsKeyMessage(t, retryMessages, win.WM_KEYUP, 0x2e)
+	assertNativeWindowsKeyMessage(t, retryMessages, win.WM_KEYUP, 0x11)
+}
+
 func assertNativeWindowsKeyMessage(
 	t *testing.T,
 	messages <-chan nativeWindowsKeyMessage,
@@ -96,7 +191,7 @@ func assertNoNativeWindowsKeyMessage(
 			message.message,
 			message.key,
 		)
-	default:
+	case <-time.After(nativeWindowsNoKeyMessageTimeout):
 	}
 }
 
