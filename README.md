@@ -323,15 +323,19 @@ backend may support a single non-ASCII rune directly (the RemoteDesktop portal
 and Pure-Go X11 do), while another native keymap can return `ErrNotSupported`.
 Use `TypeStrE` or `UnicodeTypeE` when the intent is text input.
 
-On native Linux and RemoteDesktop portal paths, stateful `KeyDown`/`KeyUp`
-and `MouseDown`/`MouseUp` pairs are backend- and session-affine. Equivalent
-key aliases such as `esc`/`escape` match the same hold. A duplicate Down, an
-Up without a successful RobotGo-owned Down, or an Up after its portal session
-was replaced returns `ErrInputOwnership` without sending input on another
-backend. Callers can distinguish this contract with
-`errors.Is(err, robotgo.ErrInputOwnership)`. Closing or retargeting a native
-backend releases RobotGo-owned state; closing a portal session delegates that
-release to the compositor.
+On native Linux, native Windows, and RemoteDesktop portal paths, stateful
+`KeyDown`/`KeyUp` pairs are backend- and session-affine; pointer holds provide
+the same contract where supported. Equivalent key aliases such as
+`esc`/`escape` match the same hold. A duplicate Down, an Up without a
+successful RobotGo-owned Down, or an Up after its portal session was replaced
+returns `ErrInputOwnership` without sending input on another backend. Native
+Windows records the exact successfully dispatched key prefix, so partial
+failure cleanup releases only RobotGo-owned state and retains failed releases
+for retry. If a native transition fails before acquiring any state, it returns
+`ErrInputNotApplied`. Callers can distinguish both contracts with
+`errors.Is`. Closing or retargeting the native Linux backend releases
+RobotGo-owned state; closing a portal session delegates that release to the
+compositor.
 
 Low-level helpers whose signatures directly expose `C.*` types remain CGO-only.
 Portable callers should use `Bitmap`, `CHex`, `Handle`, the error-returning APIs,
