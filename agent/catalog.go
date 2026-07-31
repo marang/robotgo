@@ -9,7 +9,7 @@ import (
 const (
 	agentWindowBackendSway     = "sway"
 	agentWindowBackendHyprland = "hyprland"
-	agentKeyboardPureGoX11     = "pure-go-x11"
+	agentInputPureGoX11        = "pure-go-x11"
 )
 
 func buildCatalog(policy Policy, capabilities robotgo.RuntimeCapabilities) OperationCatalog {
@@ -21,7 +21,7 @@ func buildCatalog(policy Policy, capabilities robotgo.RuntimeCapabilities) Opera
 			waitColorCapability(policy, capabilities),
 			operationCapability(OperationMove, policy, capabilities.Mouse),
 			operationCapability(OperationClick, policy, capabilities.Mouse),
-			cooperativeOperationCapability(OperationScroll, policy, capabilities.Mouse),
+			scrollCapability(policy, capabilities),
 			elevatedCooperativeOperationCapability(OperationDrag, policy, capabilities.Mouse),
 			operationCapability(OperationTypeText, policy, capabilities.Keyboard),
 			keyChordCapability(policy, capabilities),
@@ -32,13 +32,6 @@ func buildCatalog(policy Policy, capabilities robotgo.RuntimeCapabilities) Opera
 
 func keyChordCapability(policy Policy, capabilities robotgo.RuntimeCapabilities) OperationCapability {
 	feature := keyChordFeature(capabilities)
-	if capabilities.Keyboard.Backend == agentKeyboardPureGoX11 {
-		capability := elevatedOperationCapability(OperationKeyChord, policy, feature)
-		if feature.Available {
-			capability.Remediation = "Pure-Go X11 executes the complete chord as one backend-owned press/release transaction because persistent literal-key holds are unsafe"
-		}
-		return capability
-	}
 	return elevatedCooperativeOperationCapability(OperationKeyChord, policy, feature)
 }
 
@@ -46,28 +39,42 @@ func keyChordFeature(capabilities robotgo.RuntimeCapabilities) robotgo.FeatureCa
 	if !capabilities.Keyboard.Available {
 		return capabilities.Keyboard
 	}
+	if capabilities.Runtime.GOOS == goOSLinux {
+		feature := capabilities.Keyboard
+		feature.Available = false
+		feature.Reason = robotgo.ErrNotSupported.Error() +
+			": Linux keyboard input cannot bind a chord to an allowed process"
+		feature.Notes = "X11 and Wayland inject into global focus; use a backend with process-targeted keyboard injection"
+		return feature
+	}
+	if capabilities.Runtime.GOOS == "windows" &&
+		!capabilities.Runtime.CGOEnabled {
+		feature := capabilities.Keyboard
+		feature.Available = false
+		feature.Reason = robotgo.ErrNotSupported.Error() +
+			": Pure-Go Windows keyboard input cannot bind a chord to an allowed process"
+		feature.Notes = "use the native Windows backend until Pure-Go Windows supports process-targeted keyboard injection"
+		return feature
+	}
 	if !capabilities.Window.Available {
 		feature := capabilities.Window
 		feature.Backend = capabilities.Keyboard.Backend
 		feature.Fallback = capabilities.Keyboard.Fallback
-		feature.Reason = "keyboard injection is available but active-window identity is unavailable: " + feature.Reason
-		feature.Notes = "keyboard.chord requires a trustworthy active process identity before injection"
-		return feature
-	}
-	if capabilities.Runtime.GOOS == goOSLinux &&
-		capabilities.Runtime.DisplayServer == robotgo.DisplayServerWayland &&
-		capabilities.Window.Backend != agentWindowBackendSway &&
-		capabilities.Window.Backend != agentWindowBackendHyprland {
-		feature := capabilities.Window
-		feature.Available = false
-		feature.Backend = capabilities.Keyboard.Backend
-		feature.Fallback = capabilities.Keyboard.Fallback
-		feature.Reason = robotgo.ErrNotSupported.Error() +
-			": selected Wayland window backend cannot provide a trustworthy active process and title"
-		feature.Notes = "keyboard.chord requires Sway or Hyprland active-window identity until an accessibility backend provides an equivalent contract"
+		feature.Reason = "keyboard injection is available but target-window identity is unavailable: " + feature.Reason
+		feature.Notes = "keyboard.chord requires a trustworthy process title before process-targeted injection"
 		return feature
 	}
 	return capabilities.Keyboard
+}
+
+func scrollCapability(policy Policy, capabilities robotgo.RuntimeCapabilities) OperationCapability {
+	capability := cooperativeOperationCapability(OperationScroll, policy, capabilities.Mouse)
+	capability.ScrollAxes = []ScrollAxis{ScrollAxisHorizontal, ScrollAxisVertical}
+	if capabilities.Mouse.Backend == agentInputPureGoX11 {
+		capability.ScrollAxes = []ScrollAxis{ScrollAxisVertical}
+		capability.Remediation = "Pure-Go X11 currently supports vertical scrolling only; use the native X11 backend for horizontal scrolling"
+	}
+	return capability
 }
 
 func activationFeature(policy Policy, capabilities robotgo.RuntimeCapabilities) robotgo.FeatureCapability {
@@ -80,11 +87,12 @@ func activationFeature(policy Policy, capabilities robotgo.RuntimeCapabilities) 
 		feature.Notes = "use a compositor or accessibility backend that exposes a stable activation contract; RobotGo does not route Wayland activation through X11"
 	}
 	if capabilities.Runtime.GOOS == "darwin" && capabilities.Runtime.CGOEnabled &&
-		onlyNativeHandleWindows(policy) {
+		hasAllowedWindows(policy) {
 		feature.Available = false
 		feature.Fallback = false
-		feature.Reason = "native macOS CGO window handles are not serializable activation targets"
-		feature.Notes = "allow a process target or use the Pure-Go macOS window backend for validated CGWindowID activation"
+		feature.Reason = robotgo.ErrNotSupported.Error() +
+			": native macOS CGO cannot preserve one exact window reference across validation and activation"
+		feature.Notes = "use the Pure-Go macOS window backend for validated CGWindowID activation"
 	}
 	return feature
 }
@@ -96,22 +104,14 @@ func activationCapability(policy Policy, capabilities robotgo.RuntimeCapabilitie
 		(capabilities.Runtime.GOOS == goOSLinux &&
 			capabilities.Runtime.DisplayServer == robotgo.DisplayServerWayland ||
 			capabilities.Runtime.GOOS == "darwin" &&
-				capabilities.Runtime.CGOEnabled && onlyNativeHandleWindows(policy)) {
+				capabilities.Runtime.CGOEnabled && hasAllowedWindows(policy)) {
 		capability.UnavailableCode = ErrorUnsupported
 	}
 	return capability
 }
 
-func onlyNativeHandleWindows(policy Policy) bool {
-	if len(policy.allowWindow) == 0 {
-		return false
-	}
-	for identity := range policy.allowWindow {
-		if identity.kind != WindowTargetHandle {
-			return false
-		}
-	}
-	return true
+func hasAllowedWindows(policy Policy) bool {
+	return len(policy.allowWindow) > 0
 }
 
 func observationCapability(policy Policy, capabilities robotgo.RuntimeCapabilities) OperationCapability {
@@ -260,8 +260,15 @@ func featureUnavailableCode(feature robotgo.FeatureCapability) ErrorCode {
 }
 
 func cloneCatalog(source OperationCatalog) OperationCatalog {
-	return OperationCatalog{
+	cloned := OperationCatalog{
 		SchemaVersion: source.SchemaVersion,
 		Operations:    append([]OperationCapability(nil), source.Operations...),
 	}
+	for index := range cloned.Operations {
+		cloned.Operations[index].ScrollAxes = append(
+			[]ScrollAxis(nil),
+			cloned.Operations[index].ScrollAxes...,
+		)
+	}
+	return cloned
 }

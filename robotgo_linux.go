@@ -218,6 +218,30 @@ func ActivePid(pid int, args ...int) error {
 	return nil
 }
 
+// ResolveWindowHandleE resolves a process ID to one validated X11 window
+// handle, or validates the supplied handle when args is non-empty.
+func ResolveWindowHandleE(target int, args ...int) (int, error) {
+	if target <= 0 {
+		return 0, fmt.Errorf("%w: invalid window target %d", errWindowIdentityUnavailable, target)
+	}
+	if base.DetectDisplayServer() == base.Wayland {
+		return 0, waylandWindowNotSupported("resolve an exact window handle")
+	}
+	isHandle := len(args) > 0 || currentTreatAsHandle()
+	handle := target
+	if !isHandle {
+		xid, err := GetXid(nil, target)
+		if err != nil {
+			return 0, fmt.Errorf("%w: %w", errWindowIdentityUnavailable, err)
+		}
+		handle = int(xid)
+	}
+	if _, err := GetTitleE(handle, 1); err != nil {
+		return 0, err
+	}
+	return handle, nil
+}
+
 // GetXid get the xid return window and error
 func GetXid(xu *xgbutil.XUtil, pid int) (xproto.Window, error) {
 	owned := false

@@ -691,6 +691,11 @@ Wayland because these compositors do not expose a stable, portable foreign
 window handle; RobotGo does not invent one. Wayland core and generic wlroots
 also return `ErrNotSupported` for active PID lookup without a trustworthy
 identity source.
+`ResolveWindowHandleE(pid)` resolves and validates one exact native window;
+passing a second argument treats the first value as a handle and validates it.
+This is useful when title validation and a later mutation must address the same
+window rather than resolving a PID twice. It is unavailable on Wayland and the
+legacy native macOS CGO backend; Pure-Go macOS exposes a stable `CGWindowID`.
 
 Pure-Go Windows builds provide window introspection and control through Win32:
 active handle/PID, title, outer/client bounds, activation, minimize/maximize,
@@ -823,11 +828,13 @@ versioned operation catalog, policy and confirmation gates, bounded observation,
 dry-run, typed move/click/scroll/drag/text/chord/activation requests,
 stale-target protection, post-action verification, privacy-safe visual
 conditions, and sanitized structured results. Scroll and drag are
-cooperatively cancelable between events. A chord checks cancellation between
-key-down and its mandatory release on persistent-hold backends; Pure-Go X11
-uses a backend-owned atomic press/release transaction because persistent
-literal-key holds are unsafe. Indivisible backend calls report preflight-only
-cancellation. The process-exclusive session records every
+cooperatively cancelable between events. The operation catalog reports
+supported scroll axes structurally; Pure-Go X11 currently advertises only
+vertical scrolling. A chord validates the allow-listed process title, passes
+the same process ID into both key-down and key-up, and checks cancellation
+between them. Linux and Pure-Go Windows chords fail closed until their keyboard
+backends can bind input to an allowed process. Indivisible backend calls report
+preflight-only cancellation. The process-exclusive session records every
 RobotGo-owned pressed key or pointer button and releases it on success, error,
 cancellation, timeout, disconnect, and close. An interrupted action that
 already injected input is `unverified`, not safely retryable. A cleanup failure
@@ -840,9 +847,12 @@ bounds. Scroll event/distance, drag distance/duration, buttons, shortcut keys
 and canonical modifiers, action rate, and session lifetime are separately
 bounded. Drag, chord, and activation always require confirmation. Window
 activation accepts only an immutable allow-listed process or native handle and
-revalidates its expected title before dispatch. If geometry or identity cannot
-be resolved, no mutation is injected. Unavailable mutation capabilities expose
-a stable `unavailable_code` for unavailable, unsupported, or permission-denied
+resolves it to one exact native handle, revalidates the expected title on that
+handle, and activates that same handle. Native macOS CGO activation fails
+closed because its legacy representation cannot preserve that exact reference;
+the Pure-Go macOS backend can. If geometry or identity cannot be resolved, no
+mutation is injected. Unavailable mutation capabilities expose a stable
+`unavailable_code` for unavailable, unsupported, or permission-denied
 states, independently of their backend and fallback fields.
 
 `Session.Observe` always returns sanitized runtime diagnostics and can optionally

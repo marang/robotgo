@@ -138,7 +138,7 @@ func (s *Session) executeDrag(ctx context.Context, action DragAction) (returnErr
 	}
 	pressed, err := s.pressMouse(action.Button)
 	if err != nil {
-		return errors.Join(errPartialAction, err)
+		return errors.Join(errPartialAction, err, s.releasePressedInput(pressed))
 	}
 	defer func() {
 		if cleanupErr := s.releasePressedInput(pressed); cleanupErr != nil {
@@ -192,12 +192,9 @@ func (s *Session) executeKeyChord(ctx context.Context, action KeyChordAction) (r
 	if err := s.executionError(ctx); err != nil {
 		return err
 	}
-	if s.keyChordIsAtomic() {
-		return s.driver.TapKey(action.Key, action.Modifiers)
-	}
-	pressed, err := s.pressKey(action.Key, action.Modifiers)
+	pressed, err := s.pressKey(action.Key, action.Modifiers, action.TargetPID)
 	if err != nil {
-		return err
+		return errors.Join(errPartialAction, err, s.releasePressedInput(pressed))
 	}
 	defer func() {
 		if cleanupErr := s.releasePressedInput(pressed); cleanupErr != nil {
@@ -210,73 +207,69 @@ func (s *Session) executeKeyChord(ctx context.Context, action KeyChordAction) (r
 	return nil
 }
 
-func (s *Session) keyChordIsAtomic() bool {
-	capability, ok := s.capability(OperationKeyChord)
-	return ok && capability.Cancellation == CancellationPreflightOnly
-}
-
 func (s *Session) validateActiveWindow(action KeyChordAction) error {
 	identity := windowTargetIdentity{target: action.TargetPID, kind: WindowTargetProcess}
 	target := s.policy.allowWindow[identity]
-	title, err := s.driver.ActiveWindowTitle()
+	title, err := s.driver.WindowTitle(action.TargetPID, WindowTargetProcess)
 	if err != nil {
 		return err
 	}
 	if title != target.ExpectedTitle {
-		return ErrStaleTarget
-	}
-	// Check the active PID last so focus identity is as fresh as possible when
-	// the following key-down reaches the backend.
-	activePID, err := s.driver.ActiveWindowPID()
-	if err != nil {
-		return err
-	}
-	if activePID != action.TargetPID {
 		return ErrStaleTarget
 	}
 	return nil
 }
 
 func (s *Session) executeActivate(ctx context.Context, action ActivateWindowAction) error {
-	if err := s.validateWindowIdentity(action); err != nil {
+	handle, err := s.resolveValidatedWindow(action)
+	if err != nil {
 		return err
 	}
 	if err := s.executionError(ctx); err != nil {
 		return err
 	}
-	return s.driver.ActivateWindow(action.Target, action.Kind)
+	return s.driver.ActivateWindow(handle, WindowTargetHandle)
 }
 
 func (s *Session) validateWindowIdentity(action ActivateWindowAction) error {
+	_, err := s.resolveValidatedWindow(action)
+	return err
+}
+
+func (s *Session) resolveValidatedWindow(action ActivateWindowAction) (int, error) {
 	identity := windowTargetIdentity{target: action.Target, kind: action.Kind}
 	target := s.policy.allowWindow[identity]
-	title, err := s.driver.WindowTitle(action.Target, action.Kind)
+	handle, err := s.driver.ResolveWindow(action.Target, action.Kind)
 	if err != nil {
-		return err
+		return 0, err
+	}
+	title, err := s.driver.WindowTitle(handle, WindowTargetHandle)
+	if err != nil {
+		return 0, err
 	}
 	if title != target.ExpectedTitle {
-		return ErrStaleTarget
+		return 0, ErrStaleTarget
 	}
-	return nil
+	return handle, nil
 }
 
 func (s *Session) pressMouse(button MouseButton) (pressedInput, error) {
-	if err := s.driver.ToggleMouse(button, true); err != nil {
-		return pressedInput{}, err
-	}
 	pressed := pressedInput{button: button}
 	s.pressedInputs = append(s.pressedInputs, pressed)
-	return pressed, nil
+	return pressed, s.driver.ToggleMouse(button, true)
 }
 
-func (s *Session) pressKey(key string, modifiers []KeyModifier) (pressedInput, error) {
+func (s *Session) pressKey(
+	key string,
+	modifiers []KeyModifier,
+	targetPID int,
+) (pressedInput, error) {
 	ownedModifiers := append([]KeyModifier(nil), modifiers...)
-	if err := s.driver.ToggleKey(key, ownedModifiers, true); err != nil {
-		return pressedInput{}, err
+	pressed := pressedInput{
+		key: key, modifiers: ownedModifiers, targetPID: targetPID, keyboard: true,
 	}
-	pressed := pressedInput{key: key, modifiers: ownedModifiers, keyboard: true}
 	s.pressedInputs = append(s.pressedInputs, pressed)
-	return pressed, nil
+	return pressed, s.driver.ToggleKey(key, ownedModifiers, targetPID, true)
 }
 
 func (s *Session) releasePressedInput(pressed pressedInput) error {
@@ -286,7 +279,12 @@ func (s *Session) releasePressedInput(pressed pressedInput) error {
 	}
 	var err error
 	if pressed.keyboard {
-		err = s.driver.ToggleKey(pressed.key, pressed.modifiers, false)
+		err = s.driver.ToggleKey(
+			pressed.key,
+			pressed.modifiers,
+			pressed.targetPID,
+			false,
+		)
 	} else {
 		err = s.driver.ToggleMouse(pressed.button, false)
 	}
@@ -314,6 +312,7 @@ func (s *Session) pressedInputIndex(pressed pressedInput) int {
 		if candidate.keyboard != pressed.keyboard ||
 			candidate.button != pressed.button ||
 			candidate.key != pressed.key ||
+			candidate.targetPID != pressed.targetPID ||
 			!sameModifiers(candidate.modifiers, pressed.modifiers) {
 			continue
 		}

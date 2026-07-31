@@ -333,6 +333,18 @@ func TestCapabilitiesReturnsCatalog(t *testing.T) {
 	}
 }
 
+func TestSafeToolErrorPrioritizesInputCleanupOverCancellation(t *testing.T) {
+	toolErr := safeToolError(errors.Join(
+		&agent.ActionError{
+			Code: agent.ErrorCanceled, Message: "canceled action",
+		},
+		agent.ErrInputCleanup,
+	))
+	if toolErr == nil || toolErr.Code != agent.ErrorCleanupFailed {
+		t.Fatalf("joined cleanup error = %+v", toolErr)
+	}
+}
+
 func TestObserveReturnsPrivacyReducedMetadata(t *testing.T) {
 	const secretDigest = "secret-capture-digest"
 	fake := &fakeSession{observation: &agent.Observation{

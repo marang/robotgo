@@ -21,10 +21,8 @@ type inputDriver interface {
 	Scroll(deltaX, deltaY int) error
 	ToggleMouse(button MouseButton, down bool) error
 	TypeText(text string) error
-	ToggleKey(key string, modifiers []KeyModifier, down bool) error
-	TapKey(key string, modifiers []KeyModifier) error
-	ActiveWindowPID() (int, error)
-	ActiveWindowTitle() (string, error)
+	ToggleKey(key string, modifiers []KeyModifier, targetPID int, down bool) error
+	ResolveWindow(target int, kind WindowTargetKind) (int, error)
 	WindowTitle(target int, kind WindowTargetKind) (string, error)
 	ActivateWindow(target int, kind WindowTargetKind) error
 	RuntimeCapabilities() robotgo.RuntimeCapabilities
@@ -52,19 +50,27 @@ func (robotGoDriver) ToggleMouse(button MouseButton, down bool) error {
 	return robotgo.Toggle(string(button), state)
 }
 func (robotGoDriver) TypeText(text string) error { return robotgo.TypeStrE(text) }
-func (robotGoDriver) ToggleKey(key string, modifiers []KeyModifier, down bool) error {
+func (robotGoDriver) ToggleKey(
+	key string,
+	modifiers []KeyModifier,
+	targetPID int,
+	down bool,
+) error {
 	args := robotGoKeyArguments(modifiers)
 	if !down {
 		args = append([]interface{}{"up"}, args...)
 	}
+	args = append(args, targetPID)
 	return robotgo.KeyToggle(key, args...)
 }
-func (robotGoDriver) TapKey(key string, modifiers []KeyModifier) error {
-	return robotgo.KeyTap(key, robotGoKeyArguments(modifiers)...)
-}
-func (robotGoDriver) ActiveWindowPID() (int, error) { return robotgo.GetPidE() }
-func (robotGoDriver) ActiveWindowTitle() (string, error) {
-	return robotgo.GetTitleE()
+func (robotGoDriver) ResolveWindow(target int, kind WindowTargetKind) (int, error) {
+	if kind == WindowTargetHandle {
+		if nativeMacOSHandleUnsupported() {
+			return 0, fmt.Errorf("%w: native macOS window handles are not serializable activation targets", robotgo.ErrNotSupported)
+		}
+		return robotgo.ResolveWindowHandleE(target, 1)
+	}
+	return robotgo.ResolveWindowHandleE(target)
 }
 func (robotGoDriver) WindowTitle(target int, kind WindowTargetKind) (string, error) {
 	if kind == WindowTargetHandle {
@@ -77,9 +83,6 @@ func (robotGoDriver) WindowTitle(target int, kind WindowTargetKind) (string, err
 }
 func (robotGoDriver) ActivateWindow(target int, kind WindowTargetKind) error {
 	if kind == WindowTargetHandle {
-		if nativeMacOSHandleUnsupported() {
-			return fmt.Errorf("%w: native macOS window handles are not serializable activation targets", robotgo.ErrNotSupported)
-		}
 		return robotgo.ActivePid(target, 1)
 	}
 	return robotgo.ActivePid(target)
@@ -145,6 +148,7 @@ type pressedInput struct {
 	button    MouseButton
 	key       string
 	modifiers []KeyModifier
+	targetPID int
 	keyboard  bool
 }
 
@@ -305,6 +309,10 @@ func (s *Session) run(ctx context.Context, request ActionRequest, dryRun bool) (
 			"operation is unavailable on the selected backend",
 			capabilityUnavailableCause(code),
 		)
+	}
+	if err := validateBackendRequest(request, capability); err != nil {
+		code, message := classifyBackendError(err)
+		return actionFailure(id, request.Operation, started, code, message, err)
 	}
 	if s.used >= s.policy.MaxActions {
 		return actionFailure(id, request.Operation, started, ErrorPolicyDenied, "agent policy action limit reached", ErrPolicyDenied)
@@ -549,6 +557,23 @@ func (s *Session) capability(operation Operation) (OperationCapability, bool) {
 		}
 	}
 	return OperationCapability{}, false
+}
+
+func validateBackendRequest(request ActionRequest, capability OperationCapability) error {
+	if request.Operation != OperationScroll || request.Scroll == nil ||
+		request.Scroll.DeltaX == 0 {
+		return nil
+	}
+	for _, axis := range capability.ScrollAxes {
+		if axis == ScrollAxisHorizontal {
+			return nil
+		}
+	}
+	return fmt.Errorf(
+		"%w: backend %q does not support horizontal scrolling",
+		robotgo.ErrNotSupported,
+		capability.Backend,
+	)
 }
 
 func (s *Session) authorize(request ActionRequest) error {

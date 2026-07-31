@@ -10,7 +10,7 @@ import (
 )
 
 // CatalogSchemaVersion identifies the operation catalog JSON contract.
-const CatalogSchemaVersion = "4"
+const CatalogSchemaVersion = "5"
 
 // Operation identifies one strict agent operation.
 type Operation string
@@ -65,7 +65,16 @@ type OperationCapability struct {
 	CapturePolicyAllowed  bool                `json:"capture_policy_allowed,omitempty"`
 	CaptureFallback       bool                `json:"capture_fallback,omitempty"`
 	CaptureBackend        string              `json:"capture_backend,omitempty"`
+	ScrollAxes            []ScrollAxis        `json:"scroll_axes,omitempty"`
 }
+
+// ScrollAxis identifies an axis accepted by a scroll backend.
+type ScrollAxis string
+
+const (
+	ScrollAxisHorizontal ScrollAxis = "horizontal"
+	ScrollAxisVertical   ScrollAxis = "vertical"
+)
 
 // OperationCatalog is an immutable snapshot of operation availability.
 type OperationCatalog struct {

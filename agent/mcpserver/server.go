@@ -358,6 +358,12 @@ func safeToolError(err error) *ToolError {
 	if err == nil {
 		return nil
 	}
+	if errors.Is(err, agent.ErrInputCleanup) {
+		return &ToolError{
+			Code:    agent.ErrorCleanupFailed,
+			Message: "RobotGo could not release owned input; do not retry the action",
+		}
+	}
 	var actionErr *agent.ActionError
 	if errors.As(err, &actionErr) {
 		return &ToolError{Code: actionErr.Code, Message: actionErr.Message}
@@ -369,11 +375,6 @@ func safeToolError(err error) *ToolError {
 		return &ToolError{Code: agent.ErrorTimedOut, Message: "RobotGo agent operation timed out"}
 	case errors.Is(err, agent.ErrSessionClosed):
 		return closedToolError()
-	case errors.Is(err, agent.ErrInputCleanup):
-		return &ToolError{
-			Code:    agent.ErrorCleanupFailed,
-			Message: "RobotGo could not release owned input; do not retry the action",
-		}
 	default:
 		return &ToolError{Code: agent.ErrorBackendFailure, Message: errorMessageFailed}
 	}

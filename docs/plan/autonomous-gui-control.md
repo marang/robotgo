@@ -35,10 +35,11 @@ LAB-75 adds four typed `robotgo_act` operations:
 - `pointer.drag` keeps its start, end, path, button, distance, duration, and
   display inside immutable policy
 - `keyboard.chord` accepts one allow-listed key plus only the canonical
-  modifiers `alt`, `control`, `meta`, and `shift`, bound to an allow-listed
-  live active process/title identity
+  modifiers `alt`, `control`, `meta`, and `shift`; it validates the
+  allow-listed process title and binds both key-down and key-up to that PID
 - `window.activate` targets one allow-listed process or native handle and
-  revalidates its expected title before dispatch
+  resolves it to one exact native handle, revalidates its expected title on
+  that handle, and activates the same handle
 
 Focus and activation are represented by one operation because supported
 platform backends do not expose a reliable cross-platform semantic distinction.
@@ -46,12 +47,16 @@ Unsupported targets remain explicit.
 
 Scroll and drag are cooperatively cancelable between injected events. A chord
 checks cancellation after key-down and still performs its mandatory release
-on persistent-hold backends. Pure-Go X11 instead uses its strict backend-owned
-atomic chord transaction because persistent literal-key holds are intentionally
-unsupported there. The individual move, click, text, key-toggle, key-tap, and
-activation backend calls remain indivisible. Drag, chord, and activation
-always require `confirmed: true`, in addition to the explicit MCP
-`mode: "execute"`.
+on persistent-hold backends. Linux and Pure-Go Windows chords are unavailable
+until those keyboard backends can bind input to an allowed process; a
+global-focus or active-window check alone is not an authorization boundary.
+The operation catalog reports scroll axes explicitly and Pure-Go X11 currently
+accepts only vertical scroll. Native macOS CGO activation is unavailable
+because its legacy handle representation cannot preserve one exact reference
+across validation and mutation; Pure-Go macOS supports that contract. The
+individual move, click, text, key-toggle, and activation backend calls remain
+indivisible. Drag, chord, and activation always require `confirmed: true`, in
+addition to the explicit MCP `mode: "execute"`.
 
 ## Policy and ownership
 
@@ -70,6 +75,9 @@ separate and observable.
 The process-exclusive session owns a pressed-input ledger. Every key or button
 pressed by a multi-step action is released on success, backend failure,
 caller cancellation, session timeout, transport disconnect, and `Close`.
+The ledger records ownership before a down call: if that call returns an
+ambiguous error, RobotGo immediately attempts the matching release and retains
+ownership for a later `Close` retry if cleanup also fails.
 Once injection has started, an interrupted multi-step action is reported as
 `unverified`, so callers do not mistake a partial outcome for a safe retry.
 Cleanup failure is returned rather than hidden, blocks further actions, and

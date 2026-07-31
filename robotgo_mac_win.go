@@ -22,6 +22,7 @@ import "C"
 
 import (
 	"fmt"
+	"runtime"
 	"unsafe"
 )
 
@@ -99,6 +100,35 @@ func ActivePid(pid int, args ...int) error {
 		return fmt.Errorf("%w: native backend could not activate target window", errWindowOperationFailed)
 	}
 	return nil
+}
+
+// ResolveWindowHandleE resolves a process ID to one validated native window
+// handle, or validates the supplied handle when args is non-empty.
+func ResolveWindowHandleE(target int, args ...int) (int, error) {
+	if target <= 0 {
+		return 0, fmt.Errorf("%w: invalid window target %d", errWindowIdentityUnavailable, target)
+	}
+	if runtime.GOOS == "darwin" {
+		return 0, fmt.Errorf(
+			"%w: native macOS CGO cannot expose one serializable exact window reference",
+			ErrNotSupported,
+		)
+	}
+	handle := target
+	if len(args) == 0 && !currentTreatAsHandle() {
+		handle = GetHWNDByPid(target)
+		if handle <= 0 {
+			return 0, fmt.Errorf(
+				"%w: no native window matched process %d",
+				errWindowIdentityUnavailable,
+				target,
+			)
+		}
+	}
+	if _, err := GetTitleE(handle, 1); err != nil {
+		return 0, err
+	}
+	return handle, nil
 }
 
 // DisplaysNum get the count of displays

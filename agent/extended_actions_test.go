@@ -100,15 +100,13 @@ func TestNativeMacOSActivationCapabilityRejectsHandleOnlyPolicy(t *testing.T) {
 	}
 }
 
-func TestWaylandKeyChordCapabilityRequiresActiveWindowIdentity(t *testing.T) {
+func TestWaylandKeyChordCapabilityRequiresProcessTargetedInjection(t *testing.T) {
 	for _, test := range []struct {
-		backend   string
-		available bool
-		code      ErrorCode
+		backend string
 	}{
-		{backend: agentWindowBackendSway, available: true},
-		{backend: agentWindowBackendHyprland, available: true},
-		{backend: "wlroots-generic", available: false, code: ErrorUnsupported},
+		{backend: agentWindowBackendSway},
+		{backend: agentWindowBackendHyprland},
+		{backend: "wlroots-generic"},
 	} {
 		t.Run(test.backend, func(t *testing.T) {
 			capabilities := availableCapabilities()
@@ -116,8 +114,8 @@ func TestWaylandKeyChordCapabilityRequiresActiveWindowIdentity(t *testing.T) {
 			capabilities.Runtime.DisplayServer = robotgo.DisplayServerWayland
 			capabilities.Window.Backend = test.backend
 			capability := keyChordFeature(capabilities)
-			if capability.Available != test.available ||
-				featureUnavailableCode(capability) != test.code {
+			if capability.Available ||
+				featureUnavailableCode(capability) != ErrorUnsupported {
 				t.Fatalf("keyboard.chord capability = %+v", capability)
 			}
 		})
@@ -176,6 +174,54 @@ func TestExtendedCapabilityReportsPermissionAndUnavailableStates(t *testing.T) {
 				t.Fatalf("unavailable cause = %v", executeErr)
 			}
 		})
+	}
+}
+
+func TestPureGoX11ScrollReportsAndEnforcesVerticalAxisOnly(t *testing.T) {
+	driver := &fakeDriver{}
+	policy, err := preparePolicy(extendedActionPolicy(OperationScroll))
+	if err != nil {
+		t.Fatal(err)
+	}
+	capabilities := availableCapabilities()
+	capabilities.Mouse.Backend = agentInputPureGoX11
+	session, err := newSession(policy, driver, capabilities)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = session.Close() })
+
+	capability, ok := session.capability(OperationScroll)
+	if !ok || !capability.Available ||
+		len(capability.ScrollAxes) != 1 ||
+		capability.ScrollAxes[0] != ScrollAxisVertical {
+		t.Fatalf("Pure-Go X11 scroll capability = %+v", capability)
+	}
+	catalog := session.Catalog()
+	for index := range catalog.Operations {
+		if catalog.Operations[index].Operation == OperationScroll {
+			catalog.Operations[index].ScrollAxes[0] = ScrollAxisHorizontal
+		}
+	}
+	unchanged, _ := session.capability(OperationScroll)
+	if unchanged.ScrollAxes[0] != ScrollAxisVertical {
+		t.Fatal("catalog clone exposed mutable scroll axes")
+	}
+
+	result, executeErr := session.Execute(t.Context(), ActionRequest{
+		Operation: OperationScroll,
+		Scroll: &ScrollAction{
+			TargetX: 1, TargetY: 1, DeltaX: 1, Events: 1, DisplayID: 0,
+		},
+	})
+	var actionErr *ActionError
+	if !errors.As(executeErr, &actionErr) ||
+		actionErr.Code != ErrorUnsupported ||
+		result.Status != ActionFailed {
+		t.Fatalf("horizontal scroll result = %+v, %v", result, executeErr)
+	}
+	if calls := driver.recordedCalls(); len(calls) != 0 {
+		t.Fatalf("unsupported horizontal scroll reached driver: %+v", calls)
 	}
 }
 
@@ -433,6 +479,109 @@ func TestCleanupFailureRetainsExclusiveOwnerUntilCloseRetrySucceeds(t *testing.T
 	}
 }
 
+func TestAmbiguousInputDownFailureIsReleasedImmediately(t *testing.T) {
+	for _, test := range []struct {
+		name      string
+		operation Operation
+		request   ActionRequest
+	}{
+		{
+			name: "mouse", operation: OperationDrag,
+			request: ActionRequest{
+				Operation: OperationDrag, Confirmed: true,
+				Drag: &DragAction{
+					StartX: 1, StartY: 1, EndX: 2, EndY: 1,
+					DisplayID: 0, Button: MouseButtonLeft, DurationMillis: 1,
+				},
+			},
+		},
+		{
+			name: "keyboard", operation: OperationKeyChord,
+			request: ActionRequest{
+				Operation: OperationKeyChord, Confirmed: true,
+				KeyChord: &KeyChordAction{Key: "c", TargetPID: 42},
+			},
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			driver := &fakeDriver{callError: func(call driverCall) error {
+				if call.operation == test.operation && call.down {
+					return errors.New("ambiguous down failure")
+				}
+				return nil
+			}}
+			session := newTestSession(
+				t,
+				extendedActionPolicy(test.operation),
+				driver,
+			)
+			result, executeErr := session.Execute(t.Context(), test.request)
+			if executeErr == nil || result.Status != ActionUnverified {
+				t.Fatalf("ambiguous down result = %+v, %v", result, executeErr)
+			}
+			var mutationCalls []driverCall
+			for _, call := range driver.recordedCalls() {
+				if call.operation == test.operation && call.text == "" {
+					mutationCalls = append(mutationCalls, call)
+				}
+			}
+			if len(mutationCalls) != 2 ||
+				!mutationCalls[0].down || mutationCalls[1].down ||
+				len(session.pressedInputs) != 0 || session.inputTainted {
+				t.Fatalf(
+					"ambiguous down cleanup calls = %+v, ledger = %+v",
+					mutationCalls,
+					session.pressedInputs,
+				)
+			}
+		})
+	}
+}
+
+func TestAmbiguousKeyDownAndCleanupFailureRemainOwned(t *testing.T) {
+	releaseFailures := 1
+	driver := &fakeDriver{callError: func(call driverCall) error {
+		if call.operation != OperationKeyChord || call.text != "" {
+			return nil
+		}
+		if call.down {
+			return errors.New("ambiguous down failure")
+		}
+		if releaseFailures > 0 {
+			releaseFailures--
+			return errors.New("release failed")
+		}
+		return nil
+	}}
+	policy, err := preparePolicy(extendedActionPolicy(OperationKeyChord))
+	if err != nil {
+		t.Fatal(err)
+	}
+	session, err := newSession(policy, driver, availableCapabilities())
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, executeErr := session.Execute(t.Context(), ActionRequest{
+		Operation: OperationKeyChord, Confirmed: true,
+		KeyChord: &KeyChordAction{Key: "c", TargetPID: 42},
+	})
+	var actionErr *ActionError
+	if !errors.As(executeErr, &actionErr) ||
+		actionErr.Code != ErrorCleanupFailed ||
+		result.Status != ActionUnverified ||
+		len(session.pressedInputs) != 1 || !session.inputTainted {
+		t.Fatalf(
+			"ambiguous cleanup failure = %+v, %v, ledger = %+v",
+			result,
+			executeErr,
+			session.pressedInputs,
+		)
+	}
+	if err := session.Close(); err != nil {
+		t.Fatalf("close cleanup retry = %v", err)
+	}
+}
+
 func TestKeyChordUsesCanonicalOrderAndRelease(t *testing.T) {
 	driver := &fakeDriver{}
 	session := newTestSession(t, extendedActionPolicy(OperationKeyChord), driver)
@@ -455,13 +604,14 @@ func TestKeyChordUsesCanonicalOrderAndRelease(t *testing.T) {
 		}
 	}
 	if len(keyCalls) != 2 || !keyCalls[0].down || keyCalls[1].down ||
-		keyCalls[0].key != "c" ||
+		keyCalls[0].key != "c" || keyCalls[0].target != 42 ||
+		keyCalls[1].target != 42 ||
 		!sameModifiers(keyCalls[0].modifiers, keyCalls[1].modifiers) {
 		t.Fatalf("chord calls = %+v", calls)
 	}
 }
 
-func TestPureGoX11KeyChordUsesAtomicBackendOwnedTransaction(t *testing.T) {
+func TestPureGoX11KeyChordIsUnavailableWithoutProcessTargeting(t *testing.T) {
 	driver := &fakeDriver{}
 	policy, err := preparePolicy(extendedActionPolicy(OperationKeyChord))
 	if err != nil {
@@ -470,15 +620,15 @@ func TestPureGoX11KeyChordUsesAtomicBackendOwnedTransaction(t *testing.T) {
 	capabilities := availableCapabilities()
 	capabilities.Runtime.GOOS = goOSLinux
 	capabilities.Runtime.DisplayServer = robotgo.DisplayServerX11
-	capabilities.Keyboard.Backend = agentKeyboardPureGoX11
+	capabilities.Keyboard.Backend = agentInputPureGoX11
 	session, err := newSession(policy, driver, capabilities)
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = session.Close() })
 	capability, ok := session.capability(OperationKeyChord)
-	if !ok || !capability.Available ||
-		capability.Cancellation != CancellationPreflightOnly {
+	if !ok || capability.Available ||
+		capability.UnavailableCode != ErrorUnsupported {
 		t.Fatalf("Pure-Go X11 chord capability = %+v", capability)
 	}
 	result, err := session.Execute(t.Context(), ActionRequest{
@@ -488,65 +638,58 @@ func TestPureGoX11KeyChordUsesAtomicBackendOwnedTransaction(t *testing.T) {
 			Key: "c", Modifiers: []KeyModifier{KeyModifierControl}, TargetPID: 42,
 		},
 	})
-	if err != nil || result.Status != ActionSucceeded {
+	var actionErr *ActionError
+	if !errors.As(err, &actionErr) || actionErr.Code != ErrorUnsupported ||
+		result.Status != ActionFailed {
 		t.Fatalf("Pure-Go X11 chord result = %+v, %v", result, err)
 	}
-	calls := driver.recordedCalls()
-	var chordCalls []driverCall
-	for _, call := range calls {
-		if call.operation == OperationKeyChord && (call.text == "" || call.text == "tap") {
-			chordCalls = append(chordCalls, call)
-		}
-	}
-	if len(chordCalls) != 1 || chordCalls[0].text != "tap" ||
-		chordCalls[0].key != "c" ||
-		!sameModifiers(chordCalls[0].modifiers, []KeyModifier{KeyModifierControl}) ||
-		len(session.pressedInputs) != 0 {
-		t.Fatalf("Pure-Go X11 chord calls = %+v, ledger = %+v", calls, session.pressedInputs)
+	if calls := driver.recordedCalls(); len(calls) != 0 {
+		t.Fatalf("unavailable Pure-Go X11 chord reached driver: %+v", calls)
 	}
 }
 
-func TestKeyChordRejectsChangedActiveWindowBeforeInput(t *testing.T) {
-	for _, test := range []struct {
-		name   string
-		driver *fakeDriver
-	}{
-		{name: "process changed", driver: &fakeDriver{activePID: 99}},
-		{
-			name:   "title changed before dispatch",
-			driver: &fakeDriver{windowTitles: []string{"fixture", "different fixture"}},
+func TestNativeX11KeyChordIsUnavailableWithoutProcessTargeting(t *testing.T) {
+	capabilities := availableCapabilities()
+	capabilities.Runtime.GOOS = goOSLinux
+	capabilities.Runtime.CGOEnabled = true
+	capabilities.Runtime.DisplayServer = robotgo.DisplayServerX11
+	capabilities.Keyboard.Backend = "x11"
+	capability := keyChordFeature(capabilities)
+	if capability.Available ||
+		featureUnavailableCode(capability) != ErrorUnsupported {
+		t.Fatalf("native X11 chord capability = %+v", capability)
+	}
+}
+
+func TestKeyChordRejectsChangedTargetTitleBeforeInput(t *testing.T) {
+	driver := &fakeDriver{windowTitles: []string{"fixture", "different fixture"}}
+	session := newTestSession(t, extendedActionPolicy(OperationKeyChord), driver)
+	result, err := session.Execute(t.Context(), ActionRequest{
+		Operation: OperationKeyChord,
+		Confirmed: true,
+		KeyChord: &KeyChordAction{
+			Key: "c", Modifiers: []KeyModifier{KeyModifierControl}, TargetPID: 42,
 		},
-	} {
-		t.Run(test.name, func(t *testing.T) {
-			session := newTestSession(t, extendedActionPolicy(OperationKeyChord), test.driver)
-			result, err := session.Execute(t.Context(), ActionRequest{
-				Operation: OperationKeyChord,
-				Confirmed: true,
-				KeyChord: &KeyChordAction{
-					Key: "c", Modifiers: []KeyModifier{KeyModifierControl}, TargetPID: 42,
-				},
-			})
-			var actionErr *ActionError
-			if !errors.As(err, &actionErr) || actionErr.Code != ErrorStaleTarget ||
-				result.Status != ActionFailed {
-				t.Fatalf("stale chord result = %+v, %v", result, err)
-			}
-			for _, call := range test.driver.recordedCalls() {
-				if call.operation == OperationKeyChord && call.text == "" {
-					t.Fatalf("stale chord injected key input: %+v", test.driver.recordedCalls())
-				}
-			}
-		})
+	})
+	var actionErr *ActionError
+	if !errors.As(err, &actionErr) || actionErr.Code != ErrorStaleTarget ||
+		result.Status != ActionFailed {
+		t.Fatalf("stale chord result = %+v, %v", result, err)
+	}
+	for _, call := range driver.recordedCalls() {
+		if call.operation == OperationKeyChord && call.text == "" {
+			t.Fatalf("stale chord injected key input: %+v", driver.recordedCalls())
+		}
 	}
 }
 
 func TestKeyChordCancellationDuringFinalIdentityCheckPreventsInput(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
-	activeChecks := 0
+	titleChecks := 0
 	driver := &fakeDriver{callHook: func(call driverCall) {
-		if call.operation == OperationKeyChord && call.text == "active-pid" {
-			activeChecks++
-			if activeChecks == 2 {
+		if call.text == "title" {
+			titleChecks++
+			if titleChecks == 2 {
 				cancel()
 			}
 		}
@@ -656,7 +799,7 @@ func TestDragDistanceAndInterpolationRemainSafeAtIntegerEdges(t *testing.T) {
 }
 
 func TestWindowActivationRevalidatesImmutableIdentity(t *testing.T) {
-	driver := &fakeDriver{windowTitle: "fixture"}
+	driver := &fakeDriver{windowTitle: "fixture", resolvedHandle: 77}
 	session := newTestSession(t, extendedActionPolicy(OperationActivate), driver)
 	result, err := session.Execute(t.Context(), ActionRequest{
 		Operation: OperationActivate,
@@ -667,8 +810,12 @@ func TestWindowActivationRevalidatesImmutableIdentity(t *testing.T) {
 		t.Fatalf("activation result = %+v, %v", result, err)
 	}
 	calls := driver.recordedCalls()
-	if len(calls) != 3 || calls[0].text != "title" ||
-		calls[1].text != "title" || calls[2].text != "activate" {
+	if len(calls) != 5 ||
+		calls[0].text != "resolve" || calls[1].text != "title" ||
+		calls[2].text != "resolve" || calls[3].text != "title" ||
+		calls[4].text != "activate" ||
+		calls[1].target != 77 || calls[3].target != 77 ||
+		calls[4].target != 77 || calls[4].targetKind != WindowTargetHandle {
 		t.Fatalf("activation calls = %+v", calls)
 	}
 }
@@ -681,12 +828,12 @@ func TestWindowActivationRejectsChangedIdentityBeforeMutation(t *testing.T) {
 	}{
 		{
 			name: "stale at preflight", driver: &fakeDriver{windowTitle: "different fixture"},
-			calls: 1,
+			calls: 2,
 		},
 		{
 			name:   "stale immediately before dispatch",
 			driver: &fakeDriver{windowTitles: []string{"fixture", "different fixture"}},
-			calls:  2,
+			calls:  4,
 		},
 	} {
 		t.Run(test.name, func(t *testing.T) {
@@ -705,7 +852,7 @@ func TestWindowActivationRejectsChangedIdentityBeforeMutation(t *testing.T) {
 				t.Fatalf("stale activation calls = %+v", calls)
 			}
 			for _, call := range calls {
-				if call.text != "title" {
+				if call.text == "activate" {
 					t.Fatalf("stale activation reached mutation: %+v", calls)
 				}
 			}

@@ -398,6 +398,26 @@ func SetActiveE(handle Handle) error {
 	}
 	return backend.Activate(windowbackend.Handle(handle))
 }
+
+// ResolveWindowHandleE resolves a process ID to one validated Pure-Go window
+// handle, or validates the supplied handle when args is non-empty.
+func ResolveWindowHandleE(target int, args ...int) (int, error) {
+	handle, err := pureGoWindowResolve(
+		target,
+		len(args) > 0 || currentTreatAsHandle(),
+	)
+	if err != nil {
+		return 0, err
+	}
+	backend, err := pureGoWindowBackend()
+	if err != nil {
+		return 0, err
+	}
+	if _, err := backend.Title(handle); err != nil {
+		return 0, err
+	}
+	return int(handle), nil
+}
 func ActivePid(target int, args ...int) error {
 	backend, err := pureGoWindowBackend()
 	if err != nil {

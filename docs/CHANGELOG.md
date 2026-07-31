@@ -10,6 +10,10 @@
   input ledger releases keys and buttons across success, failure,
   cancellation, timeout, disconnect, and close, while Wayland activation stays
   explicitly unavailable instead of inheriting a broader window capability.
+  Chords are now injected only through process-targeted backends, activation
+  validates and mutates the same resolved native handle, and the catalog
+  structurally reports supported scroll axes. Ambiguous input-down failures
+  trigger an immediate release and remain session-owned if cleanup fails.
   Partial multi-step outcomes are `unverified`; failed release taints the
   session and retains its exclusive owner until cleanup succeeds. Mutation
   capabilities now provide a stable unavailable, unsupported, or

@@ -51,7 +51,7 @@ type fakeDriver struct {
 	windowTitle      string
 	windowTitles     []string
 	windowTitleCalls int
-	activePID        int
+	resolvedHandle   int
 	callHook         func(driverCall)
 	callError        func(driverCall) error
 }
@@ -127,34 +127,30 @@ func (d *fakeDriver) TypeText(text string) error {
 	return d.record(driverCall{operation: OperationTypeText, text: text})
 }
 
-func (d *fakeDriver) ToggleKey(key string, modifiers []KeyModifier, down bool) error {
+func (d *fakeDriver) ToggleKey(
+	key string,
+	modifiers []KeyModifier,
+	targetPID int,
+	down bool,
+) error {
 	return d.record(driverCall{
-		operation: OperationKeyChord, key: key, modifiers: modifiers, down: down,
+		operation: OperationKeyChord, key: key, modifiers: modifiers,
+		target: targetPID, down: down,
 	})
 }
 
-func (d *fakeDriver) TapKey(key string, modifiers []KeyModifier) error {
-	return d.record(driverCall{
-		operation: OperationKeyChord, text: "tap", key: key, modifiers: modifiers,
-	})
-}
-
-func (d *fakeDriver) ActiveWindowPID() (int, error) {
-	if err := d.record(driverCall{operation: OperationKeyChord, text: "active-pid"}); err != nil {
+func (d *fakeDriver) ResolveWindow(target int, kind WindowTargetKind) (int, error) {
+	call := driverCall{
+		operation: OperationActivate, text: "resolve",
+		target: target, targetKind: kind,
+	}
+	if err := d.record(call); err != nil {
 		return 0, err
 	}
-	if d.activePID != 0 {
-		return d.activePID, nil
+	if d.resolvedHandle != 0 {
+		return d.resolvedHandle, nil
 	}
-	return 42, nil
-}
-
-func (d *fakeDriver) ActiveWindowTitle() (string, error) {
-	call := driverCall{operation: OperationKeyChord, text: "active-title"}
-	if err := d.record(call); err != nil {
-		return "", err
-	}
-	return d.nextWindowTitle(), nil
+	return target, nil
 }
 
 func (d *fakeDriver) WindowTitle(target int, kind WindowTargetKind) (string, error) {
