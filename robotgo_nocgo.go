@@ -616,6 +616,16 @@ func UnicodeTypeE(value uint32, args ...int) error {
 }
 func TypeStr(text string, args ...int) { _ = TypeStrE(text, args...) }
 func TypeStrE(text string, args ...int) error {
+	return typeStrE(text, args...)
+}
+
+// TypeStrImmediateE sends a UTF-8 string without applying a configured
+// post-input delay. Pure-Go text injection is already delay-explicit.
+func TypeStrImmediateE(text string, args ...int) error {
+	return typeStrE(text, args...)
+}
+
+func typeStrE(text string, args ...int) error {
 	pid, delay, validationErr := parseTextInput(text, args)
 	if validationErr != nil {
 		return validationErr
@@ -760,6 +770,16 @@ func DragSmooth(x, y int, args ...interface{}) {
 }
 func Click(args ...interface{}) { _ = ClickE(args...) }
 func ClickE(args ...interface{}) error {
+	return clickE(true, args...)
+}
+
+// ClickImmediateE clicks without applying the configured post-click delay.
+// It is intended for callers that provide bounded scheduling.
+func ClickImmediateE(args ...interface{}) error {
+	return clickE(false, args...)
+}
+
+func clickE(applyDelay bool, args ...interface{}) error {
 	name, double, err := parseClickArguments(args)
 	if err != nil {
 		return err
@@ -768,13 +788,19 @@ func ClickE(args ...interface{}) error {
 		return backend.Click(name, double)
 	})
 	if used {
-		return finishNonCGOMouseEvent(err, 0)
+		if applyDelay {
+			return finishNonCGOMouseEvent(err, 0)
+		}
+		return err
 	}
 	used, err = tryRemoteDesktopClick(name, double)
 	if !used {
 		return ErrNotSupported
 	}
-	return finishRemoteDesktopMouseEvent(err, 0)
+	if applyDelay {
+		return finishRemoteDesktopMouseEvent(err, 0)
+	}
+	return err
 }
 
 func tryRemoteDesktopToggle(name string, down bool) (bool, error) {

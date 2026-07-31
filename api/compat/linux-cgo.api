@@ -250,6 +250,7 @@ func CharCodeAt(string, int) rune
 func CheckMouse(string) github.com/marang/robotgo._Ctype_uint
 func Click(...interface{})
 func ClickE(...interface{}) error
+func ClickImmediateE(...interface{}) error
 func ClickV1(...interface{})
 func CloseMainDisplay()
 func CloseMainDisplayE() error
@@ -465,6 +466,7 @@ func TypeDelay(string, int)
 func TypeStr(string, ...int)
 func TypeStrDelay(string, int)
 func TypeStrE(string, ...int) error
+func TypeStrImmediateE(string, ...int) error
 func TypeStringDelayed(string, int)
 func U32ToHex(github.com/marang/robotgo._Ctype_uint) github.com/marang/robotgo._Ctype_uint
 func U8ToHex(*github.com/marang/robotgo._Ctype_uchar) github.com/marang/robotgo._Ctype_uint

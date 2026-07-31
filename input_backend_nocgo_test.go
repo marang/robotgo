@@ -149,6 +149,9 @@ func TestNonCGOInputDispatchUsesSelectedPlatformBackend(t *testing.T) {
 	if err := TypeStrE("text", 0, 7); err != nil {
 		t.Fatalf("TypeStrE: %v", err)
 	}
+	if err := TypeStrImmediateE("text", 0, 7); err != nil {
+		t.Fatalf("TypeStrImmediateE: %v", err)
+	}
 	if err := UnicodeTypeE('€'); err != nil {
 		t.Fatalf("UnicodeTypeE: %v", err)
 	}
@@ -165,6 +168,9 @@ func TestNonCGOInputDispatchUsesSelectedPlatformBackend(t *testing.T) {
 	DragSmooth(50, 60, 1.0, 2.0, 0)
 	if err := ClickE("right", true); err != nil {
 		t.Fatalf("ClickE: %v", err)
+	}
+	if err := ClickImmediateE("right", true); err != nil {
+		t.Fatalf("ClickImmediateE: %v", err)
 	}
 	if err := Toggle("center", "up"); err != nil {
 		t.Fatalf("Toggle: %v", err)
@@ -192,12 +198,14 @@ func TestNonCGOInputDispatchUsesSelectedPlatformBackend(t *testing.T) {
 		"key:d:[ctrl]:0:true:false",
 		"key:d:[ctrl]:0:false:false",
 		"text:text:0:7",
+		"text:text:0:7",
 		"text:€:0:0",
 		"move:10:20:[2]",
 		"relative:-3:4",
 		"smooth:30:40:false:1:2",
 		"smooth:3:-2:true:1:2",
 		"drag:50:60:1:2",
+		"click:right:true",
 		"click:right:true",
 		"toggle:center:false",
 		"scroll:1:-2",

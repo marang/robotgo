@@ -36,6 +36,9 @@ func TestHighLevelInputFallsBackToActiveRemoteDesktopSession(t *testing.T) {
 	if err := ClickE("left"); err != nil {
 		t.Fatalf("ClickE error: %v", err)
 	}
+	if err := ClickImmediateE("left"); err != nil {
+		t.Fatalf("ClickImmediateE error: %v", err)
+	}
 	if err := Toggle("right"); err != nil {
 		t.Fatalf("Toggle error: %v", err)
 	}
@@ -73,6 +76,8 @@ func TestHighLevelInputFallsBackToActiveRemoteDesktopSession(t *testing.T) {
 	wantPrefixes := []string{
 		"absolute:77:20:100",
 		"motion:4:-3",
+		"button:272:true",
+		"button:272:false",
 		"button:272:true",
 		"button:272:false",
 		"button:273:true",

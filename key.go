@@ -1238,6 +1238,16 @@ func TypeStr(str string, args ...int) {
 
 // TypeStrE sends a UTF-8 string and reports backend or key injection errors.
 func TypeStrE(str string, args ...int) error {
+	return typeStrE(str, true, args...)
+}
+
+// TypeStrImmediateE sends a UTF-8 string without applying the configured
+// post-input delay. Explicit per-rune delay arguments remain honored.
+func TypeStrImmediateE(str string, args ...int) error {
+	return typeStrE(str, false, args...)
+}
+
+func typeStrE(str string, applyDelay bool, args ...int) error {
 	pid, tm, err := parseTextInput(str, args)
 	if err != nil {
 		return err
@@ -1269,7 +1279,9 @@ func TypeStrE(str string, args ...int) error {
 			}
 			MilliSleep(tm)
 		}
-		MilliSleep(currentKeyDelay())
+		if applyDelay {
+			MilliSleep(currentKeyDelay())
+		}
 		return nil
 	})
 	if nativeErr != nil && shouldTryRemoteDesktopAfterNative(server, ready, nativeErr) {

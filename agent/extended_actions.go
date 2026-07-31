@@ -13,6 +13,13 @@ const maxDragInterpolationSteps = 120
 
 var errPartialAction = errors.New("agent action may have partially executed")
 
+func ambiguousMutationError(err error) error {
+	if err == nil {
+		return nil
+	}
+	return errors.Join(errPartialAction, err)
+}
+
 func scrollDistance(action ScrollAction) uint64 {
 	perEvent := saturatingAdd(absIntMagnitude(action.DeltaX), absIntMagnitude(action.DeltaY))
 	return saturatingMultiply(perEvent, uint64(action.Events))
@@ -228,7 +235,7 @@ func (s *Session) executeActivate(ctx context.Context, action ActivateWindowActi
 	if err := s.executionError(ctx); err != nil {
 		return err
 	}
-	return s.driver.ActivateWindow(handle, WindowTargetHandle)
+	return ambiguousMutationError(s.driver.ActivateWindow(handle, WindowTargetHandle))
 }
 
 func (s *Session) validateWindowIdentity(action ActivateWindowAction) error {

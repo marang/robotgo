@@ -16,11 +16,13 @@
   trigger an immediate release and remain session-owned if cleanup fails.
   Explicit process identities use a separate title-query contract and no
   longer inherit the legacy handle-mode default, while existing `GetTitleE`
-  behavior remains compatible. Self-timed drag, scroll, and chord primitives
-  bypass global mouse and key delays.
-  Partial multi-step outcomes are `unverified`; failed release taints the
-  session and retains its exclusive owner until cleanup succeeds. Mutation
-  capabilities now provide a stable unavailable, unsupported, or
+  behavior remains compatible. The complete agent mutation driver, including
+  move, click, text, drag, scroll, and chord primitives, bypasses global mouse
+  and key post-event delays.
+  Errors returned after any desktop mutation dispatch are `unverified`;
+  failures proven to occur during preflight remain `failed`. Failed release
+  taints the session and retains its exclusive owner until cleanup succeeds.
+  Mutation capabilities now provide a stable unavailable, unsupported, or
   permission-denied code without requiring reason-string parsing.
 - Split KDE hosted-session readiness into bounded prerequisite, Plasma Shell,
   portal frontend, portal backend, and stability phases. The complete session

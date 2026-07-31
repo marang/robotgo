@@ -108,10 +108,6 @@ func (d *fakeDriver) record(call driverCall) error {
 	return d.err
 }
 
-func (d *fakeDriver) Move(x, y, displayID int) error {
-	return d.record(driverCall{operation: OperationMove, x: x, y: y, displayID: displayID})
-}
-
 func (d *fakeDriver) MoveImmediate(x, y, displayID int) error {
 	return d.record(driverCall{
 		operation: OperationMove, text: "immediate", immediate: true,
@@ -119,8 +115,10 @@ func (d *fakeDriver) MoveImmediate(x, y, displayID int) error {
 	})
 }
 
-func (d *fakeDriver) Click(button MouseButton, _ bool) error {
-	return d.record(driverCall{operation: OperationClick, button: button})
+func (d *fakeDriver) ClickImmediate(button MouseButton, _ bool) error {
+	return d.record(driverCall{
+		operation: OperationClick, button: button, immediate: true,
+	})
 }
 
 func (d *fakeDriver) ScrollImmediate(deltaX, deltaY int) error {
@@ -134,8 +132,10 @@ func (d *fakeDriver) ToggleMouse(button MouseButton, down bool) error {
 	return d.record(driverCall{operation: OperationDrag, button: button, down: down})
 }
 
-func (d *fakeDriver) TypeText(text string) error {
-	return d.record(driverCall{operation: OperationTypeText, text: text})
+func (d *fakeDriver) TypeTextImmediate(text string) error {
+	return d.record(driverCall{
+		operation: OperationTypeText, text: text, immediate: true,
+	})
 }
 
 func (d *fakeDriver) ToggleKeyImmediate(
@@ -371,6 +371,40 @@ func TestDryRunDoesNotInjectOrConsumeQuota(t *testing.T) {
 	}
 }
 
+func TestAgentMutationsUseOnlyDelayFreeDriverMethods(t *testing.T) {
+	driver := &fakeDriver{}
+	session := newTestSession(t, testPolicy(), driver)
+	requests := []ActionRequest{
+		{
+			Operation: OperationMove,
+			Move:      &MoveAction{X: 1, Y: 2, DisplayID: 0},
+		},
+		{
+			Operation: OperationClick,
+			Click:     &ClickAction{Button: MouseButtonLeft},
+		},
+		{
+			Operation: OperationTypeText,
+			TypeText:  &TypeTextAction{Text: "bounded"},
+		},
+	}
+	for _, request := range requests {
+		result, err := session.Execute(t.Context(), request)
+		if err != nil || result.Status != ActionSucceeded {
+			t.Fatalf("%s result = %+v, %v", request.Operation, result, err)
+		}
+	}
+	calls := driver.recordedCalls()
+	if len(calls) != len(requests) {
+		t.Fatalf("delay-free driver calls = %+v", calls)
+	}
+	for _, call := range calls {
+		if !call.immediate {
+			t.Fatalf("agent used a legacy delayed driver method: %+v", calls)
+		}
+	}
+}
+
 func TestValidationAndPolicyRunBeforeDriver(t *testing.T) {
 	driver := &fakeDriver{}
 	policy := testPolicy()
@@ -490,7 +524,8 @@ func TestTypedTextIsAbsentFromResultAndSerializedError(t *testing.T) {
 		Operation: OperationTypeText,
 		TypeText:  &TypeTextAction{Text: secret},
 	})
-	if err == nil || result.Error == nil || result.Error.Code != ErrorBackendFailure {
+	if err == nil || result.Status != ActionUnverified ||
+		result.Error == nil || result.Error.Code != ErrorBackendFailure {
 		t.Fatalf("Execute = %+v, %v", result, err)
 	}
 	data, marshalErr := json.Marshal(result)
@@ -502,6 +537,53 @@ func TestTypedTextIsAbsentFromResultAndSerializedError(t *testing.T) {
 	}
 	if !errors.Is(err, driver.err) {
 		t.Fatalf("returned error lost backend cause: %v", err)
+	}
+}
+
+func TestSimpleMutationBackendErrorsAreUnverified(t *testing.T) {
+	tests := []struct {
+		name    string
+		request ActionRequest
+	}{
+		{
+			name: "move",
+			request: ActionRequest{
+				Operation: OperationMove,
+				Move:      &MoveAction{X: 1, Y: 2, DisplayID: 0},
+			},
+		},
+		{
+			name: "click",
+			request: ActionRequest{
+				Operation: OperationClick,
+				Click:     &ClickAction{Button: MouseButtonLeft},
+			},
+		},
+		{
+			name: "type text",
+			request: ActionRequest{
+				Operation: OperationTypeText,
+				TypeText:  &TypeTextAction{Text: "bounded"},
+			},
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			backendErr := errors.New("ambiguous mutation failure")
+			driver := &fakeDriver{err: backendErr}
+			session := newTestSession(t, testPolicy(), driver)
+			result, err := session.Execute(t.Context(), test.request)
+			var actionErr *ActionError
+			if !errors.Is(err, backendErr) ||
+				!errors.As(err, &actionErr) ||
+				actionErr.Code != ErrorBackendFailure ||
+				result.Status != ActionUnverified {
+				t.Fatalf("ambiguous mutation result = %+v, %v", result, err)
+			}
+			if driver.callCount() != 1 {
+				t.Fatalf("ambiguous mutation calls = %+v", driver.recordedCalls())
+			}
+		})
 	}
 }
 

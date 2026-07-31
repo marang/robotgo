@@ -2352,6 +2352,16 @@ func Click(args ...interface{}) {
 
 // ClickE clicks a mouse button and reports backend availability errors.
 func ClickE(args ...interface{}) error {
+	return clickE(true, args...)
+}
+
+// ClickImmediateE clicks without applying the configured post-click delay.
+// It is intended for callers that provide bounded scheduling.
+func ClickImmediateE(args ...interface{}) error {
+	return clickE(false, args...)
+}
+
+func clickE(applyDelay bool, args ...interface{}) error {
 	name, double, err := parseClickArguments(args)
 	if err != nil {
 		return err
@@ -2376,13 +2386,18 @@ func ClickE(args ...interface{}) error {
 		if shouldTryRemoteDesktopAfterNative(server, ready, nativeErr) {
 			used, err := tryRemoteDesktopClick(name, double)
 			if used {
-				return finishRemoteDesktopMouseEvent(err, 0)
+				if applyDelay {
+					return finishRemoteDesktopMouseEvent(err, 0)
+				}
+				return err
 			}
 		}
 		return nativeErr
 	}
 
-	MilliSleep(currentMouseDelay())
+	if applyDelay {
+		MilliSleep(currentMouseDelay())
+	}
 	return nil
 }
 

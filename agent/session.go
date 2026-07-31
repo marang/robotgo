@@ -16,12 +16,11 @@ import (
 
 type inputDriver interface {
 	DisplayBounds(displayID int) (displayBounds, error)
-	Move(x, y, displayID int) error
 	MoveImmediate(x, y, displayID int) error
-	Click(button MouseButton, double bool) error
+	ClickImmediate(button MouseButton, double bool) error
 	ScrollImmediate(deltaX, deltaY int) error
 	ToggleMouse(button MouseButton, down bool) error
-	TypeText(text string) error
+	TypeTextImmediate(text string) error
 	ToggleKeyImmediate(key string, modifiers []KeyModifier, targetPID int, down bool) error
 	ResolveWindow(target int, kind WindowTargetKind) (int, error)
 	WindowTitle(target int, kind WindowTargetKind) (string, error)
@@ -36,12 +35,11 @@ func (robotGoDriver) DisplayBounds(displayID int) (displayBounds, error) {
 	x, y, width, height, err := robotgo.GetDisplayBoundsE(displayID)
 	return displayBounds{x: x, y: y, width: width, height: height}, err
 }
-func (robotGoDriver) Move(x, y, displayID int) error { return robotgo.MoveE(x, y, displayID) }
 func (robotGoDriver) MoveImmediate(x, y, displayID int) error {
 	return robotgo.MoveImmediateE(x, y, displayID)
 }
-func (robotGoDriver) Click(button MouseButton, double bool) error {
-	return robotgo.ClickE(string(button), double)
+func (robotGoDriver) ClickImmediate(button MouseButton, double bool) error {
+	return robotgo.ClickImmediateE(string(button), double)
 }
 func (robotGoDriver) ScrollImmediate(deltaX, deltaY int) error {
 	return robotgo.ScrollImmediateE(deltaX, deltaY)
@@ -53,7 +51,9 @@ func (robotGoDriver) ToggleMouse(button MouseButton, down bool) error {
 	}
 	return robotgo.Toggle(string(button), state)
 }
-func (robotGoDriver) TypeText(text string) error { return robotgo.TypeStrE(text) }
+func (robotGoDriver) TypeTextImmediate(text string) error {
+	return robotgo.TypeStrImmediateE(text)
+}
 func (robotGoDriver) ToggleKeyImmediate(
 	key string,
 	modifiers []KeyModifier,
@@ -749,15 +749,19 @@ func validateRequest(request ActionRequest) error {
 func (s *Session) execute(ctx context.Context, request ActionRequest) error {
 	switch request.Operation {
 	case OperationMove:
-		return s.driver.Move(request.Move.X, request.Move.Y, request.Move.DisplayID)
+		return ambiguousMutationError(
+			s.driver.MoveImmediate(request.Move.X, request.Move.Y, request.Move.DisplayID),
+		)
 	case OperationClick:
-		return s.driver.Click(request.Click.Button, request.Click.Double)
+		return ambiguousMutationError(
+			s.driver.ClickImmediate(request.Click.Button, request.Click.Double),
+		)
 	case OperationScroll:
 		return s.executeScroll(ctx, *request.Scroll)
 	case OperationDrag:
 		return s.executeDrag(ctx, *request.Drag)
 	case OperationTypeText:
-		return s.driver.TypeText(request.TypeText.Text)
+		return ambiguousMutationError(s.driver.TypeTextImmediate(request.TypeText.Text))
 	case OperationKeyChord:
 		return s.executeKeyChord(ctx, *request.KeyChord)
 	case OperationActivate:

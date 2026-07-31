@@ -851,7 +851,13 @@ Scroll positioning and events use `MoveImmediateE` and `ScrollImmediateE`, so
 the same setting cannot delay cooperative cancellation or session expiry.
 Chord key-down and key-up use `KeyToggleImmediate` for the same reason: a
 legacy global `KeySleep` setting cannot silently extend the bounded key hold.
+The agent also routes ordinary move, click, and text mutations through
+`MoveImmediateE`, `ClickImmediateE`, and `TypeStrImmediateE`; legacy process
+defaults therefore cannot extend an agent session's lifetime contract.
 Direct callers of legacy RobotGo APIs remain outside this exclusivity.
+Once any mutation call reaches the desktop backend, a returned error is
+reported as `unverified` because the backend may have applied the input before
+reporting failure. Errors proven to occur during preflight remain `failed`.
 For pointer actions, `AllowedDisplayIDs` fails closed: the selected display
 must be allowed and every global target coordinate must fall within its live
 bounds. Scroll event/distance, drag distance/duration, buttons, shortcut keys

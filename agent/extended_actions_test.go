@@ -944,6 +944,33 @@ func TestWindowActivationRejectsChangedIdentityBeforeMutation(t *testing.T) {
 	}
 }
 
+func TestWindowActivationBackendErrorIsUnverified(t *testing.T) {
+	backendErr := errors.New("ambiguous activation failure")
+	driver := &fakeDriver{callError: func(call driverCall) error {
+		if call.operation == OperationActivate && call.text == "activate" {
+			return backendErr
+		}
+		return nil
+	}}
+	session := newTestSession(t, extendedActionPolicy(OperationActivate), driver)
+	result, err := session.Execute(t.Context(), ActionRequest{
+		Operation: OperationActivate,
+		Confirmed: true,
+		Activate:  &ActivateWindowAction{Target: 42, Kind: WindowTargetProcess},
+	})
+	var actionErr *ActionError
+	if !errors.Is(err, backendErr) ||
+		!errors.As(err, &actionErr) ||
+		actionErr.Code != ErrorBackendFailure ||
+		result.Status != ActionUnverified {
+		t.Fatalf("ambiguous activation result = %+v, %v", result, err)
+	}
+	calls := driver.recordedCalls()
+	if len(calls) != 5 || calls[4].text != "activate" {
+		t.Fatalf("ambiguous activation calls = %+v", calls)
+	}
+}
+
 func TestWindowActivationCancellationDuringFinalIdentityCheckPreventsMutation(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	titleChecks := 0

@@ -65,6 +65,12 @@ Chord key-down and key-up use the delay-free `KeyToggleImmediate` primitive,
 so the legacy global key delay cannot silently extend the bounded key hold.
 Target title checks use `GetTitleTargetE(target, isHandle)` so explicit process
 and handle identities never inherit the global legacy `TreatAsHandle` mode.
+Ordinary agent move, click, and text mutations likewise use `MoveImmediateE`,
+`ClickImmediateE`, and `TypeStrImmediateE`, isolating the complete agent
+mutation surface from legacy process-global post-event delays.
+Backend errors after any mutation dispatch are conservatively reported as
+`unverified`; validation and other failures proven to precede dispatch remain
+`failed`, preserving honest retry semantics.
 
 ## Policy and ownership
 
