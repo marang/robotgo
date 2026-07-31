@@ -269,7 +269,7 @@ func (s *Session) pressKey(
 		key: key, modifiers: ownedModifiers, targetPID: targetPID, keyboard: true,
 	}
 	s.pressedInputs = append(s.pressedInputs, pressed)
-	return pressed, s.driver.ToggleKey(key, ownedModifiers, targetPID, true)
+	return pressed, s.driver.ToggleKeyImmediate(key, ownedModifiers, targetPID, true)
 }
 
 func (s *Session) releasePressedInput(pressed pressedInput) error {
@@ -279,7 +279,7 @@ func (s *Session) releasePressedInput(pressed pressedInput) error {
 	}
 	var err error
 	if pressed.keyboard {
-		err = s.driver.ToggleKey(
+		err = s.driver.ToggleKeyImmediate(
 			pressed.key,
 			pressed.modifiers,
 			pressed.targetPID,

@@ -116,6 +116,21 @@ func TestNativeX11ConfiguredTargetAppliesToWindowAndScale(t *testing.T) {
 	if err != nil || title != "robotgo-x11-target" {
 		t.Fatalf("GetTitleE on configured X11 target = %q, %v", title, err)
 	}
+	// Native GetTitleE historically treats the presence of its first variadic
+	// target as handle mode. Keep that compatibility separate from the new
+	// explicit process/handle API.
+	title, err = robotgo.GetTitleE(int(harness.window))
+	if err != nil || title != "robotgo-x11-target" {
+		t.Fatalf("legacy GetTitleE(handle) = %q, %v", title, err)
+	}
+	title, err = robotgo.GetTitleTargetE(int(harness.window), true)
+	if err != nil || title != "robotgo-x11-target" {
+		t.Fatalf("GetTitleTargetE(handle) = %q, %v", title, err)
+	}
+	title, err = robotgo.GetTitleTargetE(os.Getpid(), false)
+	if err != nil || title != "robotgo-x11-target" {
+		t.Fatalf("GetTitleTargetE(pid) = %q, %v", title, err)
+	}
 	active, err := robotgo.GetActiveE()
 	if err != nil || active == (robotgo.Handle{}) {
 		t.Fatalf("GetActiveE on configured X11 target = %#v, %v", active, err)

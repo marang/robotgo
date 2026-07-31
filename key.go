@@ -857,7 +857,7 @@ func keyTaps(k string, keyArr []string, pid int) error {
 	return nil
 }
 
-func keyTogglesB(k string, down bool, keyArr []string, pid int) error {
+func keyTogglesB(k string, down bool, keyArr []string, pid int, applyDelay bool) error {
 	flags, err := getFlagsFromValue(keyArr)
 	if err != nil {
 		return err
@@ -873,7 +873,7 @@ func keyTogglesB(k string, down bool, keyArr []string, pid int) error {
 			C.toggleKeyCode(key, C.bool(down), flags, C.uintptr(pid)),
 			"toggle key",
 		)
-		if nativeErr == nil {
+		if nativeErr == nil && applyDelay {
 			MilliSleep(currentKeyDelay())
 		}
 		return nativeErr
@@ -892,7 +892,7 @@ func keyTogglesB(k string, down bool, keyArr []string, pid int) error {
 		if hold.backend == persistentInputBackendPortal {
 			_, err := tryPortalKeyUp(hold)
 			delete(keyboardHolds, id)
-			if err == nil {
+			if err == nil && applyDelay {
 				MilliSleep(currentKeyDelay())
 			}
 			return err
@@ -910,7 +910,7 @@ func keyTogglesB(k string, down bool, keyArr []string, pid int) error {
 		if nativeErr == nil || errors.Is(nativeErr, ErrInputOwnership) {
 			delete(keyboardHolds, id)
 		}
-		if nativeErr == nil {
+		if nativeErr == nil && applyDelay {
 			MilliSleep(currentKeyDelay())
 		}
 		return nativeErr
@@ -941,6 +941,8 @@ func keyTogglesB(k string, down bool, keyArr []string, pid int) error {
 		if used, hold, err := tryPortalKeyDown(server, k, keyArr, pid); used {
 			if err == nil {
 				keyboardHolds[id] = hold
+			}
+			if err == nil && applyDelay {
 				MilliSleep(currentKeyDelay())
 			}
 			return err
@@ -951,7 +953,9 @@ func keyTogglesB(k string, down bool, keyArr []string, pid int) error {
 		backend: persistentInputBackendNative,
 		server:  server,
 	}
-	MilliSleep(currentKeyDelay())
+	if applyDelay {
+		MilliSleep(currentKeyDelay())
+	}
 	return nil
 }
 
@@ -1063,6 +1067,16 @@ func KeyTap(key string, args ...interface{}) error {
 //	robotgo.KeyToggle("a", "up", "alt", "cmd")
 //	robotgo.KeyToggle("k", pid int)
 func KeyToggle(key string, args ...interface{}) error {
+	return keyToggle(key, true, args...)
+}
+
+// KeyToggleImmediate changes key state without applying the configured
+// post-event delay. It is intended for callers that own a bounded hold.
+func KeyToggleImmediate(key string, args ...interface{}) error {
+	return keyToggle(key, false, args...)
+}
+
+func keyToggle(key string, applyDelay bool, args ...interface{}) error {
 	key, args = appendShift(key, args...)
 	pid, down, keyArr, err := parseKeyArguments(args, true)
 	if err != nil {
@@ -1075,7 +1089,7 @@ func KeyToggle(key string, args ...interface{}) error {
 	if err := validateKeyArgument(key); err != nil {
 		return err
 	}
-	return keyTogglesB(key, down, keyArr, pid)
+	return keyTogglesB(key, down, keyArr, pid, applyDelay)
 }
 
 // KeyPress presses and releases a key as one backend transaction. It is

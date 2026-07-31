@@ -606,6 +606,7 @@ func TestKeyChordUsesCanonicalOrderAndRelease(t *testing.T) {
 	if len(keyCalls) != 2 || !keyCalls[0].down || keyCalls[1].down ||
 		keyCalls[0].key != "c" || keyCalls[0].target != 42 ||
 		keyCalls[1].target != 42 ||
+		!keyCalls[0].immediate || !keyCalls[1].immediate ||
 		!sameModifiers(keyCalls[0].modifiers, keyCalls[1].modifiers) {
 		t.Fatalf("chord calls = %+v", calls)
 	}

@@ -80,6 +80,14 @@ func TestPureGoWindowsWindowRuntime(t *testing.T) {
 	if err != nil || title != "RobotGo Pure-Go window integration" {
 		t.Fatalf("GetTitleE(pid) = %q, %v", title, err)
 	}
+	title, err = GetTitleTargetE(int(handle), true)
+	if err != nil || title != "RobotGo Pure-Go window integration" {
+		t.Fatalf("GetTitleTargetE(handle) = %q, %v", title, err)
+	}
+	title, err = GetTitleTargetE(pid, false)
+	if err != nil || title != "RobotGo Pure-Go window integration" {
+		t.Fatalf("GetTitleTargetE(pid) = %q, %v", title, err)
+	}
 	if resolved := GetHWNDByPid(pid); resolved != int(handle) {
 		t.Fatalf("GetHWNDByPid(%d) = %#x, want %#x", pid, resolved, handle)
 	}

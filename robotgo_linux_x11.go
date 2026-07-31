@@ -116,15 +116,46 @@ func checkedNativeWindowGeometry(x, y, width, height int) (int, int, int, int, e
 	return rect.X, rect.Y, rect.W, rect.H, nil
 }
 
+// internalGetTitle preserves the historical variadic and TreatAsHandle
+// interpretation used by GetTitleE.
+func internalGetTitle(pid int, args ...int) string {
+	var isPid int
+	if len(args) > 0 || currentTreatAsHandle() {
+		isPid = 1
+		return cgetTitle(pid, isPid)
+	}
+	unlock := lockNativeX11Display()
+	defer unlock()
+	xu, err := newX11XUtilForDisplay(getXDisplayNameLocked())
+	if err != nil {
+		log.Println("Open configured X11 target errors is: ", err)
+		return ""
+	}
+	defer xu.Conn().Close()
+	xid, err := GetXidFromPid(xu, pid)
+	if err != nil {
+		log.Println("Get Xid from Pid errors is: ", err)
+		return ""
+	}
+	return cgetTitleLocked(int(xid), isPid)
+}
+
 func strictInternalGetTitle(target int, isHandle bool) string {
 	if isHandle {
 		return cgetTitle(target, 1)
 	}
-	xid, err := GetXid(nil, target)
+	unlock := lockNativeX11Display()
+	defer unlock()
+	xu, err := newX11XUtilForDisplay(getXDisplayNameLocked())
 	if err != nil {
 		return ""
 	}
-	return cgetTitle(int(xid), 1)
+	defer xu.Conn().Close()
+	xid, err := GetXidFromPid(xu, target)
+	if err != nil {
+		return ""
+	}
+	return cgetTitleLocked(int(xid), 1)
 }
 
 // ActivePidC activates the window by PID via X11.

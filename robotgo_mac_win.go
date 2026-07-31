@@ -71,6 +71,16 @@ func checkedPlatformWindowGeometry(x, y, width, height int) (int, int, int, int,
 	return rect.X, rect.Y, rect.W, rect.H, nil
 }
 
+// internalGetTitle preserves the historical variadic and TreatAsHandle
+// interpretation used by GetTitleE.
+func internalGetTitle(pid int, args ...int) string {
+	var isPid int
+	if len(args) > 0 || currentTreatAsHandle() {
+		isPid = 1
+	}
+	return cgetTitle(pid, isPid)
+}
+
 func strictInternalGetTitle(target int, isHandle bool) string {
 	flag := 0
 	if isHandle {

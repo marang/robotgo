@@ -126,15 +126,43 @@ func nativeX11WindowGeometryE(
 	return rect.X, rect.Y, rect.W, rect.H, nil
 }
 
+// internalGetTitle preserves the historical variadic and TreatAsHandle
+// interpretation used by GetTitleE.
+func internalGetTitle(pid int, args ...int) string {
+	if !nativeX11BackendCompiled() {
+		return ""
+	}
+	var isPid int
+	if len(args) > 0 || currentTreatAsHandle() {
+		isPid = 1
+		return cgetTitle(pid, isPid)
+	}
+
+	xid, err := GetXid(nil, pid)
+	if err != nil {
+		log.Println("Get Xid from Pid errors is: ", err)
+		return ""
+	}
+
+	return cgetTitle(int(xid), isPid)
+}
+
 func strictInternalGetTitle(target int, isHandle bool) string {
 	if isHandle {
 		return cgetTitle(target, 1)
 	}
-	xid, err := GetXid(nil, target)
+	unlock := lockNativeX11Display()
+	defer unlock()
+	xu, err := xgbutil.NewConnDisplay(getXDisplayNameLocked())
 	if err != nil {
 		return ""
 	}
-	return cgetTitle(int(xid), 1)
+	defer xu.Conn().Close()
+	xid, err := GetXidFromPid(xu, target)
+	if err != nil {
+		return ""
+	}
+	return cgetTitleLocked(int(xid), 1)
 }
 
 // ActivePidC active the window by Pid,

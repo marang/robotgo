@@ -28,6 +28,7 @@ type driverCall struct {
 	modifiers  []KeyModifier
 	target     int
 	targetKind WindowTargetKind
+	immediate  bool
 }
 
 type fakeDriver struct {
@@ -134,7 +135,7 @@ func (d *fakeDriver) TypeText(text string) error {
 	return d.record(driverCall{operation: OperationTypeText, text: text})
 }
 
-func (d *fakeDriver) ToggleKey(
+func (d *fakeDriver) ToggleKeyImmediate(
 	key string,
 	modifiers []KeyModifier,
 	targetPID int,
@@ -142,7 +143,7 @@ func (d *fakeDriver) ToggleKey(
 ) error {
 	return d.record(driverCall{
 		operation: OperationKeyChord, key: key, modifiers: modifiers,
-		target: targetPID, down: down,
+		target: targetPID, down: down, immediate: true,
 	})
 }
 

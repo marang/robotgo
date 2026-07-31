@@ -512,6 +512,16 @@ func KeyTap(key string, args ...interface{}) error {
 // KeyToggle changes a key state through the selected Pure-Go platform backend
 // or an authorized RemoteDesktop session.
 func KeyToggle(key string, args ...interface{}) error {
+	return keyToggle(key, true, args...)
+}
+
+// KeyToggleImmediate changes key state without applying the configured
+// post-event delay. It is intended for callers that own a bounded hold.
+func KeyToggleImmediate(key string, args ...interface{}) error {
+	return keyToggle(key, false, args...)
+}
+
+func keyToggle(key string, applyDelay bool, args ...interface{}) error {
 	pid, down, modifiers, err := parseKeyArguments(args, true)
 	if err != nil {
 		return err
@@ -536,7 +546,7 @@ func KeyToggle(key string, args ...interface{}) error {
 		})
 	})
 	if used {
-		if err == nil {
+		if err == nil && applyDelay {
 			MilliSleep(currentKeyDelay())
 		}
 		return err
@@ -554,7 +564,7 @@ func KeyToggle(key string, args ...interface{}) error {
 	if !used {
 		return ErrNotSupported
 	}
-	if err == nil {
+	if err == nil && applyDelay {
 		MilliSleep(currentKeyDelay())
 	}
 	return err

@@ -22,7 +22,7 @@ type inputDriver interface {
 	Scroll(deltaX, deltaY int) error
 	ToggleMouse(button MouseButton, down bool) error
 	TypeText(text string) error
-	ToggleKey(key string, modifiers []KeyModifier, targetPID int, down bool) error
+	ToggleKeyImmediate(key string, modifiers []KeyModifier, targetPID int, down bool) error
 	ResolveWindow(target int, kind WindowTargetKind) (int, error)
 	WindowTitle(target int, kind WindowTargetKind) (string, error)
 	ActivateWindow(target int, kind WindowTargetKind) error
@@ -54,7 +54,7 @@ func (robotGoDriver) ToggleMouse(button MouseButton, down bool) error {
 	return robotgo.Toggle(string(button), state)
 }
 func (robotGoDriver) TypeText(text string) error { return robotgo.TypeStrE(text) }
-func (robotGoDriver) ToggleKey(
+func (robotGoDriver) ToggleKeyImmediate(
 	key string,
 	modifiers []KeyModifier,
 	targetPID int,
@@ -65,7 +65,7 @@ func (robotGoDriver) ToggleKey(
 		args = append([]interface{}{"up"}, args...)
 	}
 	args = append(args, targetPID)
-	return robotgo.KeyToggle(key, args...)
+	return robotgo.KeyToggleImmediate(key, args...)
 }
 func (robotGoDriver) ResolveWindow(target int, kind WindowTargetKind) (int, error) {
 	if kind == WindowTargetHandle {
@@ -77,20 +77,10 @@ func (robotGoDriver) ResolveWindow(target int, kind WindowTargetKind) (int, erro
 	return robotgo.ResolveWindowHandleE(target)
 }
 func (robotGoDriver) WindowTitle(target int, kind WindowTargetKind) (string, error) {
-	if kind == WindowTargetHandle {
-		if nativeMacOSHandleUnsupported() {
-			return "", fmt.Errorf("%w: native macOS window handles are not serializable activation targets", robotgo.ErrNotSupported)
-		}
-		return robotgo.GetTitleE(target, 1)
+	if kind == WindowTargetHandle && nativeMacOSHandleUnsupported() {
+		return "", fmt.Errorf("%w: native macOS window handles are not serializable activation targets", robotgo.ErrNotSupported)
 	}
-	if nativeMacOSHandleUnsupported() {
-		return robotgo.GetTitleE(target)
-	}
-	handle, err := robotgo.ResolveWindowHandleE(target)
-	if err != nil {
-		return "", err
-	}
-	return robotgo.GetTitleE(handle, 1)
+	return robotgo.GetTitleTargetE(target, kind == WindowTargetHandle)
 }
 func (robotGoDriver) ActivateWindow(target int, kind WindowTargetKind) error {
 	if kind == WindowTargetHandle {

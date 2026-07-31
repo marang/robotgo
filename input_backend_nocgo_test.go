@@ -137,6 +137,9 @@ func TestNonCGOInputDispatchUsesSelectedPlatformBackend(t *testing.T) {
 	if err := KeyToggle("c", "up", "alt"); err != nil {
 		t.Fatalf("KeyToggle: %v", err)
 	}
+	if err := KeyToggleImmediate("c", "up", "alt"); err != nil {
+		t.Fatalf("KeyToggleImmediate: %v", err)
+	}
 	if err := KeyDown("d", 0, []string{"ctrl"}); err != nil {
 		t.Fatalf("KeyDown: %v", err)
 	}
@@ -181,6 +184,7 @@ func TestNonCGOInputDispatchUsesSelectedPlatformBackend(t *testing.T) {
 		"key:A:[ctrl shift]:0:true:true",
 		"key:+:[shift]:0:true:true",
 		"key:b:[shift]:0:true:true",
+		"key:c:[alt]:0:false:false",
 		"key:c:[alt]:0:false:false",
 		"key:d:[ctrl]:0:true:false",
 		"key:d:[ctrl]:0:false:false",

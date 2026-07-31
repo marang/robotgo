@@ -2789,7 +2789,7 @@ func nativeGetMainTitle() string {
 }
 
 func nativeGetInternalTitle(pid int, isPid int) string {
-	return strictInternalGetTitle(pid, isPid != 0)
+	return internalGetTitle(pid, isPid)
 }
 
 // GetActive get the active window
@@ -3039,6 +3039,26 @@ func GetTitle(args ...int) string {
 // on Wayland sessions.
 func GetTitleE(args ...int) (string, error) {
 	return resolveWindowBackend().Title(args...)
+}
+
+// GetTitleTargetE gets the title of an explicit process or window handle.
+// Unlike GetTitleE, isHandle does not inherit the legacy TreatAsHandle setting.
+func GetTitleTargetE(target int, isHandle bool) (string, error) {
+	if target <= 0 {
+		return "", fmt.Errorf(
+			"%w: invalid window target %d",
+			errWindowTitleUnavailable,
+			target,
+		)
+	}
+	if err := nativeX11WindowReady(); err != nil {
+		return "", err
+	}
+	title := strictInternalGetTitle(target, isHandle)
+	if title == "" || title == "is_valid failed." {
+		return "", errWindowTitleUnavailable
+	}
+	return title, nil
 }
 
 // GetPid get the process id return int32

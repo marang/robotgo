@@ -319,6 +319,7 @@ func GetTextImg(image.Image, ...string) (string, error)
 func GetTextImgContext(context.Context, image.Image, ...string) (string, error)
 func GetTitle(...int) string
 func GetTitleE(...int) (string, error)
+func GetTitleTargetE(int, bool) (string, error)
 func GetVersion() string
 func GetXDisplayName() string
 func GetXid(*github.com/jezek/xgbutil.XUtil, int) (github.com/jezek/xgb/xproto.Window, error)
@@ -346,6 +347,7 @@ func KeyDown(string, ...interface{}) error
 func KeyPress(string, ...interface{}) error
 func KeyTap(string, ...interface{}) error
 func KeyToggle(string, ...interface{}) error
+func KeyToggleImmediate(string, ...interface{}) error
 func KeyUp(string, ...interface{}) error
 func KeyboardReady() error
 func Kill(int) error

@@ -482,6 +482,9 @@ minimize/maximize path returns `ErrNotSupported` instead of silently doing
 nothing; the Pure-Go EWMH path described above implements those operations.
 Native `GetTitleE` also returns an explicit error when a title is empty or
 cannot be retrieved.
+`GetTitleE` retains RobotGo's historical variadic `TreatAsHandle` behavior.
+Use `GetTitleTargetE(target, isHandle)` when the target kind must be explicit
+and independent of that process-global legacy setting.
 
 ### Wayland
 
@@ -696,6 +699,8 @@ passing a second argument treats the first value as a handle and validates it.
 This is useful when title validation and a later mutation must address the same
 window rather than resolving a PID twice. It is unavailable on Wayland and the
 legacy native macOS CGO backend; Pure-Go macOS exposes a stable `CGWindowID`.
+`GetTitleTargetE(target, isHandle)` provides the matching explicit title query
+without inheriting the legacy `TreatAsHandle` default.
 
 Pure-Go Windows builds provide window introspection and control through Win32:
 active handle/PID, title, outer/client bounds, activation, minimize/maximize,
@@ -842,6 +847,8 @@ blocks further actions and retains the process-exclusive owner until `Close`
 successfully retries the release.
 Drag interpolation uses `MoveImmediateE`, so a legacy global `MouseSleep`
 setting cannot extend the policy-bounded button-hold schedule.
+Chord key-down and key-up use `KeyToggleImmediate` for the same reason: a
+legacy global `KeySleep` setting cannot silently extend the bounded key hold.
 Direct callers of legacy RobotGo APIs remain outside this exclusivity.
 For pointer actions, `AllowedDisplayIDs` fails closed: the selected display
 must be allowed and every global target coordinate must fall within its live
