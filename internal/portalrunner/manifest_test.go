@@ -113,6 +113,7 @@ func TestKDEManifestContract(t *testing.T) {
 		"libxkbcommon-dev",
 		"linux-modules-extra-6.8.0-134-generic",
 		"pipewire",
+		"plasma-desktop-data",
 		"plasma-workspace",
 		"plasma-workspace-wayland",
 		"sddm",

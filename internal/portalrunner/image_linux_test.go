@@ -541,11 +541,85 @@ func TestRepositoryKDEGuestActivatesPortalFrontendAndBackend(t *testing.T) {
 	script := string(waitScript)
 	for _, required := range []string{
 		"busctl --address=unix:path=/run/user/1100/bus",
-		"--no-pager call",
+		"--no-pager --timeout=2s call",
 		"org.freedesktop.portal.Desktop",
 		"org.freedesktop.impl.portal.desktop.kde",
 		"org.freedesktop.DBus.Peer",
 		"Ping",
+		"deadline=$((SECONDS + 60))",
+		"deadline=$((SECONDS + 90))",
+		"deadline=$((SECONDS + 30))",
+		"deadline=$((SECONDS + 10))",
+		"stable >= 3",
+		"require_base_ready",
+		"fail_shell_stage",
+		"recover_shell_once",
+		"report_shell_recovery",
+		"session_state_root=/run/robotgo-session-state",
+		"$session_state_root/shell-recovery-attempted",
+		"$session_state_root/shell-recovery-complete",
+		"$session_state_root/shell-recovery-failed",
+		"$session_state_root/shell-reset-failed",
+		"$session_state_root/shell-queue-failed",
+		"$session_state_root/shell-start-failed",
+		"$session_state_root/shell-start-result-",
+		"$session_state_root/recovery-display-manager",
+		"$session_state_root/recovery-runtime-directory",
+		"$session_state_root/recovery-user-bus",
+		"$session_state_root/recovery-wayland",
+		"$session_state_root/recovery-compositor",
+		"$session_state_root/recovery-session",
+		"$session_state_root/session-ready",
+		"$session_state_root/session-decision.lock",
+		"mkdir -m 0700 \"$shell_recovery_marker\"",
+		"flock --exclusive --wait 15 9",
+		"claim_session_ready",
+		"if ! all_ready; then\n" +
+			"    release_session_decision\n" +
+			"    return 2",
+		"if [[ -d \"$session_ready_marker\" ]]; then\n" +
+			"    release_session_decision\n" +
+			"    return 0",
+		"timeout --kill-after=1s 2s systemctl --user is-failed",
+		"local deadline=$((SECONDS + 60))",
+		"timeout --kill-after=1s 2s systemctl --user reset-failed",
+		"wait_for_shell_recovery() {\n" +
+			"  local stage\n" +
+			"  # The recovery winner may spend up to six additional seconds",
+		"  while ((SECONDS < deadline)); do\n" +
+			"    require_recovery_base_ready",
+		"wait_for_restarted_shell() {\n" +
+			"  local deadline=$((SECONDS + 30))\n" +
+			"  while ((SECONDS < deadline)); do\n" +
+			"    require_recovery_base_ready",
+		"if ((claim_status != 0)); then",
+		"continue 2",
+		"timeout --kill-after=1s 2s systemctl --user --no-block restart",
+		"--property=Result --value plasma-plasmashell.service",
+		"--property=ExecMainStatus --value",
+		"valid_shell_status",
+		"shared_shell_start_failure_stage",
+		"desktop-shell-start-exit-%d",
+		"desktop-shell-start-signal-%d",
+		"desktop-shell-start-core-%d",
+		"desktop-shell-start-timeout",
+		"desktop-shell-start-limit",
+		"desktop-shell-start-protocol",
+		"desktop-shell-start-watchdog",
+		"desktop-shell-start-oom",
+		"desktop-shell-start-resources",
+		"ROBOTGO_SESSION_RECOVERY=desktop-shell",
+		"desktop-shell-never-seen",
+		"desktop-shell-failed",
+		"desktop-shell-process-missing",
+		"desktop-shell-recovery-exhausted",
+		"desktop-shell-recovery-failed",
+		"desktop-shell-reset-failed",
+		"desktop-shell-queue-failed",
+		"desktop-shell-start-failed",
+		"desktop-shell-unstable",
+		"portal-backend-unstable",
+		"fail_stage session-unstable",
 	} {
 		if !strings.Contains(script, required) {
 			t.Errorf("KDE session readiness omits %q", required)
@@ -560,7 +634,15 @@ func TestRepositoryKDEGuestActivatesPortalFrontendAndBackend(t *testing.T) {
 	}
 	for _, required := range []string{
 		"dpkg-query -W -f='${db:Status-Status}' plasma-workspace",
+		"dpkg-query -W -f='${db:Status-Status}' plasma-desktop-data",
+		"/usr/share/plasma/shells/org.kde.plasma.desktop/metadata.json",
+		"test -f /usr/lib/systemd/user/plasma-plasmashell.service",
+		"test -x /usr/bin/flock",
 		"test -x /usr/bin/plasmashell",
+		"d /run/robotgo-session-state 0700 robotgo robotgo -",
+		"systemd-tmpfiles --create " +
+			"/etc/tmpfiles.d/robotgo-session-state.conf",
+		"TimeoutStartSec=400",
 		"/usr/local/libexec/robotgo-runner-locate-screencast",
 		"/usr/local/libexec/robotgo-runner-report-screencast-geometry",
 		"/usr/local/share/robotgo/report-screencast-geometry.js",

@@ -103,6 +103,48 @@ var sessionFailureStagePattern = regexp.MustCompile(
 	`ROBOTGO_SESSION_STAGE=([a-z0-9-]{1,32})`,
 )
 
+var shellStartStatusStagePattern = regexp.MustCompile(
+	`^desktop-shell-start-(?:exit|signal|core)-([0-9]{1,3})$`,
+)
+
+var sessionRecoveryPattern = regexp.MustCompile(
+	`ROBOTGO_SESSION_RECOVERY=([a-z0-9-]{1,32})`,
+)
+
+var sessionFailureStages = map[string]struct{}{
+	"compositor":                       {},
+	"desktop-shell-failed":             {},
+	"desktop-shell-never-seen":         {},
+	"desktop-shell-process-missing":    {},
+	"desktop-shell-queue-failed":       {},
+	"desktop-shell-recovery-exhausted": {},
+	"desktop-shell-recovery-failed":    {},
+	"desktop-shell-reset-failed":       {},
+	"desktop-shell-start-failed":       {},
+	"desktop-shell-start-limit":        {},
+	"desktop-shell-start-oom":          {},
+	"desktop-shell-start-protocol":     {},
+	"desktop-shell-start-resources":    {},
+	"desktop-shell-start-timeout":      {},
+	"desktop-shell-start-watchdog":     {},
+	"desktop-shell-unstable":           {},
+	"display-manager":                  {},
+	"portal":                           {},
+	"portal-backend":                   {},
+	"portal-backend-unstable":          {},
+	"portal-unstable":                  {},
+	"runtime-directory":                {},
+	"session-decision-failed":          {},
+	"session-decision-timeout":         {},
+	"session-unstable":                 {},
+	"user-bus":                         {},
+	"wayland":                          {},
+}
+
+var sessionRecoveries = map[string]struct{}{
+	"desktop-shell": {},
+}
+
 var errHostedPortalTestExitedBeforeConsent = errors.New(
 	"hosted portal test exited before requesting consent",
 )
@@ -441,14 +483,8 @@ func RunHosted(
 		options.Commands,
 		sshArguments,
 		logWriter,
+		manifest.Lane,
 	); err != nil {
-		collectHostedDiagnostics(
-			guestContext,
-			options.Commands,
-			sshArguments,
-			logWriter,
-			manifest.Lane,
-		)
 		return err
 	}
 	if err := transferSourceArchive(
@@ -909,8 +945,18 @@ func waitForHostedSession(
 	commands CommandExecutor,
 	sshArguments []string,
 	output io.Writer,
+	lane string,
 ) error {
+	readinessCommand := gnomeSessionReadinessCommand
+	if lane == portalLaneKDE {
+		readinessCommand = kdeSessionReadinessCommand
+	} else if lane != portalLaneGNOME {
+		return errors.New("hosted portal lane is invalid")
+	}
 	var diagnostic bytes.Buffer
+	defer func() {
+		clear(diagnostic.Bytes())
+	}()
 	diagnosticWriter := &truncatingWriter{
 		destination: &diagnostic,
 		remaining:   maximumBuildInput,
@@ -918,8 +964,8 @@ func waitForHostedSession(
 	command := "set -euo pipefail; runuser -u robotgo -- env " +
 		"XDG_RUNTIME_DIR=/run/user/1100 " +
 		"DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1100/bus " +
-		"timeout 130 /usr/local/libexec/robotgo-runner-wait-session"
-	if err := commands.Run(
+		readinessCommand
+	runError := commands.Run(
 		ctx,
 		"ssh",
 		append(
@@ -928,9 +974,26 @@ func waitForHostedSession(
 			command,
 		),
 		nil,
-		io.MultiWriter(output, diagnosticWriter),
-	); err != nil {
+		diagnosticWriter,
+	)
+	if recovery := readSessionRecovery(diagnostic.Bytes()); recovery != "" {
+		if statusError := writeStatus(
+			output,
+			"ROBOTGO_SESSION_RECOVERY=%s\n",
+			recovery,
+		); statusError != nil {
+			return statusError
+		}
+	}
+	if runError != nil {
 		if stage := readSessionFailureStage(diagnostic.Bytes()); stage != "" {
+			if statusError := writeStatus(
+				output,
+				"ROBOTGO_SESSION_STAGE=%s\n",
+				stage,
+			); statusError != nil {
+				return statusError
+			}
 			return fmt.Errorf(
 				"wait for hosted portal session at stage %q",
 				stage,
@@ -941,6 +1004,21 @@ func waitForHostedSession(
 	return nil
 }
 
+func readSessionRecovery(data []byte) string {
+	if len(data) > maximumBuildInput {
+		return ""
+	}
+	matches := sessionRecoveryPattern.FindAllSubmatch(data, -1)
+	if len(matches) == 0 {
+		return ""
+	}
+	recovery := string(matches[len(matches)-1][1])
+	if _, allowed := sessionRecoveries[recovery]; !allowed {
+		return ""
+	}
+	return recovery
+}
+
 func readSessionFailureStage(data []byte) string {
 	if len(data) > maximumBuildInput {
 		return ""
@@ -949,7 +1027,22 @@ func readSessionFailureStage(data []byte) string {
 	if len(matches) == 0 {
 		return ""
 	}
-	return string(matches[len(matches)-1][1])
+	stage := string(matches[len(matches)-1][1])
+	if stage == "unknown" {
+		return "session-unstable"
+	}
+	if _, allowed := sessionFailureStages[stage]; allowed {
+		return stage
+	}
+	statusMatch := shellStartStatusStagePattern.FindStringSubmatch(stage)
+	if len(statusMatch) != 2 {
+		return ""
+	}
+	status, err := strconv.Atoi(statusMatch[1])
+	if err != nil || status > 255 {
+		return ""
+	}
+	return stage
 }
 
 type truncatingWriter struct {
@@ -1808,41 +1901,6 @@ func kdePortalPointInsideDialog(
 		point.x < geometry.dialogX+geometry.dialogWidth &&
 		point.y >= geometry.dialogY &&
 		point.y < geometry.dialogY+geometry.dialogHeight
-}
-
-func collectHostedDiagnostics(
-	ctx context.Context,
-	commands CommandExecutor,
-	sshArguments []string,
-	output io.Writer,
-	lane string,
-) {
-	unit := "gdm3"
-	if lane == portalLaneKDE {
-		unit = "sddm"
-	}
-	diagnosticCommand := `set +e
-echo ROBOTGO_PORTAL_DIAGNOSTICS
-systemctl status ` + unit + ` --no-pager --full
-loginctl list-sessions --no-legend
-loginctl user-status robotgo --no-pager
-test -d /run/user/1100 && find /run/user/1100 -maxdepth 1 -type s -printf '%f\n'
-journalctl --boot --unit=` + unit + ` --no-pager --lines=120
-journalctl --boot _UID=1100 --no-pager --lines=120
-echo ROBOTGO_PORTAL_DIAGNOSTICS_END`
-	diagnosticContext, cancel := context.WithTimeout(ctx, 30*time.Second)
-	defer cancel()
-	_ = commands.Run(
-		diagnosticContext,
-		"ssh",
-		append(
-			append([]string{}, sshArguments...),
-			"root@127.0.0.1",
-			diagnosticCommand,
-		),
-		nil,
-		output,
-	)
 }
 
 func waitForConsentMarker(

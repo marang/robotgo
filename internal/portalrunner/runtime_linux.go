@@ -20,12 +20,16 @@ import (
 )
 
 const (
-	operatorInputLimit   = 64
-	runnerCleanupTimeout = 2 * time.Minute
-	runnerCleanupPoll    = 5 * time.Second
-	runCompletionTimeout = 2 * time.Minute
-	runCompletionPoll    = 3 * time.Second
-	qemuExitGrace        = 15 * time.Second
+	operatorInputLimit           = 64
+	runnerCleanupTimeout         = 2 * time.Minute
+	runnerCleanupPoll            = 5 * time.Second
+	runCompletionTimeout         = 2 * time.Minute
+	runCompletionPoll            = 3 * time.Second
+	qemuExitGrace                = 15 * time.Second
+	gnomeSessionReadinessCommand = "timeout --kill-after=5s 130s " +
+		"/usr/local/libexec/robotgo-runner-wait-session"
+	kdeSessionReadinessCommand = "timeout --kill-after=5s 380s " +
+		"/usr/local/libexec/robotgo-runner-wait-session"
 )
 
 // ProtectedRuntimeOptions identifies one operator-approved disposable runner
@@ -361,7 +365,7 @@ func RunProtectedGNOME(
 	sessionCommand := "runuser -u robotgo -- env " +
 		"XDG_RUNTIME_DIR=/run/user/1100 " +
 		"DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1100/bus " +
-		"timeout 130 /usr/local/libexec/robotgo-runner-wait-session"
+		gnomeSessionReadinessCommand
 	if err := options.Commands.Run(
 		guestContext,
 		"ssh",

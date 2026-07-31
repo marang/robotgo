@@ -109,10 +109,14 @@ apt-get "${apt_options[@]}" install -y --no-install-recommends "$kernel_archive"
 rm -f -- "$kernel_archive"
 trap - EXIT
 test "$(dpkg-query -W -f='${db:Status-Status}' plasma-workspace)" = installed
+test "$(dpkg-query -W -f='${db:Status-Status}' plasma-desktop-data)" = installed
 test "$(uname -r)" = "$kernel_release"
 test "$(dpkg-query -W -f='${db:Status-Status}' \
   "linux-modules-extra-$kernel_release")" = installed
 test -f /usr/share/wayland-sessions/plasmawayland.desktop
+test -f /usr/share/plasma/shells/org.kde.plasma.desktop/metadata.json
+test -f /usr/lib/systemd/user/plasma-plasmashell.service
+test -x /usr/bin/flock
 test -x /usr/bin/kwin_wayland
 test -x /usr/bin/plasmashell
 test -x /usr/lib/x86_64-linux-gnu/libexec/xdg-desktop-portal-kde
@@ -164,6 +168,11 @@ install -m 0755 "$(dirname "$0")/configure-egress.sh" \
   /usr/local/sbin/robotgo-runner-configure-egress
 install -m 0755 "$(dirname "$0")/register.sh" \
   /usr/local/sbin/robotgo-runner-register
+cat >/etc/tmpfiles.d/robotgo-session-state.conf <<'EOF'
+d /run/robotgo-session-state 0700 robotgo robotgo -
+EOF
+systemd-tmpfiles --create /etc/tmpfiles.d/robotgo-session-state.conf
+test "$(stat -c '%U:%G:%a' /run/robotgo-session-state)" = robotgo:robotgo:700
 cat >/usr/local/libexec/robotgo-runner-job-started-hook.sh <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
@@ -238,7 +247,7 @@ ExecStartPre=/usr/local/libexec/robotgo-runner-wait-session
 ExecStart=/opt/actions-runner/run.sh
 ExecStopPost=+/usr/local/sbin/robotgo-runner-job-completed
 ExecStopPost=+/usr/bin/systemctl poweroff --no-wall
-TimeoutStartSec=150
+TimeoutStartSec=400
 TimeoutStopSec=30
 KillMode=control-group
 Restart=no

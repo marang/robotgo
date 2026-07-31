@@ -2,6 +2,32 @@
 
 ## Unreleased
 
+- Split KDE hosted-session readiness into bounded prerequisite, Plasma Shell,
+  portal frontend, portal backend, and stability phases. The complete session
+  must now pass three consecutive probes, later phases continuously revalidate
+  their prerequisites, allow naturally managed shell/portal bounces to settle,
+  and expose only explicitly allowlisted failure stages outside the disposable
+  guest. A terminal Plasma Shell failure gets one bounded failed/start-limit
+  reset and at most one bounded, non-blocking user-unit restart followed by an
+  explicit bounded readiness wait that continuously revalidates the base
+  session; reset, queue, and start failures remain distinguishable. Recovery
+  and ready claims are serialized with in-lock contract revalidation without
+  unbounded phase resets. Volatile shared outcome markers live outside the
+  per-user runtime directory so its disappearance remains diagnosable, and a
+  second failure remains terminal. Failed recovery now exposes only an
+  allowlisted systemd result category and bounded numeric exit or signal
+  status; raw unit output remains private, and recovery observers remain
+  bounded beyond those result probes so every waiter consumes the same precise
+  outcome. KDE receives its own bounded timeout
+  hierarchy while GNOME
+  retains its shorter guard and maps its legacy `unknown` terminal marker to
+  `session-unstable`. This prevents slow early startup from consuming the
+  shell's budget or exposing private diagnostics.
+- Restore the standalone `plasma-desktop-data` runtime dependency and validate
+  its default desktop-shell metadata in the minimized KDE image. The broad
+  `plasma-desktop` package remains forbidden, but a failed Plasma Shell restart
+  can no longer be caused by omitting its required `org.kde.plasma.desktop`
+  shell package.
 - Made hosted GNOME/KDE image-install stalls fail earlier and diagnostically:
   all three portal workflows now share one tested outer timeout wrapper, guest
   installation has a shorter phase deadline, and failures expose only a

@@ -1051,6 +1051,43 @@ cancellation/timeout boundary, and an `always()` workflow step terminates only
 verified runner-owned QEMU processes, removes sentinel-owned `run-*`
 directories, and rejects leftovers.
 
+KDE session readiness uses independent bounded budgets for SDDM/runtime/Wayland
+and KWin, Plasma Shell, the portal frontend, and the KDE portal backend. This
+prevents a slow early phase from consuming the shell's entire budget and then
+being misreported as a shell failure. The complete contract must remain true
+for three consecutive probes before source transfer begins. Failures expose
+only an allowlisted stage such as `desktop-shell-never-seen` or
+`portal-backend-unstable`; process arguments, journals, environment values, and
+other guest data do not cross SSH. A naturally managed Plasma Shell or portal
+frontend bounce may settle only inside the current bounded phase. If the
+verified `plasma-plasmashell.service` reaches terminal `failed`, RobotGo may
+reset that unit's failed/start-limit state under a three-second hard bound and
+queue exactly one restart under a three-second hard bound. The helper then
+waits at most 30 seconds for the user unit and process to become ready, emitting
+only `ROBOTGO_SESSION_RECOVERY=desktop-shell`. A second failure is terminal,
+and both winner and observers continuously revalidate the base session during
+settlement. The final stability probes still reject a crash loop. Concurrent
+waiters share attempt, completion, and failure markers. Each begins its full
+30-second settle phase only after the winning bounded recovery completes. A
+terminal failure
+during stability repeats the portal phases before stability can pass. Recovery
+and readiness claims are serialized under one 15-second-bounded guest lock:
+a ready claim revalidates the complete contract inside the lock and prevents
+any later restart, while a recovery claim forces every waiter to observe
+completion and revalidate. A failed locked revalidation falls through to the
+allowlisted terminal-stage classifier instead of resetting the phase budgets.
+Reset, queue, and start failures receive distinct allowlisted stages shared by
+all waiters. Claims and outcomes live only in the mode-0700 tmpfiles-managed
+`/run/robotgo-session-state`, outside the per-user runtime directory, so even a
+runtime-directory failure remains publishable and the state vanishes with the
+guest. The normal KDE phase deadlines total 220 seconds; the one-recovery path
+adds at most the three-second reset, three-second restart queue, 30-second shell
+settle, fresh 30-second portal frontend, 30-second backend, and 10-second
+stability cycle. The KDE host guard sends `TERM` after 380 seconds and enforces
+`KILL` five seconds later, including bounded probe overhead beneath the
+400-second systemd runner bound. GNOME retains its shorter 130-second deadline
+with the same five-second kill-after beneath its 150-second systemd bound.
+
 Hosted workflow calls share
 `scripts/run_hosted_portal_e2e_ci.sh` as their fixed 30-minute outer guard.
 Guest package/image installation has an earlier 20-minute phase deadline. If

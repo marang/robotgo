@@ -5,6 +5,7 @@ package portalrunner
 import (
 	"context"
 	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -1074,25 +1075,189 @@ func TestHostedSessionFailureReportsOnlyAllowlistedStage(t *testing.T) {
 	executor := &scriptedCommandExecutor{
 		outputs: []string{
 			"private diagnostic ignored\n" +
-				"ROBOTGO_SESSION_STAGE=desktop-shell\n" +
+				"ROBOTGO_SESSION_RECOVERY=desktop-shell\n" +
+				"ROBOTGO_SESSION_STAGE=desktop-shell-failed\n" +
 				"token=must-not-leak\n",
 		},
 		errors: []error{errors.New("exit status 1")},
 	}
+	var output strings.Builder
 	err := waitForHostedSession(
 		context.Background(),
 		executor,
 		[]string{"-p", "22222"},
-		&strings.Builder{},
+		&output,
+		portalLaneKDE,
 	)
 	if err == nil ||
-		!strings.Contains(err.Error(), `stage "desktop-shell"`) {
+		!strings.Contains(err.Error(), `stage "desktop-shell-failed"`) {
 		t.Fatalf("session failure = %v", err)
+	}
+	if got := output.String(); got !=
+		"ROBOTGO_SESSION_RECOVERY=desktop-shell\n"+
+			"ROBOTGO_SESSION_STAGE=desktop-shell-failed\n" {
+		t.Fatalf("sanitized session output = %q", got)
+	}
+	if len(executor.calls) != 1 ||
+		!strings.Contains(
+			executor.calls[0][len(executor.calls[0])-1],
+			kdeSessionReadinessCommand,
+		) {
+		t.Fatalf("session readiness calls = %v", executor.calls)
 	}
 	for _, private := range []string{"private diagnostic", "token", "exit status"} {
 		if strings.Contains(err.Error(), private) {
 			t.Fatalf("session failure leaks %q: %v", private, err)
 		}
+	}
+
+	for _, stage := range []string{
+		"desktop-shell-start-exit-1",
+		"desktop-shell-start-signal-9",
+		"desktop-shell-start-core-11",
+		"desktop-shell-start-timeout",
+		"desktop-shell-start-limit",
+	} {
+		if got := readSessionFailureStage(
+			[]byte("private\nROBOTGO_SESSION_STAGE=" + stage + "\n"),
+		); got != stage {
+			t.Errorf("safe shell start stage = %q, want %q", got, stage)
+		}
+	}
+	for _, stage := range []string{
+		"desktop-shell-start-exit-256",
+		"desktop-shell-start-signal-999",
+		"desktop-shell-start-core-secret",
+	} {
+		if got := readSessionFailureStage(
+			[]byte("ROBOTGO_SESSION_STAGE=" + stage + "\n"),
+		); got != "" {
+			t.Errorf("unsafe shell start stage escaped as %q", got)
+		}
+	}
+
+	executor = &scriptedCommandExecutor{
+		outputs: []string{
+			"ROBOTGO_SESSION_STAGE=unknown\n",
+		},
+		errors: []error{errors.New("exit status 1")},
+	}
+	output.Reset()
+	err = waitForHostedSession(
+		context.Background(),
+		executor,
+		nil,
+		&output,
+		portalLaneGNOME,
+	)
+	if err == nil ||
+		!strings.Contains(err.Error(), `stage "session-unstable"`) {
+		t.Fatalf("normalized GNOME session failure = %v", err)
+	}
+	if got := output.String(); got !=
+		"ROBOTGO_SESSION_STAGE=session-unstable\n" {
+		t.Fatalf("normalized GNOME session output = %q", got)
+	}
+
+	executor = &scriptedCommandExecutor{
+		outputs: []string{
+			"ROBOTGO_SESSION_RECOVERY=private-token\n" +
+				"ROBOTGO_SESSION_STAGE=private-token\n",
+		},
+		errors: []error{errors.New("exit status 1")},
+	}
+	output.Reset()
+	err = waitForHostedSession(
+		context.Background(),
+		executor,
+		nil,
+		&output,
+		portalLaneGNOME,
+	)
+	if err == nil || err.Error() != "wait for hosted portal session" {
+		t.Fatalf("unallowlisted session failure = %v", err)
+	}
+	if strings.Contains(err.Error(), "private-token") {
+		t.Fatalf("unallowlisted session stage escaped: %v", err)
+	}
+	if output.Len() != 0 {
+		t.Fatalf("unallowlisted session output escaped as %q", output.String())
+	}
+	if len(executor.calls) != 1 ||
+		!strings.Contains(
+			executor.calls[0][len(executor.calls[0])-1],
+			gnomeSessionReadinessCommand,
+		) {
+		t.Fatalf("GNOME session readiness calls = %v", executor.calls)
+	}
+}
+
+func TestHostedSessionSuppressesUnexpectedSuccessfulOutput(t *testing.T) {
+	t.Parallel()
+	executor := &scriptedCommandExecutor{
+		outputs: []string{
+			"private success diagnostic\n" +
+				"ROBOTGO_SESSION_RECOVERY=desktop-shell\n",
+		},
+	}
+	var output strings.Builder
+	if err := waitForHostedSession(
+		context.Background(),
+		executor,
+		nil,
+		&output,
+		portalLaneKDE,
+	); err != nil {
+		t.Fatalf("wait for hosted session: %v", err)
+	}
+	if got := output.String(); got !=
+		"ROBOTGO_SESSION_RECOVERY=desktop-shell\n" {
+		t.Fatalf("sanitized successful session output = %q", got)
+	}
+}
+
+func TestHostedSessionRejectsUnknownLaneBeforeSSH(t *testing.T) {
+	t.Parallel()
+	executor := &scriptedCommandExecutor{}
+	err := waitForHostedSession(
+		context.Background(),
+		executor,
+		nil,
+		io.Discard,
+		"private",
+	)
+	if err == nil || err.Error() != "hosted portal lane is invalid" {
+		t.Fatalf("unknown hosted lane = %v", err)
+	}
+	if len(executor.calls) != 0 {
+		t.Fatalf("unknown hosted lane calls = %v", executor.calls)
+	}
+}
+
+func TestHostedSessionReadinessCommandsAreHardBounded(t *testing.T) {
+	t.Parallel()
+	for name, test := range map[string]struct {
+		command  string
+		deadline string
+	}{
+		"GNOME": {
+			command:  gnomeSessionReadinessCommand,
+			deadline: "130s",
+		},
+		"KDE": {
+			command:  kdeSessionReadinessCommand,
+			deadline: "380s",
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			if !strings.HasPrefix(
+				test.command,
+				"timeout --kill-after=5s "+test.deadline+" ",
+			) {
+				t.Fatalf("session readiness command = %q", test.command)
+			}
+		})
 	}
 }
 
