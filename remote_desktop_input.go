@@ -101,6 +101,10 @@ var (
 // session replacement between the two transitions.
 var ErrInputOwnership = errors.New("robotgo: input state has no matching RobotGo-owned key or button down")
 
+// ErrInputNotApplied reports a failed stateful input transition for which the
+// backend proved that it acquired no key or button state.
+var ErrInputNotApplied = errors.New("robotgo: input backend applied no key or button state")
+
 // StartRemoteDesktopInput opens a consent-aware portal session and makes it
 // available to supported high-level input APIs when native Wayland input is
 // unavailable. Replacing an existing session closes the old one.

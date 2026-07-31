@@ -28,6 +28,11 @@ func TestNativeWindowsTargetedExtendedKeyDispatch(t *testing.T) {
 	messages, stop := startNativeWindowsKeyTarget(t)
 	pid := os.Getpid()
 
+	if err := KeyToggleImmediate("delete", "up", "ctrl", pid); !errors.Is(err, ErrInputOwnership) {
+		t.Fatalf("orphan extended key up error = %v", err)
+	}
+	assertNoNativeWindowsKeyMessage(t, messages)
+
 	if err := KeyToggleImmediate("delete", "down", "ctrl", pid); err != nil {
 		t.Fatalf("extended key down: %v", err)
 	}
@@ -40,10 +45,19 @@ func TestNativeWindowsTargetedExtendedKeyDispatch(t *testing.T) {
 	assertNativeWindowsKeyMessage(t, messages, win.WM_KEYUP, 0x2e)
 	assertNativeWindowsKeyMessage(t, messages, win.WM_KEYUP, 0x11)
 
+	if err := KeyToggleImmediate("delete", "up", "ctrl", pid); !errors.Is(err, ErrInputOwnership) {
+		t.Fatalf("duplicate extended key up error = %v", err)
+	}
+	assertNoNativeWindowsKeyMessage(t, messages)
+
 	stop()
 	err := KeyToggleImmediate("delete", "down", pid)
-	if err == nil || !strings.Contains(err.Error(), "native keyboard injection failed") {
+	if !errors.Is(err, ErrInputNotApplied) ||
+		!strings.Contains(err.Error(), "native keyboard injection failed") {
 		t.Fatalf("missing target key down error = %v", err)
+	}
+	if err := KeyToggleImmediate("delete", "up", pid); !errors.Is(err, ErrInputOwnership) {
+		t.Fatalf("failed key-down retained ownership: %v", err)
 	}
 }
 
@@ -67,6 +81,22 @@ func assertNativeWindowsKeyMessage(
 		}
 	case <-time.After(nativeWindowsKeyMessageTimeout):
 		t.Fatalf("timed out waiting for targeted key message %#x", wantMessage)
+	}
+}
+
+func assertNoNativeWindowsKeyMessage(
+	t *testing.T,
+	messages <-chan nativeWindowsKeyMessage,
+) {
+	t.Helper()
+	select {
+	case message := <-messages:
+		t.Fatalf(
+			"ownership rejection emitted key message {message:%#x key:%#x}",
+			message.message,
+			message.key,
+		)
+	default:
 	}
 }
 

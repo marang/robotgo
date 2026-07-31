@@ -30,7 +30,10 @@
   successful injection. Failed legacy tap transactions make a best-effort
   reverse-order release pass over only the successfully dispatched prefix, so
   newly visible partial failures neither leave modifier state behind nor emit
-  orphan key-up events.
+  orphan key-up events. Persistent native Windows holds record the same exact
+  prefix, reject foreign or duplicate releases, retain only failed releases
+  for retry, and report a typed no-state-acquired error after a pre-dispatch
+  failure so agent cleanup never touches foreign input.
 - Split KDE hosted-session readiness into bounded prerequisite, Plasma Shell,
   portal frontend, portal backend, and stability phases. The complete session
   must now pass three consecutive probes, later phases continuously revalidate

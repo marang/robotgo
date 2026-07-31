@@ -520,6 +520,7 @@ var ErrDmabufDevice error
 var ErrDmabufImport error
 var ErrDmabufMap error
 var ErrDmabufModifiers error
+var ErrInputNotApplied error
 var ErrInputOwnership error
 var ErrInvalidPID error
 var ErrNoOutputs error

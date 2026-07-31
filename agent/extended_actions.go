@@ -201,6 +201,10 @@ func (s *Session) executeKeyChord(ctx context.Context, action KeyChordAction) (r
 	}
 	pressed, err := s.pressKey(action.Key, action.Modifiers, action.TargetPID)
 	if err != nil {
+		if errors.Is(err, robotgo.ErrInputNotApplied) ||
+			errors.Is(err, robotgo.ErrInputOwnership) {
+			return err
+		}
 		return errors.Join(errPartialAction, err, s.releasePressedInput(pressed))
 	}
 	defer func() {
@@ -276,7 +280,13 @@ func (s *Session) pressKey(
 		key: key, modifiers: ownedModifiers, targetPID: targetPID, keyboard: true,
 	}
 	s.pressedInputs = append(s.pressedInputs, pressed)
-	return pressed, s.driver.ToggleKeyImmediate(key, ownedModifiers, targetPID, true)
+	err := s.driver.ToggleKeyImmediate(key, ownedModifiers, targetPID, true)
+	if errors.Is(err, robotgo.ErrInputNotApplied) ||
+		errors.Is(err, robotgo.ErrInputOwnership) {
+		s.pressedInputs = s.pressedInputs[:len(s.pressedInputs)-1]
+		return pressedInput{}, err
+	}
+	return pressed, err
 }
 
 func (s *Session) releasePressedInput(pressed pressedInput) error {

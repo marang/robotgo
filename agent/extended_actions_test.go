@@ -637,6 +637,52 @@ func TestAmbiguousKeyDownAndCleanupFailureRemainOwned(t *testing.T) {
 	}
 }
 
+func TestKnownUnappliedKeyDownDoesNotReleaseForeignInput(t *testing.T) {
+	for _, backendErr := range []error{
+		robotgo.ErrInputNotApplied,
+		robotgo.ErrInputOwnership,
+	} {
+		t.Run(backendErr.Error(), func(t *testing.T) {
+			driver := &fakeDriver{callError: func(call driverCall) error {
+				if call.operation == OperationKeyChord && call.down {
+					return backendErr
+				}
+				return nil
+			}}
+			session := newTestSession(
+				t,
+				extendedActionPolicy(OperationKeyChord),
+				driver,
+			)
+			result, err := session.Execute(t.Context(), ActionRequest{
+				Operation: OperationKeyChord, Confirmed: true,
+				KeyChord: &KeyChordAction{Key: "c", TargetPID: 42},
+			})
+			var actionErr *ActionError
+			if !errors.Is(err, backendErr) ||
+				!errors.As(err, &actionErr) ||
+				actionErr.Code != ErrorBackendFailure ||
+				result.Status != ActionFailed {
+				t.Fatalf("known-unapplied key down = %+v, %v", result, err)
+			}
+			var mutations []driverCall
+			for _, call := range driver.recordedCalls() {
+				if call.operation == OperationKeyChord && call.text == "" {
+					mutations = append(mutations, call)
+				}
+			}
+			if len(mutations) != 1 || !mutations[0].down ||
+				len(session.pressedInputs) != 0 || session.inputTainted {
+				t.Fatalf(
+					"known-unapplied key cleanup = %+v, ledger = %+v",
+					mutations,
+					session.pressedInputs,
+				)
+			}
+		})
+	}
+}
+
 func TestKeyChordUsesCanonicalOrderAndRelease(t *testing.T) {
 	driver := &fakeDriver{}
 	session := newTestSession(t, extendedActionPolicy(OperationKeyChord), driver)

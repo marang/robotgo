@@ -365,6 +365,8 @@ func nativeKeyStatusError(status C.int, operation string) error {
 		return fmt.Errorf("robotgo: %s: active modifier or lock state cannot safely produce the requested input", operation)
 	case int(C.ROBOTGO_KEY_OWNERSHIP_CONFLICT):
 		return fmt.Errorf("%w: %s: key state is owned by another input source or has no matching RobotGo key-down", ErrInputOwnership, operation)
+	case int(C.ROBOTGO_KEY_NOT_APPLIED):
+		return fmt.Errorf("%w: %s: native keyboard injection failed before acquiring key state", ErrInputNotApplied, operation)
 	default:
 		return fmt.Errorf("robotgo: %s: unknown native keyboard status %d", operation, int(status))
 	}

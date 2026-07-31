@@ -26,7 +26,8 @@ enum RobotGoKeyStatus {
         ROBOTGO_KEY_UNSUPPORTED = 4,
         ROBOTGO_KEY_INVALID = 5,
         ROBOTGO_KEY_STATE_CONFLICT = 6,
-        ROBOTGO_KEY_OWNERSHIP_CONFLICT = 7
+        ROBOTGO_KEY_OWNERSHIP_CONFLICT = 7,
+        ROBOTGO_KEY_NOT_APPLIED = 8
 };
 
 #if defined(IS_MACOSX)
@@ -1885,6 +1886,117 @@ static inline int robotgo_wayland_type_codepoints(const uint32_t *values,
 		}
 		return first_error;
 	}
+
+	enum {
+		ROBOTGO_WIN32_MAX_TOGGLE_RECORDS = 64
+	};
+
+	typedef struct RobotGoWin32ToggleRecord {
+		bool active;
+		MMKeyCode code;
+		MMKeyFlags flags;
+		uintptr pid;
+		MMKeyCode pressed[5];
+		size_t pressed_length;
+	} RobotGoWin32ToggleRecord;
+
+	static SRWLOCK robotgo_win32_toggle_lock = SRWLOCK_INIT;
+	static RobotGoWin32ToggleRecord
+		robotgo_win32_toggle_records[ROBOTGO_WIN32_MAX_TOGGLE_RECORDS];
+
+	static bool ROBOTGO_WIN32_TOGGLE_RECORD_MATCHES(
+		const RobotGoWin32ToggleRecord *record,
+		MMKeyCode code,
+		MMKeyFlags flags,
+		uintptr pid
+	) {
+		return record->active &&
+			record->code == code &&
+			record->flags == flags &&
+			record->pid == pid;
+	}
+
+	static int ROBOTGO_WIN32_TOGGLE_OWNED_KEY_CODE(
+		MMKeyCode code,
+		const bool down,
+		MMKeyFlags flags,
+		uintptr pid
+	) {
+		AcquireSRWLockExclusive(&robotgo_win32_toggle_lock);
+		RobotGoWin32ToggleRecord *record = NULL;
+		RobotGoWin32ToggleRecord *free_record = NULL;
+		for (size_t index = 0;
+			index < ROBOTGO_WIN32_MAX_TOGGLE_RECORDS;
+			index++) {
+			RobotGoWin32ToggleRecord *candidate =
+				&robotgo_win32_toggle_records[index];
+			if (ROBOTGO_WIN32_TOGGLE_RECORD_MATCHES(
+				candidate, code, flags, pid
+			)) {
+				record = candidate;
+				break;
+			}
+			if (!candidate->active && free_record == NULL) {
+				free_record = candidate;
+			}
+		}
+
+		if (down) {
+			if (record != NULL || free_record == NULL) {
+				ReleaseSRWLockExclusive(&robotgo_win32_toggle_lock);
+				return ROBOTGO_KEY_OWNERSHIP_CONFLICT;
+			}
+			record = free_record;
+			record->active = true;
+			record->code = code;
+			record->flags = flags;
+			record->pid = pid;
+			record->pressed_length = 0;
+			int status = ROBOTGO_WIN32_TOGGLE_KEY_CODE(
+				code, true, flags, pid,
+				record->pressed, &record->pressed_length
+			);
+			if (status != ROBOTGO_KEY_OK && record->pressed_length == 0) {
+				memset(record, 0, sizeof(*record));
+				status = ROBOTGO_KEY_NOT_APPLIED;
+			}
+			ReleaseSRWLockExclusive(&robotgo_win32_toggle_lock);
+			return status;
+		}
+
+		if (record == NULL) {
+			ReleaseSRWLockExclusive(&robotgo_win32_toggle_lock);
+			return ROBOTGO_KEY_OWNERSHIP_CONFLICT;
+		}
+		bool failed[5] = { false, false, false, false, false };
+		int first_error = ROBOTGO_KEY_OK;
+		for (size_t index = record->pressed_length; index > 0; index--) {
+			size_t pressed_index = index - 1;
+			int status = WIN32_KEY_EVENT_WAIT(
+				record->pressed[pressed_index],
+				KEYEVENTF_KEYUP,
+				pid
+			);
+			if (status != ROBOTGO_KEY_OK) {
+				failed[pressed_index] = true;
+				if (first_error == ROBOTGO_KEY_OK) {
+					first_error = status;
+				}
+			}
+		}
+		size_t remaining = 0;
+		for (size_t index = 0; index < record->pressed_length; index++) {
+			if (failed[index]) {
+				record->pressed[remaining++] = record->pressed[index];
+			}
+		}
+		record->pressed_length = remaining;
+		if (remaining == 0) {
+			memset(record, 0, sizeof(*record));
+		}
+		ReleaseSRWLockExclusive(&robotgo_win32_toggle_lock);
+		return first_error;
+	}
 #endif
 
 int toggleKeyCode(MMKeyCode code, const bool down, MMKeyFlags flags, uintptr pid) {
@@ -1920,9 +2032,7 @@ int toggleKeyCode(MMKeyCode code, const bool down, MMKeyFlags flags, uintptr pid
 	}
 	return ROBOTGO_KEY_OK;
 #elif defined(IS_WINDOWS)
-	return ROBOTGO_WIN32_TOGGLE_KEY_CODE(
-		code, down, flags, pid, NULL, NULL
-	);
+	return ROBOTGO_WIN32_TOGGLE_OWNED_KEY_CODE(code, down, flags, pid);
 #elif defined(IS_LINUX)
 	#ifdef ROBOTGO_USE_WAYLAND
 	        if (robotgo_wayland_keyboard_backend_selected()) {
