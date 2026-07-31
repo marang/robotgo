@@ -35,10 +35,11 @@
   another's modifiers, failed tap or hold releases remain retryable, and an
   attempted tap whose physical main key is already held is rejected rather
   than reporting an unobservable transition. Process-targeted references are
-  bound to the exact resolved HWND, so a replacement window in the same
-  process cannot inherit modifier state; destroyed-target ownership is cleared
-  without sending releases to the replacement. Native holds still record the
-  exact applied prefix, reject foreign or duplicate releases, and report a
+  bound to a controller-specific property marker on the exact resolved window
+  generation, so even same-PID numeric HWND reuse cannot inherit modifier
+  state; destroyed-target ownership is cleared without sending releases to the
+  replacement, and UIPI marker denial fails closed. Native holds still record
+  the exact applied prefix, reject foreign or duplicate releases, and report a
   typed no-state-acquired error after a pre-dispatch failure so agent cleanup
   never touches foreign input.
 - Split KDE hosted-session readiness into bounded prerequisite, Plasma Shell,
