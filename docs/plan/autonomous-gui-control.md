@@ -47,8 +47,8 @@ Unsupported targets remain explicit.
 
 Scroll and drag are cooperatively cancelable between injected events. A chord
 checks cancellation after key-down and still performs its mandatory release
-on persistent-hold backends. Linux and Pure-Go Windows chords are unavailable
-until those keyboard backends can bind input to an allowed process; a
+on persistent-hold backends. Linux and Windows chords are unavailable until
+those keyboard backends can atomically bind input to an allowed target; a
 global-focus or active-window check alone is not an authorization boundary.
 The operation catalog reports scroll axes explicitly and Pure-Go X11 currently
 accepts only vertical scroll. Native macOS CGO activation is unavailable

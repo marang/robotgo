@@ -852,12 +852,12 @@ cooperatively cancelable between events. The operation catalog reports
 supported scroll axes structurally; Pure-Go X11 currently advertises only
 vertical scrolling. A chord validates the allow-listed process title, passes
 the same process ID into both key-down and key-up, and checks cancellation
-between them. Linux and Pure-Go Windows chords fail closed until their keyboard
-backends can bind input to an allowed process. Indivisible backend calls report
-preflight-only cancellation. The process-exclusive session records every
-RobotGo-owned pressed key or pointer button and releases it on success, error,
-cancellation, timeout, disconnect, and close. An interrupted action that
-already injected input is `unverified`, not safely retryable. A cleanup failure
+between them. Linux and Windows chords fail closed until their keyboard
+backends can atomically bind input to an allowed target. Indivisible backend
+calls report preflight-only cancellation. The process-exclusive session records
+every RobotGo-owned pressed key or pointer button and releases it on success,
+error, cancellation, timeout, disconnect, and close. An interrupted action
+that already injected input is `unverified`, not safely retryable. A cleanup failure
 blocks further actions and retains the process-exclusive owner until `Close`
 successfully retries the release.
 Drag interpolation uses `MoveImmediateE`, so a legacy global `MouseSleep`

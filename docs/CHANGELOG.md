@@ -24,17 +24,11 @@
   taints the session and retains its exclusive owner until cleanup succeeds.
   Mutation capabilities now provide a stable unavailable, unsupported, or
   permission-denied code without requiring reason-string parsing.
-  Native Windows process-targeted chords now preserve down/up semantics for
-  extended keys, release the main key before modifiers, and propagate missing
-  targets plus `PostMessageW`/`SendInput` failures instead of reporting a
-  successful injection. Failed legacy tap transactions make a best-effort
-  reverse-order release pass over only the successfully dispatched prefix, so
-  newly visible partial failures neither leave modifier state behind nor emit
-  orphan key-up events. Persistent native Windows holds and taps now share a
-  physical-key reference ledger: overlapping chords cannot release one
-  another's modifiers, failed tap or hold releases remain retryable, and an
-  attempted tap whose physical main key is already held is rejected rather
-  than reporting an unobservable transition. Native holds still record the
+  Native Windows global holds and taps now share a physical-key reference
+  ledger: overlapping chords cannot release one another's modifiers, failed
+  tap or hold releases remain retryable, and an attempted tap whose physical
+  main key is already held is rejected rather than reporting an unobservable
+  transition. Native holds still record the
   exact applied prefix, reject foreign or duplicate releases, and report a
   typed no-state-acquired error after a pre-dispatch failure so agent cleanup
   never touches foreign input. Native Windows PID-targeted key taps/toggles and
