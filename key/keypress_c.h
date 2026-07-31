@@ -1959,6 +1959,15 @@ int robotgo_tap_key_code(MMKeyCode code, MMKeyFlags flags, uintptr pid) {
 #else
 	int status = toggleKeyCode(code, true, flags, pid);
 	if (status != ROBOTGO_KEY_OK) {
+#if defined(IS_WINDOWS)
+		/*
+		 * Windows modifier dispatch can partially succeed before a later
+		 * PostMessageW/SendInput failure. A tap has no external owner that
+		 * can release that partial state, so make one best-effort release
+		 * pass before returning the original injection failure.
+		 */
+		(void)toggleKeyCode(code, false, flags, pid);
+#endif
 		return status;
 	}
 	microsleep(3.0);

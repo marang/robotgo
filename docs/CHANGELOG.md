@@ -27,7 +27,9 @@
   Native Windows process-targeted chords now preserve down/up semantics for
   extended keys, release the main key before modifiers, and propagate missing
   targets plus `PostMessageW`/`SendInput` failures instead of reporting a
-  successful injection.
+  successful injection. Failed legacy tap transactions make a best-effort
+  release pass so newly visible partial failures do not leave modifier state
+  behind.
 - Split KDE hosted-session readiness into bounded prerequisite, Plasma Shell,
   portal frontend, portal backend, and stability phases. The complete session
   must now pass three consecutive probes, later phases continuously revalidate
