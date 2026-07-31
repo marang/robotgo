@@ -69,24 +69,10 @@ enum RobotGoKeyStatus {
 		return hwnd;	
 	}
 
-	int win32KeyEventToTarget(
-		int key,
-		MMKeyFlags flags,
-		uintptr pid,
-		HWND target,
-		HANDLE generation
-	);
+	static int ROBOTGO_WIN32_KEY_EVENT(int key, MMKeyFlags flags);
 
-	int WIN32_KEY_EVENT_TARGET_WAIT(
-		MMKeyCode key,
-		DWORD flags,
-		uintptr pid,
-		HWND target,
-		HANDLE generation
-	) {
-		int status = win32KeyEventToTarget(
-			key, flags, pid, target, generation
-		);
+	static int WIN32_KEY_EVENT_WAIT(MMKeyCode key, DWORD flags) {
+		int status = ROBOTGO_WIN32_KEY_EVENT(key, flags);
 		if (status == ROBOTGO_KEY_OK) {
 			Sleep(DEADBEEF_RANDRANGE(0, 1));
 		}
@@ -1773,127 +1759,8 @@ static inline int robotgo_wayland_type_codepoints(const uint32_t *values,
 		return sEventDrvrRef;
 	}
 #elif defined(IS_WINDOWS)
-
-	static WCHAR robotgo_win32_target_property_name[96];
-	static bool robotgo_win32_target_property_name_initialized = false;
-	static uintptr robotgo_win32_target_generation = 0;
-
-	static bool ROBOTGO_WIN32_INIT_TARGET_PROPERTY_NAME(void) {
-		if (robotgo_win32_target_property_name_initialized) {
-			return true;
-		}
-		FILETIME creation = {0};
-		FILETIME exit = {0};
-		FILETIME kernel = {0};
-		FILETIME user = {0};
-		if (!GetProcessTimes(
-			GetCurrentProcess(),
-			&creation,
-			&exit,
-			&kernel,
-			&user
-		)) {
-			return false;
-		}
-		int length = wsprintfW(
-			robotgo_win32_target_property_name,
-			L"RobotGo.NativeKeyOwnership.%08lx.%08lx.%08lx",
-			(unsigned long)GetCurrentProcessId(),
-			(unsigned long)creation.dwHighDateTime,
-			(unsigned long)creation.dwLowDateTime
-		);
-		if (length <= 0 ||
-			(size_t)length >=
-				sizeof(robotgo_win32_target_property_name) /
-				sizeof(robotgo_win32_target_property_name[0])) {
-			memset(
-				robotgo_win32_target_property_name,
-				0,
-				sizeof(robotgo_win32_target_property_name)
-			);
-			return false;
-		}
-		robotgo_win32_target_property_name_initialized = true;
-		return true;
-	}
-
-	static bool ROBOTGO_WIN32_TARGET_PID_MATCHES(
-		HWND target,
-		uintptr pid
-	) {
-		if (pid == 0) {
-			return target == NULL;
-		}
-		if ((uintptr)(DWORD)pid != pid ||
-			target == NULL ||
-			!IsWindow(target)) {
-			return false;
-		}
-		DWORD target_pid = 0;
-		(void)GetWindowThreadProcessId(target, &target_pid);
-		return target_pid == (DWORD)pid;
-	}
-
-	static bool ROBOTGO_WIN32_TARGET_MATCHES(
-		HWND target,
-		uintptr pid,
-		HANDLE generation
-	) {
-		if (pid == 0) {
-			return target == NULL && generation == NULL;
-		}
-		return generation != NULL &&
-			ROBOTGO_WIN32_TARGET_PID_MATCHES(target, pid) &&
-			ROBOTGO_WIN32_INIT_TARGET_PROPERTY_NAME() &&
-			GetPropW(
-				target,
-				robotgo_win32_target_property_name
-			) == generation;
-	}
-
-	static HWND ROBOTGO_WIN32_RESOLVE_TARGET(
-		uintptr pid,
-		HANDLE *generation
-	) {
-		*generation = NULL;
-		if (pid == 0 || (uintptr)(DWORD)pid != pid ||
-			!ROBOTGO_WIN32_INIT_TARGET_PROPERTY_NAME()) {
-			return NULL;
-		}
-		HWND target = getHwnd(pid, 0);
-		if (!ROBOTGO_WIN32_TARGET_PID_MATCHES(target, pid)) {
-			return NULL;
-		}
-		HANDLE marker = GetPropW(
-			target,
-			robotgo_win32_target_property_name
-		);
-		if (marker == NULL) {
-			do {
-				robotgo_win32_target_generation++;
-			} while (robotgo_win32_target_generation == 0);
-			marker = (HANDLE)robotgo_win32_target_generation;
-			if (!SetPropW(
-				target,
-				robotgo_win32_target_property_name,
-				marker
-			)) {
-				return NULL;
-			}
-		}
-		*generation = marker;
-		return target;
-	}
-
-	int win32KeyEventToTarget(
-		int key,
-		MMKeyFlags flags,
-		uintptr pid,
-		HWND target,
-		HANDLE generation
-	) {
+	static int ROBOTGO_WIN32_KEY_EVENT(int key, MMKeyFlags flags) {
 		int scan = MapVirtualKey(key & 0xff, MAPVK_VK_TO_VSC);
-		UINT message = (flags & KEYEVENTF_KEYUP) != 0 ? WM_KEYUP : WM_KEYDOWN;
 
 		/* Set the scan code for extended keys */
 		switch (key){
@@ -1935,18 +1802,6 @@ static inline int robotgo_wayland_type_codepoints(const uint32_t *values,
 			}
 		}
 
-		// todo: test this
-		if (pid != 0) {
-			if (!ROBOTGO_WIN32_TARGET_MATCHES(
-				target, pid, generation
-			)) {
-				return ROBOTGO_KEY_INJECTION_FAILED;
-			}
-			// SendMessage(hwnd, down, key, 0);
-			return PostMessageW(target, message, key, 0)
-				? ROBOTGO_KEY_OK : ROBOTGO_KEY_INJECTION_FAILED;
-		}
-
 		/* Set the scan code for keyup */
 		// if ( flags & KEYEVENTF_KEYUP ) {
 		// 	scan |= 0x80;
@@ -1975,9 +1830,6 @@ static inline int robotgo_wayland_type_codepoints(const uint32_t *values,
 		bool active;
 		MMKeyCode code;
 		MMKeyFlags flags;
-		uintptr pid;
-		HWND target;
-		HANDLE generation;
 		MMKeyCode pressed[5];
 		size_t pressed_length;
 	} RobotGoWin32ToggleRecord;
@@ -1985,9 +1837,6 @@ static inline int robotgo_wayland_type_codepoints(const uint32_t *values,
 	typedef struct RobotGoWin32PhysicalKey {
 		bool active;
 		MMKeyCode code;
-		uintptr pid;
-		HWND target;
-		HANDLE generation;
 		size_t references;
 	} RobotGoWin32PhysicalKey;
 
@@ -2000,19 +1849,16 @@ static inline int robotgo_wayland_type_codepoints(const uint32_t *values,
 	static bool ROBOTGO_WIN32_TOGGLE_RECORD_MATCHES(
 		const RobotGoWin32ToggleRecord *record,
 		MMKeyCode code,
-		MMKeyFlags flags,
-		uintptr pid
+		MMKeyFlags flags
 	) {
 		return record->active &&
 			record->code == code &&
-			record->flags == flags &&
-			record->pid == pid;
+			record->flags == flags;
 	}
 
 	static RobotGoWin32ToggleRecord *ROBOTGO_WIN32_FIND_TOGGLE_RECORD(
 		MMKeyCode code,
 		MMKeyFlags flags,
-		uintptr pid,
 		RobotGoWin32ToggleRecord **free_record
 	) {
 		RobotGoWin32ToggleRecord *record = NULL;
@@ -2023,7 +1869,7 @@ static inline int robotgo_wayland_type_codepoints(const uint32_t *values,
 			RobotGoWin32ToggleRecord *candidate =
 				&robotgo_win32_toggle_records[index];
 			if (ROBOTGO_WIN32_TOGGLE_RECORD_MATCHES(
-				candidate, code, flags, pid
+				candidate, code, flags
 			)) {
 				record = candidate;
 				break;
@@ -2037,9 +1883,6 @@ static inline int robotgo_wayland_type_codepoints(const uint32_t *values,
 
 	static RobotGoWin32PhysicalKey *ROBOTGO_WIN32_FIND_PHYSICAL_KEY(
 		MMKeyCode code,
-		uintptr pid,
-		HWND target,
-		HANDLE generation,
 		RobotGoWin32PhysicalKey **free_key
 	) {
 		RobotGoWin32PhysicalKey *physical = NULL;
@@ -2050,10 +1893,7 @@ static inline int robotgo_wayland_type_codepoints(const uint32_t *values,
 			RobotGoWin32PhysicalKey *candidate =
 				&robotgo_win32_physical_keys[index];
 			if (candidate->active &&
-				candidate->code == code &&
-				candidate->pid == pid &&
-				candidate->target == target &&
-				candidate->generation == generation) {
+				candidate->code == code) {
 				physical = candidate;
 				break;
 			}
@@ -2075,9 +1915,6 @@ static inline int robotgo_wayland_type_codepoints(const uint32_t *values,
 		RobotGoWin32PhysicalKey *physical =
 			ROBOTGO_WIN32_FIND_PHYSICAL_KEY(
 				code,
-				record->pid,
-				record->target,
-				record->generation,
 				&free_key
 			);
 		if (physical != NULL) {
@@ -2089,21 +1926,12 @@ static inline int robotgo_wayland_type_codepoints(const uint32_t *values,
 			return ROBOTGO_KEY_OWNERSHIP_CONFLICT;
 		}
 
-		int status = WIN32_KEY_EVENT_TARGET_WAIT(
-			code,
-			0,
-			record->pid,
-			record->target,
-			record->generation
-		);
+		int status = WIN32_KEY_EVENT_WAIT(code, 0);
 		if (status != ROBOTGO_KEY_OK) {
 			return status;
 		}
 		free_key->active = true;
 		free_key->code = code;
-		free_key->pid = record->pid;
-		free_key->target = record->target;
-		free_key->generation = record->generation;
 		free_key->references = 1;
 		record->pressed[record->pressed_length++] = code;
 		return ROBOTGO_KEY_OK;
@@ -2141,91 +1969,15 @@ static inline int robotgo_wayland_type_codepoints(const uint32_t *values,
 		return ROBOTGO_KEY_OK;
 	}
 
-	static void ROBOTGO_WIN32_CLEAR_TARGET_OWNERSHIP(
-		uintptr pid,
-		HWND target,
-		HANDLE generation
-	) {
-		for (size_t index = 0;
-			index < ROBOTGO_WIN32_MAX_TOGGLE_RECORDS;
-			index++) {
-			RobotGoWin32ToggleRecord *record =
-				&robotgo_win32_toggle_records[index];
-			if (record->active &&
-				record->pid == pid &&
-				record->target == target &&
-				record->generation == generation) {
-				memset(record, 0, sizeof(*record));
-			}
-		}
-		for (size_t index = 0;
-			index < ROBOTGO_WIN32_MAX_PHYSICAL_KEYS;
-			index++) {
-			RobotGoWin32PhysicalKey *physical =
-				&robotgo_win32_physical_keys[index];
-			if (physical->active &&
-				physical->pid == pid &&
-				physical->target == target &&
-				physical->generation == generation) {
-				memset(physical, 0, sizeof(*physical));
-			}
-		}
-	}
-
 	static void ROBOTGO_WIN32_CLEAR_TOGGLE_RECORD(
 		RobotGoWin32ToggleRecord *record
 	) {
-		uintptr pid = record->pid;
-		HWND target = record->target;
-		HANDLE generation = record->generation;
 		memset(record, 0, sizeof(*record));
-		if (pid == 0) {
-			return;
-		}
-		for (size_t index = 0;
-			index < ROBOTGO_WIN32_MAX_TOGGLE_RECORDS;
-			index++) {
-			RobotGoWin32ToggleRecord *candidate =
-				&robotgo_win32_toggle_records[index];
-			if (candidate->active &&
-				candidate->pid == pid &&
-				candidate->target == target &&
-				candidate->generation == generation) {
-				return;
-			}
-		}
-		if (ROBOTGO_WIN32_TARGET_MATCHES(
-			target, pid, generation
-		)) {
-			(void)RemovePropW(
-				target,
-				robotgo_win32_target_property_name
-			);
-		}
 	}
 
 	static int ROBOTGO_WIN32_RELEASE_TOGGLE_RECORD(
 		RobotGoWin32ToggleRecord *record
 	) {
-		if (record->pid != 0 &&
-			!ROBOTGO_WIN32_TARGET_MATCHES(
-				record->target,
-				record->pid,
-				record->generation
-			)) {
-			/*
-			 * Posted key state belongs to the exact window. Once that HWND
-			 * is gone or belongs to another process, its state cannot
-			 * remain pressed and must never be released into a replacement.
-			 */
-			ROBOTGO_WIN32_CLEAR_TARGET_OWNERSHIP(
-				record->pid,
-				record->target,
-				record->generation
-			);
-			return ROBOTGO_KEY_OK;
-		}
-
 		bool failed[5] = { false, false, false, false, false };
 		int first_error = ROBOTGO_KEY_OK;
 
@@ -2236,9 +1988,6 @@ static inline int robotgo_wayland_type_codepoints(const uint32_t *values,
 			RobotGoWin32PhysicalKey *physical =
 				ROBOTGO_WIN32_FIND_PHYSICAL_KEY(
 					record->pressed[pressed_index],
-					record->pid,
-					record->target,
-					record->generation,
 					&unused_free_key
 				);
 			int status = ROBOTGO_KEY_OK;
@@ -2247,12 +1996,9 @@ static inline int robotgo_wayland_type_codepoints(const uint32_t *values,
 			} else if (physical->references > 1) {
 				physical->references--;
 			} else {
-				status = WIN32_KEY_EVENT_TARGET_WAIT(
+				status = WIN32_KEY_EVENT_WAIT(
 					record->pressed[pressed_index],
-					KEYEVENTF_KEYUP,
-					record->pid,
-					record->target,
-					record->generation
+					KEYEVENTF_KEYUP
 				);
 				if (status == ROBOTGO_KEY_OK) {
 					memset(physical, 0, sizeof(*physical));
@@ -2282,11 +2028,14 @@ static inline int robotgo_wayland_type_codepoints(const uint32_t *values,
 		MMKeyFlags flags,
 		uintptr pid
 	) {
+		if (pid != 0) {
+			return ROBOTGO_KEY_UNSUPPORTED;
+		}
 		AcquireSRWLockExclusive(&robotgo_win32_toggle_lock);
 		RobotGoWin32ToggleRecord *free_record = NULL;
 		RobotGoWin32ToggleRecord *record =
 			ROBOTGO_WIN32_FIND_TOGGLE_RECORD(
-				code, flags, pid, &free_record
+				code, flags, &free_record
 			);
 
 		if (down) {
@@ -2294,21 +2043,10 @@ static inline int robotgo_wayland_type_codepoints(const uint32_t *values,
 				ReleaseSRWLockExclusive(&robotgo_win32_toggle_lock);
 				return ROBOTGO_KEY_OWNERSHIP_CONFLICT;
 			}
-			HANDLE generation = NULL;
-			HWND target = ROBOTGO_WIN32_RESOLVE_TARGET(
-				pid, &generation
-			);
-			if (pid != 0 && target == NULL) {
-				ReleaseSRWLockExclusive(&robotgo_win32_toggle_lock);
-				return ROBOTGO_KEY_NOT_APPLIED;
-			}
 			record = free_record;
 			record->active = true;
 			record->code = code;
 			record->flags = flags;
-			record->pid = pid;
-			record->target = target;
-			record->generation = generation;
 			record->pressed_length = 0;
 			int status = ROBOTGO_WIN32_ACQUIRE_TOGGLE_RECORD(record);
 			if (status != ROBOTGO_KEY_OK && record->pressed_length == 0) {
@@ -2338,30 +2076,22 @@ static inline int robotgo_wayland_type_codepoints(const uint32_t *values,
 		MMKeyFlags flags,
 		uintptr pid
 	) {
+		if (pid != 0) {
+			return ROBOTGO_KEY_UNSUPPORTED;
+		}
 		AcquireSRWLockExclusive(&robotgo_win32_toggle_lock);
 		RobotGoWin32ToggleRecord *free_record = NULL;
 		RobotGoWin32ToggleRecord *existing =
 			ROBOTGO_WIN32_FIND_TOGGLE_RECORD(
-				code, flags, pid, &free_record
+				code, flags, &free_record
 			);
 		if (existing != NULL || free_record == NULL) {
 			ReleaseSRWLockExclusive(&robotgo_win32_toggle_lock);
 			return ROBOTGO_KEY_OWNERSHIP_CONFLICT;
 		}
-		HANDLE generation = NULL;
-		HWND target = ROBOTGO_WIN32_RESOLVE_TARGET(
-			pid, &generation
-		);
-		if (pid != 0 && target == NULL) {
-			ReleaseSRWLockExclusive(&robotgo_win32_toggle_lock);
-			return ROBOTGO_KEY_NOT_APPLIED;
-		}
 		RobotGoWin32PhysicalKey *unused_free_key = NULL;
 		if (ROBOTGO_WIN32_FIND_PHYSICAL_KEY(
 			code,
-			pid,
-			target,
-			generation,
 			&unused_free_key
 		) != NULL) {
 			/*
@@ -2377,9 +2107,6 @@ static inline int robotgo_wayland_type_codepoints(const uint32_t *values,
 		record->active = true;
 		record->code = code;
 		record->flags = flags;
-		record->pid = pid;
-		record->target = target;
-		record->generation = generation;
 		record->pressed_length = 0;
 		int status = ROBOTGO_WIN32_ACQUIRE_TOGGLE_RECORD(record);
 		if (status != ROBOTGO_KEY_OK) {
@@ -2445,6 +2172,9 @@ int toggleKeyCode(MMKeyCode code, const bool down, MMKeyFlags flags, uintptr pid
 	}
 	return ROBOTGO_KEY_OK;
 #elif defined(IS_WINDOWS)
+	if (pid != 0) {
+		return ROBOTGO_KEY_UNSUPPORTED;
+	}
 	return ROBOTGO_WIN32_TOGGLE_OWNED_KEY_CODE(code, down, flags, pid);
 #elif defined(IS_LINUX)
 	#ifdef ROBOTGO_USE_WAYLAND
@@ -2501,6 +2231,9 @@ int robotgo_tap_key_code(MMKeyCode code, MMKeyFlags flags, uintptr pid) {
 	XSync(display, false);
 	return status;
 #elif defined(IS_WINDOWS)
+	if (pid != 0) {
+		return ROBOTGO_KEY_UNSUPPORTED;
+	}
 	return ROBOTGO_WIN32_TAP_OWNED_KEY_CODE(code, flags, pid);
 #else
 	int status = toggleKeyCode(code, true, flags, pid);

@@ -122,6 +122,24 @@ func TestWaylandKeyChordCapabilityRequiresProcessTargetedInjection(t *testing.T)
 	}
 }
 
+func TestWindowsKeyChordCapabilityRequiresAtomicTargetDispatch(t *testing.T) {
+	for _, cgoEnabled := range []bool{false, true} {
+		capabilities := availableCapabilities()
+		capabilities.Runtime.GOOS = "windows"
+		capabilities.Runtime.CGOEnabled = cgoEnabled
+		capability := keyChordFeature(capabilities)
+		if capability.Available ||
+			featureUnavailableCode(capability) != ErrorUnsupported ||
+			capability.Notes == "" {
+			t.Fatalf(
+				"Windows keyboard.chord capability with CGO=%t = %+v",
+				cgoEnabled,
+				capability,
+			)
+		}
+	}
+}
+
 func TestExtendedCapabilityReportsPermissionAndUnavailableStates(t *testing.T) {
 	policy, err := preparePolicy(extendedActionPolicy(OperationScroll))
 	if err != nil {

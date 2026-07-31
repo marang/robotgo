@@ -47,13 +47,12 @@ func keyChordFeature(capabilities robotgo.RuntimeCapabilities) robotgo.FeatureCa
 		feature.Notes = "X11 and Wayland inject into global focus; use a backend with process-targeted keyboard injection"
 		return feature
 	}
-	if capabilities.Runtime.GOOS == "windows" &&
-		!capabilities.Runtime.CGOEnabled {
+	if capabilities.Runtime.GOOS == "windows" {
 		feature := capabilities.Keyboard
 		feature.Available = false
 		feature.Reason = robotgo.ErrNotSupported.Error() +
-			": Pure-Go Windows keyboard input cannot bind a chord to an allowed process"
-		feature.Notes = "use the native Windows backend until Pure-Go Windows supports process-targeted keyboard injection"
+			": Windows keyboard input cannot atomically bind validation and dispatch to one window generation"
+		feature.Notes = "use a cooperative accessibility or in-process backend that can validate the target generation at dispatch"
 		return feature
 	}
 	if !capabilities.Window.Available {

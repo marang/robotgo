@@ -331,23 +331,22 @@ successful RobotGo-owned Down, or an Up after its portal session was replaced
 returns `ErrInputOwnership` without sending input on another backend. Native
 Windows records the exact successfully dispatched key prefix, so partial
 failure cleanup releases only RobotGo-owned state and retains failed releases
-for retry while the exact target remains valid. Shared physical keys such as
+for retry. Shared physical keys such as
 Ctrl in simultaneously held Ctrl+C and Ctrl+V chords are reference-counted and
-released only after their final owner. Process-targeted ownership is scoped to
-the concrete window generation resolved for the first down. A
-controller-process-specific Win32 property marker distinguishes a replacement
-window even when Windows reuses the same numeric HWND; another window from the
-same process receives its own modifier transitions, while destruction of the
-original safely clears only that generation's obsolete ownership. If UIPI
-prevents installing the marker, the operation fails closed with
-`ErrInputNotApplied`. Windows key taps use the same ledger, so they neither
-release a modifier held by another RobotGo operation nor lose a retryable
-failed release. Tapping an already held physical main key fails with
+released only after their final owner. Windows key taps use the same ledger, so
+they neither release a modifier held by another RobotGo operation nor lose a
+retryable failed release. Tapping an already held physical main key fails with
 `ErrInputOwnership` instead of creating ambiguous ownership or reporting a tap
-without an observable main-key transition. Callers can distinguish both
-contracts with `errors.Is`. Closing or retargeting the native Linux backend
-releases RobotGo-owned state; closing a portal session delegates that release
-to the compositor.
+without an observable main-key transition. Native Windows process-targeted
+`KeyTap` and `KeyToggle` calls fail closed with `ErrNotSupported`: Win32 cannot
+atomically bind a foreign-window generation check to `PostMessageW`, so a
+destroyed same-PID window could otherwise be replaced between validation and
+dispatch. The agent therefore reports `keyboard.chord` as unsupported on both
+native and Pure-Go Windows until a cooperative target backend can provide that
+atomic contract. Callers can distinguish the ownership and support contracts
+with `errors.Is`. Closing or retargeting the native Linux backend releases
+RobotGo-owned state; closing a portal session delegates that release to the
+compositor.
 
 Low-level helpers whose signatures directly expose `C.*` types remain CGO-only.
 Portable callers should use `Bitmap`, `CHex`, `Handle`, the error-returning APIs,

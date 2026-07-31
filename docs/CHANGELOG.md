@@ -34,14 +34,14 @@
   physical-key reference ledger: overlapping chords cannot release one
   another's modifiers, failed tap or hold releases remain retryable, and an
   attempted tap whose physical main key is already held is rejected rather
-  than reporting an unobservable transition. Process-targeted references are
-  bound to a controller-specific property marker on the exact resolved window
-  generation, so even same-PID numeric HWND reuse cannot inherit modifier
-  state; destroyed-target ownership is cleared without sending releases to the
-  replacement, and UIPI marker denial fails closed. Native holds still record
-  the exact applied prefix, reject foreign or duplicate releases, and report a
+  than reporting an unobservable transition. Native holds still record the
+  exact applied prefix, reject foreign or duplicate releases, and report a
   typed no-state-acquired error after a pre-dispatch failure so agent cleanup
-  never touches foreign input.
+  never touches foreign input. Native Windows PID-targeted key taps/toggles and
+  the corresponding agent chord capability now fail closed as unsupported:
+  Win32 cannot atomically bind foreign-window generation validation to message
+  dispatch, leaving an unavoidable same-PID HWND-reuse race without a
+  cooperative target backend.
 - Split KDE hosted-session readiness into bounded prerequisite, Plasma Shell,
   portal frontend, portal backend, and stability phases. The complete session
   must now pass three consecutive probes, later phases continuously revalidate
