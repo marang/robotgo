@@ -68,9 +68,12 @@ enum RobotGoKeyStatus {
 		return hwnd;	
 	}
 
-	void WIN32_KEY_EVENT_WAIT(MMKeyCode key, DWORD flags, uintptr pid) {
-		win32KeyEvent(key, flags, pid, 0); 
-		Sleep(DEADBEEF_RANDRANGE(0, 1));
+	int WIN32_KEY_EVENT_WAIT(MMKeyCode key, DWORD flags, uintptr pid) {
+		int status = win32KeyEvent(key, flags, pid, 0);
+		if (status == ROBOTGO_KEY_OK) {
+			Sleep(DEADBEEF_RANDRANGE(0, 1));
+		}
+		return status;
 	}
 #elif defined(IS_LINUX)
         #if !defined(DISPLAY_SERVER_WAYLAND)
@@ -1754,8 +1757,9 @@ static inline int robotgo_wayland_type_codepoints(const uint32_t *values,
 	}
 #elif defined(IS_WINDOWS)
 
-	void win32KeyEvent(int key, MMKeyFlags flags, uintptr pid, int8_t isPid) {
+	int win32KeyEvent(int key, MMKeyFlags flags, uintptr pid, int8_t isPid) {
 		int scan = MapVirtualKey(key & 0xff, MAPVK_VK_TO_VSC);
+		UINT message = (flags & KEYEVENTF_KEYUP) != 0 ? WM_KEYUP : WM_KEYDOWN;
 
 		/* Set the scan code for extended keys */
 		switch (key){
@@ -1800,11 +1804,12 @@ static inline int robotgo_wayland_type_codepoints(const uint32_t *values,
 		// todo: test this
 		if (pid != 0) {
 			HWND hwnd = getHwnd(pid, isPid);
-
-			int down = (flags == 0 ? WM_KEYDOWN : WM_KEYUP);
+			if (hwnd == NULL) {
+				return ROBOTGO_KEY_INJECTION_FAILED;
+			}
 			// SendMessage(hwnd, down, key, 0);
-			PostMessageW(hwnd, down, key, 0);
-			return;
+			return PostMessageW(hwnd, message, key, 0)
+				? ROBOTGO_KEY_OK : ROBOTGO_KEY_INJECTION_FAILED;
 		}
 
 		/* Set the scan code for keyup */
@@ -1821,7 +1826,8 @@ static inline int robotgo_wayland_type_codepoints(const uint32_t *values,
 		keyInput.ki.dwFlags = flags;
 		keyInput.ki.time = 0;
 		keyInput.ki.dwExtraInfo = 0;
-		SendInput(1, &keyInput, sizeof(keyInput));
+		return SendInput(1, &keyInput, sizeof(keyInput)) == 1
+			? ROBOTGO_KEY_OK : ROBOTGO_KEY_INJECTION_FAILED;
 	}
 #endif
 
@@ -1859,15 +1865,43 @@ int toggleKeyCode(MMKeyCode code, const bool down, MMKeyFlags flags, uintptr pid
 	return ROBOTGO_KEY_OK;
 #elif defined(IS_WINDOWS)
 	const DWORD dwFlags = down ? 0 : KEYEVENTF_KEYUP;
+	MMKeyCode sequence[5];
+	size_t sequence_length = 0;
 
-	/* Parse modifier keys. */
-	if (flags & MOD_META) { WIN32_KEY_EVENT_WAIT(K_META, dwFlags, pid); }
-	if (flags & MOD_ALT) { WIN32_KEY_EVENT_WAIT(K_ALT, dwFlags, pid); }
-	if (flags & MOD_CONTROL) { WIN32_KEY_EVENT_WAIT(K_CONTROL, dwFlags, pid); }
-	if (flags & MOD_SHIFT) { WIN32_KEY_EVENT_WAIT(K_SHIFT, dwFlags, pid); }
+	if (down) {
+		/* Press modifiers before the main key. */
+		if (flags & MOD_META) { sequence[sequence_length++] = K_META; }
+		if (flags & MOD_ALT) { sequence[sequence_length++] = K_ALT; }
+		if (flags & MOD_CONTROL) { sequence[sequence_length++] = K_CONTROL; }
+		if (flags & MOD_SHIFT) { sequence[sequence_length++] = K_SHIFT; }
+		sequence[sequence_length++] = code;
+	} else {
+		/* Release the main key first, followed by modifiers in reverse order. */
+		sequence[sequence_length++] = code;
+		if (flags & MOD_SHIFT) { sequence[sequence_length++] = K_SHIFT; }
+		if (flags & MOD_CONTROL) { sequence[sequence_length++] = K_CONTROL; }
+		if (flags & MOD_ALT) { sequence[sequence_length++] = K_ALT; }
+		if (flags & MOD_META) { sequence[sequence_length++] = K_META; }
+	}
 
-	win32KeyEvent(code, dwFlags, pid, 0);
-	return ROBOTGO_KEY_OK;
+	int first_error = ROBOTGO_KEY_OK;
+	for (size_t index = 0; index < sequence_length; index++) {
+		int status = WIN32_KEY_EVENT_WAIT(sequence[index], dwFlags, pid);
+		if (status == ROBOTGO_KEY_OK) {
+			continue;
+		}
+		if (first_error == ROBOTGO_KEY_OK) {
+			first_error = status;
+		}
+		/*
+		 * Do not emit a main key after a failed modifier press. Releases
+		 * continue so cleanup has the best chance of clearing every key.
+		 */
+		if (down) {
+			break;
+		}
+	}
+	return first_error;
 #elif defined(IS_LINUX)
 	#ifdef ROBOTGO_USE_WAYLAND
 	        if (robotgo_wayland_keyboard_backend_selected()) {
