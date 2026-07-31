@@ -117,6 +117,11 @@ func TestNativeWindowsTapPreservesSharedModifierHold(t *testing.T) {
 	}
 	assertNoNativeWindowsKeyMessage(t, messages)
 
+	if err := KeyTap("c", "alt", pid); !errors.Is(err, ErrInputOwnership) {
+		t.Fatalf("tap held physical main key error = %v", err)
+	}
+	assertNoNativeWindowsKeyMessage(t, messages)
+
 	if err := KeyTap("v", "ctrl", pid); err != nil {
 		t.Fatalf("tap Ctrl+V while Ctrl+C is held: %v", err)
 	}

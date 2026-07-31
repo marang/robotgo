@@ -2098,6 +2098,18 @@ static inline int robotgo_wayland_type_codepoints(const uint32_t *values,
 			ReleaseSRWLockExclusive(&robotgo_win32_toggle_lock);
 			return ROBOTGO_KEY_OWNERSHIP_CONFLICT;
 		}
+		RobotGoWin32PhysicalKey *unused_free_key = NULL;
+		if (ROBOTGO_WIN32_FIND_PHYSICAL_KEY(
+			code, pid, &unused_free_key
+		) != NULL) {
+			/*
+			 * A tap needs its own observable main-key transition. Sharing
+			 * modifiers is safe, but refcounting an already held main key
+			 * would report success without emitting the requested tap.
+			 */
+			ReleaseSRWLockExclusive(&robotgo_win32_toggle_lock);
+			return ROBOTGO_KEY_OWNERSHIP_CONFLICT;
+		}
 
 		RobotGoWin32ToggleRecord *record = free_record;
 		record->active = true;

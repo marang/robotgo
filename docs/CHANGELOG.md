@@ -33,10 +33,11 @@
   orphan key-up events. Persistent native Windows holds and taps now share a
   physical-key reference ledger: overlapping chords cannot release one
   another's modifiers, failed tap or hold releases remain retryable, and an
-  exact tap over an existing logical hold is rejected as ambiguous. Native
-  holds still record the exact applied prefix, reject foreign or duplicate
-  releases, and report a typed no-state-acquired error after a pre-dispatch
-  failure so agent cleanup never touches foreign input.
+  attempted tap whose physical main key is already held is rejected rather
+  than reporting an unobservable transition. Native holds still record the
+  exact applied prefix, reject foreign or duplicate releases, and report a
+  typed no-state-acquired error after a pre-dispatch failure so agent cleanup
+  never touches foreign input.
 - Split KDE hosted-session readiness into bounded prerequisite, Plasma Shell,
   portal frontend, portal backend, and stability phases. The complete session
   must now pass three consecutive probes, later phases continuously revalidate
