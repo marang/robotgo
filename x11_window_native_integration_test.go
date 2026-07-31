@@ -99,6 +99,7 @@ func TestNativeX11ConfiguredTargetAppliesToWindowAndScale(t *testing.T) {
 	harness := newX11InputHarness(t)
 	assertExpectedX11Implementation(t)
 	configureX11WindowMetadata(t, harness, "robotgo-x11-target")
+	setX11ClientList(t, harness, harness.window)
 
 	original := robotgo.GetXDisplayName()
 	display := os.Getenv("DISPLAY")
