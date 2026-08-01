@@ -8,7 +8,7 @@ import (
 
 // RuntimeDiagnosticsSchemaVersion identifies the stable JSON/data contract
 // returned by GetRuntimeDiagnostics.
-const RuntimeDiagnosticsSchemaVersion = "1"
+const RuntimeDiagnosticsSchemaVersion = "2"
 
 const (
 	runtimeFeatureCapture       = "capture"
@@ -16,6 +16,7 @@ const (
 	runtimeFeatureKeyboard      = "keyboard"
 	runtimeFeatureMouse         = "mouse"
 	runtimeFeatureRemoteDesktop = "remote-desktop"
+	runtimeFeatureAccessibility = "accessibility"
 	runtimeFeatureWindow        = "window"
 	runtimeFeatureProcess       = "process"
 	runtimeFeatureClipboard     = "clipboard"
@@ -158,6 +159,7 @@ func runtimeFeatureDiagnostics(c RuntimeCapabilities) []RuntimeFeatureDiagnostic
 		newRuntimeFeatureDiagnostic(runtimeFeatureKeyboard, c.Keyboard),
 		newRuntimeFeatureDiagnostic(runtimeFeatureMouse, c.Mouse),
 		newRuntimeFeatureDiagnostic(runtimeFeatureRemoteDesktop, c.RemoteDesktop),
+		newRuntimeFeatureDiagnostic(runtimeFeatureAccessibility, c.Accessibility),
 		newRuntimeFeatureDiagnostic(runtimeFeatureWindow, c.Window),
 		newRuntimeFeatureDiagnostic(runtimeFeatureProcess, c.Process),
 		newRuntimeFeatureDiagnostic(runtimeFeatureClipboard, c.Clipboard),

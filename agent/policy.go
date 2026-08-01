@@ -15,8 +15,12 @@ const (
 	maxAgentDragDurationMS         = 60_000
 	maxAgentChordKeys              = 5
 	maxAgentActionIntervalMS       = 60_000
+	maxAgentUIQueryIntervalMS      = 60_000
 	maxAgentSessionTimeoutMS       = 24 * 60 * 60 * 1000
 	maxAgentWindowTitleRunes       = 1024
+	maxAgentUIElements             = 10_000
+	maxAgentUITreeDepth            = 64
+	maxAgentUIStringBytes          = 1 << 20
 	maxAgentVerificationAttempts   = 100
 	maxAgentVerificationIntervalMS = 60_000
 	maxAgentVerificationTimeoutMS  = 300_000
@@ -44,6 +48,8 @@ type Policy struct {
 	AllowedKeys                []string       `json:"allowed_keys,omitempty"`
 	AllowedModifiers           []KeyModifier  `json:"allowed_modifiers,omitempty"`
 	AllowedWindows             []WindowTarget `json:"allowed_windows,omitempty"`
+	AllowedUIRoles             []UIRole       `json:"allowed_ui_roles,omitempty"`
+	AllowedUIProperties        []UIProperty   `json:"allowed_ui_properties,omitempty"`
 	MaxActions                 uint64         `json:"max_actions"`
 	MaxTextRunes               int            `json:"max_text_runes"`
 	AllowDoubleClick           bool           `json:"allow_double_click,omitempty"`
@@ -53,10 +59,14 @@ type Policy struct {
 	MaxDragDurationMillis      int            `json:"max_drag_duration_ms,omitempty"`
 	MaxChordKeys               uint32         `json:"max_chord_keys,omitempty"`
 	MinActionIntervalMillis    int            `json:"min_action_interval_ms,omitempty"`
+	MinUIQueryIntervalMillis   int            `json:"min_ui_query_interval_ms,omitempty"`
 	SessionTimeoutMillis       int            `json:"session_timeout_ms,omitempty"`
 	MaxObservations            uint64         `json:"max_observations,omitempty"`
 	MaxCapturePixels           uint64         `json:"max_capture_pixels,omitempty"`
 	MaxQueries                 uint64         `json:"max_queries,omitempty"`
+	MaxUIElements              uint32         `json:"max_ui_elements,omitempty"`
+	MaxUITreeDepth             uint32         `json:"max_ui_tree_depth,omitempty"`
+	MaxUIStringBytes           uint32         `json:"max_ui_string_bytes,omitempty"`
 	WaitAttempts               uint32         `json:"wait_attempts,omitempty"`
 	WaitIntervalMillis         int            `json:"wait_interval_ms,omitempty"`
 	WaitTimeoutMillis          int            `json:"wait_timeout_ms,omitempty"`
@@ -70,6 +80,8 @@ type Policy struct {
 	allowKey                   map[string]struct{}
 	allowModifier              map[KeyModifier]struct{}
 	allowWindow                map[windowTargetIdentity]WindowTarget
+	allowUIRole                map[UIRole]struct{}
+	allowUIProperty            map[UIProperty]struct{}
 }
 
 type windowTargetIdentity struct {
@@ -86,6 +98,15 @@ func preparePolicy(input Policy) (Policy, error) {
 	}
 	if input.MaxQueries > maxAgentQueries {
 		return Policy{}, fmt.Errorf("agent: max queries exceeds hard limit %d", maxAgentQueries)
+	}
+	if input.MaxUIElements > maxAgentUIElements {
+		return Policy{}, fmt.Errorf("agent: max UI elements exceeds hard limit %d", maxAgentUIElements)
+	}
+	if input.MaxUITreeDepth > maxAgentUITreeDepth {
+		return Policy{}, fmt.Errorf("agent: max UI tree depth exceeds hard limit %d", maxAgentUITreeDepth)
+	}
+	if input.MaxUIStringBytes > maxAgentUIStringBytes {
+		return Policy{}, fmt.Errorf("agent: max UI string bytes exceeds hard limit %d", maxAgentUIStringBytes)
 	}
 	if input.MaxScrollEvents > maxAgentScrollEvents {
 		return Policy{}, fmt.Errorf("agent: max scroll events exceeds hard limit %d", maxAgentScrollEvents)
@@ -104,6 +125,9 @@ func preparePolicy(input Policy) (Policy, error) {
 	}
 	if input.MinActionIntervalMillis < 0 || input.MinActionIntervalMillis > maxAgentActionIntervalMS {
 		return Policy{}, fmt.Errorf("agent: minimum action interval must be between 0 and %dms", maxAgentActionIntervalMS)
+	}
+	if input.MinUIQueryIntervalMillis < 0 || input.MinUIQueryIntervalMillis > maxAgentUIQueryIntervalMS {
+		return Policy{}, fmt.Errorf("agent: minimum UI query interval must be between 0 and %dms", maxAgentUIQueryIntervalMS)
 	}
 	if input.SessionTimeoutMillis < 0 || input.SessionTimeoutMillis > maxAgentSessionTimeoutMS {
 		return Policy{}, fmt.Errorf("agent: session timeout must be between 0 and %dms", maxAgentSessionTimeoutMS)
@@ -143,6 +167,8 @@ func preparePolicy(input Policy) (Policy, error) {
 		AllowedKeys:         append([]string(nil), input.AllowedKeys...),
 		AllowedModifiers:    append([]KeyModifier(nil), input.AllowedModifiers...),
 		AllowedWindows:      append([]WindowTarget(nil), input.AllowedWindows...),
+		AllowedUIRoles:      append([]UIRole(nil), input.AllowedUIRoles...),
+		AllowedUIProperties: append([]UIProperty(nil), input.AllowedUIProperties...),
 		MaxActions:          input.MaxActions, MaxTextRunes: input.MaxTextRunes,
 		AllowDoubleClick:           input.AllowDoubleClick,
 		MaxScrollEvents:            input.MaxScrollEvents,
@@ -151,10 +177,14 @@ func preparePolicy(input Policy) (Policy, error) {
 		MaxDragDurationMillis:      input.MaxDragDurationMillis,
 		MaxChordKeys:               input.MaxChordKeys,
 		MinActionIntervalMillis:    input.MinActionIntervalMillis,
+		MinUIQueryIntervalMillis:   input.MinUIQueryIntervalMillis,
 		SessionTimeoutMillis:       input.SessionTimeoutMillis,
 		MaxObservations:            input.MaxObservations,
 		MaxCapturePixels:           input.MaxCapturePixels,
 		MaxQueries:                 input.MaxQueries,
+		MaxUIElements:              input.MaxUIElements,
+		MaxUITreeDepth:             input.MaxUITreeDepth,
+		MaxUIStringBytes:           input.MaxUIStringBytes,
 		WaitAttempts:               input.WaitAttempts,
 		WaitIntervalMillis:         input.WaitIntervalMillis,
 		WaitTimeoutMillis:          input.WaitTimeoutMillis,
@@ -168,6 +198,8 @@ func preparePolicy(input Policy) (Policy, error) {
 		allowKey:                   make(map[string]struct{}),
 		allowModifier:              make(map[KeyModifier]struct{}),
 		allowWindow:                make(map[windowTargetIdentity]WindowTarget),
+		allowUIRole:                make(map[UIRole]struct{}),
+		allowUIProperty:            make(map[UIProperty]struct{}),
 	}
 	for _, operation := range prepared.AllowedOperations {
 		if !knownOperation(operation) {
@@ -234,6 +266,24 @@ func preparePolicy(input Policy) (Policy, error) {
 		}
 		prepared.allowWindow[identity] = window
 	}
+	for _, role := range prepared.AllowedUIRoles {
+		if !validUIRole(role) {
+			return Policy{}, fmt.Errorf("agent: unsupported allowed UI role %q", role)
+		}
+		if _, exists := prepared.allowUIRole[role]; exists {
+			return Policy{}, fmt.Errorf("agent: duplicate allowed UI role %q", role)
+		}
+		prepared.allowUIRole[role] = struct{}{}
+	}
+	for _, property := range prepared.AllowedUIProperties {
+		if !validUIProperty(property) {
+			return Policy{}, fmt.Errorf("agent: unsupported allowed UI property %q", property)
+		}
+		if _, exists := prepared.allowUIProperty[property]; exists {
+			return Policy{}, fmt.Errorf("agent: duplicate allowed UI property %q", property)
+		}
+		prepared.allowUIProperty[property] = struct{}{}
+	}
 	if _, allowed := prepared.allowOperation[OperationClick]; allowed && len(prepared.allowButton) == 0 {
 		return Policy{}, fmt.Errorf("agent: pointer.click requires allowed mouse buttons")
 	}
@@ -263,6 +313,18 @@ func preparePolicy(input Policy) (Policy, error) {
 	}
 	if _, allowed := prepared.allowOperation[OperationActivate]; allowed && len(prepared.allowWindow) == 0 {
 		return Policy{}, fmt.Errorf("agent: window.activate requires allowed window identities")
+	}
+	if _, allowed := prepared.allowOperation[OperationInspectUI]; allowed {
+		if len(prepared.allowWindow) == 0 || len(prepared.allowUIRole) == 0 ||
+			len(prepared.allowUIProperty) == 0 || prepared.MaxQueries == 0 ||
+			prepared.MaxObservations == 0 || prepared.MaxUIElements == 0 ||
+			prepared.MaxUITreeDepth == 0 || prepared.MaxUIStringBytes == 0 ||
+			prepared.MinUIQueryIntervalMillis == 0 || prepared.SessionTimeoutMillis == 0 {
+			return Policy{}, fmt.Errorf("agent: desktop.inspect-ui requires allowed windows, roles, properties, and bounded query, observation, node, depth, string, rate, and lifetime limits")
+		}
+		if _, allowed := prepared.allowUIProperty[UIPropertyRole]; !allowed {
+			return Policy{}, fmt.Errorf("agent: desktop.inspect-ui requires the role property")
+		}
 	}
 	if allowsExtendedMutation(prepared.allowOperation) {
 		if prepared.MinActionIntervalMillis == 0 || prepared.SessionTimeoutMillis == 0 {
@@ -333,7 +395,7 @@ func knownOperation(operation Operation) bool {
 	switch operation {
 	case OperationMove, OperationClick, OperationScroll, OperationDrag,
 		OperationTypeText, OperationKeyChord, OperationActivate,
-		OperationObserve, OperationFindColor, OperationWaitColor:
+		OperationObserve, OperationInspectUI, OperationFindColor, OperationWaitColor:
 		return true
 	default:
 		return false

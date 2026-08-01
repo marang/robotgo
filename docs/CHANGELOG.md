@@ -2,6 +2,35 @@
 
 ## Unreleased
 
+- Added the schema-v6, deny-by-default `desktop.inspect-ui` agent/MCP contract
+  for accessibility-first GUI discovery. One exact allow-listed window is
+  revalidated before a backend call; immutable role/property, node, depth,
+  string-byte, query, observation, minimum query-interval, and lifetime limits
+  bound the result.
+  Opaque observation-scoped element IDs replace native handles and object
+  paths, hidden/offscreen nodes are omitted, password/sensitive text is
+  redacted, and retained backend references are zeroed on observation release
+  or session close. Runtime diagnostics schema v2 reports accessibility as a
+  separate feature. Linux now supplies a bounded, read-only AT-SPI2 adapter for
+  exact process-and-title targets when the accessibility bus is already active.
+  `GetLinuxCapabilities` exposes that backend alongside the cross-platform
+  runtime capability report, and neither probe nor inspection auto-starts a
+  D-Bus or accessibility service.
+  Windows now supplies a bounded UI Automation 2 adapter for exact process- or
+  HWND-and-title targets. It disables automatic focus, applies fixed native
+  call timeouts, prunes foreign-process/offscreen/password/disallowed content
+  before reads, and deterministically releases every COM object, SAFEARRAY,
+  BSTR, and VARIANT. A protected disposable Windows fixture proves real button,
+  input, password-redaction, and cleanup behavior without screenshots or files.
+  macOS now supplies a Pure-Go Accessibility adapter for exact process- or
+  CGWindowID-and-title targets. It uses fixed AX messaging timeouts, private
+  PID/window/path references, process-first metadata reads, conservative
+  offscreen handling, secure-text redaction, and deterministic CoreFoundation
+  ownership. Permission-granted macOS runtime evidence remains pending under
+  LAB-69. Hermetic fixtures prove
+  policy denial, sanitization, hierarchy, stale-window rejection, invalid
+  backend identity rejection, MCP projection, and cleanup without reading or
+  writing the developer desktop.
 - Expanded the deny-by-default agent and local MCP action contract with bounded
   scroll, drag, canonical keyboard chord, and identity-revalidated window
   activation operations. Extended actions require immutable event, distance,

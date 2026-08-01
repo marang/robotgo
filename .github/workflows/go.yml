@@ -182,6 +182,14 @@ jobs:
           go test -tags desktopintegration
           -run "^(TestColor|TestSize|TestMoveMouse|TestMoveMouseSmooth|TestDragMouse|TestMoveRelative|TestMoveSmoothRelative|TestImage)$"
           -count=1 -timeout=60s -v .
+      - name: Test bounded Windows UI Automation fixture
+        if: runner.os == 'Windows'
+        env:
+          ROBOTGO_REQUIRE_WINDOWS_ACCESSIBILITY_INTEGRATION: "1"
+        run: >-
+          go test -tags windowsintegration ./internal/accessibility
+          -run "^TestWindowsUIAInspectsOnlySelfOwnedBoundedFixture$"
+          -count=1 -timeout=30s -v
       - name: Check native macOS public Go API
         if: runner.os == 'macOS'
         run: go run ./internal/cmd/apicompat -variant darwin-cgo

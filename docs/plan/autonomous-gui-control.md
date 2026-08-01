@@ -1,6 +1,6 @@
 # Autonomous GUI Control Plan
 
-Status: LAB-75 action slice in progress
+Status: LAB-75 complete; LAB-73 semantic observation in progress
 
 Linear coordination:
 
@@ -25,6 +25,50 @@ Delivery order is:
 Structured accessibility data remains the preferred perception source. Image
 and OCR content are later explicit sensitive-read boundaries, not implicit
 side effects of an action.
+
+## Semantic observation contract
+
+LAB-73 introduces the schema-v6 `desktop.inspect-ui` operation and local MCP
+tool as a separate sensitive-read grant. The first contract slice provides:
+
+- exact allow-listed process/window selection with live title revalidation
+- immutable allowed role and property sets
+- hard node, tree-depth, aggregate string-byte, query, observation, minimum
+  query-interval, and session-lifetime bounds
+- opaque observation-scoped element IDs with private backend references
+- omission of hidden/offscreen nodes and unconditional redaction of text on
+  password or backend-marked sensitive elements
+- bounded hierarchy, state, action, focus, and logical-bounds projections
+- fixed state/action vocabularies plus hard native-reference size bounds
+- explicit unsupported/permission/unavailable capability states
+- zeroing of retained backend references on observation release and session
+  close
+
+The first production adapter uses an already-active Linux AT-SPI2 bus for
+exact process-and-title targets. Discovery is bounded, rejects ambiguous
+windows, prunes hidden/offscreen subtrees before reading their text, never
+reads password text, and infers only fixed platform-neutral states/actions.
+The non-prompting capability probe does not activate the accessibility service.
+Inspection rechecks the existing bus and registry and likewise never starts
+them as a side effect.
+The Windows adapter uses UI Automation 2 for exact process- or HWND-and-title
+targets. It revalidates the resolved HWND/PID/title after traversal, disables
+automatic focus, applies fixed native call timeouts, prunes foreign-process,
+offscreen, password, and disallowed-role content before reads, and releases all
+COM/SAFEARRAY/BSTR/VARIANT ownership before returning. Hermetic tests plus a
+protected self-owned Win32 button/input/password fixture cover its policy,
+privacy, and lifecycle contract. The macOS adapter uses Accessibility for exact
+process- or CGWindowID-and-title targets, fixed AX messaging timeouts, and
+observation-private PID/window/path references. Process identity is queried
+before metadata, secure/hidden/offscreen/foreign/disallowed content is pruned,
+and retained AX/CoreFoundation objects are deterministically released. Its
+hermetic policy/privacy/lifecycle contract and cross-build are blocking;
+permission-granted runtime evidence remains pending under LAB-69.
+
+Semantic element IDs are observation-bound but are not accepted by any current
+mutation API. A later element-action contract must re-resolve the private
+backend reference and revalidate target identity, role, state, and bounds; the
+inspection capability alone never grants mutation.
 
 ## Action contract
 

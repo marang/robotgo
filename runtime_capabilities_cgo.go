@@ -16,6 +16,7 @@ func runtimeCapabilities() RuntimeCapabilities {
 		Keyboard:      unsupported,
 		Mouse:         unsupported,
 		RemoteDesktop: unsupported,
+		Accessibility: unsupported,
 		Window:        unsupported,
 		Hook:          unsupported,
 		Events:        unsupported,
@@ -28,6 +29,7 @@ func runtimeCapabilities() RuntimeCapabilities {
 		result.Keyboard = linux.Keyboard
 		result.Mouse = linux.Mouse
 		result.RemoteDesktop = linux.RemoteDesktop
+		result.Accessibility = linux.Accessibility
 		result.Window = linux.Window
 		result.Hook = linux.Hook
 		result.Events = linux.Events
@@ -41,6 +43,7 @@ func runtimeCapabilities() RuntimeCapabilities {
 		result.Capture, result.Bounds = nativePlatformCaptureCapabilities()
 		result.Keyboard = native
 		result.Mouse = native
+		result.Accessibility = accessibilityCapability()
 		result.Window = native
 		result.Hook = native
 		result.Events = native

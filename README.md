@@ -82,20 +82,20 @@ group.
 
 | Platform/session | Build | Current behavior |
 |---|---|---|
-| macOS | CGO-enabled default build | Native implementation plus blocking build/API/display and non-prompting permission/error contracts; Screen Recording- or Accessibility-granted capture/input/window behavior is implemented but remains outside the stable supported scope pending runtime evidence |
-| macOS | `CGO_ENABLED=0` | Blocking CoreGraphics bounds/Retina-scale and non-prompting permission diagnostics; pixel capture, Quartz input, and Accessibility window operations are implemented but permission-granted runtime evidence remains pending; maximize/topmost and media keys without stable native semantics return `ErrNotSupported` |
-| Windows | CGO-enabled default build | Native mouse, keyboard, capture, window, and process paths |
-| Windows | `CGO_ENABLED=0` | Pure-Go capture/display bounds, real Win32 DPI scale and pixel-at-pointer queries, foreground-layout-aware `SendInput` keyboard/text plus clipboard paste, complete pointer input, and Win32 window title/PID/handle/geometry/state/control operations with explicit errors |
-| Linux/X11 | CGO-enabled default build | X11/XTest input, capture, window, and process paths |
-| Linux/X11 | `CGO_ENABLED=0` | Pure-Go X11 capture/bounds, XTEST input, and window title/PID/handle/geometry/state/control through X11/EWMH; horizontal scroll and window mutations without a consistent EWMH window manager are explicitly unsupported |
-| Linux/Wayland | CGO with `-tags wayland`; add `pipewire` for persistent ScreenCast frames | Native wlroots capture/input where compositor protocols exist, one-shot Screenshot fallback, reusable ScreenCast/PipeWire capture, explicit RemoteDesktop portal sessions, capability-aware window support |
-| Linux/Wayland | `CGO_ENABLED=0` | Screenshot portal capture without implicit Xwayland, bounded native logical output enumeration without consent UI, and explicit RemoteDesktop portal sessions for supported input |
+| macOS | CGO-enabled default build | Native implementation plus blocking build/API/display and non-prompting permission/error contracts; bounded process- or CGWindowID-targeted semantic inspection is implemented through macOS Accessibility; permission-granted capture/input/window/semantic behavior remains evidence-pending |
+| macOS | `CGO_ENABLED=0` | Blocking CoreGraphics bounds/Retina-scale and non-prompting permission diagnostics; pixel capture, Quartz input, Accessibility window operations, and bounded semantic inspection are implemented but permission-granted runtime evidence remains pending; maximize/topmost and media keys without stable native semantics return `ErrNotSupported` |
+| Windows | CGO-enabled default build | Native mouse, keyboard, capture, window, and process paths; bounded process- or HWND-targeted semantic inspection through Windows UI Automation |
+| Windows | `CGO_ENABLED=0` | Pure-Go capture/display bounds, real Win32 DPI scale and pixel-at-pointer queries, foreground-layout-aware `SendInput` keyboard/text plus clipboard paste, complete pointer input, Win32 window title/PID/handle/geometry/state/control operations, and bounded Windows UI Automation semantic inspection with explicit errors |
+| Linux/X11 | CGO-enabled default build | X11/XTest input, capture, window, and process paths; bounded process-targeted semantic inspection through an already-active AT-SPI2 bus |
+| Linux/X11 | `CGO_ENABLED=0` | Pure-Go X11 capture/bounds, XTEST input, window title/PID/handle/geometry/state/control through X11/EWMH, and AT-SPI2 semantic inspection; horizontal scroll and window mutations without a consistent EWMH window manager are explicitly unsupported |
+| Linux/Wayland | CGO with `-tags wayland`; add `pipewire` for persistent ScreenCast frames | Native wlroots capture/input where compositor protocols exist, one-shot Screenshot fallback, reusable ScreenCast/PipeWire capture, explicit RemoteDesktop portal sessions, capability-aware window support, and process-targeted AT-SPI2 semantic inspection |
+| Linux/Wayland | `CGO_ENABLED=0` | Screenshot portal capture without implicit Xwayland, bounded native logical output enumeration without consent UI, explicit RemoteDesktop portal sessions for supported input, and process-targeted AT-SPI2 semantic inspection |
 
 “Implemented” is not automatically a stable support claim. The
 [Runtime Compatibility Matrix v1](docs/compatibility/runtime-v1.md) splits each
 bounded scope into `supported` or `implemented / evidence pending` and maps
 every supported row to exact release checks. In particular, permission-granted
-macOS capture/input/window operations are outside the stable supported scope.
+macOS capture/input/window/semantic operations are outside the stable supported scope.
 Their promotion is tracked by the externally blocked
 [LAB-69](https://linear.app/riotbox/issue/LAB-69/add-permission-granted-self-owned-macos-runtime-evidence)
 and requires sanitized evidence from an isolated permission-granted runtime;
@@ -855,7 +855,8 @@ changing the legacy package-level API. One process-exclusive session exposes a
 versioned operation catalog, policy and confirmation gates, bounded observation,
 dry-run, typed move/click/scroll/drag/text/chord/activation requests,
 stale-target protection, post-action verification, privacy-safe visual
-conditions, and sanitized structured results. Scroll and drag are
+conditions, a bounded semantic UI-inspection contract, and sanitized
+structured results. Scroll and drag are
 cooperatively cancelable between events. The operation catalog reports
 supported scroll axes structurally; Pure-Go X11 currently advertises only
 vertical scrolling. A chord validates the allow-listed process title, passes
@@ -922,6 +923,51 @@ is zeroed immediately. A successful wait returns an observation ID for later
 conditions or action lineage; `Session.ReleaseObservation` promptly zeroes and
 removes that final sensitive buffer without exposing its capture digest.
 
+`Session.InspectUI` is the semantic-first observation boundary for unfamiliar
+GUIs. It selects one immutable allow-listed process or window, revalidates its
+exact title before inspection, and returns only policy-approved roles and
+properties within fixed node, depth, string-byte, query, observation, minimum
+query-interval, and session-lifetime limits. Element IDs are opaque and
+observation-scoped; platform handles and object paths remain private. Hidden and offscreen nodes
+are omitted, password/sensitive text is redacted, invalid backend identities
+fail closed, and `ReleaseObservation` or session close zeroes retained backend
+references. No current action accepts a semantic element ID, so enabling
+inspection grants no element mutation. A future element action must re-resolve
+the retained native identity and revalidate role, state, bounds, target
+process/window, and title before performing input. On Linux, an already-active AT-SPI2 bus provides the first native
+adapter for exact process-and-title targets on GNOME, KDE, and other accessible
+desktops. Its capability probe never starts the accessibility service; enable
+desktop accessibility before RobotGo when the catalog reports it unavailable.
+Inspection also fails explicitly if that pre-existing service disappears; it
+never starts a session bus, accessibility bus, or registry as a side effect.
+On Windows, the adapter accepts an exact process or native HWND plus title,
+binds the observation to the resolved HWND/PID, and revalidates PID and title
+after traversal. UI Automation runs on a private COM thread with automatic
+focus disabled and fixed connection/transaction timeouts. Cross-process,
+offscreen, password, and disallowed-role subtrees are pruned before content
+reads; `SAFEARRAY`, `BSTR`, `VARIANT`, element, walker, and automation ownership
+is released before return. The availability probe creates no window, reads no
+element, and opens no consent dialog. On macOS, the adapter accepts an exact
+process or CGWindowID plus title, applies a fixed native AX messaging timeout,
+and binds every opaque observation reference to the PID, CGWindowID, and
+bounded child-index path rather than an AX pointer. It queries process identity
+before node metadata, prunes foreign-process, hidden, offscreen, secure-text,
+and disallowed-role content before reads, and releases every retained
+CoreFoundation/AX object before return. Its capability probe uses the
+non-prompting trust check; permission-granted real-runtime evidence remains
+pending under LAB-69, so implementation is not yet a stable-support claim.
+The cross-platform example requires exactly one PID or Windows/macOS handle, an exact
+title, and confirmation. It prints one bounded observation to standard output,
+writes no file, and reads control values only with the separate
+`-include-values` flag:
+
+```bash
+go run ./examples/semantic_ui -pid 1234 -title 'Self-owned fixture' -confirm
+# Windows may bind the exact HWND instead:
+go run ./examples/semantic_ui -handle 123456 -title 'Self-owned fixture' -confirm
+# macOS may bind the exact CGWindowID the same way.
+```
+
 An action can reference a captured observation through
 `ObservationPrecondition`. RobotGo recaptures the same internally retained
 region immediately before input and rejects a changed target as `stale-target`.
@@ -968,9 +1014,10 @@ go run ./examples/agent_conditions -allow-capture -mode wait \
 ### Local MCP adapter for agents
 
 `robotgo-mcp` exposes the policy-gated session to a local MCP client over
-stdio. It has seven focused tools: `robotgo_capabilities`, `robotgo_observe`,
-`robotgo_find`, `robotgo_wait`, `robotgo_release_observation`, `robotgo_act`,
-and `robotgo_close`. With no policy flag it is diagnostics-only: capture,
+stdio. It has eight focused tools: `robotgo_capabilities`, `robotgo_observe`,
+`robotgo_inspect_ui`, `robotgo_find`, `robotgo_wait`,
+`robotgo_release_observation`, `robotgo_act`, and `robotgo_close`. With no
+policy flag it is diagnostics-only: semantic inspection, capture,
 visual queries, display access, and desktop mutation are denied. `robotgo_act`
 is also dry-run by default, so actual input needs both an explicit policy and
 `mode: "execute"`; normal session confirmation rules still apply.
@@ -1016,6 +1063,32 @@ Policy input is size-bounded, rejects unknown fields and trailing JSON, and is
 never read from stdin. MCP observation output includes sanitized diagnostics
 and optional geometry, but never pixels or internal capture digests. Session
 close zeroes any in-memory captures.
+
+Semantic inspection is separately deny-by-default. A policy must identify the
+exact allowed window title, roles, and properties and set every hard bound:
+
+```json
+{
+  "allowed_operations": ["desktop.inspect-ui"],
+  "allowed_windows": [
+    {"target": 1234, "kind": "process", "expected_title": "Self-owned fixture"}
+  ],
+  "allowed_ui_roles": ["window", "button", "textbox", "password", "label"],
+  "allowed_ui_properties": ["role", "name", "state", "bounds", "focus", "actions", "hierarchy"],
+  "max_actions": 0,
+  "max_text_runes": 0,
+  "max_observations": 10,
+  "max_queries": 10,
+  "max_ui_elements": 200,
+  "max_ui_tree_depth": 8,
+  "max_ui_string_bytes": 16384,
+  "min_ui_query_interval_ms": 250,
+  "session_timeout_ms": 300000
+}
+```
+
+This permits reading only the declared semantic projection; it does not grant
+clicks, typing, focus changes, screenshots, OCR, or any other mutation/read.
 
 The same `robotgo_act` tool also carries the bounded `pointer.scroll`,
 `pointer.drag`, `keyboard.chord`, and `window.activate` request variants. They

@@ -23,6 +23,7 @@ type fakeSession struct {
 	findFunc    func(context.Context, agent.FindColorRequest) (agent.FindColorResult, error)
 	waitFunc    func(context.Context, agent.WaitColorRequest) (agent.WaitColorResult, error)
 	releaseFunc func(string) error
+	inspectFunc func(context.Context, agent.InspectUIRequest) (agent.UIObservation, error)
 	dryRunFunc  func(context.Context, agent.ActionRequest) (agent.ActionResult, error)
 	executeFunc func(context.Context, agent.ActionRequest) (agent.ActionResult, error)
 	closeFunc   func() error
@@ -32,6 +33,7 @@ type fakeSession struct {
 	finds    int
 	waits    int
 	releases int
+	inspects int
 	closes   int
 }
 
@@ -72,6 +74,16 @@ func (f *fakeSession) ReleaseObservation(id string) error {
 		return f.releaseFunc(id)
 	}
 	return nil
+}
+
+func (f *fakeSession) InspectUI(ctx context.Context, request agent.InspectUIRequest) (agent.UIObservation, error) {
+	f.mu.Lock()
+	f.inspects++
+	f.mu.Unlock()
+	if f.inspectFunc != nil {
+		return f.inspectFunc(ctx, request)
+	}
+	return agent.UIObservation{}, errors.New("unused")
 }
 
 func (f *fakeSession) DryRun(ctx context.Context, request agent.ActionRequest) (agent.ActionResult, error) {
@@ -212,7 +224,7 @@ func TestProtocolInitializesAndListsFocusedTools(t *testing.T) {
 			}
 		}
 		switch tool.Name {
-		case ToolFind, ToolWait:
+		case ToolFind, ToolWait, ToolInspectUI:
 			if tool.Annotations == nil || !tool.Annotations.ReadOnlyHint {
 				t.Errorf("tool %q is not marked read-only", tool.Name)
 			}
@@ -225,12 +237,94 @@ func TestProtocolInitializesAndListsFocusedTools(t *testing.T) {
 	}
 	slices.Sort(names)
 	want := []string{
-		ToolAct, ToolCapabilities, ToolClose, ToolFind, ToolObserve,
+		ToolAct, ToolCapabilities, ToolClose, ToolFind, ToolInspectUI, ToolObserve,
 		ToolReleaseObservation, ToolWait,
 	}
 	slices.Sort(want)
 	if !slices.Equal(names, want) {
 		t.Fatalf("tools = %v, want %v", names, want)
+	}
+}
+
+func TestInspectUIReturnsOnlyPrivacyReducedSemanticContract(t *testing.T) {
+	fake := &fakeSession{inspectFunc: func(_ context.Context, request agent.InspectUIRequest) (agent.UIObservation, error) {
+		if request.Target != 42 || request.Kind != agent.WindowTargetProcess {
+			return agent.UIObservation{}, errors.New("unexpected target")
+		}
+		return agent.UIObservation{
+			SchemaVersion: agent.UISchemaVersion,
+			ObservationID: "observation-9",
+			CreatedAt:     time.Unix(200, 0).UTC(),
+			Backend:       "fake-accessibility",
+			Elements: []agent.UIElement{{
+				ElementID: "observation-9-element-1", Role: agent.UIRoleButton,
+				Name: "Save", Actions: []agent.UIAction{agent.UIActionPress},
+			}},
+		}, nil
+	}}
+	client := connectProtocol(t, newProtocolServer(t, fake))
+	result := callTool(t, client, ToolInspectUI, agent.InspectUIRequest{
+		Target: 42, Kind: agent.WindowTargetProcess,
+	})
+	if result.IsError {
+		t.Fatalf("inspect UI returned tool error: %s", serializedResult(t, result))
+	}
+	output := decodeOutput[InspectUIOutput](t, result)
+	if output.Observation == nil || len(output.Observation.Elements) != 1 ||
+		output.Observation.Elements[0].Name != "Save" {
+		t.Fatalf("inspect UI output = %+v", output)
+	}
+	serialized := serializedResult(t, result)
+	for _, forbidden := range []string{"native_handle", "object_path", "password_value", "raw_error"} {
+		if strings.Contains(serialized, forbidden) {
+			t.Fatalf("inspect UI leaked %q: %s", forbidden, serialized)
+		}
+	}
+}
+
+func TestInspectUIErrorReleasesCompletedObservationBeforeOmittingIt(t *testing.T) {
+	fake := &fakeSession{inspectFunc: func(context.Context, agent.InspectUIRequest) (agent.UIObservation, error) {
+		return agent.UIObservation{ObservationID: "observation-9"}, &agent.ActionError{
+			Code: agent.ErrorAuditDelivery, Operation: agent.OperationInspectUI,
+			Message: "UI inspection completed but audit delivery failed",
+		}
+	}}
+	client := connectProtocol(t, newProtocolServer(t, fake))
+	result := callTool(t, client, ToolInspectUI, agent.InspectUIRequest{
+		Target: 42, Kind: agent.WindowTargetProcess,
+	})
+	if !result.IsError {
+		t.Fatal("failed UI inspection returned success")
+	}
+	output := decodeOutput[InspectUIOutput](t, result)
+	if output.Observation != nil || output.Error == nil || output.Error.Code != agent.ErrorAuditDelivery {
+		t.Fatalf("failed inspection output = %+v", output)
+	}
+	_, _, releases := fake.conditionCounts()
+	if releases != 1 {
+		t.Fatalf("completed failed observation releases = %d", releases)
+	}
+}
+
+func TestInspectUIReleaseFailureReportsCleanupFailure(t *testing.T) {
+	fake := &fakeSession{
+		inspectFunc: func(context.Context, agent.InspectUIRequest) (agent.UIObservation, error) {
+			return agent.UIObservation{ObservationID: "observation-9"}, errors.New("private inspect failure")
+		},
+		releaseFunc: func(string) error { return errors.New("private release failure") },
+	}
+	client := connectProtocol(t, newProtocolServer(t, fake))
+	result := callTool(t, client, ToolInspectUI, agent.InspectUIRequest{
+		Target: 42, Kind: agent.WindowTargetProcess,
+	})
+	output := decodeOutput[InspectUIOutput](t, result)
+	if !result.IsError || output.Observation != nil || output.Error == nil ||
+		output.Error.Code != agent.ErrorCleanupFailed {
+		t.Fatalf("failed inspection cleanup output = %+v", output)
+	}
+	serialized := serializedResult(t, result)
+	if strings.Contains(serialized, "private inspect") || strings.Contains(serialized, "private release") {
+		t.Fatalf("failed inspection cleanup leaked details: %s", serialized)
 	}
 }
 
@@ -544,9 +638,11 @@ func TestCloseIsIdempotentAndLaterCallsFailClosed(t *testing.T) {
 		}
 	}
 
-	for _, tool := range []string{ToolCapabilities, ToolObserve, ToolFind, ToolWait, ToolReleaseObservation, ToolAct} {
+	for _, tool := range []string{ToolCapabilities, ToolObserve, ToolInspectUI, ToolFind, ToolWait, ToolReleaseObservation, ToolAct} {
 		arguments := any(map[string]any{})
 		switch tool {
+		case ToolInspectUI:
+			arguments = agent.InspectUIRequest{Target: 1, Kind: agent.WindowTargetProcess}
 		case ToolFind:
 			arguments = agent.FindColorRequest{ObservationID: "observation-1"}
 		case ToolWait:

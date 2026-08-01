@@ -49,3 +49,22 @@ func TestPermissionFromCapabilityDoesNotOverclaimAmbiguousPreflight(t *testing.T
 		})
 	}
 }
+
+func TestDarwinRuntimePermissionsIncludeSemanticAccessibility(t *testing.T) {
+	t.Parallel()
+	permissions := darwinRuntimePermissions(RuntimeCapabilities{
+		Accessibility: FeatureCapability{
+			Available: true,
+			Reason:    "macOS Accessibility is available",
+		},
+	})
+	for _, permission := range permissions {
+		if permission.Feature == runtimeFeatureAccessibility {
+			if permission.Name != "Accessibility" || permission.State != RuntimePermissionGranted {
+				t.Fatalf("accessibility permission = %+v", permission)
+			}
+			return
+		}
+	}
+	t.Fatal("macOS runtime diagnostics omitted semantic Accessibility permission")
+}

@@ -142,6 +142,7 @@ type Session struct {
 	pressedInputs    []pressedInput
 	inputTainted     bool
 	lastAction       time.Time
+	lastUIQuery      time.Time
 	now              func() time.Time
 }
 

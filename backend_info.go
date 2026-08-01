@@ -54,6 +54,7 @@ type RuntimeCapabilities struct {
 	Keyboard      FeatureCapability
 	Mouse         FeatureCapability
 	RemoteDesktop FeatureCapability
+	Accessibility FeatureCapability
 	Window        FeatureCapability
 	Process       FeatureCapability
 	Clipboard     FeatureCapability

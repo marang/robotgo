@@ -17,6 +17,7 @@ func buildCatalog(policy Policy, capabilities robotgo.RuntimeCapabilities) Opera
 		SchemaVersion: CatalogSchemaVersion,
 		Operations: []OperationCapability{
 			observationCapability(policy, capabilities),
+			inspectUICapability(policy, capabilities),
 			findColorCapability(policy, capabilities),
 			waitColorCapability(policy, capabilities),
 			operationCapability(OperationMove, policy, capabilities.Mouse),
@@ -27,6 +28,32 @@ func buildCatalog(policy Policy, capabilities robotgo.RuntimeCapabilities) Opera
 			keyChordCapability(policy, capabilities),
 			activationCapability(policy, capabilities),
 		},
+	}
+}
+
+func inspectUICapability(policy Policy, capabilities robotgo.RuntimeCapabilities) OperationCapability {
+	_, confirmationRequired := policy.requireConfirmation[OperationInspectUI]
+	_, operationAllowed := policy.allowOperation[OperationInspectUI]
+	policyAllowed := operationAllowed && len(policy.allowWindow) > 0 &&
+		len(policy.allowUIRole) > 0 && len(policy.allowUIProperty) > 0 &&
+		policy.MaxQueries > 0 && policy.MaxObservations > 0 &&
+		policy.MaxUIElements > 0 && policy.MaxUITreeDepth > 0 && policy.MaxUIStringBytes > 0 &&
+		policy.MinUIQueryIntervalMillis > 0 && policy.SessionTimeoutMillis > 0
+	if _, roleAllowed := policy.allowUIProperty[UIPropertyRole]; !roleAllowed {
+		policyAllowed = false
+	}
+	feature := capabilities.Accessibility
+	remediation := feature.Notes
+	if remediation == "" {
+		remediation = feature.Reason
+	}
+	return OperationCapability{
+		Operation: OperationInspectUI, Available: feature.Available,
+		PolicyAllowed: policyAllowed, Backend: feature.Backend, Fallback: feature.Fallback,
+		Risk: RiskSensitiveRead, ConfirmationRequired: confirmationRequired,
+		Cancellation: CancellationCooperative, ProcessGlobalBackend: true,
+		ExclusiveAgentSession: true, Reason: feature.Reason, Remediation: remediation,
+		UnavailableCode: featureUnavailableCode(feature),
 	}
 }
 

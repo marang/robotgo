@@ -193,7 +193,7 @@ const RemoteDesktopSourceWindow github.com/marang/robotgo/input/portal.SourceTyp
 const RemoteDesktopTouchscreen github.com/marang/robotgo/input/portal.DeviceType = 4
 const Right untyped string = "right"
 const Rshift untyped string = "rshift"
-const RuntimeDiagnosticsSchemaVersion untyped string = "1"
+const RuntimeDiagnosticsSchemaVersion untyped string = "2"
 const RuntimeImplementationNativeCGO github.com/marang/robotgo.RuntimeImplementation = "native-cgo"
 const RuntimeImplementationPureGo github.com/marang/robotgo.RuntimeImplementation = "pure-go"
 const RuntimePermissionCancelled github.com/marang/robotgo.RuntimePermissionState = "cancelled"
@@ -484,7 +484,7 @@ type ClipboardSelection = github.com/marang/robotgo/clipboard.Selection
 type DisplayServer string
 type FeatureCapability struct{Available bool; Fallback bool; Backend string; Reason string; Notes string}
 type Handle struct{XWin github.com/marang/robotgo._Ctype_ulong}
-type LinuxCapabilities struct{DisplayServer github.com/marang/robotgo.DisplayServer; Compositor string; WaylandSession bool; X11Session bool; Capture github.com/marang/robotgo.FeatureCapability; Bounds github.com/marang/robotgo.FeatureCapability; Keyboard github.com/marang/robotgo.FeatureCapability; Mouse github.com/marang/robotgo.FeatureCapability; RemoteDesktop github.com/marang/robotgo.FeatureCapability; Window github.com/marang/robotgo.FeatureCapability; Hook github.com/marang/robotgo.FeatureCapability; Events github.com/marang/robotgo.FeatureCapability}
+type LinuxCapabilities struct{DisplayServer github.com/marang/robotgo.DisplayServer; Compositor string; WaylandSession bool; X11Session bool; Capture github.com/marang/robotgo.FeatureCapability; Bounds github.com/marang/robotgo.FeatureCapability; Keyboard github.com/marang/robotgo.FeatureCapability; Mouse github.com/marang/robotgo.FeatureCapability; RemoteDesktop github.com/marang/robotgo.FeatureCapability; Accessibility github.com/marang/robotgo.FeatureCapability; Window github.com/marang/robotgo.FeatureCapability; Hook github.com/marang/robotgo.FeatureCapability; Events github.com/marang/robotgo.FeatureCapability}
 type Map map[string]interface{}
 type Nps struct{Pid int; Name string}
 type Point struct{X int; Y int}
@@ -498,7 +498,7 @@ type RemoteDesktopPersistMode = github.com/marang/robotgo/input/portal.PersistMo
 type RemoteDesktopSource = github.com/marang/robotgo/input/portal.SourceType
 type RemoteDesktopStream = github.com/marang/robotgo/input/portal.Stream
 type RuntimeBackendInfo struct{GOOS string; GOARCH string; CGOEnabled bool; BuildImplementation github.com/marang/robotgo.RuntimeImplementation; DisplayServer github.com/marang/robotgo.DisplayServer}
-type RuntimeCapabilities struct{Runtime github.com/marang/robotgo.RuntimeBackendInfo; Compositor string; Capture github.com/marang/robotgo.FeatureCapability; Bounds github.com/marang/robotgo.FeatureCapability; Keyboard github.com/marang/robotgo.FeatureCapability; Mouse github.com/marang/robotgo.FeatureCapability; RemoteDesktop github.com/marang/robotgo.FeatureCapability; Window github.com/marang/robotgo.FeatureCapability; Process github.com/marang/robotgo.FeatureCapability; Clipboard github.com/marang/robotgo.FeatureCapability; Hook github.com/marang/robotgo.FeatureCapability; Events github.com/marang/robotgo.FeatureCapability}
+type RuntimeCapabilities struct{Runtime github.com/marang/robotgo.RuntimeBackendInfo; Compositor string; Capture github.com/marang/robotgo.FeatureCapability; Bounds github.com/marang/robotgo.FeatureCapability; Keyboard github.com/marang/robotgo.FeatureCapability; Mouse github.com/marang/robotgo.FeatureCapability; RemoteDesktop github.com/marang/robotgo.FeatureCapability; Accessibility github.com/marang/robotgo.FeatureCapability; Window github.com/marang/robotgo.FeatureCapability; Process github.com/marang/robotgo.FeatureCapability; Clipboard github.com/marang/robotgo.FeatureCapability; Hook github.com/marang/robotgo.FeatureCapability; Events github.com/marang/robotgo.FeatureCapability}
 type RuntimeConfig struct{MouseDelay int; KeyDelay int; DisplayID int; TreatAsHandle bool; Scale bool}
 type RuntimeDiagnostics struct{SchemaVersion string tag "json:\"schema_version\""; Runtime github.com/marang/robotgo.RuntimeIdentityDiagnostic tag "json:\"runtime\""; DisplayServer github.com/marang/robotgo.DisplayServer tag "json:\"display_server,omitempty\""; Compositor string tag "json:\"compositor,omitempty\""; Features []github.com/marang/robotgo.RuntimeFeatureDiagnostic tag "json:\"features\""; Protocols []github.com/marang/robotgo.RuntimeProtocolDiagnostic tag "json:\"protocols,omitempty\""; Permissions []github.com/marang/robotgo.RuntimePermissionDiagnostic tag "json:\"permissions,omitempty\""; Remediation []github.com/marang/robotgo.RuntimeRemediation tag "json:\"remediation,omitempty\""}
 type RuntimeFeatureDiagnostic struct{Name string tag "json:\"name\""; Available bool tag "json:\"available\""; Fallback bool tag "json:\"fallback\""; Backend string tag "json:\"backend,omitempty\""; Reason string tag "json:\"reason,omitempty\""; Notes string tag "json:\"notes,omitempty\""}
@@ -555,7 +555,7 @@ const AuditSchemaVersion untyped string = "2"
 const AuditVerificationFinished github.com/marang/robotgo/agent.AuditKind = "verification.finished"
 const CancellationCooperative github.com/marang/robotgo/agent.CancellationSupport = "cooperative"
 const CancellationPreflightOnly github.com/marang/robotgo/agent.CancellationSupport = "preflight-only"
-const CatalogSchemaVersion untyped string = "5"
+const CatalogSchemaVersion untyped string = "6"
 const ConditionMatched github.com/marang/robotgo/agent.ConditionStatus = "matched"
 const ConditionNotMatched github.com/marang/robotgo/agent.ConditionStatus = "not-matched"
 const ConditionSchemaVersion untyped string = "1"
@@ -586,6 +586,7 @@ const OperationActivate github.com/marang/robotgo/agent.Operation = "window.acti
 const OperationClick github.com/marang/robotgo/agent.Operation = "pointer.click"
 const OperationDrag github.com/marang/robotgo/agent.Operation = "pointer.drag"
 const OperationFindColor github.com/marang/robotgo/agent.Operation = "desktop.find-color"
+const OperationInspectUI github.com/marang/robotgo/agent.Operation = "desktop.inspect-ui"
 const OperationKeyChord github.com/marang/robotgo/agent.Operation = "keyboard.chord"
 const OperationMove github.com/marang/robotgo/agent.Operation = "pointer.move"
 const OperationObserve github.com/marang/robotgo/agent.Operation = "desktop.observe"
@@ -597,6 +598,59 @@ const RiskReversibleMutation github.com/marang/robotgo/agent.RiskClass = "revers
 const RiskSensitiveRead github.com/marang/robotgo/agent.RiskClass = "sensitive-read"
 const ScrollAxisHorizontal github.com/marang/robotgo/agent.ScrollAxis = "horizontal"
 const ScrollAxisVertical github.com/marang/robotgo/agent.ScrollAxis = "vertical"
+const UIActionCollapse github.com/marang/robotgo/agent.UIAction = "collapse"
+const UIActionDecrement github.com/marang/robotgo/agent.UIAction = "decrement"
+const UIActionExpand github.com/marang/robotgo/agent.UIAction = "expand"
+const UIActionFocus github.com/marang/robotgo/agent.UIAction = "focus"
+const UIActionIncrement github.com/marang/robotgo/agent.UIAction = "increment"
+const UIActionPress github.com/marang/robotgo/agent.UIAction = "press"
+const UIActionSetValue github.com/marang/robotgo/agent.UIAction = "set-value"
+const UIActionToggle github.com/marang/robotgo/agent.UIAction = "toggle"
+const UIPropertyActions github.com/marang/robotgo/agent.UIProperty = "actions"
+const UIPropertyBounds github.com/marang/robotgo/agent.UIProperty = "bounds"
+const UIPropertyDescription github.com/marang/robotgo/agent.UIProperty = "description"
+const UIPropertyFocus github.com/marang/robotgo/agent.UIProperty = "focus"
+const UIPropertyHierarchy github.com/marang/robotgo/agent.UIProperty = "hierarchy"
+const UIPropertyName github.com/marang/robotgo/agent.UIProperty = "name"
+const UIPropertyRole github.com/marang/robotgo/agent.UIProperty = "role"
+const UIPropertyState github.com/marang/robotgo/agent.UIProperty = "state"
+const UIPropertyValue github.com/marang/robotgo/agent.UIProperty = "value"
+const UIRoleApplication github.com/marang/robotgo/agent.UIRole = "application"
+const UIRoleButton github.com/marang/robotgo/agent.UIRole = "button"
+const UIRoleCell github.com/marang/robotgo/agent.UIRole = "cell"
+const UIRoleCheckbox github.com/marang/robotgo/agent.UIRole = "checkbox"
+const UIRoleComboBox github.com/marang/robotgo/agent.UIRole = "combobox"
+const UIRoleDialog github.com/marang/robotgo/agent.UIRole = "dialog"
+const UIRoleGeneric github.com/marang/robotgo/agent.UIRole = "generic"
+const UIRoleGroup github.com/marang/robotgo/agent.UIRole = "group"
+const UIRoleImage github.com/marang/robotgo/agent.UIRole = "image"
+const UIRoleLabel github.com/marang/robotgo/agent.UIRole = "label"
+const UIRoleLink github.com/marang/robotgo/agent.UIRole = "link"
+const UIRoleList github.com/marang/robotgo/agent.UIRole = "list"
+const UIRoleListItem github.com/marang/robotgo/agent.UIRole = "list-item"
+const UIRoleMenu github.com/marang/robotgo/agent.UIRole = "menu"
+const UIRoleMenuItem github.com/marang/robotgo/agent.UIRole = "menu-item"
+const UIRolePassword github.com/marang/robotgo/agent.UIRole = "password"
+const UIRoleProgress github.com/marang/robotgo/agent.UIRole = "progress"
+const UIRoleRadio github.com/marang/robotgo/agent.UIRole = "radio"
+const UIRoleRow github.com/marang/robotgo/agent.UIRole = "row"
+const UIRoleSlider github.com/marang/robotgo/agent.UIRole = "slider"
+const UIRoleSwitch github.com/marang/robotgo/agent.UIRole = "switch"
+const UIRoleTab github.com/marang/robotgo/agent.UIRole = "tab"
+const UIRoleTabPanel github.com/marang/robotgo/agent.UIRole = "tab-panel"
+const UIRoleTable github.com/marang/robotgo/agent.UIRole = "table"
+const UIRoleTextBox github.com/marang/robotgo/agent.UIRole = "textbox"
+const UIRoleWindow github.com/marang/robotgo/agent.UIRole = "window"
+const UISchemaVersion untyped string = "1"
+const UIStateChecked github.com/marang/robotgo/agent.UIState = "checked"
+const UIStateCollapsed github.com/marang/robotgo/agent.UIState = "collapsed"
+const UIStateDisabled github.com/marang/robotgo/agent.UIState = "disabled"
+const UIStateEnabled github.com/marang/robotgo/agent.UIState = "enabled"
+const UIStateExpanded github.com/marang/robotgo/agent.UIState = "expanded"
+const UIStateInvalid github.com/marang/robotgo/agent.UIState = "invalid"
+const UIStateReadOnly github.com/marang/robotgo/agent.UIState = "read-only"
+const UIStateRequired github.com/marang/robotgo/agent.UIState = "required"
+const UIStateSelected github.com/marang/robotgo/agent.UIState = "selected"
 const VerificationCaptureChanged github.com/marang/robotgo/agent.VerificationCondition = "capture-changed"
 const VerificationCaptureUnchanged github.com/marang/robotgo/agent.VerificationCondition = "capture-unchanged"
 const VerificationFailed github.com/marang/robotgo/agent.VerificationStatus = "failed"
@@ -613,6 +667,7 @@ methodset *Session.Close() error
 methodset *Session.DryRun(context.Context, github.com/marang/robotgo/agent.ActionRequest) (github.com/marang/robotgo/agent.ActionResult, error)
 methodset *Session.Execute(context.Context, github.com/marang/robotgo/agent.ActionRequest) (github.com/marang/robotgo/agent.ActionResult, error)
 methodset *Session.FindColor(context.Context, github.com/marang/robotgo/agent.FindColorRequest) (github.com/marang/robotgo/agent.FindColorResult, error)
+methodset *Session.InspectUI(context.Context, github.com/marang/robotgo/agent.InspectUIRequest) (github.com/marang/robotgo/agent.UIObservation, error)
 methodset *Session.Observe(context.Context, github.com/marang/robotgo/agent.ObserveRequest) (*github.com/marang/robotgo/agent.Observation, error)
 methodset *Session.ReleaseObservation(string) error
 methodset *Session.WaitColor(context.Context, github.com/marang/robotgo/agent.WaitColorRequest) (github.com/marang/robotgo/agent.WaitColorResult, error)
@@ -637,6 +692,7 @@ type DragAction struct{StartX int tag "json:\"start_x\""; StartY int tag "json:\
 type ErrorCode string
 type FindColorRequest struct{ObservationID string tag "json:\"observation_id\""; Condition github.com/marang/robotgo/agent.ColorCondition tag "json:\"condition\""; Confirmed bool tag "json:\"confirmed,omitempty\""}
 type FindColorResult struct{SchemaVersion string tag "json:\"schema_version\""; ConditionID string tag "json:\"condition_id\""; ObservationID string tag "json:\"observation_id\""; Status github.com/marang/robotgo/agent.ConditionStatus tag "json:\"status\""; Match *github.com/marang/robotgo/agent.VisualMatch tag "json:\"match,omitempty\""}
+type InspectUIRequest struct{Target int tag "json:\"target\""; Kind github.com/marang/robotgo/agent.WindowTargetKind tag "json:\"kind\""; Confirmed bool tag "json:\"confirmed,omitempty\""}
 type KeyChordAction struct{Key string tag "json:\"key\""; Modifiers []github.com/marang/robotgo/agent.KeyModifier tag "json:\"modifiers,omitempty\""; TargetPID int tag "json:\"target_pid\""}
 type KeyModifier string
 type MouseButton string
@@ -647,13 +703,20 @@ type ObserveRequest struct{Confirmed bool tag "json:\"confirmed,omitempty\""; Ca
 type Operation string
 type OperationCapability struct{Operation github.com/marang/robotgo/agent.Operation tag "json:\"operation\""; Available bool tag "json:\"available\""; PolicyAllowed bool tag "json:\"policy_allowed\""; Backend string tag "json:\"backend,omitempty\""; Fallback bool tag "json:\"fallback\""; Risk github.com/marang/robotgo/agent.RiskClass tag "json:\"risk\""; ConfirmationRequired bool tag "json:\"confirmation_required\""; Cancellation github.com/marang/robotgo/agent.CancellationSupport tag "json:\"cancellation\""; ProcessGlobalBackend bool tag "json:\"process_global_backend\""; ExclusiveAgentSession bool tag "json:\"exclusive_agent_session\""; Reason string tag "json:\"reason,omitempty\""; Remediation string tag "json:\"remediation,omitempty\""; UnavailableCode github.com/marang/robotgo/agent.ErrorCode tag "json:\"unavailable_code,omitempty\""; OptionalCapture bool tag "json:\"optional_capture,omitempty\""; CaptureAvailable bool tag "json:\"capture_available,omitempty\""; CapturePolicyAllowed bool tag "json:\"capture_policy_allowed,omitempty\""; CaptureFallback bool tag "json:\"capture_fallback,omitempty\""; CaptureBackend string tag "json:\"capture_backend,omitempty\""; ScrollAxes []github.com/marang/robotgo/agent.ScrollAxis tag "json:\"scroll_axes,omitempty\""}
 type OperationCatalog struct{SchemaVersion string tag "json:\"schema_version\""; Operations []github.com/marang/robotgo/agent.OperationCapability tag "json:\"operations\""}
-type Policy struct{AllowedOperations []github.com/marang/robotgo/agent.Operation tag "json:\"allowed_operations\""; ConfirmOperations []github.com/marang/robotgo/agent.Operation tag "json:\"confirm_operations,omitempty\""; AllowedDisplayIDs []int tag "json:\"allowed_display_ids,omitempty\""; AllowedMouseButtons []github.com/marang/robotgo/agent.MouseButton tag "json:\"allowed_mouse_buttons,omitempty\""; AllowedKeys []string tag "json:\"allowed_keys,omitempty\""; AllowedModifiers []github.com/marang/robotgo/agent.KeyModifier tag "json:\"allowed_modifiers,omitempty\""; AllowedWindows []github.com/marang/robotgo/agent.WindowTarget tag "json:\"allowed_windows,omitempty\""; MaxActions uint64 tag "json:\"max_actions\""; MaxTextRunes int tag "json:\"max_text_runes\""; AllowDoubleClick bool tag "json:\"allow_double_click,omitempty\""; MaxScrollEvents uint32 tag "json:\"max_scroll_events,omitempty\""; MaxScrollDistance uint64 tag "json:\"max_scroll_distance,omitempty\""; MaxDragDistance uint64 tag "json:\"max_drag_distance,omitempty\""; MaxDragDurationMillis int tag "json:\"max_drag_duration_ms,omitempty\""; MaxChordKeys uint32 tag "json:\"max_chord_keys,omitempty\""; MinActionIntervalMillis int tag "json:\"min_action_interval_ms,omitempty\""; SessionTimeoutMillis int tag "json:\"session_timeout_ms,omitempty\""; MaxObservations uint64 tag "json:\"max_observations,omitempty\""; MaxCapturePixels uint64 tag "json:\"max_capture_pixels,omitempty\""; MaxQueries uint64 tag "json:\"max_queries,omitempty\""; WaitAttempts uint32 tag "json:\"wait_attempts,omitempty\""; WaitIntervalMillis int tag "json:\"wait_interval_ms,omitempty\""; WaitTimeoutMillis int tag "json:\"wait_timeout_ms,omitempty\""; VerificationAttempts uint32 tag "json:\"verification_attempts,omitempty\""; VerificationIntervalMillis int tag "json:\"verification_interval_ms,omitempty\""; VerificationTimeoutMillis int tag "json:\"verification_timeout_ms,omitempty\""; <private fields present>}
+type Policy struct{AllowedOperations []github.com/marang/robotgo/agent.Operation tag "json:\"allowed_operations\""; ConfirmOperations []github.com/marang/robotgo/agent.Operation tag "json:\"confirm_operations,omitempty\""; AllowedDisplayIDs []int tag "json:\"allowed_display_ids,omitempty\""; AllowedMouseButtons []github.com/marang/robotgo/agent.MouseButton tag "json:\"allowed_mouse_buttons,omitempty\""; AllowedKeys []string tag "json:\"allowed_keys,omitempty\""; AllowedModifiers []github.com/marang/robotgo/agent.KeyModifier tag "json:\"allowed_modifiers,omitempty\""; AllowedWindows []github.com/marang/robotgo/agent.WindowTarget tag "json:\"allowed_windows,omitempty\""; AllowedUIRoles []github.com/marang/robotgo/agent.UIRole tag "json:\"allowed_ui_roles,omitempty\""; AllowedUIProperties []github.com/marang/robotgo/agent.UIProperty tag "json:\"allowed_ui_properties,omitempty\""; MaxActions uint64 tag "json:\"max_actions\""; MaxTextRunes int tag "json:\"max_text_runes\""; AllowDoubleClick bool tag "json:\"allow_double_click,omitempty\""; MaxScrollEvents uint32 tag "json:\"max_scroll_events,omitempty\""; MaxScrollDistance uint64 tag "json:\"max_scroll_distance,omitempty\""; MaxDragDistance uint64 tag "json:\"max_drag_distance,omitempty\""; MaxDragDurationMillis int tag "json:\"max_drag_duration_ms,omitempty\""; MaxChordKeys uint32 tag "json:\"max_chord_keys,omitempty\""; MinActionIntervalMillis int tag "json:\"min_action_interval_ms,omitempty\""; MinUIQueryIntervalMillis int tag "json:\"min_ui_query_interval_ms,omitempty\""; SessionTimeoutMillis int tag "json:\"session_timeout_ms,omitempty\""; MaxObservations uint64 tag "json:\"max_observations,omitempty\""; MaxCapturePixels uint64 tag "json:\"max_capture_pixels,omitempty\""; MaxQueries uint64 tag "json:\"max_queries,omitempty\""; MaxUIElements uint32 tag "json:\"max_ui_elements,omitempty\""; MaxUITreeDepth uint32 tag "json:\"max_ui_tree_depth,omitempty\""; MaxUIStringBytes uint32 tag "json:\"max_ui_string_bytes,omitempty\""; WaitAttempts uint32 tag "json:\"wait_attempts,omitempty\""; WaitIntervalMillis int tag "json:\"wait_interval_ms,omitempty\""; WaitTimeoutMillis int tag "json:\"wait_timeout_ms,omitempty\""; VerificationAttempts uint32 tag "json:\"verification_attempts,omitempty\""; VerificationIntervalMillis int tag "json:\"verification_interval_ms,omitempty\""; VerificationTimeoutMillis int tag "json:\"verification_timeout_ms,omitempty\""; <private fields present>}
 type RiskClass string
 type RuntimeDiagnostics struct{GOOS string tag "json:\"goos\""; GOARCH string tag "json:\"goarch\""; CGOEnabled bool tag "json:\"cgo_enabled\""; Implementation string tag "json:\"implementation\""; DisplayServer string tag "json:\"display_server\""; Compositor string tag "json:\"compositor,omitempty\""; Features []github.com/marang/robotgo/agent.DiagnosticFeature tag "json:\"features\""}
 type ScrollAction struct{TargetX int tag "json:\"target_x\""; TargetY int tag "json:\"target_y\""; DeltaX int tag "json:\"delta_x\""; DeltaY int tag "json:\"delta_y\""; Events uint32 tag "json:\"events\""; DisplayID int tag "json:\"display_id\""}
 type ScrollAxis string
 type Session struct{<private fields present>}
 type TypeTextAction struct{Text string tag "json:\"text\""}
+type UIAction string
+type UIBounds struct{X int tag "json:\"x\""; Y int tag "json:\"y\""; Width int tag "json:\"width\""; Height int tag "json:\"height\""}
+type UIElement struct{ElementID string tag "json:\"element_id\""; Role github.com/marang/robotgo/agent.UIRole tag "json:\"role\""; Name string tag "json:\"name,omitempty\""; Description string tag "json:\"description,omitempty\""; Value string tag "json:\"value,omitempty\""; ValueRedacted bool tag "json:\"value_redacted,omitempty\""; Sensitive bool tag "json:\"sensitive,omitempty\""; States []github.com/marang/robotgo/agent.UIState tag "json:\"states,omitempty\""; Bounds *github.com/marang/robotgo/agent.UIBounds tag "json:\"bounds,omitempty\""; Focused bool tag "json:\"focused,omitempty\""; Actions []github.com/marang/robotgo/agent.UIAction tag "json:\"actions,omitempty\""; ParentID string tag "json:\"parent_id,omitempty\""; ChildIDs []string tag "json:\"child_ids,omitempty\""}
+type UIObservation struct{SchemaVersion string tag "json:\"schema_version\""; ObservationID string tag "json:\"observation_id\""; CreatedAt time.Time tag "json:\"created_at\""; Backend string tag "json:\"backend\""; Truncated bool tag "json:\"truncated\""; Elements []github.com/marang/robotgo/agent.UIElement tag "json:\"elements\""}
+type UIProperty string
+type UIRole string
+type UIState string
 type VerificationCondition string
 type VerificationRequest struct{Condition github.com/marang/robotgo/agent.VerificationCondition tag "json:\"condition\""}
 type VerificationResult struct{Status github.com/marang/robotgo/agent.VerificationStatus tag "json:\"status\""; Condition github.com/marang/robotgo/agent.VerificationCondition tag "json:\"condition\""; Attempts uint32 tag "json:\"attempts\""}
@@ -680,12 +743,20 @@ const ToolAct untyped string = "robotgo_act"
 const ToolCapabilities untyped string = "robotgo_capabilities"
 const ToolClose untyped string = "robotgo_close"
 const ToolFind untyped string = "robotgo_find"
+const ToolInspectUI untyped string = "robotgo_inspect_ui"
 const ToolObserve untyped string = "robotgo_observe"
 const ToolReleaseObservation untyped string = "robotgo_release_observation"
 const ToolWait untyped string = "robotgo_wait"
 func New(github.com/marang/robotgo/agent/mcpserver.Session) (*github.com/marang/robotgo/agent/mcpserver.Server, error)
 methodset *Server.Close() error
 methodset *Server.Run(context.Context, github.com/modelcontextprotocol/go-sdk/mcp.Transport) error
+methodset SemanticUISession.Catalog() github.com/marang/robotgo/agent.OperationCatalog
+methodset SemanticUISession.Close() error
+methodset SemanticUISession.DryRun(context.Context, github.com/marang/robotgo/agent.ActionRequest) (github.com/marang/robotgo/agent.ActionResult, error)
+methodset SemanticUISession.Execute(context.Context, github.com/marang/robotgo/agent.ActionRequest) (github.com/marang/robotgo/agent.ActionResult, error)
+methodset SemanticUISession.InspectUI(context.Context, github.com/marang/robotgo/agent.InspectUIRequest) (github.com/marang/robotgo/agent.UIObservation, error)
+methodset SemanticUISession.Observe(context.Context, github.com/marang/robotgo/agent.ObserveRequest) (*github.com/marang/robotgo/agent.Observation, error)
+methodset SemanticUISession.ReleaseObservation(string) error
 methodset Session.Catalog() github.com/marang/robotgo/agent.OperationCatalog
 methodset Session.Close() error
 methodset Session.DryRun(context.Context, github.com/marang/robotgo/agent.ActionRequest) (github.com/marang/robotgo/agent.ActionResult, error)
@@ -706,10 +777,12 @@ type CapabilitiesOutput struct{Catalog github.com/marang/robotgo/agent.Operation
 type CaptureOutput struct{Region github.com/marang/robotgo/agent.CaptureRegion tag "json:\"region\""; Width int tag "json:\"width\""; Height int tag "json:\"height\""}
 type CloseOutput struct{Closed bool tag "json:\"closed\""; Error *github.com/marang/robotgo/agent/mcpserver.ToolError tag "json:\"error,omitempty\""}
 type FindOutput struct{Result *github.com/marang/robotgo/agent.FindColorResult tag "json:\"result,omitempty\""; Error *github.com/marang/robotgo/agent/mcpserver.ToolError tag "json:\"error,omitempty\""}
+type InspectUIOutput struct{Observation *github.com/marang/robotgo/agent.UIObservation tag "json:\"observation,omitempty\""; Error *github.com/marang/robotgo/agent/mcpserver.ToolError tag "json:\"error,omitempty\""}
 type ObservationOutput struct{SchemaVersion string tag "json:\"schema_version\""; ObservationID string tag "json:\"observation_id\""; CreatedAt time.Time tag "json:\"created_at\""; Diagnostics github.com/marang/robotgo/agent.RuntimeDiagnostics tag "json:\"diagnostics\""; Capture *github.com/marang/robotgo/agent/mcpserver.CaptureOutput tag "json:\"capture,omitempty\""}
 type ObserveOutput struct{Observation *github.com/marang/robotgo/agent/mcpserver.ObservationOutput tag "json:\"observation,omitempty\""; Error *github.com/marang/robotgo/agent/mcpserver.ToolError tag "json:\"error,omitempty\""}
 type ReleaseObservationInput struct{ObservationID string tag "json:\"observation_id\""}
 type ReleaseObservationOutput struct{Released bool tag "json:\"released\""; Error *github.com/marang/robotgo/agent/mcpserver.ToolError tag "json:\"error,omitempty\""}
+type SemanticUISession interface{Catalog() github.com/marang/robotgo/agent.OperationCatalog; Close() error; DryRun(context.Context, github.com/marang/robotgo/agent.ActionRequest) (github.com/marang/robotgo/agent.ActionResult, error); Execute(context.Context, github.com/marang/robotgo/agent.ActionRequest) (github.com/marang/robotgo/agent.ActionResult, error); InspectUI(context.Context, github.com/marang/robotgo/agent.InspectUIRequest) (github.com/marang/robotgo/agent.UIObservation, error); Observe(context.Context, github.com/marang/robotgo/agent.ObserveRequest) (*github.com/marang/robotgo/agent.Observation, error); ReleaseObservation(string) error; embedded github.com/marang/robotgo/agent/mcpserver.Session}
 type Server struct{<private fields present>}
 type Session interface{Catalog() github.com/marang/robotgo/agent.OperationCatalog; Close() error; DryRun(context.Context, github.com/marang/robotgo/agent.ActionRequest) (github.com/marang/robotgo/agent.ActionResult, error); Execute(context.Context, github.com/marang/robotgo/agent.ActionRequest) (github.com/marang/robotgo/agent.ActionResult, error); Observe(context.Context, github.com/marang/robotgo/agent.ObserveRequest) (*github.com/marang/robotgo/agent.Observation, error)}
 type ToolError struct{Code github.com/marang/robotgo/agent.ErrorCode tag "json:\"code\""; Message string tag "json:\"message\""}

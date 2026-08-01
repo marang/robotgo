@@ -185,15 +185,56 @@ live display-bound enforcement, dry-run, quota handling, sanitized results,
 backend errors, bounded synthetic capture, defensive pixel ownership and
 zeroing, stale-target rejection, changed/unchanged verification, timeout and
 attempt bounds, explicit-observation color search, bounded region waits, query
-and observation quotas, no-match/timeout cleanup, payload-free audit events,
-and the documented input and capture cancellation boundaries. No agent unit
-test reads or persists the developer's desktop, clipboard, OCR input, or other
-private data:
+and observation quotas, bounded semantic UI-tree projection, sensitive-text
+redaction, native-reference zeroing, no-match/timeout cleanup, payload-free
+audit events, and the documented input and capture cancellation boundaries.
+The Linux AT-SPI unit suite uses an in-memory query fixture to verify exact
+process/title matching, role/property minimization, hidden-subtree pruning,
+fixed role/state/action mapping, and hard identity/tree limits. The shared
+Windows UI Automation tree fixture additionally proves that password,
+offscreen, disallowed-role, and foreign-process elements receive no content
+read, all acquired native references are released on errors and limits, and
+opaque runtime IDs stay bounded. The macOS AX tree fixture proves the same
+privacy boundary for secure, hidden, offscreen, disallowed-role, duplicate,
+and foreign-process elements; its opaque references contain only the selected
+PID, CGWindowID, and bounded child-index path, never an AX pointer. No agent or accessibility unit test reads or
+persists the developer's desktop, clipboard, OCR input, accessibility content,
+or other private data:
 
 ```bash
 go test -race ./agent
+go test -race ./internal/accessibility
 CGO_ENABLED=0 go test ./agent
 ```
+
+The protected Windows job creates only one in-process Win32 window with fixed
+button, input, and password fixture text. It verifies the real UI Automation
+adapter, password redaction, process scope, and cleanup without screenshots,
+files, clipboard access, or foreign-window discovery:
+
+```powershell
+$env:ROBOTGO_REQUIRE_WINDOWS_ACCESSIBILITY_INTEGRATION = "1"
+go test -tags windowsintegration ./internal/accessibility `
+  -run "^TestWindowsUIAInspectsOnlySelfOwnedBoundedFixture$" `
+  -count=1 -timeout=30s -v
+```
+
+The Linux/Windows/macOS semantic-UI example is an explicit real accessibility read.
+Use it only for a self-owned process/window after checking its PID, HWND, or
+CGWindowID and
+exact title. It keeps native references in memory until release/session close,
+emits JSON only to standard output, and never writes an accessibility dump or
+screenshot:
+
+```bash
+go run ./examples/semantic_ui -pid 1234 -title 'Self-owned fixture' -confirm
+```
+
+macOS unit and cross-build checks are blocking, including fixed role/action
+mapping, bounded reference paths, native framework symbol resolution, and the
+non-prompting permission contract. A permission-granted real semantic fixture
+is evidence-pending with the other LAB-69 macOS GUI checks; hosted CI must not
+turn missing Accessibility consent into a passing runtime claim.
 
 The MCP adapter suite uses the official SDK's paired in-memory transports and a
 fake session. It performs real protocol initialization, listing, typed calls,
