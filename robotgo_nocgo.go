@@ -63,6 +63,7 @@ type LinuxCapabilities struct {
 	Keyboard       FeatureCapability
 	Mouse          FeatureCapability
 	RemoteDesktop  FeatureCapability
+	Accessibility  FeatureCapability
 	Window         FeatureCapability
 	Hook           FeatureCapability
 	Events         FeatureCapability
@@ -165,12 +166,16 @@ func GetLinuxCapabilities() LinuxCapabilities {
 		Bounds:         unsupported,
 		Keyboard:       unsupported,
 		Mouse:          unsupported,
+		Accessibility:  unsupported,
 		Window:         unsupported,
 		Hook:           unsupported,
 		Events:         unsupported,
 	}
 	if runtime.GOOS == "linux" && ds == DisplayServerWayland {
 		capabilities.Compositor = detectWaylandCompositor()
+	}
+	if runtime.GOOS == "linux" {
+		capabilities.Accessibility = accessibilityCapability()
 	}
 	overrideCapture, captureOverridden := pureGoCaptureOverrideCapability()
 	if captureOverridden {

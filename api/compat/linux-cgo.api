@@ -484,7 +484,7 @@ type ClipboardSelection = github.com/marang/robotgo/clipboard.Selection
 type DisplayServer string
 type FeatureCapability struct{Available bool; Fallback bool; Backend string; Reason string; Notes string}
 type Handle struct{XWin github.com/marang/robotgo._Ctype_ulong}
-type LinuxCapabilities struct{DisplayServer github.com/marang/robotgo.DisplayServer; Compositor string; WaylandSession bool; X11Session bool; Capture github.com/marang/robotgo.FeatureCapability; Bounds github.com/marang/robotgo.FeatureCapability; Keyboard github.com/marang/robotgo.FeatureCapability; Mouse github.com/marang/robotgo.FeatureCapability; RemoteDesktop github.com/marang/robotgo.FeatureCapability; Window github.com/marang/robotgo.FeatureCapability; Hook github.com/marang/robotgo.FeatureCapability; Events github.com/marang/robotgo.FeatureCapability}
+type LinuxCapabilities struct{DisplayServer github.com/marang/robotgo.DisplayServer; Compositor string; WaylandSession bool; X11Session bool; Capture github.com/marang/robotgo.FeatureCapability; Bounds github.com/marang/robotgo.FeatureCapability; Keyboard github.com/marang/robotgo.FeatureCapability; Mouse github.com/marang/robotgo.FeatureCapability; RemoteDesktop github.com/marang/robotgo.FeatureCapability; Accessibility github.com/marang/robotgo.FeatureCapability; Window github.com/marang/robotgo.FeatureCapability; Hook github.com/marang/robotgo.FeatureCapability; Events github.com/marang/robotgo.FeatureCapability}
 type Map map[string]interface{}
 type Nps struct{Pid int; Name string}
 type Point struct{X int; Y int}
@@ -619,6 +619,7 @@ const UIRoleApplication github.com/marang/robotgo/agent.UIRole = "application"
 const UIRoleButton github.com/marang/robotgo/agent.UIRole = "button"
 const UIRoleCell github.com/marang/robotgo/agent.UIRole = "cell"
 const UIRoleCheckbox github.com/marang/robotgo/agent.UIRole = "checkbox"
+const UIRoleComboBox github.com/marang/robotgo/agent.UIRole = "combobox"
 const UIRoleDialog github.com/marang/robotgo/agent.UIRole = "dialog"
 const UIRoleGeneric github.com/marang/robotgo/agent.UIRole = "generic"
 const UIRoleGroup github.com/marang/robotgo/agent.UIRole = "group"
@@ -634,6 +635,7 @@ const UIRoleProgress github.com/marang/robotgo/agent.UIRole = "progress"
 const UIRoleRadio github.com/marang/robotgo/agent.UIRole = "radio"
 const UIRoleRow github.com/marang/robotgo/agent.UIRole = "row"
 const UIRoleSlider github.com/marang/robotgo/agent.UIRole = "slider"
+const UIRoleSwitch github.com/marang/robotgo/agent.UIRole = "switch"
 const UIRoleTab github.com/marang/robotgo/agent.UIRole = "tab"
 const UIRoleTabPanel github.com/marang/robotgo/agent.UIRole = "tab-panel"
 const UIRoleTable github.com/marang/robotgo/agent.UIRole = "table"

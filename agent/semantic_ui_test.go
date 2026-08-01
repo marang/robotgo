@@ -27,7 +27,7 @@ type blockingSemanticDriver struct {
 	expire func()
 }
 
-func (driver *blockingSemanticDriver) InspectUI(ctx context.Context, _ int, _ uiBackendLimits) (uiBackendSnapshot, error) {
+func (driver *blockingSemanticDriver) InspectUI(ctx context.Context, _ uiBackendTarget, _ uiBackendLimits) (uiBackendSnapshot, error) {
 	close(driver.called)
 	driver.expire()
 	<-ctx.Done()
@@ -50,7 +50,18 @@ func (ctx *controlledDeadlineContext) Err() error {
 	}
 }
 
-func (driver *semanticFakeDriver) InspectUI(_ context.Context, handle int, limits uiBackendLimits) (uiBackendSnapshot, error) {
+func (driver *semanticFakeDriver) InspectUI(_ context.Context, target uiBackendTarget, limits uiBackendLimits) (uiBackendSnapshot, error) {
+	handle, err := driver.ResolveWindow(target.Target, target.Kind)
+	if err != nil {
+		return uiBackendSnapshot{}, err
+	}
+	title, err := driver.WindowTitle(handle, WindowTargetHandle)
+	if err != nil {
+		return uiBackendSnapshot{}, err
+	}
+	if title != target.ExpectedTitle {
+		return uiBackendSnapshot{}, ErrStaleTarget
+	}
 	driver.calls++
 	driver.handle = handle
 	driver.limits = limits
@@ -145,8 +156,19 @@ func TestInspectUISanitizesAndScopesSemanticTree(t *testing.T) {
 	if driver.calls != 1 || driver.handle != 9001 || driver.limits.MaxElements != 8 ||
 		driver.limits.MaxDepth != 4 || driver.limits.MaxStringBytes != 256 ||
 		driver.limits.MaxReferenceBytes != maxUIBackendReferenceBytes ||
-		driver.limits.MaxTotalReferenceBytes != maxUIBackendReferenceTotalBytes {
+		driver.limits.MaxTotalReferenceBytes != maxUIBackendReferenceTotalBytes ||
+		len(driver.limits.AllowedRoles) != 3 {
 		t.Fatalf("backend request = calls=%d handle=%d limits=%+v", driver.calls, driver.handle, driver.limits)
+	}
+	for _, role := range []UIRole{UIRoleWindow, UIRoleButton, UIRolePassword} {
+		if _, ok := driver.limits.AllowedRoles[role]; !ok {
+			t.Fatalf("backend request omitted allowed role %q: %+v", role, driver.limits)
+		}
+	}
+	if !driver.limits.ReadName || !driver.limits.ReadDescription || !driver.limits.ReadValue ||
+		!driver.limits.ReadStates || !driver.limits.ReadBounds || !driver.limits.ReadFocus ||
+		!driver.limits.ReadActions {
+		t.Fatalf("backend request omitted allowed properties: %+v", driver.limits)
 	}
 	for _, node := range driver.snapshot.Nodes {
 		if len(node.StableID) != 0 || node.Role != "" || node.Name != "" ||

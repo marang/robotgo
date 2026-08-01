@@ -86,10 +86,10 @@ group.
 | macOS | `CGO_ENABLED=0` | Blocking CoreGraphics bounds/Retina-scale and non-prompting permission diagnostics; pixel capture, Quartz input, and Accessibility window operations are implemented but permission-granted runtime evidence remains pending; maximize/topmost and media keys without stable native semantics return `ErrNotSupported` |
 | Windows | CGO-enabled default build | Native mouse, keyboard, capture, window, and process paths |
 | Windows | `CGO_ENABLED=0` | Pure-Go capture/display bounds, real Win32 DPI scale and pixel-at-pointer queries, foreground-layout-aware `SendInput` keyboard/text plus clipboard paste, complete pointer input, and Win32 window title/PID/handle/geometry/state/control operations with explicit errors |
-| Linux/X11 | CGO-enabled default build | X11/XTest input, capture, window, and process paths |
-| Linux/X11 | `CGO_ENABLED=0` | Pure-Go X11 capture/bounds, XTEST input, and window title/PID/handle/geometry/state/control through X11/EWMH; horizontal scroll and window mutations without a consistent EWMH window manager are explicitly unsupported |
-| Linux/Wayland | CGO with `-tags wayland`; add `pipewire` for persistent ScreenCast frames | Native wlroots capture/input where compositor protocols exist, one-shot Screenshot fallback, reusable ScreenCast/PipeWire capture, explicit RemoteDesktop portal sessions, capability-aware window support |
-| Linux/Wayland | `CGO_ENABLED=0` | Screenshot portal capture without implicit Xwayland, bounded native logical output enumeration without consent UI, and explicit RemoteDesktop portal sessions for supported input |
+| Linux/X11 | CGO-enabled default build | X11/XTest input, capture, window, and process paths; bounded process-targeted semantic inspection through an already-active AT-SPI2 bus |
+| Linux/X11 | `CGO_ENABLED=0` | Pure-Go X11 capture/bounds, XTEST input, window title/PID/handle/geometry/state/control through X11/EWMH, and AT-SPI2 semantic inspection; horizontal scroll and window mutations without a consistent EWMH window manager are explicitly unsupported |
+| Linux/Wayland | CGO with `-tags wayland`; add `pipewire` for persistent ScreenCast frames | Native wlroots capture/input where compositor protocols exist, one-shot Screenshot fallback, reusable ScreenCast/PipeWire capture, explicit RemoteDesktop portal sessions, capability-aware window support, and process-targeted AT-SPI2 semantic inspection |
+| Linux/Wayland | `CGO_ENABLED=0` | Screenshot portal capture without implicit Xwayland, bounded native logical output enumeration without consent UI, explicit RemoteDesktop portal sessions for supported input, and process-targeted AT-SPI2 semantic inspection |
 
 “Implemented” is not automatically a stable support claim. The
 [Runtime Compatibility Matrix v1](docs/compatibility/runtime-v1.md) splits each
@@ -931,10 +931,22 @@ query-interval, and session-lifetime limits. Element IDs are opaque and
 observation-scoped; platform handles and object paths remain private. Hidden and offscreen nodes
 are omitted, password/sensitive text is redacted, invalid backend identities
 fail closed, and `ReleaseObservation` or session close zeroes retained backend
-references. Native AT-SPI, UI Automation, and macOS Accessibility adapters
-will use the same capability contract; until an adapter is active the
-catalog reports `desktop.inspect-ui` as unsupported rather than returning an
-empty or misleading tree.
+references. On Linux, an already-active AT-SPI2 bus provides the first native
+adapter for exact process-and-title targets on GNOME, KDE, and other accessible
+desktops. Its capability probe never starts the accessibility service; enable
+desktop accessibility before RobotGo when the catalog reports it unavailable.
+Inspection also fails explicitly if that pre-existing service disappears; it
+never starts a session bus, accessibility bus, or registry as a side effect.
+Native-handle targets, Windows UI Automation, and macOS Accessibility remain
+explicitly unsupported until an adapter can preserve the same identity and
+privacy contract; RobotGo never substitutes an empty or misleading tree.
+The Linux example requires an explicit PID, exact title, and confirmation. It
+prints one bounded observation to standard output, writes no file, and reads
+control values only with the separate `-include-values` flag:
+
+```bash
+go run ./examples/semantic_ui -pid 1234 -title 'Self-owned fixture' -confirm
+```
 
 An action can reference a captured observation through
 `ObservationPrecondition`. RobotGo recaptures the same internally retained

@@ -147,6 +147,7 @@ type LinuxCapabilities struct {
 	Keyboard       FeatureCapability
 	Mouse          FeatureCapability
 	RemoteDesktop  FeatureCapability
+	Accessibility  FeatureCapability
 	Window         FeatureCapability
 	Hook           FeatureCapability
 	Events         FeatureCapability
@@ -280,6 +281,7 @@ func GetLinuxCapabilities() LinuxCapabilities {
 		Compositor:     "",
 		WaylandSession: ds == DisplayServerWayland,
 		X11Session:     ds == DisplayServerX11,
+		Accessibility:  accessibilityCapability(),
 	}
 
 	switch ds {

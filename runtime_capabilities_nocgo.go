@@ -42,6 +42,7 @@ func runtimeCapabilities() RuntimeCapabilities {
 		result.Window = linux.Window
 		result.Hook = linux.Hook
 		result.Events = linux.Events
+		result.Accessibility = linux.Accessibility
 		return result
 	}
 	result.Capture, result.Bounds = pureGoPlatformCaptureCapabilities()
@@ -53,5 +54,6 @@ func runtimeCapabilities() RuntimeCapabilities {
 		result.Mouse = mouse
 	}
 	result.Window = pureGoWindowCapability()
+	result.Accessibility = accessibilityCapability()
 	return result
 }

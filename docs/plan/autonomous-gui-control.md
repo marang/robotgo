@@ -44,11 +44,17 @@ tool as a separate sensitive-read grant. The first contract slice provides:
 - zeroing of retained backend references on observation release and session
   close
 
-The contract intentionally advertises no usable production backend until its
-native adapter is present and probed. AT-SPI, Windows UI Automation, and macOS
-Accessibility adapters are the next implementation layer; none may broaden
-the immutable policy or expose raw handles, object paths, arbitrary platform
-properties, backend errors, or consent prompts.
+The first production adapter uses an already-active Linux AT-SPI2 bus for
+exact process-and-title targets. Discovery is bounded, rejects ambiguous
+windows, prunes hidden/offscreen subtrees before reading their text, never
+reads password text, and infers only fixed platform-neutral states/actions.
+The non-prompting capability probe does not activate the accessibility service.
+Inspection rechecks the existing bus and registry and likewise never starts
+them as a side effect.
+Native-handle targets plus Windows UI Automation and macOS Accessibility are
+the next adapter layer; none may broaden the immutable policy or expose raw
+handles, object paths, arbitrary platform properties, backend errors, or
+consent prompts.
 
 ## Action contract
 

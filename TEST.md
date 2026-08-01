@@ -185,14 +185,28 @@ live display-bound enforcement, dry-run, quota handling, sanitized results,
 backend errors, bounded synthetic capture, defensive pixel ownership and
 zeroing, stale-target rejection, changed/unchanged verification, timeout and
 attempt bounds, explicit-observation color search, bounded region waits, query
-and observation quotas, no-match/timeout cleanup, payload-free audit events,
-and the documented input and capture cancellation boundaries. No agent unit
-test reads or persists the developer's desktop, clipboard, OCR input, or other
-private data:
+and observation quotas, bounded semantic UI-tree projection, sensitive-text
+redaction, native-reference zeroing, no-match/timeout cleanup, payload-free
+audit events, and the documented input and capture cancellation boundaries.
+The Linux AT-SPI unit suite uses an in-memory query fixture to verify exact
+process/title matching, role/property minimization, hidden-subtree pruning,
+fixed role/state/action mapping, and hard identity/tree limits. No agent or
+AT-SPI unit test reads or persists the developer's desktop, clipboard, OCR
+input, accessibility content, or other private data:
 
 ```bash
 go test -race ./agent
+go test -race ./internal/accessibility
 CGO_ENABLED=0 go test ./agent
+```
+
+The Linux semantic-UI example is an explicit real accessibility read. Use it
+only for a self-owned process after checking its PID and exact title. It keeps
+native references in memory until release/session close, emits JSON only to
+standard output, and never writes an accessibility dump or screenshot:
+
+```bash
+go run ./examples/semantic_ui -pid 1234 -title 'Self-owned fixture' -confirm
 ```
 
 The MCP adapter suite uses the official SDK's paired in-memory transports and a

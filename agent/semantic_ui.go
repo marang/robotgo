@@ -32,7 +32,9 @@ const (
 	UIRoleDialog      UIRole = "dialog"
 	UIRoleButton      UIRole = "button"
 	UIRoleCheckbox    UIRole = "checkbox"
+	UIRoleComboBox    UIRole = "combobox"
 	UIRoleRadio       UIRole = "radio"
+	UIRoleSwitch      UIRole = "switch"
 	UIRoleTextBox     UIRole = "textbox"
 	UIRolePassword    UIRole = "password"
 	UIRoleLabel       UIRole = "label"
@@ -144,6 +146,20 @@ type uiBackendLimits struct {
 	MaxStringBytes         uint32
 	MaxReferenceBytes      uint32
 	MaxTotalReferenceBytes uint32
+	AllowedRoles           map[UIRole]struct{}
+	ReadName               bool
+	ReadDescription        bool
+	ReadValue              bool
+	ReadStates             bool
+	ReadBounds             bool
+	ReadFocus              bool
+	ReadActions            bool
+}
+
+type uiBackendTarget struct {
+	Target        int
+	Kind          WindowTargetKind
+	ExpectedTitle string
 }
 
 type uiBackendNode struct {
@@ -170,11 +186,11 @@ type uiBackendSnapshot struct {
 }
 
 type uiInspectDriver interface {
-	InspectUI(context.Context, int, uiBackendLimits) (uiBackendSnapshot, error)
+	InspectUI(context.Context, uiBackendTarget, uiBackendLimits) (uiBackendSnapshot, error)
 }
 
-func (robotGoDriver) InspectUI(context.Context, int, uiBackendLimits) (uiBackendSnapshot, error) {
-	return uiBackendSnapshot{}, fmt.Errorf("%w: no native accessibility adapter is active", robotgo.ErrNotSupported)
+func (robotGoDriver) InspectUI(ctx context.Context, target uiBackendTarget, limits uiBackendLimits) (uiBackendSnapshot, error) {
+	return inspectPlatformUI(ctx, target, limits)
 }
 
 // InspectUI returns one policy-scoped semantic tree. It never opens a desktop
@@ -197,6 +213,7 @@ func (s *Session) InspectUI(ctx context.Context, request InspectUIRequest) (UIOb
 	if err := s.authorizeUIInspection(request); err != nil {
 		return result, err
 	}
+	policyTarget := s.policy.allowWindow[windowTargetIdentity{target: request.Target, kind: request.Kind}]
 	capability, ok := s.capability(OperationInspectUI)
 	if !ok || !capability.Available || capability.Backend == "" {
 		cause := robotgo.ErrNotSupported
@@ -228,35 +245,38 @@ func (s *Session) InspectUI(ctx context.Context, request InspectUIRequest) (UIOb
 		return s.finishUIInspectionFailure(ctx, result,
 			uiError(ErrorPolicyDenied, "agent policy UI inspection rate limit reached", err))
 	}
-	handle, err := s.resolveValidatedWindow(ActivateWindowAction{Target: request.Target, Kind: request.Kind})
-	if err != nil {
-		code, message := classifyBackendError(err)
-		if errors.Is(err, ErrStaleTarget) {
-			code, message = ErrorStaleTarget, "UI inspection target is stale"
-		}
-		return s.finishUIInspectionFailure(ctx, result, uiError(code, message, err))
-	}
-	if err := s.uiExecutionError(ctx); err != nil {
-		return s.finishUIInspectionFailure(ctx, result, err)
-	}
 	driver, ok := s.driver.(uiInspectDriver)
 	if !ok {
 		return s.finishUIInspectionFailure(ctx, result,
 			uiError(ErrorUnsupported, "semantic UI inspection is unsupported", robotgo.ErrNotSupported))
 	}
-	snapshot, err := driver.InspectUI(inspectCtx, handle, uiBackendLimits{
+	limits := uiBackendLimits{
 		MaxElements: s.policy.MaxUIElements, MaxDepth: s.policy.MaxUITreeDepth,
 		MaxStringBytes:         s.policy.MaxUIStringBytes,
 		MaxReferenceBytes:      maxUIBackendReferenceBytes,
 		MaxTotalReferenceBytes: maxUIBackendReferenceTotalBytes,
-	})
+		AllowedRoles:           cloneUIRoleSet(s.policy.allowUIRole),
+	}
+	_, limits.ReadName = s.policy.allowUIProperty[UIPropertyName]
+	_, limits.ReadDescription = s.policy.allowUIProperty[UIPropertyDescription]
+	_, limits.ReadValue = s.policy.allowUIProperty[UIPropertyValue]
+	_, limits.ReadStates = s.policy.allowUIProperty[UIPropertyState]
+	_, limits.ReadBounds = s.policy.allowUIProperty[UIPropertyBounds]
+	_, limits.ReadFocus = s.policy.allowUIProperty[UIPropertyFocus]
+	_, limits.ReadActions = s.policy.allowUIProperty[UIPropertyActions]
+	snapshot, err := driver.InspectUI(inspectCtx, uiBackendTarget{
+		Target: request.Target, Kind: request.Kind, ExpectedTitle: policyTarget.ExpectedTitle,
+	}, limits)
 	defer clearUIBackendSnapshot(&snapshot)
 	if err != nil {
 		if executionErr := s.uiExecutionError(ctx); executionErr != nil {
 			return s.finishUIInspectionFailure(ctx, result, executionErr)
 		}
-		code, message := classifyBackendError(err)
-		return s.finishUIInspectionFailure(ctx, result, uiError(code, message, err))
+		if errors.Is(err, ErrStaleTarget) {
+			return s.finishUIInspectionFailure(ctx, result,
+				uiError(ErrorStaleTarget, "UI inspection target is stale", err))
+		}
+		return s.finishUIInspectionFailure(ctx, result, uiOperationError(err))
 	}
 	if err := s.uiExecutionError(ctx); err != nil {
 		return s.finishUIInspectionFailure(ctx, result, err)
@@ -289,6 +309,14 @@ func (s *Session) InspectUI(ctx context.Context, request InspectUIRequest) (UIOb
 		return result, uiError(ErrorAuditDelivery, "UI inspection completed but audit delivery failed", err)
 	}
 	return result, nil
+}
+
+func cloneUIRoleSet(source map[UIRole]struct{}) map[UIRole]struct{} {
+	result := make(map[UIRole]struct{}, len(source))
+	for role := range source {
+		result[role] = struct{}{}
+	}
+	return result
 }
 
 func (s *Session) beginUIQuery() error {
@@ -545,7 +573,8 @@ func validUIBounds(bounds *UIBounds) bool {
 func validUIRole(role UIRole) bool {
 	switch role {
 	case UIRoleApplication, UIRoleWindow, UIRoleDialog, UIRoleButton,
-		UIRoleCheckbox, UIRoleRadio, UIRoleTextBox, UIRolePassword,
+		UIRoleCheckbox, UIRoleComboBox, UIRoleRadio, UIRoleSwitch,
+		UIRoleTextBox, UIRolePassword,
 		UIRoleLabel, UIRoleLink, UIRoleList, UIRoleListItem, UIRoleMenu,
 		UIRoleMenuItem, UIRoleTab, UIRoleTabPanel, UIRoleSlider,
 		UIRoleProgress, UIRoleImage, UIRoleTable, UIRoleRow, UIRoleCell,

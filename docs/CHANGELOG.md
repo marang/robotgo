@@ -11,11 +11,15 @@
   paths, hidden/offscreen nodes are omitted, password/sensitive text is
   redacted, and retained backend references are zeroed on observation release
   or session close. Runtime diagnostics schema v2 reports accessibility as a
-  separate feature; capability reporting remains explicitly
-  unsupported until an AT-SPI, UI Automation, or macOS Accessibility adapter
-  is active. Hermetic fixtures prove policy denial, sanitization, hierarchy,
-  stale-window rejection, invalid backend identity rejection, MCP projection,
-  and cleanup without reading or writing the developer desktop.
+  separate feature. Linux now supplies a bounded, read-only AT-SPI2 adapter for
+  exact process-and-title targets when the accessibility bus is already active.
+  `GetLinuxCapabilities` exposes that backend alongside the cross-platform
+  runtime capability report, and neither probe nor inspection auto-starts a
+  D-Bus or accessibility service.
+  Native-handle targets, UI Automation, and macOS Accessibility remain
+  explicitly unsupported. Hermetic fixtures prove policy denial, sanitization,
+  hierarchy, stale-window rejection, invalid backend identity rejection, MCP
+  projection, and cleanup without reading or writing the developer desktop.
 - Expanded the deny-by-default agent and local MCP action contract with bounded
   scroll, drag, canonical keyboard chord, and identity-revalidated window
   activation operations. Extended actions require immutable event, distance,

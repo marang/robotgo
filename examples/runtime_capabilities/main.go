@@ -19,6 +19,7 @@ func main() {
 	printFeature("keyboard", capabilities.Keyboard)
 	printFeature("mouse", capabilities.Mouse)
 	printFeature("remote desktop", capabilities.RemoteDesktop)
+	printFeature("accessibility", capabilities.Accessibility)
 	printFeature("window", capabilities.Window)
 	printFeature("process", capabilities.Process)
 	printFeature("clipboard", capabilities.Clipboard)

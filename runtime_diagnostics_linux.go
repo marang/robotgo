@@ -5,6 +5,7 @@ package robotgo
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	portalpkg "github.com/marang/robotgo/screen/portal"
 )
@@ -72,6 +73,7 @@ func x11RuntimeDiagnosticDetails(
 		notRequiredPermission(runtimeFeatureKeyboard, "X11 XTEST access", capabilities.Keyboard.Reason),
 		notRequiredPermission(runtimeFeatureMouse, "X11 XTEST access", capabilities.Mouse.Reason),
 		notRequiredPermission(runtimeFeatureWindow, "X11 window access", capabilities.Window.Reason),
+		accessibilityPermission(capabilities.Accessibility),
 	}
 	return protocols, permissions
 }
@@ -143,6 +145,7 @@ func waylandRuntimeDiagnosticDetails(
 		inputPermission(runtimeFeatureKeyboard, capabilities.Keyboard, remotePermission),
 		inputPermission(runtimeFeatureMouse, capabilities.Mouse, remotePermission),
 		remotePermission,
+		accessibilityPermission(capabilities.Accessibility),
 	}
 	return protocols, permissions
 }
@@ -234,6 +237,22 @@ func unavailableDisplayPermissions(
 			State:   RuntimePermissionUnavailable,
 			Reason:  capabilities.Mouse.Reason,
 		},
+		accessibilityPermission(capabilities.Accessibility),
+	}
+}
+
+func accessibilityPermission(capability FeatureCapability) RuntimePermissionDiagnostic {
+	state := RuntimePermissionUnavailable
+	if capability.Available {
+		state = RuntimePermissionNotRequired
+	} else if strings.Contains(strings.ToLower(capability.Reason), strings.ToLower(ErrPermissionDenied.Error())) {
+		state = RuntimePermissionDenied
+	}
+	return RuntimePermissionDiagnostic{
+		Feature: runtimeFeatureAccessibility,
+		Name:    "AT-SPI accessibility bus access",
+		State:   state,
+		Reason:  capability.Reason,
 	}
 }
 

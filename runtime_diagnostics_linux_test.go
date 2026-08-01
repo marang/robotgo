@@ -77,6 +77,11 @@ func TestWaylandRuntimeDiagnosticsReportProtocolsAndPermissions(t *testing.T) {
 			Backend:   backendWaylandVirtualPointer,
 			Reason:    "native pointer ready",
 		},
+		Accessibility: FeatureCapability{
+			Available: true,
+			Backend:   "at-spi2",
+			Reason:    "AT-SPI2 ready",
+		},
 	}
 
 	ctx, cancel := boundedDiagnosticContext(context.Background())
@@ -146,6 +151,12 @@ func TestWaylandRuntimeDiagnosticsReportProtocolsAndPermissions(t *testing.T) {
 			State:   RuntimePermissionGranted,
 			Reason:  "portal consent session is active",
 		},
+		{
+			Feature: "accessibility",
+			Name:    "AT-SPI accessibility bus access",
+			State:   RuntimePermissionNotRequired,
+			Reason:  "AT-SPI2 ready",
+		},
 	}
 	if !reflect.DeepEqual(permissions, wantPermissions) {
 		t.Fatalf("permission diagnostics = %#v, want %#v", permissions, wantPermissions)
@@ -202,9 +213,10 @@ func TestX11RuntimeDiagnosticsReportNegotiatedXTestVersion(t *testing.T) {
 		return 2, 2, true
 	}
 	capabilities := RuntimeCapabilities{
-		Keyboard: FeatureCapability{Available: true, Reason: "XTEST ready"},
-		Capture:  FeatureCapability{Available: true, Reason: "X11 ready"},
-		Window:   FeatureCapability{Available: true, Reason: "X11 ready"},
+		Keyboard:      FeatureCapability{Available: true, Reason: "XTEST ready"},
+		Capture:       FeatureCapability{Available: true, Reason: "X11 ready"},
+		Window:        FeatureCapability{Available: true, Reason: "X11 ready"},
+		Accessibility: FeatureCapability{Available: true, Reason: "AT-SPI2 ready"},
 	}
 	protocols, permissions := x11RuntimeDiagnosticDetails(capabilities)
 	if len(protocols) != 2 ||
