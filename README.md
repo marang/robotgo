@@ -323,15 +323,38 @@ backend may support a single non-ASCII rune directly (the RemoteDesktop portal
 and Pure-Go X11 do), while another native keymap can return `ErrNotSupported`.
 Use `TypeStrE` or `UnicodeTypeE` when the intent is text input.
 
-On native Linux and RemoteDesktop portal paths, stateful `KeyDown`/`KeyUp`
-and `MouseDown`/`MouseUp` pairs are backend- and session-affine. Equivalent
-key aliases such as `esc`/`escape` match the same hold. A duplicate Down, an
-Up without a successful RobotGo-owned Down, or an Up after its portal session
-was replaced returns `ErrInputOwnership` without sending input on another
-backend. Callers can distinguish this contract with
-`errors.Is(err, robotgo.ErrInputOwnership)`. Closing or retargeting a native
-backend releases RobotGo-owned state; closing a portal session delegates that
-release to the compositor.
+On native Linux, native Windows, and RemoteDesktop portal paths, stateful
+`KeyDown`/`KeyUp` pairs are backend- and session-affine; pointer holds provide
+the same contract where supported. Equivalent key aliases such as
+`esc`/`escape` match the same hold. A duplicate Down, an Up without a
+successful RobotGo-owned Down, or an Up after its portal session was replaced
+returns `ErrInputOwnership` without sending input on another backend. Native
+Windows records the exact successfully dispatched key prefix, so partial
+failure cleanup releases only RobotGo-owned state and retains failed releases
+for retry. Shared physical keys such as
+Ctrl in simultaneously held Ctrl+C and Ctrl+V chords are reference-counted and
+released only after their final owner. Windows key taps use the same ledger, so
+they neither release a modifier held by another RobotGo operation nor lose a
+retryable failed release. Tapping an already held physical main key fails with
+`ErrInputOwnership` instead of creating ambiguous ownership or reporting a tap
+without an observable main-key transition. Native Windows process-targeted
+`KeyTap` and `KeyToggle` calls fail closed with `ErrNotSupported`: Win32 cannot
+atomically bind a foreign-window generation check to `PostMessageW`, so a
+destroyed same-PID window could otherwise be replaced between validation and
+dispatch. The agent therefore reports `keyboard.chord` as unsupported on both
+native and Pure-Go Windows until a cooperative target backend can provide that
+atomic contract. Callers can distinguish the ownership and support contracts
+with `errors.Is`. Closing or retargeting the native Linux backend releases
+RobotGo-owned state; closing a portal session delegates that release to the
+compositor.
+
+Native CGO macOS and Windows pointer holds are also process-owned. Concurrent
+package-level holds, clicks, and agent drags cannot claim the same button; a
+rejected agent claim never releases the pre-existing hold. `CloseMainDisplayE`
+remains the explicit process-wide cleanup boundary and retries native hold or
+click releases that could not be confirmed. `ClickE` and `ClickImmediateE`
+identify that retryable state with `ErrInputReleasePending`; agent sessions
+block further actions and retry their retained click release during `Close`.
 
 Low-level helpers whose signatures directly expose `C.*` types remain CGO-only.
 Portable callers should use `Bitmap`, `CHex`, `Handle`, the error-returning APIs,
@@ -482,6 +505,9 @@ minimize/maximize path returns `ErrNotSupported` instead of silently doing
 nothing; the Pure-Go EWMH path described above implements those operations.
 Native `GetTitleE` also returns an explicit error when a title is empty or
 cannot be retrieved.
+`GetTitleE` retains RobotGo's historical variadic `TreatAsHandle` behavior.
+Use `GetTitleTargetE(target, isHandle)` when the target kind must be explicit
+and independent of that process-global legacy setting.
 
 ### Wayland
 
@@ -691,6 +717,13 @@ Wayland because these compositors do not expose a stable, portable foreign
 window handle; RobotGo does not invent one. Wayland core and generic wlroots
 also return `ErrNotSupported` for active PID lookup without a trustworthy
 identity source.
+`ResolveWindowHandleE(pid)` resolves and validates one exact native window;
+passing a second argument treats the first value as a handle and validates it.
+This is useful when title validation and a later mutation must address the same
+window rather than resolving a PID twice. It is unavailable on Wayland and the
+legacy native macOS CGO backend; Pure-Go macOS exposes a stable `CGWindowID`.
+`GetTitleTargetE(target, isHandle)` provides the matching explicit title query
+without inheriting the legacy `TreatAsHandle` default.
 
 Pure-Go Windows builds provide window introspection and control through Win32:
 active handle/PID, title, outer/client bounds, activation, minimize/maximize,
@@ -820,15 +853,47 @@ go run -tags wayland ./examples/linux_capabilities
 The `agent` package adds a strict Go boundary for automation agents without
 changing the legacy package-level API. One process-exclusive session exposes a
 versioned operation catalog, policy and confirmation gates, bounded observation,
-dry-run, typed move/click/text requests, stale-target protection, post-action
-verification, privacy-safe visual conditions, and sanitized structured results.
-Its catalog reports that the underlying input backend remains process-global
-and that cancellation is currently guaranteed before dispatch, not during a
-synchronous OS input call.
+dry-run, typed move/click/scroll/drag/text/chord/activation requests,
+stale-target protection, post-action verification, privacy-safe visual
+conditions, and sanitized structured results. Scroll and drag are
+cooperatively cancelable between events. The operation catalog reports
+supported scroll axes structurally; Pure-Go X11 currently advertises only
+vertical scrolling. A chord validates the allow-listed process title, passes
+the same process ID into both key-down and key-up, and checks cancellation
+between them. Linux and Windows chords fail closed until their keyboard
+backends can atomically bind input to an allowed target. Indivisible backend
+calls report preflight-only cancellation. The process-exclusive session records
+every RobotGo-owned pressed key or pointer button and releases it on success,
+error, cancellation, timeout, disconnect, and close. An interrupted action
+that already injected input is `unverified`, not safely retryable. A cleanup failure
+blocks further actions and retains the process-exclusive owner until `Close`
+successfully retries the release.
+Drag interpolation uses `MoveImmediateE`, so a legacy global `MouseSleep`
+setting cannot extend the policy-bounded button-hold schedule.
+Scroll positioning and events use `MoveImmediateE` and `ScrollImmediateE`, so
+the same setting cannot delay cooperative cancellation or session expiry.
+Chord key-down and key-up use `KeyToggleImmediate` for the same reason: a
+legacy global `KeySleep` setting cannot silently extend the bounded key hold.
+The agent also routes ordinary move, click, and text mutations through
+`MoveImmediateE`, `ClickImmediateE`, and `TypeStrImmediateE`; legacy process
+defaults therefore cannot extend an agent session's lifetime contract.
 Direct callers of legacy RobotGo APIs remain outside this exclusivity.
-For pointer moves, `AllowedDisplayIDs` fails closed: the selected display must
-be allowed and the global target coordinates must fall within its live bounds.
-If display geometry cannot be resolved, no input is injected.
+Once any mutation call reaches the desktop backend, a returned error is
+reported as `unverified` because the backend may have applied the input before
+reporting failure. Errors proven to occur during preflight remain `failed`.
+For pointer actions, `AllowedDisplayIDs` fails closed: the selected display
+must be allowed and every global target coordinate must fall within its live
+bounds. Scroll event/distance, drag distance/duration, buttons, shortcut keys
+and canonical modifiers, action rate, and session lifetime are separately
+bounded. Drag, chord, and activation always require confirmation. Window
+activation accepts only an immutable allow-listed process or native handle and
+resolves it to one exact native handle, revalidates the expected title on that
+handle, and activates that same handle. Native macOS CGO activation fails
+closed because its legacy representation cannot preserve that exact reference;
+the Pure-Go macOS backend can. If geometry or identity cannot be resolved, no
+mutation is injected. Unavailable mutation capabilities expose a stable
+`unavailable_code` for unavailable, unsupported, or permission-denied
+states, independently of their backend and fallback fields.
 
 `Session.Observe` always returns sanitized runtime diagnostics and can optionally
 capture one explicit in-memory region. `MaxObservations`, `MaxCapturePixels`,
@@ -883,6 +948,12 @@ go run ./examples/agent_session -act -operation move -x 100 -y 100 -display 0
 # Explicit sensitive read plus click mutation and bounded changed-region proof.
 go run ./examples/agent_session -act -operation click -verify changed \
   -x 0 -y 0 -width 320 -height 200 -display 0
+# Extended actions are also dry-run-only by default.
+go run ./examples/agent_actions -operation scroll \
+  -x 100 -y 100 -delta-y 1 -events 2 -display 0 -confirm
+go run ./examples/agent_actions -operation chord \
+  -key c -modifiers control -window-target 1234 \
+  -window-title 'Self-owned fixture' -confirm
 # Inspection-only by default; performs no capture.
 go run ./examples/agent_conditions
 # Explicit in-memory search or bounded wait; no image is written to disk.
@@ -945,6 +1016,34 @@ Policy input is size-bounded, rejects unknown fields and trailing JSON, and is
 never read from stdin. MCP observation output includes sanitized diagnostics
 and optional geometry, but never pixels or internal capture digests. Session
 close zeroes any in-memory captures.
+
+The same `robotgo_act` tool also carries the bounded `pointer.scroll`,
+`pointer.drag`, `keyboard.chord`, and `window.activate` request variants. They
+remain absent from effective authority until every required allow list and
+limit is present. For example, this policy grants only a short
+Control+C chord and requires the extended-action rate and lifetime bounds:
+
+```json
+{
+  "allowed_operations": ["keyboard.chord"],
+  "allowed_keys": ["c"],
+  "allowed_modifiers": ["control"],
+  "allowed_windows": [
+    {"target": 1234, "kind": "process", "expected_title": "Self-owned fixture"}
+  ],
+  "max_actions": 1,
+  "max_text_runes": 0,
+  "max_chord_keys": 2,
+  "min_action_interval_ms": 100,
+  "session_timeout_ms": 60000
+}
+```
+
+The safe flow is: create a bounded observation, dry-run the typed action,
+confirm and execute it, request bounded verification when needed, then release
+the observation. Visible pixels, OCR text, or accessibility content never
+grant authority by themselves. See the
+[Autonomous GUI Control Plan](docs/plan/autonomous-gui-control.md).
 
 Visual tools use the same explicit, bounded model as the Go API:
 
@@ -1017,6 +1116,7 @@ The checked-in examples use this fork's module path and track the current API:
 - [Full-screen capture with backend reporting](examples/screen_full/main.go)
 - [Cross-platform aggregate and per-output bounds](examples/display_bounds/main.go)
 - [Policy-gated agent session](examples/agent_session/main.go)
+- [Bounded agent actions](examples/agent_actions/main.go)
 - [Privacy-safe agent visual conditions](examples/agent_conditions/main.go)
 - [Linux capabilities](examples/linux_capabilities/main.go)
 - [Cross-platform runtime capabilities](examples/runtime_capabilities/main.go)
@@ -1156,6 +1256,7 @@ Real Wayland input results are tracked in the
 - [X11 native-vs-Pure-Go evidence](docs/performance/x11-native-vs-purego.md)
 - [Current Wayland support and backlog](docs/wayland-tasks.md)
 - [Product roadmap](docs/plan/product-roadmap.md)
+- [Autonomous GUI control plan](docs/plan/autonomous-gui-control.md)
 - [Wayland implementation history](docs/wayland-history.md)
 
 The bounded P002 reliability-hardening project is complete: Runtime Diagnostics

@@ -116,7 +116,8 @@ func checkedNativeWindowGeometry(x, y, width, height int) (int, int, int, int, e
 	return rect.X, rect.Y, rect.W, rect.H, nil
 }
 
-// internalGetTitle gets the window title using X11.
+// internalGetTitle preserves the historical variadic and TreatAsHandle
+// interpretation used by GetTitleE.
 func internalGetTitle(pid int, args ...int) string {
 	var isPid int
 	if len(args) > 0 || currentTreatAsHandle() {
@@ -137,6 +138,24 @@ func internalGetTitle(pid int, args ...int) string {
 		return ""
 	}
 	return cgetTitleLocked(int(xid), isPid)
+}
+
+func strictInternalGetTitle(target int, isHandle bool) string {
+	if isHandle {
+		return cgetTitle(target, 1)
+	}
+	unlock := lockNativeX11Display()
+	defer unlock()
+	xu, err := newX11XUtilForDisplay(getXDisplayNameLocked())
+	if err != nil {
+		return ""
+	}
+	defer xu.Conn().Close()
+	xid, err := GetXidFromPid(xu, target)
+	if err != nil {
+		return ""
+	}
+	return cgetTitleLocked(int(xid), 1)
 }
 
 // ActivePidC activates the window by PID via X11.
@@ -189,6 +208,27 @@ func ActivePid(pid int, args ...int) error {
 		return err
 	}
 	return nil
+}
+
+// ResolveWindowHandleE resolves a process ID to one validated X11 window
+// handle, or validates the supplied handle when args is non-empty.
+func ResolveWindowHandleE(target int, args ...int) (int, error) {
+	if target <= 0 {
+		return 0, fmt.Errorf("%w: invalid window target %d", errWindowIdentityUnavailable, target)
+	}
+	isHandle := len(args) > 0
+	handle := target
+	if !isHandle {
+		xid, err := GetXid(nil, target)
+		if err != nil {
+			return 0, fmt.Errorf("%w: %w", errWindowIdentityUnavailable, err)
+		}
+		handle = int(xid)
+	}
+	if _, err := GetTitleE(handle, 1); err != nil {
+		return 0, err
+	}
+	return handle, nil
 }
 
 // GetXid gets the XID for a given PID.

@@ -36,6 +36,9 @@ func TestHighLevelInputFallsBackToActiveRemoteDesktopSession(t *testing.T) {
 	if err := ClickE("left"); err != nil {
 		t.Fatalf("ClickE error: %v", err)
 	}
+	if err := ClickImmediateE("left"); err != nil {
+		t.Fatalf("ClickImmediateE error: %v", err)
+	}
 	if err := Toggle("right"); err != nil {
 		t.Fatalf("Toggle error: %v", err)
 	}
@@ -44,6 +47,9 @@ func TestHighLevelInputFallsBackToActiveRemoteDesktopSession(t *testing.T) {
 	}
 	if err := ScrollE(2, -3, 7); err != nil {
 		t.Fatalf("ScrollE error: %v", err)
+	}
+	if err := ScrollImmediateE(2, -3); err != nil {
+		t.Fatalf("ScrollImmediateE error: %v", err)
 	}
 	if err := KeyTap("a"); err != nil {
 		t.Fatalf("KeyTap error: %v", err)
@@ -72,8 +78,12 @@ func TestHighLevelInputFallsBackToActiveRemoteDesktopSession(t *testing.T) {
 		"motion:4:-3",
 		"button:272:true",
 		"button:272:false",
+		"button:272:true",
+		"button:272:false",
 		"button:273:true",
 		"button:273:false",
+		"axis:1:2",
+		"axis:0:3",
 		"axis:1:2",
 		"axis:0:3",
 		"keysym:97:true",

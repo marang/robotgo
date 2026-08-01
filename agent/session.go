@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"image"
+	"runtime"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -15,9 +16,15 @@ import (
 
 type inputDriver interface {
 	DisplayBounds(displayID int) (displayBounds, error)
-	Move(x, y, displayID int) error
-	Click(button MouseButton, double bool) error
-	TypeText(text string) error
+	MoveImmediate(x, y, displayID int) error
+	ClickImmediate(button MouseButton, double bool) error
+	ScrollImmediate(deltaX, deltaY int) error
+	ToggleMouse(button MouseButton, down bool) error
+	TypeTextImmediate(text string) error
+	ToggleKeyImmediate(key string, modifiers []KeyModifier, targetPID int, down bool) error
+	ResolveWindow(target int, kind WindowTargetKind) (int, error)
+	WindowTitle(target int, kind WindowTargetKind) (string, error)
+	ActivateWindow(target int, kind WindowTargetKind) error
 	RuntimeCapabilities() robotgo.RuntimeCapabilities
 	Capture(context.Context, CaptureRegion) (image.Image, error)
 }
@@ -28,11 +35,82 @@ func (robotGoDriver) DisplayBounds(displayID int) (displayBounds, error) {
 	x, y, width, height, err := robotgo.GetDisplayBoundsE(displayID)
 	return displayBounds{x: x, y: y, width: width, height: height}, err
 }
-func (robotGoDriver) Move(x, y, displayID int) error { return robotgo.MoveE(x, y, displayID) }
-func (robotGoDriver) Click(button MouseButton, double bool) error {
-	return robotgo.ClickE(string(button), double)
+func (robotGoDriver) MoveImmediate(x, y, displayID int) error {
+	return robotgo.MoveImmediateE(x, y, displayID)
 }
-func (robotGoDriver) TypeText(text string) error { return robotgo.TypeStrE(text) }
+func (robotGoDriver) ClickImmediate(button MouseButton, double bool) error {
+	return robotgo.ClickImmediateE(string(button), double)
+}
+func (robotGoDriver) ScrollImmediate(deltaX, deltaY int) error {
+	return robotgo.ScrollImmediateE(deltaX, deltaY)
+}
+func (robotGoDriver) ToggleMouse(button MouseButton, down bool) error {
+	state := "down"
+	if !down {
+		state = "up"
+	}
+	return robotgo.Toggle(string(button), state)
+}
+func (robotGoDriver) TypeTextImmediate(text string) error {
+	return robotgo.TypeStrImmediateE(text)
+}
+func (robotGoDriver) ToggleKeyImmediate(
+	key string,
+	modifiers []KeyModifier,
+	targetPID int,
+	down bool,
+) error {
+	args := robotGoKeyArguments(modifiers)
+	if !down {
+		args = append([]interface{}{"up"}, args...)
+	}
+	args = append(args, targetPID)
+	return robotgo.KeyToggleImmediate(key, args...)
+}
+func (robotGoDriver) ResolveWindow(target int, kind WindowTargetKind) (int, error) {
+	if kind == WindowTargetHandle {
+		if nativeMacOSHandleUnsupported() {
+			return 0, fmt.Errorf("%w: native macOS window handles are not serializable activation targets", robotgo.ErrNotSupported)
+		}
+		return robotgo.ResolveWindowHandleE(target, 1)
+	}
+	return robotgo.ResolveWindowHandleE(target)
+}
+func (robotGoDriver) WindowTitle(target int, kind WindowTargetKind) (string, error) {
+	if kind == WindowTargetHandle && nativeMacOSHandleUnsupported() {
+		return "", fmt.Errorf("%w: native macOS window handles are not serializable activation targets", robotgo.ErrNotSupported)
+	}
+	return robotgo.GetTitleTargetE(target, kind == WindowTargetHandle)
+}
+func (robotGoDriver) ActivateWindow(target int, kind WindowTargetKind) error {
+	if kind == WindowTargetHandle {
+		return robotgo.ActivePid(target, 1)
+	}
+	return robotgo.ActivePid(target)
+}
+
+func nativeMacOSHandleUnsupported() bool {
+	return runtime.GOOS == "darwin" && robotgo.GetRuntimeBackendInfo().CGOEnabled
+}
+
+func robotGoKeyModifier(modifier KeyModifier) string {
+	switch modifier {
+	case KeyModifierControl:
+		return "ctrl"
+	case KeyModifierMeta:
+		return "cmd"
+	default:
+		return string(modifier)
+	}
+}
+
+func robotGoKeyArguments(modifiers []KeyModifier) []interface{} {
+	args := make([]interface{}, 0, len(modifiers))
+	for _, modifier := range modifiers {
+		args = append(args, robotGoKeyModifier(modifier))
+	}
+	return args
+}
 
 // Config defines immutable session policy.
 type Config struct {
@@ -53,12 +131,26 @@ type Session struct {
 	dispatchMu       sync.Mutex
 	used             uint64
 	closeOnce        sync.Once
+	closeMu          sync.Mutex
+	cleanupComplete  bool
 	observationMu    sync.Mutex
 	observations     map[string]observationRecord
 	usedObservations uint64
 	usedQueries      uint64
 	auditSink        AuditSink
 	auditSequence    uint64
+	pressedInputs    []pressedInput
+	inputTainted     bool
+	lastAction       time.Time
+	now              func() time.Time
+}
+
+type pressedInput struct {
+	button    MouseButton
+	key       string
+	modifiers []KeyModifier
+	targetPID int
+	keyboard  bool
 }
 
 var (
@@ -83,11 +175,23 @@ func newSession(policy Policy, driver inputDriver, capabilities robotgo.RuntimeC
 }
 
 func newSessionWithAudit(policy Policy, driver inputDriver, capabilities robotgo.RuntimeCapabilities, auditSink AuditSink) (*Session, error) {
-	ctx, cancel := context.WithCancel(context.Background())
+	var (
+		ctx    context.Context
+		cancel context.CancelFunc
+	)
+	if policy.SessionTimeoutMillis > 0 {
+		ctx, cancel = context.WithTimeout(
+			context.Background(),
+			time.Duration(policy.SessionTimeoutMillis)*time.Millisecond,
+		)
+	} else {
+		ctx, cancel = context.WithCancel(context.Background())
+	}
 	s := &Session{
 		policy: policy, driver: driver, catalog: buildCatalog(policy, capabilities),
 		ctx: ctx, cancel: cancel, actionGate: make(chan struct{}, 1),
 		observations: make(map[string]observationRecord), auditSink: auditSink,
+		now: time.Now,
 	}
 	s.actionGate <- struct{}{}
 	ownerMu.Lock()
@@ -105,25 +209,38 @@ func (s *Session) Catalog() OperationCatalog {
 	return cloneCatalog(s.catalog)
 }
 
-// Close prevents future actions, waits for an active synchronous mutation, and
-// releases the process-wide agent-session claim. It is safe to call repeatedly.
+// Close prevents future actions, waits for an active mutation, and releases
+// every session-owned pressed input before relinquishing the process-wide
+// agent-session claim. A cleanup failure retains ownership so a later Close
+// call can retry safely.
 func (s *Session) Close() error {
 	if s == nil {
 		return nil
 	}
 	s.closeOnce.Do(func() {
-		s.dispatchMu.Lock()
 		s.cancel()
-		s.dispatchMu.Unlock()
 		<-s.actionGate
 		s.closeObservations()
 		s.actionGate <- struct{}{}
-		ownerMu.Lock()
-		if activeOwner == s {
-			activeOwner = nil
-		}
-		ownerMu.Unlock()
 	})
+
+	s.closeMu.Lock()
+	defer s.closeMu.Unlock()
+	if s.cleanupComplete {
+		return nil
+	}
+	s.dispatchMu.Lock()
+	cleanupErr := s.releaseAllInputs()
+	s.dispatchMu.Unlock()
+	if cleanupErr != nil {
+		return cleanupErr
+	}
+	s.cleanupComplete = true
+	ownerMu.Lock()
+	defer ownerMu.Unlock()
+	if activeOwner == s {
+		activeOwner = nil
+	}
 	return nil
 }
 
@@ -154,7 +271,7 @@ func (s *Session) run(ctx context.Context, request ActionRequest, dryRun bool) (
 	case <-ctx.Done():
 		return contextFailure(ctx, id, resultOperation, started)
 	case <-s.ctx.Done():
-		return actionFailure(id, resultOperation, started, ErrorSessionClosed, "agent session is closed", ErrSessionClosed)
+		return s.sessionFailure(id, resultOperation, started)
 	case <-s.actionGate:
 	}
 	defer func() { s.actionGate <- struct{}{} }()
@@ -163,8 +280,15 @@ func (s *Session) run(ctx context.Context, request ActionRequest, dryRun bool) (
 	}
 	select {
 	case <-s.ctx.Done():
-		return actionFailure(id, resultOperation, started, ErrorSessionClosed, "agent session is closed", ErrSessionClosed)
+		return s.sessionFailure(id, resultOperation, started)
 	default:
+	}
+	if s.inputTainted {
+		return actionFailure(
+			id, resultOperation, started, ErrorCleanupFailed,
+			"pressed input cleanup failed; close the session before continuing",
+			ErrInputCleanup,
+		)
 	}
 	capability, ok := s.capability(request.Operation)
 	if !ok {
@@ -177,10 +301,25 @@ func (s *Session) run(ctx context.Context, request ActionRequest, dryRun bool) (
 		return actionFailure(id, request.Operation, started, ErrorPolicyDenied, "agent policy denied the action", err)
 	}
 	if !capability.Available {
-		return actionFailure(id, request.Operation, started, ErrorUnsupported, "operation is unavailable on the selected backend", robotgo.ErrNotSupported)
+		code := capability.UnavailableCode
+		if code == "" {
+			code = ErrorUnavailable
+		}
+		return actionFailure(
+			id, request.Operation, started, code,
+			"operation is unavailable on the selected backend",
+			capabilityUnavailableCause(code),
+		)
+	}
+	if err := validateBackendRequest(request, capability); err != nil {
+		code, message := classifyBackendError(err)
+		return actionFailure(id, request.Operation, started, code, message, err)
 	}
 	if s.used >= s.policy.MaxActions {
 		return actionFailure(id, request.Operation, started, ErrorPolicyDenied, "agent policy action limit reached", ErrPolicyDenied)
+	}
+	if err := s.validateActionRate(); err != nil {
+		return actionFailure(id, request.Operation, started, ErrorPolicyDenied, "agent policy action rate limit reached", err)
 	}
 	if err := s.emitAudit(ctx, AuditEvent{
 		Kind: AuditActionStarted, Operation: request.Operation, ActionID: id,
@@ -194,21 +333,19 @@ func (s *Session) run(ctx context.Context, request ActionRequest, dryRun bool) (
 	}
 	select {
 	case <-s.ctx.Done():
-		result, actionErr := actionFailure(id, request.Operation, started, ErrorSessionClosed, "agent session is closed", ErrSessionClosed)
+		result, actionErr := s.sessionFailure(id, request.Operation, started)
 		return s.finishFailedActionAudit(ctx, result, actionErr)
 	default:
 	}
-	if request.Move != nil {
-		if err := s.validateMoveTarget(*request.Move); err != nil {
-			if errors.Is(err, ErrPolicyDenied) {
-				result, actionErr := actionFailure(id, request.Operation, started, ErrorPolicyDenied, "agent policy denied the action", err)
-				return s.finishFailedActionAudit(ctx, result, actionErr)
-			}
-			code, message := classifyBackendError(err)
-			result, actionErr := actionFailure(id, request.Operation, started, code, message, err)
-			result.Backend = capability.Backend
+	if err := s.validateActionTargets(request); err != nil {
+		if errors.Is(err, ErrPolicyDenied) {
+			result, actionErr := actionFailure(id, request.Operation, started, ErrorPolicyDenied, "agent policy denied the action", err)
 			return s.finishFailedActionAudit(ctx, result, actionErr)
 		}
+		code, message := classifyBackendError(err)
+		result, actionErr := actionFailure(id, request.Operation, started, code, message, err)
+		result.Backend = capability.Backend
+		return s.finishFailedActionAudit(ctx, result, actionErr)
 	}
 	if err := ctx.Err(); err != nil {
 		result, actionErr := contextFailure(ctx, id, request.Operation, started)
@@ -216,7 +353,7 @@ func (s *Session) run(ctx context.Context, request ActionRequest, dryRun bool) (
 	}
 	select {
 	case <-s.ctx.Done():
-		result, actionErr := actionFailure(id, request.Operation, started, ErrorSessionClosed, "agent session is closed", ErrSessionClosed)
+		result, actionErr := s.sessionFailure(id, request.Operation, started)
 		return s.finishFailedActionAudit(ctx, result, actionErr)
 	default:
 	}
@@ -237,7 +374,7 @@ func (s *Session) run(ctx context.Context, request ActionRequest, dryRun bool) (
 	}
 	select {
 	case <-s.ctx.Done():
-		result, actionErr := actionFailure(id, request.Operation, started, ErrorSessionClosed, "agent session is closed", ErrSessionClosed)
+		result, actionErr := s.sessionFailure(id, request.Operation, started)
 		return s.finishFailedActionAudit(ctx, result, actionErr)
 	default:
 	}
@@ -254,6 +391,9 @@ func (s *Session) run(ctx context.Context, request ActionRequest, dryRun bool) (
 		lineage.release()
 		code, message := classifyBackendError(err)
 		result, actionErr := actionFailure(id, request.Operation, started, code, message, err)
+		if code == ErrorCleanupFailed || errors.Is(err, errPartialAction) {
+			result.Status = ActionUnverified
+		}
 		result.Backend = capability.Backend
 		result.PreconditionObservationID = preconditionID(request)
 		return s.finishFailedActionAudit(ctx, result, actionErr)
@@ -288,6 +428,34 @@ func (s *Session) run(ctx context.Context, request ActionRequest, dryRun bool) (
 	}
 	result.DurationMillis = time.Since(started).Milliseconds()
 	return s.finishSuccessfulActionAudit(ctx, result)
+}
+
+func capabilityUnavailableCause(code ErrorCode) error {
+	switch code {
+	case ErrorUnsupported:
+		return robotgo.ErrNotSupported
+	case ErrorPermissionDenied:
+		return robotgo.ErrPermissionDenied
+	default:
+		return nil
+	}
+}
+
+func (s *Session) sessionFailure(
+	id string,
+	operation Operation,
+	started time.Time,
+) (ActionResult, error) {
+	if errors.Is(s.ctx.Err(), context.DeadlineExceeded) {
+		return actionFailure(
+			id, operation, started, ErrorTimedOut,
+			"agent session lifetime expired", context.DeadlineExceeded,
+		)
+	}
+	return actionFailure(
+		id, operation, started, ErrorSessionClosed,
+		"agent session is closed", ErrSessionClosed,
+	)
 }
 
 func (s *Session) finishSuccessfulActionAudit(ctx context.Context, result ActionResult) (ActionResult, error) {
@@ -354,6 +522,35 @@ func (s *Session) validateMoveTarget(move MoveAction) error {
 	return nil
 }
 
+func (s *Session) validateActionTargets(request ActionRequest) error {
+	switch request.Operation {
+	case OperationMove:
+		return s.validateMoveTarget(*request.Move)
+	case OperationScroll:
+		return s.validateMoveTarget(MoveAction{
+			X: request.Scroll.TargetX, Y: request.Scroll.TargetY,
+			DisplayID: request.Scroll.DisplayID,
+		})
+	case OperationDrag:
+		if err := s.validateMoveTarget(MoveAction{
+			X: request.Drag.StartX, Y: request.Drag.StartY,
+			DisplayID: request.Drag.DisplayID,
+		}); err != nil {
+			return err
+		}
+		return s.validateMoveTarget(MoveAction{
+			X: request.Drag.EndX, Y: request.Drag.EndY,
+			DisplayID: request.Drag.DisplayID,
+		})
+	case OperationKeyChord:
+		return s.validateActiveWindow(*request.KeyChord)
+	case OperationActivate:
+		return s.validateWindowIdentity(*request.Activate)
+	default:
+		return nil
+	}
+}
+
 func (s *Session) capability(operation Operation) (OperationCapability, bool) {
 	for _, capability := range s.catalog.Operations {
 		if capability.Operation == operation {
@@ -363,11 +560,29 @@ func (s *Session) capability(operation Operation) (OperationCapability, bool) {
 	return OperationCapability{}, false
 }
 
+func validateBackendRequest(request ActionRequest, capability OperationCapability) error {
+	if request.Operation != OperationScroll || request.Scroll == nil ||
+		request.Scroll.DeltaX == 0 {
+		return nil
+	}
+	for _, axis := range capability.ScrollAxes {
+		if axis == ScrollAxisHorizontal {
+			return nil
+		}
+	}
+	return fmt.Errorf(
+		"%w: backend %q does not support horizontal scrolling",
+		robotgo.ErrNotSupported,
+		capability.Backend,
+	)
+}
+
 func (s *Session) authorize(request ActionRequest) error {
 	if _, allowed := s.policy.allowOperation[request.Operation]; !allowed {
 		return ErrPolicyDenied
 	}
-	if _, required := s.policy.requireConfirmation[request.Operation]; required && !request.Confirmed {
+	_, policyConfirmation := s.policy.requireConfirmation[request.Operation]
+	if (policyConfirmation || mandatoryConfirmation(request.Operation)) && !request.Confirmed {
 		return ErrPolicyDenied
 	}
 	if request.Move != nil {
@@ -378,8 +593,53 @@ func (s *Session) authorize(request ActionRequest) error {
 	if request.Click != nil && request.Click.Double && !s.policy.AllowDoubleClick {
 		return ErrPolicyDenied
 	}
+	if request.Click != nil {
+		if _, allowed := s.policy.allowButton[request.Click.Button]; !allowed {
+			return ErrPolicyDenied
+		}
+	}
 	if request.TypeText != nil && utf8.RuneCountInString(request.TypeText.Text) > s.policy.MaxTextRunes {
 		return ErrPolicyDenied
+	}
+	if request.Scroll != nil {
+		if _, allowed := s.policy.allowDisplay[request.Scroll.DisplayID]; !allowed ||
+			request.Scroll.Events > s.policy.MaxScrollEvents ||
+			scrollDistance(*request.Scroll) > s.policy.MaxScrollDistance {
+			return ErrPolicyDenied
+		}
+	}
+	if request.Drag != nil {
+		if _, allowed := s.policy.allowDisplay[request.Drag.DisplayID]; !allowed {
+			return ErrPolicyDenied
+		}
+		if _, allowed := s.policy.allowButton[request.Drag.Button]; !allowed ||
+			dragDistance(*request.Drag) > s.policy.MaxDragDistance ||
+			request.Drag.DurationMillis > s.policy.MaxDragDurationMillis {
+			return ErrPolicyDenied
+		}
+	}
+	if request.KeyChord != nil {
+		if _, allowed := s.policy.allowKey[request.KeyChord.Key]; !allowed ||
+			uint32(len(request.KeyChord.Modifiers)+1) > s.policy.MaxChordKeys {
+			return ErrPolicyDenied
+		}
+		for _, modifier := range request.KeyChord.Modifiers {
+			if _, allowed := s.policy.allowModifier[modifier]; !allowed {
+				return ErrPolicyDenied
+			}
+		}
+		identity := windowTargetIdentity{
+			target: request.KeyChord.TargetPID, kind: WindowTargetProcess,
+		}
+		if _, allowed := s.policy.allowWindow[identity]; !allowed {
+			return ErrPolicyDenied
+		}
+	}
+	if request.Activate != nil {
+		identity := windowTargetIdentity{target: request.Activate.Target, kind: request.Activate.Kind}
+		if _, allowed := s.policy.allowWindow[identity]; !allowed {
+			return ErrPolicyDenied
+		}
 	}
 	return nil
 }
@@ -413,7 +673,19 @@ func validateRequest(request ActionRequest) error {
 	if request.Click != nil {
 		payloads++
 	}
+	if request.Scroll != nil {
+		payloads++
+	}
+	if request.Drag != nil {
+		payloads++
+	}
 	if request.TypeText != nil {
+		payloads++
+	}
+	if request.KeyChord != nil {
+		payloads++
+	}
+	if request.Activate != nil {
 		payloads++
 	}
 	if payloads != 1 {
@@ -428,14 +700,45 @@ func validateRequest(request ActionRequest) error {
 		if request.Click == nil {
 			return errors.New("click payload does not match operation")
 		}
-		switch request.Click.Button {
-		case MouseButtonLeft, MouseButtonMiddle, MouseButtonRight:
-		default:
+		if !validMouseButton(request.Click.Button) {
 			return errors.New("unsupported mouse button")
+		}
+	case OperationScroll:
+		if request.Scroll == nil || request.Scroll.DisplayID < 0 ||
+			request.Scroll.Events == 0 ||
+			request.Scroll.DeltaX == 0 && request.Scroll.DeltaY == 0 {
+			return errors.New("scroll requires a display, non-zero delta, and positive event count")
+		}
+	case OperationDrag:
+		if request.Drag == nil || request.Drag.DisplayID < 0 ||
+			!validMouseButton(request.Drag.Button) ||
+			request.Drag.DurationMillis <= 0 ||
+			request.Drag.StartX == request.Drag.EndX && request.Drag.StartY == request.Drag.EndY {
+			return errors.New("drag requires a display, button, distinct coordinates, and positive duration")
 		}
 	case OperationTypeText:
 		if request.TypeText == nil || request.TypeText.Text == "" || !utf8.ValidString(request.TypeText.Text) {
 			return errors.New("type-text requires non-empty valid UTF-8")
+		}
+	case OperationKeyChord:
+		if request.KeyChord == nil || !validChordKey(request.KeyChord.Key) ||
+			request.KeyChord.TargetPID <= 0 {
+			return errors.New("keyboard chord requires one canonical supported key and positive target PID")
+		}
+		seen := make(map[KeyModifier]struct{}, len(request.KeyChord.Modifiers))
+		for _, modifier := range request.KeyChord.Modifiers {
+			if !validKeyModifier(modifier) {
+				return errors.New("keyboard chord contains an unsupported modifier")
+			}
+			if _, duplicate := seen[modifier]; duplicate {
+				return errors.New("keyboard chord contains a duplicate modifier")
+			}
+			seen[modifier] = struct{}{}
+		}
+	case OperationActivate:
+		if request.Activate == nil || request.Activate.Target <= 0 ||
+			!validWindowTargetKind(request.Activate.Kind) {
+			return errors.New("window activation requires a positive target and valid kind")
 		}
 	default:
 		return errors.New("unknown operation")
@@ -443,14 +746,27 @@ func validateRequest(request ActionRequest) error {
 	return nil
 }
 
-func (s *Session) execute(request ActionRequest) error {
+func (s *Session) execute(ctx context.Context, request ActionRequest) error {
 	switch request.Operation {
 	case OperationMove:
-		return s.driver.Move(request.Move.X, request.Move.Y, request.Move.DisplayID)
+		return ambiguousMutationError(
+			s.driver.MoveImmediate(request.Move.X, request.Move.Y, request.Move.DisplayID),
+		)
 	case OperationClick:
-		return s.driver.Click(request.Click.Button, request.Click.Double)
+		return s.clickMutationError(
+			request.Click.Button,
+			s.driver.ClickImmediate(request.Click.Button, request.Click.Double),
+		)
+	case OperationScroll:
+		return s.executeScroll(ctx, *request.Scroll)
+	case OperationDrag:
+		return s.executeDrag(ctx, *request.Drag)
 	case OperationTypeText:
-		return s.driver.TypeText(request.TypeText.Text)
+		return ambiguousMutationError(s.driver.TypeTextImmediate(request.TypeText.Text))
+	case OperationKeyChord:
+		return s.executeKeyChord(ctx, *request.KeyChord)
+	case OperationActivate:
+		return s.executeActivate(ctx, *request.Activate)
 	default:
 		return fmt.Errorf("%w: unknown operation", robotgo.ErrNotSupported)
 	}
@@ -459,22 +775,27 @@ func (s *Session) execute(request ActionRequest) error {
 func (s *Session) executeAuthorized(ctx context.Context, request ActionRequest) error {
 	s.dispatchMu.Lock()
 	defer s.dispatchMu.Unlock()
-	if err := ctx.Err(); err != nil {
+	if err := s.executionError(ctx); err != nil {
 		return err
 	}
-	select {
-	case <-s.ctx.Done():
-		return ErrSessionClosed
-	default:
+	if err := s.validateActionRate(); err != nil {
+		return err
 	}
 	s.used++
-	return s.execute(request)
+	s.lastAction = s.now()
+	return s.execute(ctx, request)
 }
 
 func classifyBackendError(err error) (ErrorCode, string) {
 	switch {
 	case errors.Is(err, ErrSessionClosed):
 		return ErrorSessionClosed, "agent session is closed"
+	case errors.Is(err, ErrPolicyDenied):
+		return ErrorPolicyDenied, "agent policy denied the action"
+	case errors.Is(err, ErrStaleTarget):
+		return ErrorStaleTarget, "agent observation target is stale"
+	case errors.Is(err, ErrInputCleanup):
+		return ErrorCleanupFailed, "pressed input cleanup failed; do not retry the action"
 	case errors.Is(err, robotgo.ErrNotSupported):
 		return ErrorUnsupported, "operation is unsupported by the selected backend"
 	case errors.Is(err, robotgo.ErrPermissionDenied):

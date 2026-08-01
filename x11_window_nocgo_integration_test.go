@@ -372,6 +372,14 @@ func TestPureGoX11WindowIntrospectionAndControl(t *testing.T) {
 		title != "RobotGo Pure-Go X11" {
 		t.Fatalf("GetTitleE(handle) = %q, %v", title, err)
 	}
+	if title, err := robotgo.GetTitleTargetE(int(harness.window), true); err != nil ||
+		title != "RobotGo Pure-Go X11" {
+		t.Fatalf("GetTitleTargetE(handle) = %q, %v", title, err)
+	}
+	if title, err := robotgo.GetTitleTargetE(os.Getpid(), false); err != nil ||
+		title != "RobotGo Pure-Go X11" {
+		t.Fatalf("GetTitleTargetE(pid) = %q, %v", title, err)
+	}
 	if x, y, width, height := robotgo.GetClient(os.Getpid()); x != x11WindowX ||
 		y != x11WindowY || width != x11WindowWidth || height != x11WindowHeight {
 		t.Fatalf(

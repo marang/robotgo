@@ -365,6 +365,8 @@ func nativeKeyStatusError(status C.int, operation string) error {
 		return fmt.Errorf("robotgo: %s: active modifier or lock state cannot safely produce the requested input", operation)
 	case int(C.ROBOTGO_KEY_OWNERSHIP_CONFLICT):
 		return fmt.Errorf("%w: %s: key state is owned by another input source or has no matching RobotGo key-down", ErrInputOwnership, operation)
+	case int(C.ROBOTGO_KEY_NOT_APPLIED):
+		return fmt.Errorf("%w: %s: native keyboard injection failed before acquiring key state", ErrInputNotApplied, operation)
 	default:
 		return fmt.Errorf("robotgo: %s: unknown native keyboard status %d", operation, int(status))
 	}
@@ -857,7 +859,7 @@ func keyTaps(k string, keyArr []string, pid int) error {
 	return nil
 }
 
-func keyTogglesB(k string, down bool, keyArr []string, pid int) error {
+func keyTogglesB(k string, down bool, keyArr []string, pid int, applyDelay bool) error {
 	flags, err := getFlagsFromValue(keyArr)
 	if err != nil {
 		return err
@@ -873,7 +875,7 @@ func keyTogglesB(k string, down bool, keyArr []string, pid int) error {
 			C.toggleKeyCode(key, C.bool(down), flags, C.uintptr(pid)),
 			"toggle key",
 		)
-		if nativeErr == nil {
+		if nativeErr == nil && applyDelay {
 			MilliSleep(currentKeyDelay())
 		}
 		return nativeErr
@@ -892,7 +894,7 @@ func keyTogglesB(k string, down bool, keyArr []string, pid int) error {
 		if hold.backend == persistentInputBackendPortal {
 			_, err := tryPortalKeyUp(hold)
 			delete(keyboardHolds, id)
-			if err == nil {
+			if err == nil && applyDelay {
 				MilliSleep(currentKeyDelay())
 			}
 			return err
@@ -910,7 +912,7 @@ func keyTogglesB(k string, down bool, keyArr []string, pid int) error {
 		if nativeErr == nil || errors.Is(nativeErr, ErrInputOwnership) {
 			delete(keyboardHolds, id)
 		}
-		if nativeErr == nil {
+		if nativeErr == nil && applyDelay {
 			MilliSleep(currentKeyDelay())
 		}
 		return nativeErr
@@ -941,6 +943,8 @@ func keyTogglesB(k string, down bool, keyArr []string, pid int) error {
 		if used, hold, err := tryPortalKeyDown(server, k, keyArr, pid); used {
 			if err == nil {
 				keyboardHolds[id] = hold
+			}
+			if err == nil && applyDelay {
 				MilliSleep(currentKeyDelay())
 			}
 			return err
@@ -951,7 +955,9 @@ func keyTogglesB(k string, down bool, keyArr []string, pid int) error {
 		backend: persistentInputBackendNative,
 		server:  server,
 	}
-	MilliSleep(currentKeyDelay())
+	if applyDelay {
+		MilliSleep(currentKeyDelay())
+	}
 	return nil
 }
 
@@ -1063,6 +1069,16 @@ func KeyTap(key string, args ...interface{}) error {
 //	robotgo.KeyToggle("a", "up", "alt", "cmd")
 //	robotgo.KeyToggle("k", pid int)
 func KeyToggle(key string, args ...interface{}) error {
+	return keyToggle(key, true, args...)
+}
+
+// KeyToggleImmediate changes key state without applying the configured
+// post-event delay. It is intended for callers that own a bounded hold.
+func KeyToggleImmediate(key string, args ...interface{}) error {
+	return keyToggle(key, false, args...)
+}
+
+func keyToggle(key string, applyDelay bool, args ...interface{}) error {
 	key, args = appendShift(key, args...)
 	pid, down, keyArr, err := parseKeyArguments(args, true)
 	if err != nil {
@@ -1075,7 +1091,7 @@ func KeyToggle(key string, args ...interface{}) error {
 	if err := validateKeyArgument(key); err != nil {
 		return err
 	}
-	return keyTogglesB(key, down, keyArr, pid)
+	return keyTogglesB(key, down, keyArr, pid, applyDelay)
 }
 
 // KeyPress presses and releases a key as one backend transaction. It is
@@ -1224,6 +1240,16 @@ func TypeStr(str string, args ...int) {
 
 // TypeStrE sends a UTF-8 string and reports backend or key injection errors.
 func TypeStrE(str string, args ...int) error {
+	return typeStrE(str, true, args...)
+}
+
+// TypeStrImmediateE sends a UTF-8 string without applying the configured
+// post-input delay. Explicit per-rune delay arguments remain honored.
+func TypeStrImmediateE(str string, args ...int) error {
+	return typeStrE(str, false, args...)
+}
+
+func typeStrE(str string, applyDelay bool, args ...int) error {
 	pid, tm, err := parseTextInput(str, args)
 	if err != nil {
 		return err
@@ -1255,7 +1281,9 @@ func TypeStrE(str string, args ...int) error {
 			}
 			MilliSleep(tm)
 		}
-		MilliSleep(currentKeyDelay())
+		if applyDelay {
+			MilliSleep(currentKeyDelay())
+		}
 		return nil
 	})
 	if nativeErr != nil && shouldTryRemoteDesktopAfterNative(server, ready, nativeErr) {

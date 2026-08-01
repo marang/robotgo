@@ -124,10 +124,25 @@ func getLocationColorWith(
 
 func GetMousePos() (int, int)               { return Location() }
 func GetTitleE(args ...int) (string, error) { return pureGoWindowTitle(args...) }
-func GetXDisplayName() string               { return "" }
-func SetXDisplayName(string) error          { return ErrNotSupported }
-func Is64Bit() bool                         { return strconv.IntSize == 64 }
-func IsMain(displayID int) bool             { return displayID == GetMainId() }
+
+// GetTitleTargetE gets the title of an explicit process or window handle.
+// Unlike GetTitleE, isHandle does not inherit the legacy TreatAsHandle setting.
+func GetTitleTargetE(target int, isHandle bool) (string, error) {
+	handle, err := pureGoWindowResolve(target, isHandle)
+	if err != nil {
+		return "", err
+	}
+	backend, err := pureGoWindowBackend()
+	if err != nil {
+		return "", err
+	}
+	return backend.Title(handle)
+}
+
+func GetXDisplayName() string      { return "" }
+func SetXDisplayName(string) error { return ErrNotSupported }
+func Is64Bit() bool                { return strconv.IntSize == 64 }
+func IsMain(displayID int) bool    { return displayID == GetMainId() }
 func IsValid() bool {
 	_, err := pureGoWindowActive()
 	return err == nil

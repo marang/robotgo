@@ -20,7 +20,11 @@ package robotgo
 */
 import "C"
 
-import "unsafe"
+import (
+	"fmt"
+	"runtime"
+	"unsafe"
+)
 
 // GetBounds get the window bounds
 func GetBounds(pid int, args ...int) (int, int, int, int) {
@@ -67,15 +71,22 @@ func checkedPlatformWindowGeometry(x, y, width, height int) (int, int, int, int,
 	return rect.X, rect.Y, rect.W, rect.H, nil
 }
 
-// internalGetTitle get the window title
+// internalGetTitle preserves the historical variadic and TreatAsHandle
+// interpretation used by GetTitleE.
 func internalGetTitle(pid int, args ...int) string {
 	var isPid int
 	if len(args) > 0 || currentTreatAsHandle() {
 		isPid = 1
 	}
-	gtitle := cgetTitle(pid, isPid)
+	return cgetTitle(pid, isPid)
+}
 
-	return gtitle
+func strictInternalGetTitle(target int, isHandle bool) string {
+	flag := 0
+	if isHandle {
+		flag = 1
+	}
+	return cgetTitle(target, flag)
 }
 
 // ActivePid active the window by PID,
@@ -92,8 +103,39 @@ func ActivePid(pid int, args ...int) error {
 		isPid = 1
 	}
 
-	internalActive(pid, isPid)
+	if !internalActive(pid, isPid) {
+		return fmt.Errorf("%w: native backend could not activate target window", errWindowOperationFailed)
+	}
 	return nil
+}
+
+// ResolveWindowHandleE resolves a process ID to one validated native window
+// handle, or validates the supplied handle when args is non-empty.
+func ResolveWindowHandleE(target int, args ...int) (int, error) {
+	if target <= 0 {
+		return 0, fmt.Errorf("%w: invalid window target %d", errWindowIdentityUnavailable, target)
+	}
+	if runtime.GOOS == "darwin" {
+		return 0, fmt.Errorf(
+			"%w: native macOS CGO cannot expose one serializable exact window reference",
+			ErrNotSupported,
+		)
+	}
+	handle := target
+	if len(args) == 0 {
+		handle = GetHWNDByPid(target)
+		if handle <= 0 {
+			return 0, fmt.Errorf(
+				"%w: no native window matched process %d",
+				errWindowIdentityUnavailable,
+				target,
+			)
+		}
+	}
+	if _, err := GetTitleE(handle, 1); err != nil {
+		return 0, err
+	}
+	return handle, nil
 }
 
 // DisplaysNum get the count of displays

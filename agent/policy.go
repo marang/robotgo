@@ -1,10 +1,22 @@
 package agent
 
-import "fmt"
+import (
+	"fmt"
+	"strings"
+	"unicode/utf8"
+)
 
 const (
 	maxAgentCapturePixels          = 16 * 1024 * 1024
 	maxAgentQueries                = 1_000_000
+	maxAgentScrollEvents           = 100
+	maxAgentScrollDistance         = 100_000
+	maxAgentDragDistance           = 100_000
+	maxAgentDragDurationMS         = 60_000
+	maxAgentChordKeys              = 5
+	maxAgentActionIntervalMS       = 60_000
+	maxAgentSessionTimeoutMS       = 24 * 60 * 60 * 1000
+	maxAgentWindowTitleRunes       = 1024
 	maxAgentVerificationAttempts   = 100
 	maxAgentVerificationIntervalMS = 60_000
 	maxAgentVerificationTimeoutMS  = 300_000
@@ -13,27 +25,56 @@ const (
 	maxAgentWaitTimeoutMS          = 300_000
 )
 
+// WindowTarget is one immutable activation allow-list entry. ExpectedTitle is
+// compared with the live title immediately before dispatch to reject stale or
+// reused native handles.
+type WindowTarget struct {
+	Target        int              `json:"target"`
+	Kind          WindowTargetKind `json:"kind"`
+	ExpectedTitle string           `json:"expected_title"`
+}
+
 // Policy constrains every observation, query, and mutation performed by a Session.
 // Empty allow lists deny access; callers must opt in explicitly.
 type Policy struct {
-	AllowedOperations          []Operation `json:"allowed_operations"`
-	ConfirmOperations          []Operation `json:"confirm_operations,omitempty"`
-	AllowedDisplayIDs          []int       `json:"allowed_display_ids,omitempty"`
-	MaxActions                 uint64      `json:"max_actions"`
-	MaxTextRunes               int         `json:"max_text_runes"`
-	AllowDoubleClick           bool        `json:"allow_double_click,omitempty"`
-	MaxObservations            uint64      `json:"max_observations,omitempty"`
-	MaxCapturePixels           uint64      `json:"max_capture_pixels,omitempty"`
-	MaxQueries                 uint64      `json:"max_queries,omitempty"`
-	WaitAttempts               uint32      `json:"wait_attempts,omitempty"`
-	WaitIntervalMillis         int         `json:"wait_interval_ms,omitempty"`
-	WaitTimeoutMillis          int         `json:"wait_timeout_ms,omitempty"`
-	VerificationAttempts       uint32      `json:"verification_attempts,omitempty"`
-	VerificationIntervalMillis int         `json:"verification_interval_ms,omitempty"`
-	VerificationTimeoutMillis  int         `json:"verification_timeout_ms,omitempty"`
+	AllowedOperations          []Operation    `json:"allowed_operations"`
+	ConfirmOperations          []Operation    `json:"confirm_operations,omitempty"`
+	AllowedDisplayIDs          []int          `json:"allowed_display_ids,omitempty"`
+	AllowedMouseButtons        []MouseButton  `json:"allowed_mouse_buttons,omitempty"`
+	AllowedKeys                []string       `json:"allowed_keys,omitempty"`
+	AllowedModifiers           []KeyModifier  `json:"allowed_modifiers,omitempty"`
+	AllowedWindows             []WindowTarget `json:"allowed_windows,omitempty"`
+	MaxActions                 uint64         `json:"max_actions"`
+	MaxTextRunes               int            `json:"max_text_runes"`
+	AllowDoubleClick           bool           `json:"allow_double_click,omitempty"`
+	MaxScrollEvents            uint32         `json:"max_scroll_events,omitempty"`
+	MaxScrollDistance          uint64         `json:"max_scroll_distance,omitempty"`
+	MaxDragDistance            uint64         `json:"max_drag_distance,omitempty"`
+	MaxDragDurationMillis      int            `json:"max_drag_duration_ms,omitempty"`
+	MaxChordKeys               uint32         `json:"max_chord_keys,omitempty"`
+	MinActionIntervalMillis    int            `json:"min_action_interval_ms,omitempty"`
+	SessionTimeoutMillis       int            `json:"session_timeout_ms,omitempty"`
+	MaxObservations            uint64         `json:"max_observations,omitempty"`
+	MaxCapturePixels           uint64         `json:"max_capture_pixels,omitempty"`
+	MaxQueries                 uint64         `json:"max_queries,omitempty"`
+	WaitAttempts               uint32         `json:"wait_attempts,omitempty"`
+	WaitIntervalMillis         int            `json:"wait_interval_ms,omitempty"`
+	WaitTimeoutMillis          int            `json:"wait_timeout_ms,omitempty"`
+	VerificationAttempts       uint32         `json:"verification_attempts,omitempty"`
+	VerificationIntervalMillis int            `json:"verification_interval_ms,omitempty"`
+	VerificationTimeoutMillis  int            `json:"verification_timeout_ms,omitempty"`
 	allowOperation             map[Operation]struct{}
 	requireConfirmation        map[Operation]struct{}
 	allowDisplay               map[int]struct{}
+	allowButton                map[MouseButton]struct{}
+	allowKey                   map[string]struct{}
+	allowModifier              map[KeyModifier]struct{}
+	allowWindow                map[windowTargetIdentity]WindowTarget
+}
+
+type windowTargetIdentity struct {
+	target int
+	kind   WindowTargetKind
 }
 
 func preparePolicy(input Policy) (Policy, error) {
@@ -45,6 +86,27 @@ func preparePolicy(input Policy) (Policy, error) {
 	}
 	if input.MaxQueries > maxAgentQueries {
 		return Policy{}, fmt.Errorf("agent: max queries exceeds hard limit %d", maxAgentQueries)
+	}
+	if input.MaxScrollEvents > maxAgentScrollEvents {
+		return Policy{}, fmt.Errorf("agent: max scroll events exceeds hard limit %d", maxAgentScrollEvents)
+	}
+	if input.MaxScrollDistance > maxAgentScrollDistance {
+		return Policy{}, fmt.Errorf("agent: max scroll distance exceeds hard limit %d", maxAgentScrollDistance)
+	}
+	if input.MaxDragDistance > maxAgentDragDistance {
+		return Policy{}, fmt.Errorf("agent: max drag distance exceeds hard limit %d", maxAgentDragDistance)
+	}
+	if input.MaxDragDurationMillis < 0 || input.MaxDragDurationMillis > maxAgentDragDurationMS {
+		return Policy{}, fmt.Errorf("agent: max drag duration must be between 0 and %dms", maxAgentDragDurationMS)
+	}
+	if input.MaxChordKeys > maxAgentChordKeys {
+		return Policy{}, fmt.Errorf("agent: max chord keys exceeds hard limit %d", maxAgentChordKeys)
+	}
+	if input.MinActionIntervalMillis < 0 || input.MinActionIntervalMillis > maxAgentActionIntervalMS {
+		return Policy{}, fmt.Errorf("agent: minimum action interval must be between 0 and %dms", maxAgentActionIntervalMS)
+	}
+	if input.SessionTimeoutMillis < 0 || input.SessionTimeoutMillis > maxAgentSessionTimeoutMS {
+		return Policy{}, fmt.Errorf("agent: session timeout must be between 0 and %dms", maxAgentSessionTimeoutMS)
 	}
 	if input.WaitAttempts > maxAgentWaitAttempts {
 		return Policy{}, fmt.Errorf("agent: wait attempts exceeds hard limit %d", maxAgentWaitAttempts)
@@ -74,11 +136,22 @@ func preparePolicy(input Policy) (Policy, error) {
 		return Policy{}, fmt.Errorf("agent: verification attempts and timeout must both be zero or both be positive")
 	}
 	prepared := Policy{
-		AllowedOperations: append([]Operation(nil), input.AllowedOperations...),
-		ConfirmOperations: append([]Operation(nil), input.ConfirmOperations...),
-		AllowedDisplayIDs: append([]int(nil), input.AllowedDisplayIDs...),
-		MaxActions:        input.MaxActions, MaxTextRunes: input.MaxTextRunes,
+		AllowedOperations:   append([]Operation(nil), input.AllowedOperations...),
+		ConfirmOperations:   append([]Operation(nil), input.ConfirmOperations...),
+		AllowedDisplayIDs:   append([]int(nil), input.AllowedDisplayIDs...),
+		AllowedMouseButtons: append([]MouseButton(nil), input.AllowedMouseButtons...),
+		AllowedKeys:         append([]string(nil), input.AllowedKeys...),
+		AllowedModifiers:    append([]KeyModifier(nil), input.AllowedModifiers...),
+		AllowedWindows:      append([]WindowTarget(nil), input.AllowedWindows...),
+		MaxActions:          input.MaxActions, MaxTextRunes: input.MaxTextRunes,
 		AllowDoubleClick:           input.AllowDoubleClick,
+		MaxScrollEvents:            input.MaxScrollEvents,
+		MaxScrollDistance:          input.MaxScrollDistance,
+		MaxDragDistance:            input.MaxDragDistance,
+		MaxDragDurationMillis:      input.MaxDragDurationMillis,
+		MaxChordKeys:               input.MaxChordKeys,
+		MinActionIntervalMillis:    input.MinActionIntervalMillis,
+		SessionTimeoutMillis:       input.SessionTimeoutMillis,
 		MaxObservations:            input.MaxObservations,
 		MaxCapturePixels:           input.MaxCapturePixels,
 		MaxQueries:                 input.MaxQueries,
@@ -91,6 +164,10 @@ func preparePolicy(input Policy) (Policy, error) {
 		allowOperation:             make(map[Operation]struct{}),
 		requireConfirmation:        make(map[Operation]struct{}),
 		allowDisplay:               make(map[int]struct{}),
+		allowButton:                make(map[MouseButton]struct{}),
+		allowKey:                   make(map[string]struct{}),
+		allowModifier:              make(map[KeyModifier]struct{}),
+		allowWindow:                make(map[windowTargetIdentity]WindowTarget),
 	}
 	for _, operation := range prepared.AllowedOperations {
 		if !knownOperation(operation) {
@@ -115,6 +192,82 @@ func preparePolicy(input Policy) (Policy, error) {
 			return Policy{}, fmt.Errorf("agent: allowed display IDs must be non-negative")
 		}
 		prepared.allowDisplay[displayID] = struct{}{}
+	}
+	for _, button := range prepared.AllowedMouseButtons {
+		if !validMouseButton(button) {
+			return Policy{}, fmt.Errorf("agent: unsupported allowed mouse button %q", button)
+		}
+		if _, exists := prepared.allowButton[button]; exists {
+			return Policy{}, fmt.Errorf("agent: duplicate allowed mouse button %q", button)
+		}
+		prepared.allowButton[button] = struct{}{}
+	}
+	for _, key := range prepared.AllowedKeys {
+		if !validChordKey(key) {
+			return Policy{}, fmt.Errorf("agent: unsupported or non-canonical allowed chord key %q", key)
+		}
+		if _, exists := prepared.allowKey[key]; exists {
+			return Policy{}, fmt.Errorf("agent: duplicate allowed chord key %q", key)
+		}
+		prepared.allowKey[key] = struct{}{}
+	}
+	for _, modifier := range prepared.AllowedModifiers {
+		if !validKeyModifier(modifier) {
+			return Policy{}, fmt.Errorf("agent: unsupported allowed key modifier %q", modifier)
+		}
+		if _, exists := prepared.allowModifier[modifier]; exists {
+			return Policy{}, fmt.Errorf("agent: duplicate allowed key modifier %q", modifier)
+		}
+		prepared.allowModifier[modifier] = struct{}{}
+	}
+	for _, window := range prepared.AllowedWindows {
+		if window.Target <= 0 || !validWindowTargetKind(window.Kind) {
+			return Policy{}, fmt.Errorf("agent: allowed window requires a positive target and valid kind")
+		}
+		if window.ExpectedTitle == "" || !utf8.ValidString(window.ExpectedTitle) ||
+			utf8.RuneCountInString(window.ExpectedTitle) > maxAgentWindowTitleRunes {
+			return Policy{}, fmt.Errorf("agent: allowed window requires a bounded non-empty valid UTF-8 expected title")
+		}
+		identity := windowTargetIdentity{target: window.Target, kind: window.Kind}
+		if _, exists := prepared.allowWindow[identity]; exists {
+			return Policy{}, fmt.Errorf("agent: duplicate allowed window target %d (%s)", window.Target, window.Kind)
+		}
+		prepared.allowWindow[identity] = window
+	}
+	if _, allowed := prepared.allowOperation[OperationClick]; allowed && len(prepared.allowButton) == 0 {
+		return Policy{}, fmt.Errorf("agent: pointer.click requires allowed mouse buttons")
+	}
+	if _, allowed := prepared.allowOperation[OperationScroll]; allowed {
+		if len(prepared.allowDisplay) == 0 || prepared.MaxScrollEvents == 0 ||
+			prepared.MaxScrollDistance == 0 {
+			return Policy{}, fmt.Errorf("agent: pointer.scroll requires allowed displays and bounded events and distance")
+		}
+	}
+	if _, allowed := prepared.allowOperation[OperationDrag]; allowed {
+		if len(prepared.allowDisplay) == 0 || len(prepared.allowButton) == 0 ||
+			prepared.MaxDragDistance == 0 || prepared.MaxDragDurationMillis == 0 {
+			return Policy{}, fmt.Errorf("agent: pointer.drag requires allowed displays and buttons plus bounded distance and duration")
+		}
+	}
+	if _, allowed := prepared.allowOperation[OperationKeyChord]; allowed {
+		hasProcessTarget := false
+		for identity := range prepared.allowWindow {
+			if identity.kind == WindowTargetProcess {
+				hasProcessTarget = true
+				break
+			}
+		}
+		if len(prepared.allowKey) == 0 || prepared.MaxChordKeys == 0 || !hasProcessTarget {
+			return Policy{}, fmt.Errorf("agent: keyboard.chord requires allowed keys, process windows, and a bounded chord length")
+		}
+	}
+	if _, allowed := prepared.allowOperation[OperationActivate]; allowed && len(prepared.allowWindow) == 0 {
+		return Policy{}, fmt.Errorf("agent: window.activate requires allowed window identities")
+	}
+	if allowsExtendedMutation(prepared.allowOperation) {
+		if prepared.MinActionIntervalMillis == 0 || prepared.SessionTimeoutMillis == 0 {
+			return Policy{}, fmt.Errorf("agent: extended mutations require bounded action interval and session timeout")
+		}
 	}
 	_, findAllowed := prepared.allowOperation[OperationFindColor]
 	_, waitAllowed := prepared.allowOperation[OperationWaitColor]
@@ -154,7 +307,21 @@ func preparePolicy(input Policy) (Policy, error) {
 }
 
 func allowsMutation(operations map[Operation]struct{}) bool {
-	for _, operation := range []Operation{OperationMove, OperationClick, OperationTypeText} {
+	for _, operation := range []Operation{
+		OperationMove, OperationClick, OperationScroll, OperationDrag,
+		OperationTypeText, OperationKeyChord, OperationActivate,
+	} {
+		if _, allowed := operations[operation]; allowed {
+			return true
+		}
+	}
+	return false
+}
+
+func allowsExtendedMutation(operations map[Operation]struct{}) bool {
+	for _, operation := range []Operation{
+		OperationScroll, OperationDrag, OperationKeyChord, OperationActivate,
+	} {
 		if _, allowed := operations[operation]; allowed {
 			return true
 		}
@@ -164,7 +331,63 @@ func allowsMutation(operations map[Operation]struct{}) bool {
 
 func knownOperation(operation Operation) bool {
 	switch operation {
-	case OperationMove, OperationClick, OperationTypeText, OperationObserve, OperationFindColor, OperationWaitColor:
+	case OperationMove, OperationClick, OperationScroll, OperationDrag,
+		OperationTypeText, OperationKeyChord, OperationActivate,
+		OperationObserve, OperationFindColor, OperationWaitColor:
+		return true
+	default:
+		return false
+	}
+}
+
+func validMouseButton(button MouseButton) bool {
+	switch button {
+	case MouseButtonLeft, MouseButtonMiddle, MouseButtonRight:
+		return true
+	default:
+		return false
+	}
+}
+
+func validKeyModifier(modifier KeyModifier) bool {
+	switch modifier {
+	case KeyModifierAlt, KeyModifierControl, KeyModifierMeta, KeyModifierShift:
+		return true
+	default:
+		return false
+	}
+}
+
+func validChordKey(key string) bool {
+	if len(key) == 1 {
+		value := key[0]
+		return value >= 'a' && value <= 'z' || value >= '0' && value <= '9' ||
+			strings.ContainsRune("-=[]\\;',./`", rune(value))
+	}
+	switch key {
+	case "backspace", "delete", "enter", "tab", "escape",
+		"up", "down", "right", "left", "home", "end", "pageup",
+		"pagedown", "space",
+		"f1", "f2", "f3", "f4", "f5", "f6",
+		"f7", "f8", "f9", "f10", "f11", "f12":
+		return true
+	default:
+		return false
+	}
+}
+
+func mandatoryConfirmation(operation Operation) bool {
+	switch operation {
+	case OperationDrag, OperationKeyChord, OperationActivate:
+		return true
+	default:
+		return false
+	}
+}
+
+func validWindowTargetKind(kind WindowTargetKind) bool {
+	switch kind {
+	case WindowTargetProcess, WindowTargetHandle:
 		return true
 	default:
 		return false

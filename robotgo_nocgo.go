@@ -398,6 +398,26 @@ func SetActiveE(handle Handle) error {
 	}
 	return backend.Activate(windowbackend.Handle(handle))
 }
+
+// ResolveWindowHandleE resolves a process ID to one validated Pure-Go window
+// handle, or validates the supplied handle when args is non-empty.
+func ResolveWindowHandleE(target int, args ...int) (int, error) {
+	handle, err := pureGoWindowResolve(
+		target,
+		len(args) > 0,
+	)
+	if err != nil {
+		return 0, err
+	}
+	backend, err := pureGoWindowBackend()
+	if err != nil {
+		return 0, err
+	}
+	if _, err := backend.Title(handle); err != nil {
+		return 0, err
+	}
+	return int(handle), nil
+}
 func ActivePid(target int, args ...int) error {
 	backend, err := pureGoWindowBackend()
 	if err != nil {
@@ -492,6 +512,16 @@ func KeyTap(key string, args ...interface{}) error {
 // KeyToggle changes a key state through the selected Pure-Go platform backend
 // or an authorized RemoteDesktop session.
 func KeyToggle(key string, args ...interface{}) error {
+	return keyToggle(key, true, args...)
+}
+
+// KeyToggleImmediate changes key state without applying the configured
+// post-event delay. It is intended for callers that own a bounded hold.
+func KeyToggleImmediate(key string, args ...interface{}) error {
+	return keyToggle(key, false, args...)
+}
+
+func keyToggle(key string, applyDelay bool, args ...interface{}) error {
 	pid, down, modifiers, err := parseKeyArguments(args, true)
 	if err != nil {
 		return err
@@ -516,7 +546,7 @@ func KeyToggle(key string, args ...interface{}) error {
 		})
 	})
 	if used {
-		if err == nil {
+		if err == nil && applyDelay {
 			MilliSleep(currentKeyDelay())
 		}
 		return err
@@ -534,7 +564,7 @@ func KeyToggle(key string, args ...interface{}) error {
 	if !used {
 		return ErrNotSupported
 	}
-	if err == nil {
+	if err == nil && applyDelay {
 		MilliSleep(currentKeyDelay())
 	}
 	return err
@@ -586,6 +616,16 @@ func UnicodeTypeE(value uint32, args ...int) error {
 }
 func TypeStr(text string, args ...int) { _ = TypeStrE(text, args...) }
 func TypeStrE(text string, args ...int) error {
+	return typeStrE(text, args...)
+}
+
+// TypeStrImmediateE sends a UTF-8 string without applying a configured
+// post-input delay. Pure-Go text injection is already delay-explicit.
+func TypeStrImmediateE(text string, args ...int) error {
+	return typeStrE(text, args...)
+}
+
+func typeStrE(text string, args ...int) error {
 	pid, delay, validationErr := parseTextInput(text, args)
 	if validationErr != nil {
 		return validationErr
@@ -645,17 +685,33 @@ func CharCodeAt(s string, n int) rune {
 
 func Move(x, y int, displayID ...int) { _ = MoveE(x, y, displayID...) }
 func MoveE(x, y int, displayID ...int) error {
+	return moveE(x, y, true, displayID...)
+}
+
+// MoveImmediateE moves the mouse without applying the configured post-move
+// delay. It is intended for callers that provide their own bounded schedule.
+func MoveImmediateE(x, y int, displayID ...int) error {
+	return moveE(x, y, false, displayID...)
+}
+
+func moveE(x, y int, applyDelay bool, displayID ...int) error {
 	used, err := withPureGoInputBackend(func(backend pureGoInputBackend) error {
 		return backend.MoveAbsolute(x, y, append([]int(nil), displayID...))
 	})
 	if used {
-		return finishNonCGOMouseEvent(err, 0)
+		if applyDelay {
+			return finishNonCGOMouseEvent(err, 0)
+		}
+		return err
 	}
 	used, err = tryRemoteDesktopMoveAbsolute(x, y, displayID)
 	if !used {
 		return ErrNotSupported
 	}
-	return finishRemoteDesktopMouseEvent(err, 0)
+	if applyDelay {
+		return finishRemoteDesktopMouseEvent(err, 0)
+	}
+	return err
 }
 func MoveRelative(x, y int) { _ = MoveRelativeE(x, y) }
 func MoveRelativeE(x, y int) error {
@@ -714,6 +770,16 @@ func DragSmooth(x, y int, args ...interface{}) {
 }
 func Click(args ...interface{}) { _ = ClickE(args...) }
 func ClickE(args ...interface{}) error {
+	return clickE(true, args...)
+}
+
+// ClickImmediateE clicks without applying the configured post-click delay.
+// It is intended for callers that provide bounded scheduling.
+func ClickImmediateE(args ...interface{}) error {
+	return clickE(false, args...)
+}
+
+func clickE(applyDelay bool, args ...interface{}) error {
 	name, double, err := parseClickArguments(args)
 	if err != nil {
 		return err
@@ -722,13 +788,19 @@ func ClickE(args ...interface{}) error {
 		return backend.Click(name, double)
 	})
 	if used {
-		return finishNonCGOMouseEvent(err, 0)
+		if applyDelay {
+			return finishNonCGOMouseEvent(err, 0)
+		}
+		return err
 	}
 	used, err = tryRemoteDesktopClick(name, double)
 	if !used {
 		return ErrNotSupported
 	}
-	return finishRemoteDesktopMouseEvent(err, 0)
+	if applyDelay {
+		return finishRemoteDesktopMouseEvent(err, 0)
+	}
+	return err
 }
 
 func tryRemoteDesktopToggle(name string, down bool) (bool, error) {
@@ -762,6 +834,16 @@ func Toggle(args ...interface{}) error {
 }
 func Scroll(x, y int, args ...int) { _ = ScrollE(x, y, args...) }
 func ScrollE(x, y int, args ...int) error {
+	return scrollE(x, y, true, args...)
+}
+
+// ScrollImmediateE scrolls without applying a configured or per-call
+// post-event delay. It is intended for callers that provide bounded scheduling.
+func ScrollImmediateE(x, y int) error {
+	return scrollE(x, y, false)
+}
+
+func scrollE(x, y int, applyDelay bool, args ...int) error {
 	msDelay, validationErr := parseScrollDelay(args)
 	if validationErr != nil {
 		return validationErr
@@ -770,13 +852,19 @@ func ScrollE(x, y int, args ...int) error {
 		return backend.Scroll(x, y)
 	})
 	if used {
-		return finishNonCGOMouseEvent(err, msDelay)
+		if applyDelay {
+			return finishNonCGOMouseEvent(err, msDelay)
+		}
+		return err
 	}
 	used, err = tryRemoteDesktopScroll(x, y)
 	if !used {
 		return ErrNotSupported
 	}
-	return finishRemoteDesktopMouseEvent(err, msDelay)
+	if applyDelay {
+		return finishRemoteDesktopMouseEvent(err, msDelay)
+	}
+	return err
 }
 func ScrollDir(amount int, direction ...interface{}) {
 	name, err := parseScrollDirection(direction)

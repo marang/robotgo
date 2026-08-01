@@ -15,28 +15,46 @@ import (
 )
 
 type driverCall struct {
-	operation Operation
-	text      string
+	operation  Operation
+	text       string
+	down       bool
+	x          int
+	y          int
+	displayID  int
+	deltaX     int
+	deltaY     int
+	button     MouseButton
+	key        string
+	modifiers  []KeyModifier
+	target     int
+	targetKind WindowTargetKind
+	immediate  bool
 }
 
 type fakeDriver struct {
-	mu            sync.Mutex
-	calls         []driverCall
-	err           error
-	bounds        map[int]displayBounds
-	boundsErr     error
-	boundsHit     chan struct{}
-	boundsGo      chan struct{}
-	started       chan struct{}
-	release       chan struct{}
-	captureImages []image.Image
-	captureErr    error
-	captureCalls  int
-	captureHit    chan struct{}
-	captureGo     chan struct{}
-	capabilities  *robotgo.RuntimeCapabilities
-	capabilityHit chan struct{}
-	capabilityGo  chan struct{}
+	mu               sync.Mutex
+	calls            []driverCall
+	err              error
+	bounds           map[int]displayBounds
+	boundsErr        error
+	boundsHit        chan struct{}
+	boundsGo         chan struct{}
+	started          chan struct{}
+	release          chan struct{}
+	captureImages    []image.Image
+	captureErr       error
+	captureCalls     int
+	captureHit       chan struct{}
+	captureGo        chan struct{}
+	capabilities     *robotgo.RuntimeCapabilities
+	capabilityHit    chan struct{}
+	capabilityGo     chan struct{}
+	windowTitle      string
+	windowTitles     []string
+	windowTitleCalls int
+	resolvedHandle   int
+	callHook         func(driverCall)
+	callError        func(driverCall) error
 }
 
 func (d *fakeDriver) DisplayBounds(displayID int) (displayBounds, error) {
@@ -68,6 +86,9 @@ func (d *fakeDriver) DisplayBounds(displayID int) (displayBounds, error) {
 }
 
 func (d *fakeDriver) record(call driverCall) error {
+	if d.callHook != nil {
+		d.callHook(call)
+	}
 	if d.started != nil {
 		select {
 		case d.started <- struct{}{}:
@@ -79,20 +100,103 @@ func (d *fakeDriver) record(call driverCall) error {
 	}
 	d.mu.Lock()
 	defer d.mu.Unlock()
+	call.modifiers = append([]KeyModifier(nil), call.modifiers...)
 	d.calls = append(d.calls, call)
+	if d.callError != nil {
+		return d.callError(call)
+	}
 	return d.err
 }
 
-func (d *fakeDriver) Move(_, _, _ int) error {
-	return d.record(driverCall{operation: OperationMove})
+func (d *fakeDriver) MoveImmediate(x, y, displayID int) error {
+	return d.record(driverCall{
+		operation: OperationMove, text: "immediate", immediate: true,
+		x: x, y: y, displayID: displayID,
+	})
 }
 
-func (d *fakeDriver) Click(_ MouseButton, _ bool) error {
-	return d.record(driverCall{operation: OperationClick})
+func (d *fakeDriver) ClickImmediate(button MouseButton, _ bool) error {
+	return d.record(driverCall{
+		operation: OperationClick, button: button, immediate: true,
+	})
 }
 
-func (d *fakeDriver) TypeText(text string) error {
-	return d.record(driverCall{operation: OperationTypeText, text: text})
+func (d *fakeDriver) ScrollImmediate(deltaX, deltaY int) error {
+	return d.record(driverCall{
+		operation: OperationScroll, deltaX: deltaX, deltaY: deltaY,
+		immediate: true,
+	})
+}
+
+func (d *fakeDriver) ToggleMouse(button MouseButton, down bool) error {
+	return d.record(driverCall{operation: OperationDrag, button: button, down: down})
+}
+
+func (d *fakeDriver) TypeTextImmediate(text string) error {
+	return d.record(driverCall{
+		operation: OperationTypeText, text: text, immediate: true,
+	})
+}
+
+func (d *fakeDriver) ToggleKeyImmediate(
+	key string,
+	modifiers []KeyModifier,
+	targetPID int,
+	down bool,
+) error {
+	return d.record(driverCall{
+		operation: OperationKeyChord, key: key, modifiers: modifiers,
+		target: targetPID, down: down, immediate: true,
+	})
+}
+
+func (d *fakeDriver) ResolveWindow(target int, kind WindowTargetKind) (int, error) {
+	call := driverCall{
+		operation: OperationActivate, text: "resolve",
+		target: target, targetKind: kind,
+	}
+	if err := d.record(call); err != nil {
+		return 0, err
+	}
+	if d.resolvedHandle != 0 {
+		return d.resolvedHandle, nil
+	}
+	return target, nil
+}
+
+func (d *fakeDriver) WindowTitle(target int, kind WindowTargetKind) (string, error) {
+	call := driverCall{
+		operation: OperationActivate, text: "title",
+		target: target, targetKind: kind,
+	}
+	if err := d.record(call); err != nil {
+		return "", err
+	}
+	return d.nextWindowTitle(), nil
+}
+
+func (d *fakeDriver) nextWindowTitle() string {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if len(d.windowTitles) > 0 {
+		index := d.windowTitleCalls
+		d.windowTitleCalls++
+		if index >= len(d.windowTitles) {
+			index = len(d.windowTitles) - 1
+		}
+		return d.windowTitles[index]
+	}
+	if d.windowTitle != "" {
+		return d.windowTitle
+	}
+	return "fixture"
+}
+
+func (d *fakeDriver) ActivateWindow(target int, kind WindowTargetKind) error {
+	return d.record(driverCall{
+		operation: OperationActivate, text: "activate",
+		target: target, targetKind: kind,
+	})
 }
 
 func (d *fakeDriver) RuntimeCapabilities() robotgo.RuntimeCapabilities {
@@ -157,12 +261,23 @@ func (d *fakeDriver) callCount() int {
 	return len(d.calls)
 }
 
+func (d *fakeDriver) recordedCalls() []driverCall {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	result := append([]driverCall(nil), d.calls...)
+	for index := range result {
+		result[index].modifiers = append([]KeyModifier(nil), result[index].modifiers...)
+	}
+	return result
+}
+
 func availableCapabilities() robotgo.RuntimeCapabilities {
 	return robotgo.RuntimeCapabilities{
 		Capture:  robotgo.FeatureCapability{Available: true, Backend: "fake-capture"},
 		Bounds:   robotgo.FeatureCapability{Available: true, Backend: "fake-bounds"},
 		Mouse:    robotgo.FeatureCapability{Available: true, Backend: "fake-mouse"},
 		Keyboard: robotgo.FeatureCapability{Available: true, Backend: "fake-keyboard"},
+		Window:   robotgo.FeatureCapability{Available: true, Backend: "fake-window"},
 	}
 }
 
@@ -170,7 +285,8 @@ func testPolicy() Policy {
 	return Policy{
 		AllowedOperations: []Operation{OperationMove, OperationClick, OperationTypeText},
 		AllowedDisplayIDs: []int{0, 2}, MaxActions: 3, MaxTextRunes: 8,
-		AllowDoubleClick: true,
+		AllowedMouseButtons: []MouseButton{MouseButtonLeft, MouseButtonMiddle, MouseButtonRight},
+		AllowDoubleClick:    true,
 	}
 }
 
@@ -196,7 +312,8 @@ func TestCatalogIsStableAndDefensive(t *testing.T) {
 	}
 	want := []Operation{
 		OperationObserve, OperationFindColor, OperationWaitColor,
-		OperationMove, OperationClick, OperationTypeText,
+		OperationMove, OperationClick, OperationScroll, OperationDrag,
+		OperationTypeText, OperationKeyChord, OperationActivate,
 	}
 	for index, operation := range want {
 		got := catalog.Operations[index]
@@ -204,7 +321,9 @@ func TestCatalogIsStableAndDefensive(t *testing.T) {
 			t.Fatalf("operation[%d] = %+v", index, got)
 		}
 		wantCancellation := CancellationPreflightOnly
-		if operation == OperationFindColor || operation == OperationWaitColor {
+		if operation == OperationFindColor || operation == OperationWaitColor ||
+			operation == OperationScroll || operation == OperationDrag ||
+			operation == OperationKeyChord {
 			wantCancellation = CancellationCooperative
 		}
 		if got.Cancellation != wantCancellation {
@@ -249,6 +368,40 @@ func TestDryRunDoesNotInjectOrConsumeQuota(t *testing.T) {
 	result, err = session.DryRun(context.Background(), request)
 	if err == nil || result.Error == nil || result.Error.Code != ErrorPolicyDenied {
 		t.Fatalf("dry-run quota result = %+v, %v", result, err)
+	}
+}
+
+func TestAgentMutationsUseOnlyDelayFreeDriverMethods(t *testing.T) {
+	driver := &fakeDriver{}
+	session := newTestSession(t, testPolicy(), driver)
+	requests := []ActionRequest{
+		{
+			Operation: OperationMove,
+			Move:      &MoveAction{X: 1, Y: 2, DisplayID: 0},
+		},
+		{
+			Operation: OperationClick,
+			Click:     &ClickAction{Button: MouseButtonLeft},
+		},
+		{
+			Operation: OperationTypeText,
+			TypeText:  &TypeTextAction{Text: "bounded"},
+		},
+	}
+	for _, request := range requests {
+		result, err := session.Execute(t.Context(), request)
+		if err != nil || result.Status != ActionSucceeded {
+			t.Fatalf("%s result = %+v, %v", request.Operation, result, err)
+		}
+	}
+	calls := driver.recordedCalls()
+	if len(calls) != len(requests) {
+		t.Fatalf("delay-free driver calls = %+v", calls)
+	}
+	for _, call := range calls {
+		if !call.immediate {
+			t.Fatalf("agent used a legacy delayed driver method: %+v", calls)
+		}
 	}
 }
 
@@ -371,7 +524,8 @@ func TestTypedTextIsAbsentFromResultAndSerializedError(t *testing.T) {
 		Operation: OperationTypeText,
 		TypeText:  &TypeTextAction{Text: secret},
 	})
-	if err == nil || result.Error == nil || result.Error.Code != ErrorBackendFailure {
+	if err == nil || result.Status != ActionUnverified ||
+		result.Error == nil || result.Error.Code != ErrorBackendFailure {
 		t.Fatalf("Execute = %+v, %v", result, err)
 	}
 	data, marshalErr := json.Marshal(result)
@@ -383,6 +537,98 @@ func TestTypedTextIsAbsentFromResultAndSerializedError(t *testing.T) {
 	}
 	if !errors.Is(err, driver.err) {
 		t.Fatalf("returned error lost backend cause: %v", err)
+	}
+}
+
+func TestSimpleMutationBackendErrorsAreUnverified(t *testing.T) {
+	tests := []struct {
+		name    string
+		request ActionRequest
+	}{
+		{
+			name: "move",
+			request: ActionRequest{
+				Operation: OperationMove,
+				Move:      &MoveAction{X: 1, Y: 2, DisplayID: 0},
+			},
+		},
+		{
+			name: "click",
+			request: ActionRequest{
+				Operation: OperationClick,
+				Click:     &ClickAction{Button: MouseButtonLeft},
+			},
+		},
+		{
+			name: "type text",
+			request: ActionRequest{
+				Operation: OperationTypeText,
+				TypeText:  &TypeTextAction{Text: "bounded"},
+			},
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			backendErr := errors.New("ambiguous mutation failure")
+			driver := &fakeDriver{err: backendErr}
+			session := newTestSession(t, testPolicy(), driver)
+			result, err := session.Execute(t.Context(), test.request)
+			var actionErr *ActionError
+			if !errors.Is(err, backendErr) ||
+				!errors.As(err, &actionErr) ||
+				actionErr.Code != ErrorBackendFailure ||
+				result.Status != ActionUnverified {
+				t.Fatalf("ambiguous mutation result = %+v, %v", result, err)
+			}
+			if driver.callCount() != 1 {
+				t.Fatalf("ambiguous mutation calls = %+v", driver.recordedCalls())
+			}
+		})
+	}
+}
+
+func TestRetainedClickReleaseTaintsSessionUntilCloseRetry(t *testing.T) {
+	releaseErr := errors.New("release unconfirmed")
+	driver := &fakeDriver{}
+	driver.callError = func(call driverCall) error {
+		if call.operation == OperationClick {
+			return errors.Join(robotgo.ErrInputReleasePending, releaseErr)
+		}
+		return nil
+	}
+	session := newTestSession(t, testPolicy(), driver)
+
+	result, err := session.Execute(t.Context(), ActionRequest{
+		Operation: OperationClick,
+		Click:     &ClickAction{Button: MouseButtonLeft},
+	})
+	if !errors.Is(err, releaseErr) || !errors.Is(err, ErrInputCleanup) ||
+		result.Status != ActionUnverified || result.Error == nil ||
+		result.Error.Code != ErrorCleanupFailed {
+		t.Fatalf("retained click result = %+v, %v", result, err)
+	}
+	if !session.inputTainted || len(session.pressedInputs) != 1 {
+		t.Fatalf("retained click state: tainted=%v ledger=%+v", session.inputTainted, session.pressedInputs)
+	}
+
+	blocked, blockedErr := session.Execute(t.Context(), ActionRequest{
+		Operation: OperationMove,
+		Move:      &MoveAction{X: 1, Y: 2, DisplayID: 0},
+	})
+	if !errors.Is(blockedErr, ErrInputCleanup) || blocked.Error == nil ||
+		blocked.Error.Code != ErrorCleanupFailed || driver.callCount() != 1 {
+		t.Fatalf("action after retained click = %+v, %v, calls=%+v", blocked, blockedErr, driver.recordedCalls())
+	}
+
+	if err := session.Close(); err != nil {
+		t.Fatalf("close retry: %v", err)
+	}
+	calls := driver.recordedCalls()
+	if len(calls) != 2 || calls[1].down || calls[1].button != MouseButtonLeft {
+		t.Fatalf("close retry calls = %+v", calls)
+	}
+	if session.inputTainted || len(session.pressedInputs) != 0 {
+		t.Fatalf("close retry state: tainted=%v ledger=%+v", session.inputTainted, session.pressedInputs)
 	}
 }
 

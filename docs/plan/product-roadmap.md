@@ -66,6 +66,9 @@ adjacent [Safe Agent Visual Conditions Plan](agent-visual-conditions.md) now
 has accepted bounded `find` and `wait` semantics in Go plus a thin,
 privacy-preserving MCP projection; neither effort broadens platform backend
 support or replaces phase exit gates.
+The active [Autonomous GUI Control Plan](autonomous-gui-control.md) builds on
+that boundary with deny-by-default observation-bound actions, followed by
+accessibility-first semantics and separately authorized image/OCR perception.
 
 ## Delivery Order
 
@@ -500,6 +503,9 @@ demonstrate the difference, not merely expose more functions. The standard is:
   gates.
 - `docs/plan/agent-visual-conditions.md` defines privacy-safe visual search and
   bounded wait semantics above the accepted agent session.
+- `docs/plan/autonomous-gui-control.md` defines the ordered action,
+  accessibility, explicit-image, and OCR slices for practical autonomous GUI
+  control.
 - This document defines product direction and delivery order.
 - A roadmap item is complete only when implementation, tests, examples where
   applicable, compatibility documentation, and required CI gates are complete.

@@ -137,6 +137,9 @@ func TestNonCGOInputDispatchUsesSelectedPlatformBackend(t *testing.T) {
 	if err := KeyToggle("c", "up", "alt"); err != nil {
 		t.Fatalf("KeyToggle: %v", err)
 	}
+	if err := KeyToggleImmediate("c", "up", "alt"); err != nil {
+		t.Fatalf("KeyToggleImmediate: %v", err)
+	}
 	if err := KeyDown("d", 0, []string{"ctrl"}); err != nil {
 		t.Fatalf("KeyDown: %v", err)
 	}
@@ -145,6 +148,9 @@ func TestNonCGOInputDispatchUsesSelectedPlatformBackend(t *testing.T) {
 	}
 	if err := TypeStrE("text", 0, 7); err != nil {
 		t.Fatalf("TypeStrE: %v", err)
+	}
+	if err := TypeStrImmediateE("text", 0, 7); err != nil {
+		t.Fatalf("TypeStrImmediateE: %v", err)
 	}
 	if err := UnicodeTypeE('€'); err != nil {
 		t.Fatalf("UnicodeTypeE: %v", err)
@@ -163,11 +169,17 @@ func TestNonCGOInputDispatchUsesSelectedPlatformBackend(t *testing.T) {
 	if err := ClickE("right", true); err != nil {
 		t.Fatalf("ClickE: %v", err)
 	}
+	if err := ClickImmediateE("right", true); err != nil {
+		t.Fatalf("ClickImmediateE: %v", err)
+	}
 	if err := Toggle("center", "up"); err != nil {
 		t.Fatalf("Toggle: %v", err)
 	}
 	if err := ScrollE(1, -2, 0); err != nil {
 		t.Fatalf("ScrollE: %v", err)
+	}
+	if err := ScrollImmediateE(1, -2); err != nil {
+		t.Fatalf("ScrollImmediateE: %v", err)
 	}
 	x, y, err := LocationE()
 	if err != nil || x != -12 || y != 34 {
@@ -182,8 +194,10 @@ func TestNonCGOInputDispatchUsesSelectedPlatformBackend(t *testing.T) {
 		"key:+:[shift]:0:true:true",
 		"key:b:[shift]:0:true:true",
 		"key:c:[alt]:0:false:false",
+		"key:c:[alt]:0:false:false",
 		"key:d:[ctrl]:0:true:false",
 		"key:d:[ctrl]:0:false:false",
+		"text:text:0:7",
 		"text:text:0:7",
 		"text:€:0:0",
 		"move:10:20:[2]",
@@ -192,7 +206,9 @@ func TestNonCGOInputDispatchUsesSelectedPlatformBackend(t *testing.T) {
 		"smooth:3:-2:true:1:2",
 		"drag:50:60:1:2",
 		"click:right:true",
+		"click:right:true",
 		"toggle:center:false",
+		"scroll:1:-2",
 		"scroll:1:-2",
 		"location",
 	}

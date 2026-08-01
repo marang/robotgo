@@ -2,6 +2,48 @@
 
 ## Unreleased
 
+- Expanded the deny-by-default agent and local MCP action contract with bounded
+  scroll, drag, canonical keyboard chord, and identity-revalidated window
+  activation operations. Extended actions require immutable event, distance,
+  duration, key/modifier/window, rate, and session-lifetime limits; drag,
+  shortcut, and activation also require confirmation. A session-owned pressed
+  input ledger releases keys and buttons across success, failure,
+  cancellation, timeout, disconnect, and close, while Wayland activation stays
+  explicitly unavailable instead of inheriting a broader window capability.
+  Chords are now injected only through process-targeted backends, activation
+  validates and mutates the same resolved native handle, and the catalog
+  structurally reports supported scroll axes. Ambiguous input-down failures
+  trigger an immediate release and remain session-owned if cleanup fails.
+  Explicit no-state-acquired and foreign-ownership rejections remove the
+  tentative key or button ledger entry without emitting a foreign release.
+  Native CGO macOS and Windows mouse holds now participate in the same
+  process-wide ownership contract, so package-level holds, clicks, and agent
+  drags cannot claim the same button or clean up a rejected down. Explicit
+  close-time cleanup retries unconfirmed native hold and Windows click
+  releases, while `ErrInputReleasePending` lets agent sessions retain that
+  ownership, block subsequent actions, and retry during session close.
+  Explicit process identities use a separate title-query contract and no
+  longer inherit the legacy handle-mode default, while existing `GetTitleE`
+  behavior remains compatible. The complete agent mutation driver, including
+  move, click, text, drag, scroll, and chord primitives, bypasses global mouse
+  and key post-event delays.
+  Errors returned after any desktop mutation dispatch are `unverified`;
+  failures proven to occur during preflight remain `failed`. Failed release
+  taints the session and retains its exclusive owner until cleanup succeeds.
+  Mutation capabilities now provide a stable unavailable, unsupported, or
+  permission-denied code without requiring reason-string parsing.
+  Native Windows global holds and taps now share a physical-key reference
+  ledger: overlapping chords cannot release one another's modifiers, failed
+  tap or hold releases remain retryable, and an attempted tap whose physical
+  main key is already held is rejected rather than reporting an unobservable
+  transition. Native holds still record the
+  exact applied prefix, reject foreign or duplicate releases, and report a
+  typed no-state-acquired error after a pre-dispatch failure so agent cleanup
+  never touches foreign input. Native Windows PID-targeted key taps/toggles and
+  the corresponding agent chord capability now fail closed as unsupported:
+  Win32 cannot atomically bind foreign-window generation validation to message
+  dispatch, leaving an unavoidable same-PID HWND-reuse race without a
+  cooperative target backend.
 - Split KDE hosted-session readiness into bounded prerequisite, Plasma Shell,
   portal frontend, portal backend, and stability phases. The complete session
   must now pass three consecutive probes, later phases continuously revalidate

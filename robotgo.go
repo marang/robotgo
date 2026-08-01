@@ -1752,8 +1752,9 @@ func getXDisplayNameLocked() string {
 // compatibility. Prefer CloseMainDisplayE in new code.
 func CloseMainDisplay() { _ = CloseMainDisplayE() }
 
-// CloseMainDisplayE releases RobotGo-owned native X11 keys and closes the
-// native main display.
+// CloseMainDisplayE releases RobotGo-owned native mouse holds and X11 keys,
+// then closes the native main display. Failed mouse releases remain owned so a
+// later call can retry them.
 func CloseMainDisplayE() error {
 	unlockMouse := lockLinuxMouse()
 	defer unlockMouse()
@@ -1912,6 +1913,20 @@ func clearPortalMouseGenerationLocked(generation uint64) {
 
 func releaseNativeMouseHoldsLocked(server DisplayServer) error {
 	var releaseErr error
+	if runtime.GOOS != "linux" {
+		for name, hold := range mouseHolds {
+			if hold.backend != persistentInputBackendNative {
+				continue
+			}
+			releaseErr = errors.Join(releaseErr, toggleTrackedNativeMouseHold(
+				mouseHolds,
+				name,
+				false,
+				func(down bool) error { return nativeTrackedMouseToggle(name, down) },
+			))
+		}
+		return releaseErr
+	}
 	if server == DisplayServerX11 {
 		releaseErr = nativeMouseStatusError(
 			C.robotgo_x11_release_owned_buttons(),
@@ -2008,11 +2023,11 @@ func tryPortalMouseUp(hold mouseHold) (bool, error) {
 }
 
 func lockLinuxMouse() func() {
-	if runtime.GOOS == "linux" {
-		waylandMouseMu.Lock()
-		return waylandMouseMu.Unlock
-	}
-	return func() {}
+	// This lock originated with the Wayland/X11 fallback transaction. Native
+	// macOS and Windows now use the same lock because their Go ownership ledger
+	// must also serialize package-level holds, clicks, and agent drags.
+	waylandMouseMu.Lock()
+	return waylandMouseMu.Unlock
 }
 
 func lockNativeMouseDisplay(server DisplayServer) func() {
@@ -2132,6 +2147,16 @@ func moveAbsoluteWithFallback(
 // MoveE moves the mouse to (x, y) and reports backend availability errors.
 // Prefer it over Move when the caller must know whether injection succeeded.
 func MoveE(x, y int, displayId ...int) error {
+	return moveE(x, y, true, displayId...)
+}
+
+// MoveImmediateE moves the mouse without applying the configured post-move
+// delay. It is intended for callers that provide their own bounded schedule.
+func MoveImmediateE(x, y int, displayId ...int) error {
+	return moveE(x, y, false, displayId...)
+}
+
+func moveE(x, y int, applyDelay bool, displayId ...int) error {
 	unlockMouse := lockLinuxMouse()
 	defer unlockMouse()
 	server := selectedDisplayServer()
@@ -2149,13 +2174,18 @@ func MoveE(x, y int, displayId ...int) error {
 		tryRemoteDesktopMoveAbsolute,
 	)
 	if usedPortal {
-		return finishRemoteDesktopMouseEvent(err, 0)
+		if applyDelay {
+			return finishRemoteDesktopMouseEvent(err, 0)
+		}
+		return err
 	}
 	if err != nil {
 		return err
 	}
 
-	MilliSleep(currentMouseDelay())
+	if applyDelay {
+		MilliSleep(currentMouseDelay())
+	}
 	return nil
 }
 
@@ -2337,6 +2367,16 @@ func Click(args ...interface{}) {
 
 // ClickE clicks a mouse button and reports backend availability errors.
 func ClickE(args ...interface{}) error {
+	return clickE(true, args...)
+}
+
+// ClickImmediateE clicks without applying the configured post-click delay.
+// It is intended for callers that provide bounded scheduling.
+func ClickImmediateE(args ...interface{}) error {
+	return clickE(false, args...)
+}
+
+func clickE(applyDelay bool, args ...interface{}) error {
 	name, double, err := parseClickArguments(args)
 	if err != nil {
 		return err
@@ -2344,14 +2384,21 @@ func ClickE(args ...interface{}) error {
 	unlockMouse := lockLinuxMouse()
 	defer unlockMouse()
 	name = canonicalMouseHoldName(name)
-	if runtime.GOOS == "linux" {
-		if _, held := mouseHolds[name]; held {
-			return ErrInputOwnership
-		}
+	if _, held := mouseHolds[name]; held {
+		return ErrInputOwnership
 	}
 	server := selectedDisplayServer()
 	button := CheckMouse(name)
 	ready, nativeErr := runNativeMouseOperation(server, func() error {
+		if runtime.GOOS == "windows" {
+			return clickTrackedNativeMouseHold(
+				mouseHolds,
+				name,
+				double,
+				func(down bool) error { return nativeTrackedMouseToggle(name, down) },
+				time.Sleep,
+			)
+		}
 		if !double {
 			return nativeMouseStatusError(C.clickMouse(button), "click mouse button")
 		}
@@ -2361,13 +2408,18 @@ func ClickE(args ...interface{}) error {
 		if shouldTryRemoteDesktopAfterNative(server, ready, nativeErr) {
 			used, err := tryRemoteDesktopClick(name, double)
 			if used {
-				return finishRemoteDesktopMouseEvent(err, 0)
+				if applyDelay {
+					return finishRemoteDesktopMouseEvent(err, 0)
+				}
+				return err
 			}
 		}
 		return nativeErr
 	}
 
-	MilliSleep(currentMouseDelay())
+	if applyDelay {
+		MilliSleep(currentMouseDelay())
+	}
 	return nil
 }
 
@@ -2412,9 +2464,11 @@ func Toggle(key ...interface{}) error {
 	defer unlockMouse()
 	name = canonicalMouseHoldName(name)
 	if runtime.GOOS != "linux" {
-		if err := nativeMouseStatusError(
-			C.toggleMouse(C.bool(down), CheckMouse(name)),
-			"toggle mouse button",
+		if err := toggleTrackedNativeMouseHold(
+			mouseHolds,
+			name,
+			down,
+			func(down bool) error { return nativeTrackedMouseToggle(name, down) },
 		); err != nil {
 			return err
 		}
@@ -2484,6 +2538,73 @@ func Toggle(key ...interface{}) error {
 	return nil
 }
 
+func nativeTrackedMouseToggle(name string, down bool) error {
+	err := nativeMouseStatusError(
+		C.toggleMouse(C.bool(down), CheckMouse(name)),
+		"toggle mouse button",
+	)
+	if down && runtime.GOOS == "windows" && err != nil {
+		return errors.Join(ErrInputNotApplied, err)
+	}
+	return err
+}
+
+func toggleTrackedNativeMouseHold(
+	holds map[string]mouseHold,
+	name string,
+	down bool,
+	toggle func(bool) error,
+) error {
+	if down {
+		if _, held := holds[name]; held {
+			return ErrInputOwnership
+		}
+		if err := toggle(true); err != nil {
+			return err
+		}
+		holds[name] = mouseHold{backend: persistentInputBackendNative}
+		return nil
+	}
+
+	hold, held := holds[name]
+	if !held || hold.backend != persistentInputBackendNative {
+		return ErrInputOwnership
+	}
+	err := toggle(false)
+	if err == nil || errors.Is(err, ErrInputOwnership) {
+		delete(holds, name)
+	}
+	return err
+}
+
+func clickTrackedNativeMouseHold(
+	holds map[string]mouseHold,
+	name string,
+	double bool,
+	toggle func(bool) error,
+	sleep func(time.Duration),
+) error {
+	clicks := 1
+	if double {
+		clicks = 2
+	}
+	for click := 0; click < clicks; click++ {
+		if err := toggleTrackedNativeMouseHold(holds, name, true, toggle); err != nil {
+			return err
+		}
+		sleep(5 * time.Millisecond)
+		if err := toggleTrackedNativeMouseHold(holds, name, false, toggle); err != nil {
+			// An ambiguous release remains in holds so an explicit Up or
+			// CloseMainDisplayE can retry it without touching foreign input.
+			return errors.Join(ErrInputReleasePending, err)
+		}
+		if click+1 < clicks {
+			sleep(200 * time.Millisecond)
+		}
+	}
+	return nil
+}
+
 // MouseDown send mouse down event
 func MouseDown(key ...interface{}) error {
 	return Toggle(key...)
@@ -2510,6 +2631,16 @@ func Scroll(x, y int, args ...int) {
 
 // ScrollE scrolls the mouse and reports backend availability errors.
 func ScrollE(x, y int, args ...int) error {
+	return scrollE(x, y, true, args...)
+}
+
+// ScrollImmediateE scrolls without applying a configured or per-call
+// post-event delay. It is intended for callers that provide bounded scheduling.
+func ScrollImmediateE(x, y int) error {
+	return scrollE(x, y, false)
+}
+
+func scrollE(x, y int, applyDelay bool, args ...int) error {
 	msDelay, validationErr := parseScrollDelay(args)
 	if validationErr != nil {
 		return validationErr
@@ -2525,12 +2656,17 @@ func ScrollE(x, y int, args ...int) error {
 		if shouldTryRemoteDesktopAfterNative(server, ready, nativeErr) {
 			used, err := tryRemoteDesktopScroll(x, y)
 			if used {
-				return finishRemoteDesktopMouseEvent(err, msDelay)
+				if applyDelay {
+					return finishRemoteDesktopMouseEvent(err, msDelay)
+				}
+				return err
 			}
 		}
 		return nativeErr
 	}
-	MilliSleep(currentMouseDelay() + msDelay)
+	if applyDelay {
+		MilliSleep(currentMouseDelay() + msDelay)
+	}
 	return nil
 }
 
@@ -3024,6 +3160,26 @@ func GetTitle(args ...int) string {
 // on Wayland sessions.
 func GetTitleE(args ...int) (string, error) {
 	return resolveWindowBackend().Title(args...)
+}
+
+// GetTitleTargetE gets the title of an explicit process or window handle.
+// Unlike GetTitleE, isHandle does not inherit the legacy TreatAsHandle setting.
+func GetTitleTargetE(target int, isHandle bool) (string, error) {
+	if target <= 0 {
+		return "", fmt.Errorf(
+			"%w: invalid window target %d",
+			errWindowTitleUnavailable,
+			target,
+		)
+	}
+	if err := nativeX11WindowReady(); err != nil {
+		return "", err
+	}
+	title := strictInternalGetTitle(target, isHandle)
+	if title == "" || title == "is_valid failed." {
+		return "", errWindowTitleUnavailable
+	}
+	return title, nil
 }
 
 // GetPid get the process id return int32

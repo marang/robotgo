@@ -49,9 +49,4 @@
 	typedef unsigned int MMKeyFlags;
 #endif
 
-#if defined(IS_WINDOWS)
-	/* Send win32 key event for given key. */
-	void win32KeyEvent(int key, MMKeyFlags flags, uintptr pid, int8_t isPid);
-#endif
-
 #endif /* KEYPRESS_H */

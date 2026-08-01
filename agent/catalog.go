@@ -1,6 +1,16 @@
 package agent
 
-import robotgo "github.com/marang/robotgo"
+import (
+	"strings"
+
+	robotgo "github.com/marang/robotgo"
+)
+
+const (
+	agentWindowBackendSway     = "sway"
+	agentWindowBackendHyprland = "hyprland"
+	agentInputPureGoX11        = "pure-go-x11"
+)
 
 func buildCatalog(policy Policy, capabilities robotgo.RuntimeCapabilities) OperationCatalog {
 	return OperationCatalog{
@@ -11,9 +21,96 @@ func buildCatalog(policy Policy, capabilities robotgo.RuntimeCapabilities) Opera
 			waitColorCapability(policy, capabilities),
 			operationCapability(OperationMove, policy, capabilities.Mouse),
 			operationCapability(OperationClick, policy, capabilities.Mouse),
+			scrollCapability(policy, capabilities),
+			elevatedCooperativeOperationCapability(OperationDrag, policy, capabilities.Mouse),
 			operationCapability(OperationTypeText, policy, capabilities.Keyboard),
+			keyChordCapability(policy, capabilities),
+			activationCapability(policy, capabilities),
 		},
 	}
+}
+
+func keyChordCapability(policy Policy, capabilities robotgo.RuntimeCapabilities) OperationCapability {
+	feature := keyChordFeature(capabilities)
+	return elevatedCooperativeOperationCapability(OperationKeyChord, policy, feature)
+}
+
+func keyChordFeature(capabilities robotgo.RuntimeCapabilities) robotgo.FeatureCapability {
+	if !capabilities.Keyboard.Available {
+		return capabilities.Keyboard
+	}
+	if capabilities.Runtime.GOOS == goOSLinux {
+		feature := capabilities.Keyboard
+		feature.Available = false
+		feature.Reason = robotgo.ErrNotSupported.Error() +
+			": Linux keyboard input cannot bind a chord to an allowed process"
+		feature.Notes = "X11 and Wayland inject into global focus; use a backend with process-targeted keyboard injection"
+		return feature
+	}
+	if capabilities.Runtime.GOOS == "windows" {
+		feature := capabilities.Keyboard
+		feature.Available = false
+		feature.Reason = robotgo.ErrNotSupported.Error() +
+			": Windows keyboard input cannot atomically bind validation and dispatch to one window generation"
+		feature.Notes = "use a cooperative accessibility or in-process backend that can validate the target generation at dispatch"
+		return feature
+	}
+	if !capabilities.Window.Available {
+		feature := capabilities.Window
+		feature.Backend = capabilities.Keyboard.Backend
+		feature.Fallback = capabilities.Keyboard.Fallback
+		feature.Reason = "keyboard injection is available but target-window identity is unavailable: " + feature.Reason
+		feature.Notes = "keyboard.chord requires a trustworthy process title before process-targeted injection"
+		return feature
+	}
+	return capabilities.Keyboard
+}
+
+func scrollCapability(policy Policy, capabilities robotgo.RuntimeCapabilities) OperationCapability {
+	capability := cooperativeOperationCapability(OperationScroll, policy, capabilities.Mouse)
+	capability.ScrollAxes = []ScrollAxis{ScrollAxisHorizontal, ScrollAxisVertical}
+	if capabilities.Mouse.Backend == agentInputPureGoX11 {
+		capability.ScrollAxes = []ScrollAxis{ScrollAxisVertical}
+		capability.Remediation = "Pure-Go X11 currently supports vertical scrolling only; use the native X11 backend for horizontal scrolling"
+	}
+	return capability
+}
+
+func activationFeature(policy Policy, capabilities robotgo.RuntimeCapabilities) robotgo.FeatureCapability {
+	feature := capabilities.Window
+	if capabilities.Runtime.GOOS == goOSLinux &&
+		capabilities.Runtime.DisplayServer == robotgo.DisplayServerWayland {
+		feature.Available = false
+		feature.Fallback = false
+		feature.Reason = "global foreign-window activation is unavailable on the selected Wayland backend"
+		feature.Notes = "use a compositor or accessibility backend that exposes a stable activation contract; RobotGo does not route Wayland activation through X11"
+	}
+	if capabilities.Runtime.GOOS == "darwin" && capabilities.Runtime.CGOEnabled &&
+		hasAllowedWindows(policy) {
+		feature.Available = false
+		feature.Fallback = false
+		feature.Reason = robotgo.ErrNotSupported.Error() +
+			": native macOS CGO cannot preserve one exact window reference across validation and activation"
+		feature.Notes = "use the Pure-Go macOS window backend for validated CGWindowID activation"
+	}
+	return feature
+}
+
+func activationCapability(policy Policy, capabilities robotgo.RuntimeCapabilities) OperationCapability {
+	feature := activationFeature(policy, capabilities)
+	capability := elevatedOperationCapability(OperationActivate, policy, feature)
+	if !feature.Available &&
+		(capabilities.Runtime.GOOS == goOSLinux &&
+			capabilities.Runtime.DisplayServer == robotgo.DisplayServerWayland ||
+			capabilities.Runtime.GOOS == "darwin" &&
+				capabilities.Runtime.CGOEnabled && hasAllowedWindows(policy)) {
+		capability.UnavailableCode = ErrorUnsupported
+	}
+	return capability
+}
+
+func hasAllowedWindows(policy Policy) bool {
+	return len(policy.allowWindow) > 0
 }
 
 func observationCapability(policy Policy, capabilities robotgo.RuntimeCapabilities) OperationCapability {
@@ -95,6 +192,41 @@ func agentCaptureCapability(capabilities robotgo.RuntimeCapabilities) (bool, str
 }
 
 func operationCapability(operation Operation, policy Policy, feature robotgo.FeatureCapability) OperationCapability {
+	return mutationCapability(
+		operation, policy, feature, RiskReversibleMutation,
+		CancellationPreflightOnly, false,
+	)
+}
+
+func cooperativeOperationCapability(operation Operation, policy Policy, feature robotgo.FeatureCapability) OperationCapability {
+	return mutationCapability(
+		operation, policy, feature, RiskReversibleMutation,
+		CancellationCooperative, false,
+	)
+}
+
+func elevatedOperationCapability(operation Operation, policy Policy, feature robotgo.FeatureCapability) OperationCapability {
+	return mutationCapability(
+		operation, policy, feature, RiskElevatedMutation,
+		CancellationPreflightOnly, true,
+	)
+}
+
+func elevatedCooperativeOperationCapability(operation Operation, policy Policy, feature robotgo.FeatureCapability) OperationCapability {
+	return mutationCapability(
+		operation, policy, feature, RiskElevatedMutation,
+		CancellationCooperative, true,
+	)
+}
+
+func mutationCapability(
+	operation Operation,
+	policy Policy,
+	feature robotgo.FeatureCapability,
+	risk RiskClass,
+	cancellation CancellationSupport,
+	mandatoryConfirmation bool,
+) OperationCapability {
 	_, confirmationRequired := policy.requireConfirmation[operation]
 	_, policyAllowed := policy.allowOperation[operation]
 	remediation := feature.Notes
@@ -103,17 +235,39 @@ func operationCapability(operation Operation, policy Policy, feature robotgo.Fea
 	}
 	return OperationCapability{
 		Operation: operation, Available: feature.Available, PolicyAllowed: policyAllowed, Backend: feature.Backend,
-		Fallback: feature.Fallback, Risk: RiskReversibleMutation,
-		ConfirmationRequired: confirmationRequired,
-		Cancellation:         CancellationPreflightOnly,
+		Fallback: feature.Fallback, Risk: risk,
+		ConfirmationRequired: confirmationRequired || mandatoryConfirmation,
+		Cancellation:         cancellation,
 		ProcessGlobalBackend: true, ExclusiveAgentSession: true,
 		Reason: feature.Reason, Remediation: remediation,
+		UnavailableCode: featureUnavailableCode(feature),
 	}
 }
 
+func featureUnavailableCode(feature robotgo.FeatureCapability) ErrorCode {
+	if feature.Available {
+		return ""
+	}
+	reason := strings.ToLower(feature.Reason)
+	if strings.Contains(reason, strings.ToLower(robotgo.ErrPermissionDenied.Error())) {
+		return ErrorPermissionDenied
+	}
+	if strings.Contains(reason, strings.ToLower(robotgo.ErrNotSupported.Error())) {
+		return ErrorUnsupported
+	}
+	return ErrorUnavailable
+}
+
 func cloneCatalog(source OperationCatalog) OperationCatalog {
-	return OperationCatalog{
+	cloned := OperationCatalog{
 		SchemaVersion: source.SchemaVersion,
 		Operations:    append([]OperationCapability(nil), source.Operations...),
 	}
+	for index := range cloned.Operations {
+		cloned.Operations[index].ScrollAxes = append(
+			[]ScrollAxis(nil),
+			cloned.Operations[index].ScrollAxes...,
+		)
+	}
+	return cloned
 }
