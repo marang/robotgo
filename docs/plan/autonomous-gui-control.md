@@ -99,8 +99,8 @@ Native CGO macOS and Windows serialize pointer operations through a shared
 process-wide ledger, preventing package-level holds, clicks, and agent drags
 from claiming the same button concurrently; a rejected agent down never sends
 an up for the pre-existing hold. `CloseMainDisplayE` remains the explicit
-process-wide cleanup boundary and retries any native release that could not be
-confirmed.
+process-wide cleanup boundary and retries any native hold or Windows click
+release that could not be confirmed.
 Once injection has started, an interrupted multi-step action is reported as
 `unverified`, so callers do not mistake a partial outcome for a safe retry.
 Cleanup failure is returned rather than hidden, blocks further actions, and

@@ -2390,6 +2390,15 @@ func clickE(applyDelay bool, args ...interface{}) error {
 	server := selectedDisplayServer()
 	button := CheckMouse(name)
 	ready, nativeErr := runNativeMouseOperation(server, func() error {
+		if runtime.GOOS == "windows" {
+			return clickTrackedNativeMouseHold(
+				mouseHolds,
+				name,
+				double,
+				func(down bool) error { return nativeTrackedMouseToggle(name, down) },
+				time.Sleep,
+			)
+		}
 		if !double {
 			return nativeMouseStatusError(C.clickMouse(button), "click mouse button")
 		}
@@ -2566,6 +2575,34 @@ func toggleTrackedNativeMouseHold(
 		delete(holds, name)
 	}
 	return err
+}
+
+func clickTrackedNativeMouseHold(
+	holds map[string]mouseHold,
+	name string,
+	double bool,
+	toggle func(bool) error,
+	sleep func(time.Duration),
+) error {
+	clicks := 1
+	if double {
+		clicks = 2
+	}
+	for click := 0; click < clicks; click++ {
+		if err := toggleTrackedNativeMouseHold(holds, name, true, toggle); err != nil {
+			return err
+		}
+		sleep(5 * time.Millisecond)
+		if err := toggleTrackedNativeMouseHold(holds, name, false, toggle); err != nil {
+			// An ambiguous release remains in holds so an explicit Up or
+			// CloseMainDisplayE can retry it without touching foreign input.
+			return err
+		}
+		if click+1 < clicks {
+			sleep(200 * time.Millisecond)
+		}
+	}
+	return nil
 }
 
 // MouseDown send mouse down event

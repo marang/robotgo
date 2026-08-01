@@ -5,6 +5,7 @@ package robotgo
 import (
 	"errors"
 	"testing"
+	"time"
 )
 
 func TestToggleTrackedNativeMouseHoldCoordinatesOwnership(t *testing.T) {
@@ -124,5 +125,83 @@ func TestToggleTrackedNativeMouseHoldDoesNotRecordRejectedDown(t *testing.T) {
 	}
 	if len(holds) != 0 {
 		t.Fatalf("rejected down recorded ownership: %+v", holds)
+	}
+}
+
+func TestClickTrackedNativeMouseHoldRetainsAmbiguousRelease(t *testing.T) {
+	holds := make(map[string]mouseHold)
+	wantErr := errors.New("release unconfirmed")
+	var transitions []bool
+	var delays []time.Duration
+	toggle := func(down bool) error {
+		transitions = append(transitions, down)
+		if !down {
+			return wantErr
+		}
+		return nil
+	}
+
+	err := clickTrackedNativeMouseHold(
+		holds,
+		"left",
+		false,
+		toggle,
+		func(delay time.Duration) { delays = append(delays, delay) },
+	)
+	if !errors.Is(err, wantErr) {
+		t.Fatalf("click error = %v", err)
+	}
+	if len(transitions) != 2 || !transitions[0] || transitions[1] {
+		t.Fatalf("click transitions = %v", transitions)
+	}
+	if len(delays) != 1 || delays[0] != 5*time.Millisecond {
+		t.Fatalf("click delays = %v", delays)
+	}
+	if hold, held := holds["left"]; !held || hold.backend != persistentInputBackendNative {
+		t.Fatalf("ambiguous click release ownership = %+v, held = %v", hold, held)
+	}
+}
+
+func TestClickTrackedNativeMouseHoldTracksBothDoubleClickReleases(t *testing.T) {
+	holds := make(map[string]mouseHold)
+	var transitions []bool
+	var delays []time.Duration
+
+	if err := clickTrackedNativeMouseHold(
+		holds,
+		"right",
+		true,
+		func(down bool) error {
+			transitions = append(transitions, down)
+			return nil
+		},
+		func(delay time.Duration) { delays = append(delays, delay) },
+	); err != nil {
+		t.Fatalf("double click: %v", err)
+	}
+	wantTransitions := []bool{true, false, true, false}
+	if len(transitions) != len(wantTransitions) {
+		t.Fatalf("double-click transitions = %v", transitions)
+	}
+	for i := range wantTransitions {
+		if transitions[i] != wantTransitions[i] {
+			t.Fatalf("double-click transitions = %v", transitions)
+		}
+	}
+	wantDelays := []time.Duration{
+		5 * time.Millisecond,
+		200 * time.Millisecond,
+		5 * time.Millisecond,
+	}
+	if len(delays) != len(wantDelays) {
+		t.Fatalf("double-click delays = %v", delays)
+	}
+	for i := range wantDelays {
+		if delays[i] != wantDelays[i] {
+			t.Fatalf("double-click delays = %v", delays)
+		}
+	}
+	if _, held := holds["right"]; held {
+		t.Fatal("successful double click retained native mouse ownership")
 	}
 }
