@@ -1,4 +1,4 @@
-//go:build linux || windows
+//go:build darwin || linux || windows
 
 // Command semantic_ui prints one bounded native accessibility snapshot for an
 // explicitly selected process/window and exact title. It writes no files and
@@ -27,7 +27,7 @@ func main() {
 
 func run() error {
 	pid := flag.Int("pid", 0, "PID of a self-owned accessible application")
-	handle := flag.Int("handle", 0, "native handle of a self-owned window (Windows only)")
+	handle := flag.Int("handle", 0, "native handle of a self-owned window (Windows HWND or macOS CGWindowID)")
 	title := flag.String("title", "", "exact top-level accessible window title")
 	confirm := flag.Bool("confirm", false, "confirm this bounded semantic read")
 	includeValues := flag.Bool("include-values", false, "include non-sensitive control values")

@@ -149,10 +149,10 @@ func buildATSPITree(ctx context.Context, query atspiQuery, root atspiReference, 
 		role := mapATSPIRole(roleID)
 		hidden := !atspiStateSet(stateWords, atspiStateVisible)
 		offscreen := !atspiStateSet(stateWords, atspiStateShowing)
-		if hidden || offscreen {
+		sensitive := roleID == atspiRolePasswordText
+		if sensitive || hidden || offscreen {
 			snapshot.Truncated = true
 		}
-		sensitive := roleID == atspiRolePasswordText
 		node := Node{
 			Reference: referenceData,
 			Parent:    parent, Depth: depth, Role: role,
@@ -231,6 +231,9 @@ func buildATSPITree(ctx context.Context, query atspiQuery, root atspiReference, 
 
 		nodeIndex := len(snapshot.Nodes)
 		snapshot.Nodes = append(snapshot.Nodes, node)
+		if sensitive || hidden || offscreen {
+			return nil
+		}
 		count, err := query.childCount(ctx, reference)
 		if err != nil {
 			return normalizeATSPIError(err)
@@ -241,7 +244,7 @@ func buildATSPITree(ctx context.Context, query atspiQuery, root atspiReference, 
 		if count == 0 {
 			return nil
 		}
-		if hidden || offscreen || depth == limits.MaxDepth {
+		if depth == limits.MaxDepth {
 			snapshot.Truncated = true
 			return nil
 		}

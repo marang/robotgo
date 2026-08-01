@@ -8,8 +8,9 @@ import (
 )
 
 const (
-	BackendATSPI2            = "at-spi2"
-	BackendWindowsAutomation = "windows-ui-automation"
+	BackendATSPI2             = "at-spi2"
+	BackendMacOSAccessibility = "macos-accessibility"
+	BackendWindowsAutomation  = "windows-ui-automation"
 )
 
 var (

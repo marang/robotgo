@@ -57,9 +57,18 @@ automatic focus, applies fixed native call timeouts, prunes foreign-process,
 offscreen, password, and disallowed-role content before reads, and releases all
 COM/SAFEARRAY/BSTR/VARIANT ownership before returning. Hermetic tests plus a
 protected self-owned Win32 button/input/password fixture cover its policy,
-privacy, and lifecycle contract. macOS Accessibility is the remaining native
-adapter; it may not broaden immutable policy or expose raw handles, object
-paths, arbitrary platform properties, backend errors, or consent prompts.
+privacy, and lifecycle contract. The macOS adapter uses Accessibility for exact
+process- or CGWindowID-and-title targets, fixed AX messaging timeouts, and
+observation-private PID/window/path references. Process identity is queried
+before metadata, secure/hidden/offscreen/foreign/disallowed content is pruned,
+and retained AX/CoreFoundation objects are deterministically released. Its
+hermetic policy/privacy/lifecycle contract and cross-build are blocking;
+permission-granted runtime evidence remains pending under LAB-69.
+
+Semantic element IDs are observation-bound but are not accepted by any current
+mutation API. A later element-action contract must re-resolve the private
+backend reference and revalidate target identity, role, state, and bounds; the
+inspection capability alone never grants mutation.
 
 ## Action contract
 

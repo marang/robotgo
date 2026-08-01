@@ -141,7 +141,7 @@ func buildUIATree[T comparable](
 			Sensitive: structure.Password, Offscreen: structure.Offscreen,
 		}
 		roleAllowed := limits.AllowedRoles[role]
-		if structure.Offscreen {
+		if structure.Password || structure.Offscreen {
 			snapshot.Truncated = true
 		}
 		if roleAllowed && !structure.Password && !structure.Offscreen {
@@ -174,7 +174,7 @@ func buildUIATree[T comparable](
 
 		nodeIndex := len(snapshot.Nodes)
 		snapshot.Nodes = append(snapshot.Nodes, node)
-		if structure.Offscreen {
+		if structure.Password || structure.Offscreen {
 			return nil
 		}
 		if depth == limits.MaxDepth {

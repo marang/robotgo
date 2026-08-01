@@ -22,7 +22,12 @@
   before reads, and deterministically releases every COM object, SAFEARRAY,
   BSTR, and VARIANT. A protected disposable Windows fixture proves real button,
   input, password-redaction, and cleanup behavior without screenshots or files.
-  macOS Accessibility remains explicitly unsupported. Hermetic fixtures prove
+  macOS now supplies a Pure-Go Accessibility adapter for exact process- or
+  CGWindowID-and-title targets. It uses fixed AX messaging timeouts, private
+  PID/window/path references, process-first metadata reads, conservative
+  offscreen handling, secure-text redaction, and deterministic CoreFoundation
+  ownership. Permission-granted macOS runtime evidence remains pending under
+  LAB-69. Hermetic fixtures prove
   policy denial, sanitization, hierarchy, stale-window rejection, invalid
   backend identity rejection, MCP projection, and cleanup without reading or
   writing the developer desktop.

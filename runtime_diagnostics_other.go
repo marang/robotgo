@@ -74,6 +74,15 @@ func darwinRuntimePermissions(
 			),
 			Reason: capabilities.Window.Reason,
 		},
+		{
+			Feature: runtimeFeatureAccessibility,
+			Name:    "Accessibility",
+			State: permissionFromCapability(
+				capabilities.Accessibility,
+				"is available",
+			),
+			Reason: capabilities.Accessibility.Reason,
+		},
 	}
 }
 

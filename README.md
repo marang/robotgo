@@ -82,8 +82,8 @@ group.
 
 | Platform/session | Build | Current behavior |
 |---|---|---|
-| macOS | CGO-enabled default build | Native implementation plus blocking build/API/display and non-prompting permission/error contracts; Screen Recording- or Accessibility-granted capture/input/window behavior is implemented but remains outside the stable supported scope pending runtime evidence |
-| macOS | `CGO_ENABLED=0` | Blocking CoreGraphics bounds/Retina-scale and non-prompting permission diagnostics; pixel capture, Quartz input, and Accessibility window operations are implemented but permission-granted runtime evidence remains pending; maximize/topmost and media keys without stable native semantics return `ErrNotSupported` |
+| macOS | CGO-enabled default build | Native implementation plus blocking build/API/display and non-prompting permission/error contracts; bounded process- or CGWindowID-targeted semantic inspection is implemented through macOS Accessibility; permission-granted capture/input/window/semantic behavior remains evidence-pending |
+| macOS | `CGO_ENABLED=0` | Blocking CoreGraphics bounds/Retina-scale and non-prompting permission diagnostics; pixel capture, Quartz input, Accessibility window operations, and bounded semantic inspection are implemented but permission-granted runtime evidence remains pending; maximize/topmost and media keys without stable native semantics return `ErrNotSupported` |
 | Windows | CGO-enabled default build | Native mouse, keyboard, capture, window, and process paths; bounded process- or HWND-targeted semantic inspection through Windows UI Automation |
 | Windows | `CGO_ENABLED=0` | Pure-Go capture/display bounds, real Win32 DPI scale and pixel-at-pointer queries, foreground-layout-aware `SendInput` keyboard/text plus clipboard paste, complete pointer input, Win32 window title/PID/handle/geometry/state/control operations, and bounded Windows UI Automation semantic inspection with explicit errors |
 | Linux/X11 | CGO-enabled default build | X11/XTest input, capture, window, and process paths; bounded process-targeted semantic inspection through an already-active AT-SPI2 bus |
@@ -95,7 +95,7 @@ group.
 [Runtime Compatibility Matrix v1](docs/compatibility/runtime-v1.md) splits each
 bounded scope into `supported` or `implemented / evidence pending` and maps
 every supported row to exact release checks. In particular, permission-granted
-macOS capture/input/window operations are outside the stable supported scope.
+macOS capture/input/window/semantic operations are outside the stable supported scope.
 Their promotion is tracked by the externally blocked
 [LAB-69](https://linear.app/riotbox/issue/LAB-69/add-permission-granted-self-owned-macos-runtime-evidence)
 and requires sanitized evidence from an isolated permission-granted runtime;
@@ -931,7 +931,10 @@ query-interval, and session-lifetime limits. Element IDs are opaque and
 observation-scoped; platform handles and object paths remain private. Hidden and offscreen nodes
 are omitted, password/sensitive text is redacted, invalid backend identities
 fail closed, and `ReleaseObservation` or session close zeroes retained backend
-references. On Linux, an already-active AT-SPI2 bus provides the first native
+references. No current action accepts a semantic element ID, so enabling
+inspection grants no element mutation. A future element action must re-resolve
+the retained native identity and revalidate role, state, bounds, target
+process/window, and title before performing input. On Linux, an already-active AT-SPI2 bus provides the first native
 adapter for exact process-and-title targets on GNOME, KDE, and other accessible
 desktops. Its capability probe never starts the accessibility service; enable
 desktop accessibility before RobotGo when the catalog reports it unavailable.
@@ -944,10 +947,16 @@ focus disabled and fixed connection/transaction timeouts. Cross-process,
 offscreen, password, and disallowed-role subtrees are pruned before content
 reads; `SAFEARRAY`, `BSTR`, `VARIANT`, element, walker, and automation ownership
 is released before return. The availability probe creates no window, reads no
-element, and opens no consent dialog. macOS Accessibility remains explicitly
-unsupported until its adapter preserves the same identity, privacy, and
-cleanup contract; RobotGo never substitutes an empty or misleading tree.
-The Linux/Windows example requires exactly one PID or Windows handle, an exact
+element, and opens no consent dialog. On macOS, the adapter accepts an exact
+process or CGWindowID plus title, applies a fixed native AX messaging timeout,
+and binds every opaque observation reference to the PID, CGWindowID, and
+bounded child-index path rather than an AX pointer. It queries process identity
+before node metadata, prunes foreign-process, hidden, offscreen, secure-text,
+and disallowed-role content before reads, and releases every retained
+CoreFoundation/AX object before return. Its capability probe uses the
+non-prompting trust check; permission-granted real-runtime evidence remains
+pending under LAB-69, so implementation is not yet a stable-support claim.
+The cross-platform example requires exactly one PID or Windows/macOS handle, an exact
 title, and confirmation. It prints one bounded observation to standard output,
 writes no file, and reads control values only with the separate
 `-include-values` flag:
@@ -956,6 +965,7 @@ writes no file, and reads control values only with the separate
 go run ./examples/semantic_ui -pid 1234 -title 'Self-owned fixture' -confirm
 # Windows may bind the exact HWND instead:
 go run ./examples/semantic_ui -handle 123456 -title 'Self-owned fixture' -confirm
+# macOS may bind the exact CGWindowID the same way.
 ```
 
 An action can reference a captured observation through

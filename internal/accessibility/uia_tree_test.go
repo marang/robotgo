@@ -129,7 +129,8 @@ func TestBuildUIATreeMinimizesPrivateAndOutOfScopeReads(t *testing.T) {
 				value.Password = true
 				return value
 			}(),
-			details: uiaNodeDetails{Name: "Password", Value: "secret"},
+			details:  uiaNodeDetails{Name: "Password", Value: "secret"},
+			children: []int{8},
 		},
 		3: {
 			structure: func() uiaNodeStructure {
@@ -159,6 +160,10 @@ func TestBuildUIATreeMinimizesPrivateAndOutOfScopeReads(t *testing.T) {
 				Bounds: &Bounds{X: 20, Y: 40, Width: 80, Height: 30},
 			},
 		},
+		8: {
+			structure: fakeUIAStructure(8, 42, uiaControlText),
+			details:   uiaNodeDetails{Name: "nested-password-secret"},
+		},
 	}
 	query := newFakeUIAQuery(nodes)
 	snapshot, err := buildUIATree(t.Context(), query, 1, 42, uiaTestLimits())
@@ -185,6 +190,9 @@ func TestBuildUIATreeMinimizesPrivateAndOutOfScopeReads(t *testing.T) {
 	}
 	if query.structureCalls[4] != 0 || query.releases[4] != 0 {
 		t.Fatalf("offscreen descendant was acquired: structure=%d releases=%d", query.structureCalls[4], query.releases[4])
+	}
+	if query.structureCalls[8] != 0 || query.releases[8] != 0 {
+		t.Fatalf("password descendant was acquired: structure=%d releases=%d", query.structureCalls[8], query.releases[8])
 	}
 	for _, reference := range []int{1, 2, 3, 5, 6, 7} {
 		if query.releases[reference] != 1 {

@@ -21,11 +21,13 @@ type nativeAPI struct {
 	axUIElementCreateApplication           func(int32) uintptr
 	axUIElementCopyAttributeValue          func(uintptr, uintptr, *uintptr) int32
 	axUIElementCopyAttributeValues         func(uintptr, uintptr, int64, int64, *uintptr) int32
+	axUIElementCopyActionNames             func(uintptr, *uintptr) int32
 	axUIElementGetAttributeValueCount      func(uintptr, uintptr, *int64) int32
 	axUIElementGetPID                      func(uintptr, *int32) int32
 	axUIElementGetTypeID                   func() uintptr
 	axUIElementPerformAction               func(uintptr, uintptr) int32
 	axUIElementSetAttributeValue           func(uintptr, uintptr, uintptr) int32
+	axUIElementSetMessagingTimeout         func(uintptr, float32) int32
 	axUIElementGetWindow                   func(uintptr, *uint32) int32
 	axValueGetType                         func(uintptr) uint32
 	axValueGetTypeID                       func() uintptr
@@ -37,6 +39,7 @@ type nativeAPI struct {
 	cgWindowListCreateDescriptionFromArray func(uintptr) uintptr
 	cfArrayCreate                          func(uintptr, *uintptr, int64, uintptr) uintptr
 	cfArrayGetCount                        func(uintptr) int64
+	cfArrayGetTypeID                       func() uintptr
 	cfArrayGetValueAtIndex                 func(uintptr, int64) uintptr
 	cfBooleanGetValue                      func(uintptr) bool
 	cfBooleanGetTypeID                     func() uintptr
@@ -53,14 +56,25 @@ type nativeAPI struct {
 	cfStringGetTypeID                      func() uintptr
 
 	axCloseButtonAttribute   uintptr
+	axChildrenAttribute      uintptr
+	axDescriptionAttribute   uintptr
+	axEnabledAttribute       uintptr
+	axExpandedAttribute      uintptr
+	axFocusedAttribute       uintptr
 	axFocusedWindowAttribute uintptr
+	axHelpAttribute          uintptr
+	axHiddenAttribute        uintptr
 	axMainWindowAttribute    uintptr
 	axMinimizedAttribute     uintptr
 	axPositionAttribute      uintptr
 	axPressAction            uintptr
 	axRaiseAction            uintptr
+	axRoleAttribute          uintptr
+	axSelectedAttribute      uintptr
 	axSizeAttribute          uintptr
+	axSubroleAttribute       uintptr
 	axTitleAttribute         uintptr
+	axValueAttribute         uintptr
 	axWindowsAttribute       uintptr
 	cfBooleanFalse           uintptr
 	cfBooleanTrue            uintptr
@@ -106,11 +120,13 @@ func openNativeAPI() (*nativeAPI, error) {
 		{api.applicationServicesHandle, &api.axUIElementCreateApplication, "AXUIElementCreateApplication"},
 		{api.applicationServicesHandle, &api.axUIElementCopyAttributeValue, "AXUIElementCopyAttributeValue"},
 		{api.applicationServicesHandle, &api.axUIElementCopyAttributeValues, "AXUIElementCopyAttributeValues"},
+		{api.applicationServicesHandle, &api.axUIElementCopyActionNames, "AXUIElementCopyActionNames"},
 		{api.applicationServicesHandle, &api.axUIElementGetAttributeValueCount, "AXUIElementGetAttributeValueCount"},
 		{api.applicationServicesHandle, &api.axUIElementGetPID, "AXUIElementGetPid"},
 		{api.applicationServicesHandle, &api.axUIElementGetTypeID, "AXUIElementGetTypeID"},
 		{api.applicationServicesHandle, &api.axUIElementPerformAction, "AXUIElementPerformAction"},
 		{api.applicationServicesHandle, &api.axUIElementSetAttributeValue, "AXUIElementSetAttributeValue"},
+		{api.applicationServicesHandle, &api.axUIElementSetMessagingTimeout, "AXUIElementSetMessagingTimeout"},
 		{api.applicationServicesHandle, &api.axUIElementGetWindow, "_AXUIElementGetWindow"},
 		{api.applicationServicesHandle, &api.axValueGetType, "AXValueGetType"},
 		{api.applicationServicesHandle, &api.axValueGetTypeID, "AXValueGetTypeID"},
@@ -122,6 +138,7 @@ func openNativeAPI() (*nativeAPI, error) {
 		{api.coreGraphicsHandle, &api.cgWindowListCreateDescriptionFromArray, "CGWindowListCreateDescriptionFromArray"},
 		{api.coreFoundationHandle, &api.cfArrayCreate, "CFArrayCreate"},
 		{api.coreFoundationHandle, &api.cfArrayGetCount, "CFArrayGetCount"},
+		{api.coreFoundationHandle, &api.cfArrayGetTypeID, "CFArrayGetTypeID"},
 		{api.coreFoundationHandle, &api.cfArrayGetValueAtIndex, "CFArrayGetValueAtIndex"},
 		{api.coreFoundationHandle, &api.cfBooleanGetValue, "CFBooleanGetValue"},
 		{api.coreFoundationHandle, &api.cfBooleanGetTypeID, "CFBooleanGetTypeID"},
@@ -161,14 +178,25 @@ func openNativeAPI() (*nativeAPI, error) {
 		value  string
 	}{
 		{&api.axCloseButtonAttribute, axCloseButtonAttributeName},
+		{&api.axChildrenAttribute, axChildrenAttributeName},
+		{&api.axDescriptionAttribute, axDescriptionAttributeName},
+		{&api.axEnabledAttribute, axEnabledAttributeName},
+		{&api.axExpandedAttribute, axExpandedAttributeName},
+		{&api.axFocusedAttribute, axFocusedAttributeName},
 		{&api.axFocusedWindowAttribute, axFocusedWindowAttributeName},
+		{&api.axHelpAttribute, axHelpAttributeName},
+		{&api.axHiddenAttribute, axHiddenAttributeName},
 		{&api.axMainWindowAttribute, axMainWindowAttributeName},
 		{&api.axMinimizedAttribute, axMinimizedAttributeName},
 		{&api.axPositionAttribute, axPositionAttributeName},
 		{&api.axPressAction, axPressActionName},
 		{&api.axRaiseAction, axRaiseActionName},
+		{&api.axRoleAttribute, axRoleAttributeName},
+		{&api.axSelectedAttribute, axSelectedAttributeName},
 		{&api.axSizeAttribute, axSizeAttributeName},
+		{&api.axSubroleAttribute, axSubroleAttributeName},
 		{&api.axTitleAttribute, axTitleAttributeName},
+		{&api.axValueAttribute, axValueAttributeName},
 		{&api.axWindowsAttribute, axWindowsAttributeName},
 	}
 	for _, value := range strings {
@@ -214,7 +242,9 @@ func bindNativeValue(handle uintptr, target *uintptr, name string) error {
 	if err != nil {
 		return fmt.Errorf("%w: resolve macOS value %s: %w", ErrUnsupported, name, err)
 	}
-	value := *(*uintptr)(unsafe.Pointer(symbol))
+	// Dlsym returns the address of a CoreFoundation global variable; reading
+	// that exported pointer value requires this deliberate data-symbol cast.
+	value := *(*uintptr)(unsafe.Pointer(symbol)) //nolint:govet
 	if value == 0 {
 		return fmt.Errorf("%w: macOS value %s is nil", ErrUnsupported, name)
 	}

@@ -213,6 +213,7 @@ func TestFindATSPITargetRequiresOneExactProcessWindow(t *testing.T) {
 func TestBuildATSPITreeMinimizesSensitiveAndHiddenReads(t *testing.T) {
 	window := atspiTestReference("window")
 	password := atspiTestReference("password")
+	passwordChild := atspiTestReference("password-child")
 	button := atspiTestReference("button")
 	hidden := atspiTestReference("hidden")
 	disallowed := atspiTestReference("disallowed")
@@ -224,9 +225,14 @@ func TestBuildATSPITreeMinimizesSensitiveAndHiddenReads(t *testing.T) {
 			interfaces: []string{"Component"}, rect: atspiRect{X: 10, Y: 20, Width: 300, Height: 200},
 		},
 		password: {
-			role: atspiRolePasswordText, states: atspiTestStates(7, 8, 11, 25, 30),
+			children: []atspiReference{passwordChild},
+			role:     atspiRolePasswordText, states: atspiTestStates(7, 8, 11, 25, 30),
 			properties: map[string]string{"Name": "Password", "Description": "private", "Value": "secret"},
 			interfaces: []string{"Text", "EditableText"}, text: "correct horse battery staple",
+		},
+		passwordChild: {
+			role: atspiRoleLabel, states: atspiTestStates(25, 30),
+			properties: map[string]string{"Name": "nested-password-secret"},
 		},
 		button: {
 			role: atspiRoleButton, states: atspiTestStates(8, 11, 25, 30),
@@ -272,6 +278,10 @@ func TestBuildATSPITreeMinimizesSensitiveAndHiddenReads(t *testing.T) {
 			t.Fatalf("sensitive/hidden node queried interfaces=%d text=%d",
 				query.interfaceCalls[key], query.textCalls[key])
 		}
+	}
+	if query.childCalls[referenceKey(password)] != 0 ||
+		query.propertyCalls[referenceKey(passwordChild)+":"+atspiPropertyName] != 0 {
+		t.Fatal("password descendant was traversed or read")
 	}
 }
 
