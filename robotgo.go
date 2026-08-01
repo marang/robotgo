@@ -1752,8 +1752,9 @@ func getXDisplayNameLocked() string {
 // compatibility. Prefer CloseMainDisplayE in new code.
 func CloseMainDisplay() { _ = CloseMainDisplayE() }
 
-// CloseMainDisplayE releases RobotGo-owned native X11 keys and closes the
-// native main display.
+// CloseMainDisplayE releases RobotGo-owned native mouse holds and X11 keys,
+// then closes the native main display. Failed mouse releases remain owned so a
+// later call can retry them.
 func CloseMainDisplayE() error {
 	unlockMouse := lockLinuxMouse()
 	defer unlockMouse()
@@ -1912,6 +1913,20 @@ func clearPortalMouseGenerationLocked(generation uint64) {
 
 func releaseNativeMouseHoldsLocked(server DisplayServer) error {
 	var releaseErr error
+	if runtime.GOOS != "linux" {
+		for name, hold := range mouseHolds {
+			if hold.backend != persistentInputBackendNative {
+				continue
+			}
+			releaseErr = errors.Join(releaseErr, toggleTrackedNativeMouseHold(
+				mouseHolds,
+				name,
+				false,
+				func(down bool) error { return nativeTrackedMouseToggle(name, down) },
+			))
+		}
+		return releaseErr
+	}
 	if server == DisplayServerX11 {
 		releaseErr = nativeMouseStatusError(
 			C.robotgo_x11_release_owned_buttons(),
@@ -2008,11 +2023,11 @@ func tryPortalMouseUp(hold mouseHold) (bool, error) {
 }
 
 func lockLinuxMouse() func() {
-	if runtime.GOOS == "linux" {
-		waylandMouseMu.Lock()
-		return waylandMouseMu.Unlock
-	}
-	return func() {}
+	// This lock originated with the Wayland/X11 fallback transaction. Native
+	// macOS and Windows now use the same lock because their Go ownership ledger
+	// must also serialize package-level holds, clicks, and agent drags.
+	waylandMouseMu.Lock()
+	return waylandMouseMu.Unlock
 }
 
 func lockNativeMouseDisplay(server DisplayServer) func() {
@@ -2369,10 +2384,8 @@ func clickE(applyDelay bool, args ...interface{}) error {
 	unlockMouse := lockLinuxMouse()
 	defer unlockMouse()
 	name = canonicalMouseHoldName(name)
-	if runtime.GOOS == "linux" {
-		if _, held := mouseHolds[name]; held {
-			return ErrInputOwnership
-		}
+	if _, held := mouseHolds[name]; held {
+		return ErrInputOwnership
 	}
 	server := selectedDisplayServer()
 	button := CheckMouse(name)
@@ -2442,9 +2455,11 @@ func Toggle(key ...interface{}) error {
 	defer unlockMouse()
 	name = canonicalMouseHoldName(name)
 	if runtime.GOOS != "linux" {
-		if err := nativeMouseStatusError(
-			C.toggleMouse(C.bool(down), CheckMouse(name)),
-			"toggle mouse button",
+		if err := toggleTrackedNativeMouseHold(
+			mouseHolds,
+			name,
+			down,
+			func(down bool) error { return nativeTrackedMouseToggle(name, down) },
 		); err != nil {
 			return err
 		}
@@ -2512,6 +2527,45 @@ func Toggle(key ...interface{}) error {
 	}
 
 	return nil
+}
+
+func nativeTrackedMouseToggle(name string, down bool) error {
+	err := nativeMouseStatusError(
+		C.toggleMouse(C.bool(down), CheckMouse(name)),
+		"toggle mouse button",
+	)
+	if down && runtime.GOOS == "windows" && err != nil {
+		return errors.Join(ErrInputNotApplied, err)
+	}
+	return err
+}
+
+func toggleTrackedNativeMouseHold(
+	holds map[string]mouseHold,
+	name string,
+	down bool,
+	toggle func(bool) error,
+) error {
+	if down {
+		if _, held := holds[name]; held {
+			return ErrInputOwnership
+		}
+		if err := toggle(true); err != nil {
+			return err
+		}
+		holds[name] = mouseHold{backend: persistentInputBackendNative}
+		return nil
+	}
+
+	hold, held := holds[name]
+	if !held || hold.backend != persistentInputBackendNative {
+		return ErrInputOwnership
+	}
+	err := toggle(false)
+	if err == nil || errors.Is(err, ErrInputOwnership) {
+		delete(holds, name)
+	}
+	return err
 }
 
 // MouseDown send mouse down event

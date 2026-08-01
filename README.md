@@ -348,6 +348,12 @@ with `errors.Is`. Closing or retargeting the native Linux backend releases
 RobotGo-owned state; closing a portal session delegates that release to the
 compositor.
 
+Native CGO macOS and Windows pointer holds are also process-owned. Concurrent
+package-level holds, clicks, and agent drags cannot claim the same button; a
+rejected agent claim never releases the pre-existing hold. `CloseMainDisplayE`
+remains the explicit process-wide cleanup boundary and retries native releases
+that could not be confirmed.
+
 Low-level helpers whose signatures directly expose `C.*` types remain CGO-only.
 Portable callers should use `Bitmap`, `CHex`, `Handle`, the error-returning APIs,
 and the high-level capture, input, and window functions instead.
