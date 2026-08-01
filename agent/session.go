@@ -753,7 +753,8 @@ func (s *Session) execute(ctx context.Context, request ActionRequest) error {
 			s.driver.MoveImmediate(request.Move.X, request.Move.Y, request.Move.DisplayID),
 		)
 	case OperationClick:
-		return ambiguousMutationError(
+		return s.clickMutationError(
+			request.Click.Button,
 			s.driver.ClickImmediate(request.Click.Button, request.Click.Double),
 		)
 	case OperationScroll:

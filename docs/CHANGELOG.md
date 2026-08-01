@@ -20,7 +20,8 @@
   process-wide ownership contract, so package-level holds, clicks, and agent
   drags cannot claim the same button or clean up a rejected down. Explicit
   close-time cleanup retries unconfirmed native hold and Windows click
-  releases.
+  releases, while `ErrInputReleasePending` lets agent sessions retain that
+  ownership, block subsequent actions, and retry during session close.
   Explicit process identities use a separate title-query contract and no
   longer inherit the legacy handle-mode default, while existing `GetTitleE`
   behavior remains compatible. The complete agent mutation driver, including

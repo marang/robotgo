@@ -522,6 +522,7 @@ var ErrDmabufMap error
 var ErrDmabufModifiers error
 var ErrInputNotApplied error
 var ErrInputOwnership error
+var ErrInputReleasePending error
 var ErrInvalidPID error
 var ErrNoOutputs error
 var ErrNoScreencopy error

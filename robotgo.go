@@ -2596,7 +2596,7 @@ func clickTrackedNativeMouseHold(
 		if err := toggleTrackedNativeMouseHold(holds, name, false, toggle); err != nil {
 			// An ambiguous release remains in holds so an explicit Up or
 			// CloseMainDisplayE can retry it without touching foreign input.
-			return err
+			return errors.Join(ErrInputReleasePending, err)
 		}
 		if click+1 < clicks {
 			sleep(200 * time.Millisecond)

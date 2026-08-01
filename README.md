@@ -352,7 +352,9 @@ Native CGO macOS and Windows pointer holds are also process-owned. Concurrent
 package-level holds, clicks, and agent drags cannot claim the same button; a
 rejected agent claim never releases the pre-existing hold. `CloseMainDisplayE`
 remains the explicit process-wide cleanup boundary and retries native hold or
-click releases that could not be confirmed.
+click releases that could not be confirmed. `ClickE` and `ClickImmediateE`
+identify that retryable state with `ErrInputReleasePending`; agent sessions
+block further actions and retry their retained click release during `Close`.
 
 Low-level helpers whose signatures directly expose `C.*` types remain CGO-only.
 Portable callers should use `Bitmap`, `CHex`, `Handle`, the error-returning APIs,

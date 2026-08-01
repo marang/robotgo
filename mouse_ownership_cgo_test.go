@@ -148,7 +148,7 @@ func TestClickTrackedNativeMouseHoldRetainsAmbiguousRelease(t *testing.T) {
 		toggle,
 		func(delay time.Duration) { delays = append(delays, delay) },
 	)
-	if !errors.Is(err, wantErr) {
+	if !errors.Is(err, wantErr) || !errors.Is(err, ErrInputReleasePending) {
 		t.Fatalf("click error = %v", err)
 	}
 	if len(transitions) != 2 || !transitions[0] || transitions[1] {

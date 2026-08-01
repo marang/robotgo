@@ -20,6 +20,18 @@ func ambiguousMutationError(err error) error {
 	return errors.Join(errPartialAction, err)
 }
 
+func (s *Session) clickMutationError(button MouseButton, err error) error {
+	if err == nil {
+		return nil
+	}
+	if !errors.Is(err, robotgo.ErrInputReleasePending) {
+		return ambiguousMutationError(err)
+	}
+	s.pressedInputs = append(s.pressedInputs, pressedInput{button: button})
+	s.inputTainted = true
+	return errors.Join(errPartialAction, ErrInputCleanup, err)
+}
+
 func scrollDistance(action ScrollAction) uint64 {
 	perEvent := saturatingAdd(absIntMagnitude(action.DeltaX), absIntMagnitude(action.DeltaY))
 	return saturatingMultiply(perEvent, uint64(action.Events))

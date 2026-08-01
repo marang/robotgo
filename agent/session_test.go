@@ -587,6 +587,51 @@ func TestSimpleMutationBackendErrorsAreUnverified(t *testing.T) {
 	}
 }
 
+func TestRetainedClickReleaseTaintsSessionUntilCloseRetry(t *testing.T) {
+	releaseErr := errors.New("release unconfirmed")
+	driver := &fakeDriver{}
+	driver.callError = func(call driverCall) error {
+		if call.operation == OperationClick {
+			return errors.Join(robotgo.ErrInputReleasePending, releaseErr)
+		}
+		return nil
+	}
+	session := newTestSession(t, testPolicy(), driver)
+
+	result, err := session.Execute(t.Context(), ActionRequest{
+		Operation: OperationClick,
+		Click:     &ClickAction{Button: MouseButtonLeft},
+	})
+	if !errors.Is(err, releaseErr) || !errors.Is(err, ErrInputCleanup) ||
+		result.Status != ActionUnverified || result.Error == nil ||
+		result.Error.Code != ErrorCleanupFailed {
+		t.Fatalf("retained click result = %+v, %v", result, err)
+	}
+	if !session.inputTainted || len(session.pressedInputs) != 1 {
+		t.Fatalf("retained click state: tainted=%v ledger=%+v", session.inputTainted, session.pressedInputs)
+	}
+
+	blocked, blockedErr := session.Execute(t.Context(), ActionRequest{
+		Operation: OperationMove,
+		Move:      &MoveAction{X: 1, Y: 2, DisplayID: 0},
+	})
+	if !errors.Is(blockedErr, ErrInputCleanup) || blocked.Error == nil ||
+		blocked.Error.Code != ErrorCleanupFailed || driver.callCount() != 1 {
+		t.Fatalf("action after retained click = %+v, %v, calls=%+v", blocked, blockedErr, driver.recordedCalls())
+	}
+
+	if err := session.Close(); err != nil {
+		t.Fatalf("close retry: %v", err)
+	}
+	calls := driver.recordedCalls()
+	if len(calls) != 2 || calls[1].down || calls[1].button != MouseButtonLeft {
+		t.Fatalf("close retry calls = %+v", calls)
+	}
+	if session.inputTainted || len(session.pressedInputs) != 0 {
+		t.Fatalf("close retry state: tainted=%v ledger=%+v", session.inputTainted, session.pressedInputs)
+	}
+}
+
 func TestContextIsPreflightOnlyOnceDriverStarts(t *testing.T) {
 	driver := &fakeDriver{started: make(chan struct{}, 1), release: make(chan struct{})}
 	session := newTestSession(t, testPolicy(), driver)
