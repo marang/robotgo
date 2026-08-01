@@ -1,8 +1,8 @@
-//go:build linux
+//go:build linux || windows
 
-// Command semantic_ui prints one bounded AT-SPI semantic snapshot for an
-// explicitly selected process and exact window title. It writes no files and
-// never requests desktop portal consent.
+// Command semantic_ui prints one bounded native accessibility snapshot for an
+// explicitly selected process/window and exact title. It writes no files and
+// never requests desktop consent.
 package main
 
 import (
@@ -27,13 +27,14 @@ func main() {
 
 func run() error {
 	pid := flag.Int("pid", 0, "PID of a self-owned accessible application")
+	handle := flag.Int("handle", 0, "native handle of a self-owned window (Windows only)")
 	title := flag.String("title", "", "exact top-level accessible window title")
 	confirm := flag.Bool("confirm", false, "confirm this bounded semantic read")
 	includeValues := flag.Bool("include-values", false, "include non-sensitive control values")
 	flag.Parse()
 
-	if *pid <= 0 || *title == "" {
-		return errors.New("-pid and an exact non-empty -title are required")
+	if (*pid > 0) == (*handle > 0) || *title == "" {
+		return errors.New("exactly one positive -pid or -handle plus an exact non-empty -title is required")
 	}
 	if !*confirm {
 		return errors.New("pass -confirm after verifying the target PID and title")
@@ -58,10 +59,14 @@ func run() error {
 	if *includeValues {
 		properties = append(properties, agent.UIPropertyValue)
 	}
+	target, kind := *pid, agent.WindowTargetProcess
+	if *handle > 0 {
+		target, kind = *handle, agent.WindowTargetHandle
+	}
 	policy := agent.Policy{
 		AllowedOperations:        []agent.Operation{agent.OperationInspectUI},
 		ConfirmOperations:        []agent.Operation{agent.OperationInspectUI},
-		AllowedWindows:           []agent.WindowTarget{{Target: *pid, Kind: agent.WindowTargetProcess, ExpectedTitle: *title}},
+		AllowedWindows:           []agent.WindowTarget{{Target: target, Kind: kind, ExpectedTitle: *title}},
 		AllowedUIRoles:           semanticRoles(),
 		AllowedUIProperties:      properties,
 		MaxQueries:               1,
@@ -81,7 +86,7 @@ func run() error {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	observation, err := session.InspectUI(ctx, agent.InspectUIRequest{
-		Target: *pid, Kind: agent.WindowTargetProcess, Confirmed: true,
+		Target: target, Kind: kind, Confirmed: true,
 	})
 	if err != nil {
 		return err

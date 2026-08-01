@@ -51,10 +51,15 @@ reads password text, and infers only fixed platform-neutral states/actions.
 The non-prompting capability probe does not activate the accessibility service.
 Inspection rechecks the existing bus and registry and likewise never starts
 them as a side effect.
-Native-handle targets plus Windows UI Automation and macOS Accessibility are
-the next adapter layer; none may broaden the immutable policy or expose raw
-handles, object paths, arbitrary platform properties, backend errors, or
-consent prompts.
+The Windows adapter uses UI Automation 2 for exact process- or HWND-and-title
+targets. It revalidates the resolved HWND/PID/title after traversal, disables
+automatic focus, applies fixed native call timeouts, prunes foreign-process,
+offscreen, password, and disallowed-role content before reads, and releases all
+COM/SAFEARRAY/BSTR/VARIANT ownership before returning. Hermetic tests plus a
+protected self-owned Win32 button/input/password fixture cover its policy,
+privacy, and lifecycle contract. macOS Accessibility is the remaining native
+adapter; it may not broaden immutable policy or expose raw handles, object
+paths, arbitrary platform properties, backend errors, or consent prompts.
 
 ## Action contract
 

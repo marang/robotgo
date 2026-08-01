@@ -126,7 +126,8 @@ func inspect(ctx context.Context, target Target, limits Limits) (Snapshot, error
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	if target.ProcessID <= 0 || target.ExpectedTitle == "" || !validATSPILimits(limits) {
+	if target.ProcessID <= 0 || target.NativeWindowHandle != 0 ||
+		target.ExpectedTitle == "" || !validATSPILimits(limits) {
 		return Snapshot{}, ErrInvalidTree
 	}
 	session, err := connectSessionBusWithoutAutostart(ctx)

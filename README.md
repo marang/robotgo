@@ -84,8 +84,8 @@ group.
 |---|---|---|
 | macOS | CGO-enabled default build | Native implementation plus blocking build/API/display and non-prompting permission/error contracts; Screen Recording- or Accessibility-granted capture/input/window behavior is implemented but remains outside the stable supported scope pending runtime evidence |
 | macOS | `CGO_ENABLED=0` | Blocking CoreGraphics bounds/Retina-scale and non-prompting permission diagnostics; pixel capture, Quartz input, and Accessibility window operations are implemented but permission-granted runtime evidence remains pending; maximize/topmost and media keys without stable native semantics return `ErrNotSupported` |
-| Windows | CGO-enabled default build | Native mouse, keyboard, capture, window, and process paths |
-| Windows | `CGO_ENABLED=0` | Pure-Go capture/display bounds, real Win32 DPI scale and pixel-at-pointer queries, foreground-layout-aware `SendInput` keyboard/text plus clipboard paste, complete pointer input, and Win32 window title/PID/handle/geometry/state/control operations with explicit errors |
+| Windows | CGO-enabled default build | Native mouse, keyboard, capture, window, and process paths; bounded process- or HWND-targeted semantic inspection through Windows UI Automation |
+| Windows | `CGO_ENABLED=0` | Pure-Go capture/display bounds, real Win32 DPI scale and pixel-at-pointer queries, foreground-layout-aware `SendInput` keyboard/text plus clipboard paste, complete pointer input, Win32 window title/PID/handle/geometry/state/control operations, and bounded Windows UI Automation semantic inspection with explicit errors |
 | Linux/X11 | CGO-enabled default build | X11/XTest input, capture, window, and process paths; bounded process-targeted semantic inspection through an already-active AT-SPI2 bus |
 | Linux/X11 | `CGO_ENABLED=0` | Pure-Go X11 capture/bounds, XTEST input, window title/PID/handle/geometry/state/control through X11/EWMH, and AT-SPI2 semantic inspection; horizontal scroll and window mutations without a consistent EWMH window manager are explicitly unsupported |
 | Linux/Wayland | CGO with `-tags wayland`; add `pipewire` for persistent ScreenCast frames | Native wlroots capture/input where compositor protocols exist, one-shot Screenshot fallback, reusable ScreenCast/PipeWire capture, explicit RemoteDesktop portal sessions, capability-aware window support, and process-targeted AT-SPI2 semantic inspection |
@@ -937,15 +937,25 @@ desktops. Its capability probe never starts the accessibility service; enable
 desktop accessibility before RobotGo when the catalog reports it unavailable.
 Inspection also fails explicitly if that pre-existing service disappears; it
 never starts a session bus, accessibility bus, or registry as a side effect.
-Native-handle targets, Windows UI Automation, and macOS Accessibility remain
-explicitly unsupported until an adapter can preserve the same identity and
-privacy contract; RobotGo never substitutes an empty or misleading tree.
-The Linux example requires an explicit PID, exact title, and confirmation. It
-prints one bounded observation to standard output, writes no file, and reads
-control values only with the separate `-include-values` flag:
+On Windows, the adapter accepts an exact process or native HWND plus title,
+binds the observation to the resolved HWND/PID, and revalidates PID and title
+after traversal. UI Automation runs on a private COM thread with automatic
+focus disabled and fixed connection/transaction timeouts. Cross-process,
+offscreen, password, and disallowed-role subtrees are pruned before content
+reads; `SAFEARRAY`, `BSTR`, `VARIANT`, element, walker, and automation ownership
+is released before return. The availability probe creates no window, reads no
+element, and opens no consent dialog. macOS Accessibility remains explicitly
+unsupported until its adapter preserves the same identity, privacy, and
+cleanup contract; RobotGo never substitutes an empty or misleading tree.
+The Linux/Windows example requires exactly one PID or Windows handle, an exact
+title, and confirmation. It prints one bounded observation to standard output,
+writes no file, and reads control values only with the separate
+`-include-values` flag:
 
 ```bash
 go run ./examples/semantic_ui -pid 1234 -title 'Self-owned fixture' -confirm
+# Windows may bind the exact HWND instead:
+go run ./examples/semantic_ui -handle 123456 -title 'Self-owned fixture' -confirm
 ```
 
 An action can reference a captured observation through

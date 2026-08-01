@@ -163,16 +163,3 @@ func (query *dbusATSPIQuery) property(
 func (query *dbusATSPIQuery) object(reference atspiReference) dbus.BusObject {
 	return query.conn.Object(reference.Bus, reference.Path)
 }
-
-func clearSnapshot(snapshot *Snapshot) {
-	if snapshot == nil {
-		return
-	}
-	for index := range snapshot.Nodes {
-		clear(snapshot.Nodes[index].Reference)
-		snapshot.Nodes[index] = Node{}
-	}
-	clear(snapshot.Nodes)
-	snapshot.Nodes = nil
-	snapshot.Backend = ""
-}

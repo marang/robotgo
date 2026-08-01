@@ -7,7 +7,10 @@ import (
 	"errors"
 )
 
-const BackendATSPI2 = "at-spi2"
+const (
+	BackendATSPI2            = "at-spi2"
+	BackendWindowsAutomation = "windows-ui-automation"
+)
 
 var (
 	ErrUnsupported      = errors.New("accessibility: unsupported")
@@ -26,11 +29,13 @@ type Capability struct {
 	PermissionDenied bool
 }
 
-// Target identifies one process and one exact top-level accessible title.
-// Native window handles are deliberately not accepted by the AT-SPI backend.
+// Target identifies one process or native window and one exact top-level
+// accessible title. Platform backends accept only target forms they can bind
+// to and revalidate without widening the observation scope.
 type Target struct {
-	ProcessID     int
-	ExpectedTitle string
+	ProcessID          int
+	NativeWindowHandle int
+	ExpectedTitle      string
 }
 
 // Limits bounds both native queries and the returned snapshot.
@@ -90,4 +95,17 @@ func Probe(ctx context.Context) Capability { return probe(ctx) }
 // Inspect returns one bounded native semantic tree.
 func Inspect(ctx context.Context, target Target, limits Limits) (Snapshot, error) {
 	return inspect(ctx, target, limits)
+}
+
+func clearSnapshot(snapshot *Snapshot) {
+	if snapshot == nil {
+		return
+	}
+	for index := range snapshot.Nodes {
+		clear(snapshot.Nodes[index].Reference)
+		snapshot.Nodes[index] = Node{}
+	}
+	clear(snapshot.Nodes)
+	snapshot.Nodes = nil
+	snapshot.Backend = ""
 }

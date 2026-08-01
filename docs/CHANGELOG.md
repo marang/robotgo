@@ -16,10 +16,16 @@
   `GetLinuxCapabilities` exposes that backend alongside the cross-platform
   runtime capability report, and neither probe nor inspection auto-starts a
   D-Bus or accessibility service.
-  Native-handle targets, UI Automation, and macOS Accessibility remain
-  explicitly unsupported. Hermetic fixtures prove policy denial, sanitization,
-  hierarchy, stale-window rejection, invalid backend identity rejection, MCP
-  projection, and cleanup without reading or writing the developer desktop.
+  Windows now supplies a bounded UI Automation 2 adapter for exact process- or
+  HWND-and-title targets. It disables automatic focus, applies fixed native
+  call timeouts, prunes foreign-process/offscreen/password/disallowed content
+  before reads, and deterministically releases every COM object, SAFEARRAY,
+  BSTR, and VARIANT. A protected disposable Windows fixture proves real button,
+  input, password-redaction, and cleanup behavior without screenshots or files.
+  macOS Accessibility remains explicitly unsupported. Hermetic fixtures prove
+  policy denial, sanitization, hierarchy, stale-window rejection, invalid
+  backend identity rejection, MCP projection, and cleanup without reading or
+  writing the developer desktop.
 - Expanded the deny-by-default agent and local MCP action contract with bounded
   scroll, drag, canonical keyboard chord, and identity-revalidated window
   activation operations. Extended actions require immutable event, distance,
