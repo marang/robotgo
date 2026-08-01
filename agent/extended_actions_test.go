@@ -655,6 +655,52 @@ func TestAmbiguousKeyDownAndCleanupFailureRemainOwned(t *testing.T) {
 	}
 }
 
+func TestKnownUnappliedMouseDownDoesNotReleaseForeignInput(t *testing.T) {
+	for _, backendErr := range []error{
+		robotgo.ErrInputNotApplied,
+		robotgo.ErrInputOwnership,
+	} {
+		t.Run(backendErr.Error(), func(t *testing.T) {
+			driver := &fakeDriver{callError: func(call driverCall) error {
+				if call.operation == OperationDrag && call.down {
+					return backendErr
+				}
+				return nil
+			}}
+			session := newTestSession(
+				t,
+				extendedActionPolicy(OperationDrag),
+				driver,
+			)
+			result, err := session.Execute(t.Context(), ActionRequest{
+				Operation: OperationDrag,
+				Confirmed: true,
+				Drag: &DragAction{
+					StartX: 1, StartY: 1, EndX: 2, EndY: 1,
+					DisplayID: 0, Button: MouseButtonLeft, DurationMillis: 1,
+				},
+			})
+			if !errors.Is(err, backendErr) || result.Status != ActionUnverified {
+				t.Fatalf("known-unapplied mouse down = %+v, %v", result, err)
+			}
+			var mutations []driverCall
+			for _, call := range driver.recordedCalls() {
+				if call.operation == OperationDrag && call.text == "" {
+					mutations = append(mutations, call)
+				}
+			}
+			if len(mutations) != 1 || !mutations[0].down ||
+				len(session.pressedInputs) != 0 || session.inputTainted {
+				t.Fatalf(
+					"known-unapplied mouse cleanup = %+v, ledger = %+v",
+					mutations,
+					session.pressedInputs,
+				)
+			}
+		})
+	}
+}
+
 func TestKnownUnappliedKeyDownDoesNotReleaseForeignInput(t *testing.T) {
 	for _, backendErr := range []error{
 		robotgo.ErrInputNotApplied,

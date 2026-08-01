@@ -267,7 +267,12 @@ func (s *Session) resolveValidatedWindow(action ActivateWindowAction) (int, erro
 func (s *Session) pressMouse(button MouseButton) (pressedInput, error) {
 	pressed := pressedInput{button: button}
 	s.pressedInputs = append(s.pressedInputs, pressed)
-	return pressed, s.driver.ToggleMouse(button, true)
+	err := s.driver.ToggleMouse(button, true)
+	if inputDownKnownNotApplied(err) {
+		s.pressedInputs = s.pressedInputs[:len(s.pressedInputs)-1]
+		return pressedInput{}, err
+	}
+	return pressed, err
 }
 
 func (s *Session) pressKey(
@@ -281,12 +286,16 @@ func (s *Session) pressKey(
 	}
 	s.pressedInputs = append(s.pressedInputs, pressed)
 	err := s.driver.ToggleKeyImmediate(key, ownedModifiers, targetPID, true)
-	if errors.Is(err, robotgo.ErrInputNotApplied) ||
-		errors.Is(err, robotgo.ErrInputOwnership) {
+	if inputDownKnownNotApplied(err) {
 		s.pressedInputs = s.pressedInputs[:len(s.pressedInputs)-1]
 		return pressedInput{}, err
 	}
 	return pressed, err
+}
+
+func inputDownKnownNotApplied(err error) bool {
+	return errors.Is(err, robotgo.ErrInputNotApplied) ||
+		errors.Is(err, robotgo.ErrInputOwnership)
 }
 
 func (s *Session) releasePressedInput(pressed pressedInput) error {

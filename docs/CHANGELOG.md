@@ -14,6 +14,8 @@
   validates and mutates the same resolved native handle, and the catalog
   structurally reports supported scroll axes. Ambiguous input-down failures
   trigger an immediate release and remain session-owned if cleanup fails.
+  Explicit no-state-acquired and foreign-ownership rejections remove the
+  tentative key or button ledger entry without emitting a foreign release.
   Explicit process identities use a separate title-query contract and no
   longer inherit the legacy handle-mode default, while existing `GetTitleE`
   behavior remains compatible. The complete agent mutation driver, including
