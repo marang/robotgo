@@ -23,6 +23,7 @@ func TestRuntimeFeatureDiagnosticsHaveStableOrder(t *testing.T) {
 		Keyboard:      capability,
 		Mouse:         capability,
 		RemoteDesktop: capability,
+		Accessibility: capability,
 		Window:        capability,
 		Process:       capability,
 		Clipboard:     capability,
@@ -40,7 +41,7 @@ func TestRuntimeFeatureDiagnosticsHaveStableOrder(t *testing.T) {
 	}
 	want := []string{
 		"capture", "bounds", "keyboard", "mouse", "remote-desktop",
-		"window", "process", "clipboard", "hook", "events",
+		"accessibility", "window", "process", "clipboard", "hook", "events",
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("feature order = %v, want %v", got, want)
@@ -81,8 +82,8 @@ func TestGetRuntimeDiagnosticsUsesVersionedSanitizedContract(t *testing.T) {
 	if report.Runtime.GOOS == "" || report.Runtime.GOARCH == "" {
 		t.Fatalf("runtime identity missing: %+v", report.Runtime)
 	}
-	if len(report.Features) != 10 {
-		t.Fatalf("feature count = %d, want 10", len(report.Features))
+	if len(report.Features) != 11 {
+		t.Fatalf("feature count = %d, want 11", len(report.Features))
 	}
 	data, err := json.Marshal(report)
 	if err != nil {

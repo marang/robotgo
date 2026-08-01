@@ -16,6 +16,7 @@ func runtimeCapabilities() RuntimeCapabilities {
 		Keyboard:      unsupported,
 		Mouse:         unsupported,
 		RemoteDesktop: unsupported,
+		Accessibility: unsupported,
 		Window:        unsupported,
 		Hook:          unsupported,
 		Events:        unsupported,

@@ -22,6 +22,8 @@ const (
 	ToolCapabilities = "robotgo_capabilities"
 	// ToolObserve performs one policy-gated diagnostics or capture observation.
 	ToolObserve = "robotgo_observe"
+	// ToolInspectUI returns one bounded, privacy-reduced accessibility tree.
+	ToolInspectUI = "robotgo_inspect_ui"
 	// ToolAct plans or executes one typed action.
 	ToolAct = "robotgo_act"
 	// ToolClose closes the underlying RobotGo agent session.
@@ -51,6 +53,13 @@ type VisualConditionSession interface {
 	Session
 	FindColor(context.Context, agent.FindColorRequest) (agent.FindColorResult, error)
 	WaitColor(context.Context, agent.WaitColorRequest) (agent.WaitColorResult, error)
+	ReleaseObservation(string) error
+}
+
+// SemanticUISession is the additive accessibility observation extension.
+type SemanticUISession interface {
+	Session
+	InspectUI(context.Context, agent.InspectUIRequest) (agent.UIObservation, error)
 	ReleaseObservation(string) error
 }
 
@@ -196,6 +205,12 @@ type ObserveOutput struct {
 	Error       *ToolError         `json:"error,omitempty"`
 }
 
+// InspectUIOutput is the structured output of robotgo_inspect_ui.
+type InspectUIOutput struct {
+	Observation *agent.UIObservation `json:"observation,omitempty"`
+	Error       *ToolError           `json:"error,omitempty"`
+}
+
 // ActMode controls whether robotgo_act only plans or actually executes.
 type ActMode string
 
@@ -245,6 +260,15 @@ func (s *Server) registerTools() {
 		Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, OpenWorldHint: &openWorld},
 	}, s.observe)
 
+	if _, ok := s.adapter.session.(SemanticUISession); ok {
+		mcp.AddTool(s.protocol, &mcp.Tool{
+			Name:        ToolInspectUI,
+			Title:       "Inspect semantic UI",
+			Description: "Return one policy-scoped, bounded accessibility tree for an explicitly allow-listed window. Password values, hidden nodes, and native handles never cross MCP.",
+			Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, OpenWorldHint: &openWorld},
+		}, s.inspectUI)
+	}
+
 	if _, ok := s.adapter.session.(VisualConditionSession); ok {
 		s.registerConditionTools()
 	}
@@ -285,6 +309,31 @@ func (s *Server) observe(ctx context.Context, _ *mcp.CallToolRequest, input agen
 		return errorResult(), ObserveOutput{Error: safeToolError(errors.New("nil observation"))}, nil
 	}
 	return nil, ObserveOutput{Observation: projectObservation(observation)}, nil
+}
+
+func (s *Server) inspectUI(ctx context.Context, _ *mcp.CallToolRequest, input agent.InspectUIRequest) (*mcp.CallToolResult, InspectUIOutput, error) {
+	session, toolErr := s.adapter.begin()
+	if toolErr != nil {
+		return errorResult(), InspectUIOutput{Error: toolErr}, nil
+	}
+	semantic, ok := session.(SemanticUISession)
+	if !ok {
+		return errorResult(), InspectUIOutput{Error: &ToolError{
+			Code: agent.ErrorUnsupported, Message: "semantic UI inspection is unsupported",
+		}}, nil
+	}
+	observation, err := semantic.InspectUI(ctx, input)
+	if err != nil {
+		if observation.ObservationID != "" {
+			if releaseErr := semantic.ReleaseObservation(observation.ObservationID); releaseErr != nil {
+				return errorResult(), InspectUIOutput{Error: &ToolError{
+					Code: agent.ErrorCleanupFailed, Message: errorMessageFailed,
+				}}, nil
+			}
+		}
+		return errorResult(), InspectUIOutput{Error: safeToolError(err)}, nil
+	}
+	return nil, InspectUIOutput{Observation: &observation}, nil
 }
 
 func (s *Server) act(ctx context.Context, _ *mcp.CallToolRequest, input ActInput) (*mcp.CallToolResult, ActOutput, error) {

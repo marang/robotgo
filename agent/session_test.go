@@ -273,11 +273,12 @@ func (d *fakeDriver) recordedCalls() []driverCall {
 
 func availableCapabilities() robotgo.RuntimeCapabilities {
 	return robotgo.RuntimeCapabilities{
-		Capture:  robotgo.FeatureCapability{Available: true, Backend: "fake-capture"},
-		Bounds:   robotgo.FeatureCapability{Available: true, Backend: "fake-bounds"},
-		Mouse:    robotgo.FeatureCapability{Available: true, Backend: "fake-mouse"},
-		Keyboard: robotgo.FeatureCapability{Available: true, Backend: "fake-keyboard"},
-		Window:   robotgo.FeatureCapability{Available: true, Backend: "fake-window"},
+		Capture:       robotgo.FeatureCapability{Available: true, Backend: "fake-capture"},
+		Bounds:        robotgo.FeatureCapability{Available: true, Backend: "fake-bounds"},
+		Mouse:         robotgo.FeatureCapability{Available: true, Backend: "fake-mouse"},
+		Accessibility: robotgo.FeatureCapability{Available: true, Backend: "fake-accessibility"},
+		Keyboard:      robotgo.FeatureCapability{Available: true, Backend: "fake-keyboard"},
+		Window:        robotgo.FeatureCapability{Available: true, Backend: "fake-window"},
 	}
 }
 
@@ -311,7 +312,7 @@ func TestCatalogIsStableAndDefensive(t *testing.T) {
 		t.Fatalf("schema = %q", catalog.SchemaVersion)
 	}
 	want := []Operation{
-		OperationObserve, OperationFindColor, OperationWaitColor,
+		OperationObserve, OperationInspectUI, OperationFindColor, OperationWaitColor,
 		OperationMove, OperationClick, OperationScroll, OperationDrag,
 		OperationTypeText, OperationKeyChord, OperationActivate,
 	}
@@ -322,6 +323,7 @@ func TestCatalogIsStableAndDefensive(t *testing.T) {
 		}
 		wantCancellation := CancellationPreflightOnly
 		if operation == OperationFindColor || operation == OperationWaitColor ||
+			operation == OperationInspectUI ||
 			operation == OperationScroll || operation == OperationDrag ||
 			operation == OperationKeyChord {
 			wantCancellation = CancellationCooperative
@@ -333,8 +335,8 @@ func TestCatalogIsStableAndDefensive(t *testing.T) {
 			t.Fatalf("process-global operation[%d] = %+v", index, got)
 		}
 	}
-	catalog.Operations[3].Backend = "mutated"
-	if got := session.Catalog().Operations[3].Backend; got != "fake-mouse" {
+	catalog.Operations[4].Backend = "mutated"
+	if got := session.Catalog().Operations[4].Backend; got != "fake-mouse" {
 		t.Fatalf("catalog mutation leaked into session: %q", got)
 	}
 }

@@ -10,7 +10,7 @@ import (
 )
 
 // CatalogSchemaVersion identifies the operation catalog JSON contract.
-const CatalogSchemaVersion = "5"
+const CatalogSchemaVersion = "6"
 
 // Operation identifies one strict agent operation.
 type Operation string
@@ -24,6 +24,7 @@ const (
 	OperationKeyChord  Operation = "keyboard.chord"
 	OperationActivate  Operation = "window.activate"
 	OperationObserve   Operation = "desktop.observe"
+	OperationInspectUI Operation = "desktop.inspect-ui"
 	OperationFindColor Operation = "desktop.find-color"
 	OperationWaitColor Operation = "desktop.wait-color"
 )

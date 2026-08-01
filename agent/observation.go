@@ -161,6 +161,15 @@ type observationRecord struct {
 	region     CaptureRegion
 	digest     string
 	hasCapture bool
+	uiElements map[string][]byte
+}
+
+func (record *observationRecord) close() error {
+	if record == nil {
+		return nil
+	}
+	closeUIReferences(record.uiElements)
+	return record.capture.close()
 }
 
 // Close zeroes the optional capture. Sanitized metadata remains readable so
@@ -608,14 +617,14 @@ func (s *Session) ReleaseObservation(id string) error {
 	if !ok {
 		return nil
 	}
-	return record.capture.close()
+	return record.close()
 }
 
 func (s *Session) closeObservations() {
 	s.observationMu.Lock()
 	defer s.observationMu.Unlock()
 	for _, record := range s.observations {
-		_ = record.capture.close()
+		_ = record.close()
 	}
 	clear(s.observations)
 }
@@ -628,6 +637,7 @@ func diagnosticsFromCapabilities(capabilities robotgo.RuntimeCapabilities) Runti
 		{"capture", capabilities.Capture}, {"bounds", capabilities.Bounds},
 		{"keyboard", capabilities.Keyboard}, {"mouse", capabilities.Mouse},
 		{"remote-desktop", capabilities.RemoteDesktop}, {"window", capabilities.Window},
+		{"accessibility", capabilities.Accessibility},
 		{"process", capabilities.Process}, {"clipboard", capabilities.Clipboard},
 		{"hook", capabilities.Hook}, {"events", capabilities.Events},
 	}

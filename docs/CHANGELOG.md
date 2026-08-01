@@ -2,6 +2,20 @@
 
 ## Unreleased
 
+- Added the schema-v6, deny-by-default `desktop.inspect-ui` agent/MCP contract
+  for accessibility-first GUI discovery. One exact allow-listed window is
+  revalidated before a backend call; immutable role/property, node, depth,
+  string-byte, query, observation, minimum query-interval, and lifetime limits
+  bound the result.
+  Opaque observation-scoped element IDs replace native handles and object
+  paths, hidden/offscreen nodes are omitted, password/sensitive text is
+  redacted, and retained backend references are zeroed on observation release
+  or session close. Runtime diagnostics schema v2 reports accessibility as a
+  separate feature; capability reporting remains explicitly
+  unsupported until an AT-SPI, UI Automation, or macOS Accessibility adapter
+  is active. Hermetic fixtures prove policy denial, sanitization, hierarchy,
+  stale-window rejection, invalid backend identity rejection, MCP projection,
+  and cleanup without reading or writing the developer desktop.
 - Expanded the deny-by-default agent and local MCP action contract with bounded
   scroll, drag, canonical keyboard chord, and identity-revalidated window
   activation operations. Extended actions require immutable event, distance,

@@ -1,6 +1,6 @@
 # Autonomous GUI Control Plan
 
-Status: LAB-75 action slice in progress
+Status: LAB-75 complete; LAB-73 semantic observation in progress
 
 Linear coordination:
 
@@ -25,6 +25,30 @@ Delivery order is:
 Structured accessibility data remains the preferred perception source. Image
 and OCR content are later explicit sensitive-read boundaries, not implicit
 side effects of an action.
+
+## Semantic observation contract
+
+LAB-73 introduces the schema-v6 `desktop.inspect-ui` operation and local MCP
+tool as a separate sensitive-read grant. The first contract slice provides:
+
+- exact allow-listed process/window selection with live title revalidation
+- immutable allowed role and property sets
+- hard node, tree-depth, aggregate string-byte, query, observation, minimum
+  query-interval, and session-lifetime bounds
+- opaque observation-scoped element IDs with private backend references
+- omission of hidden/offscreen nodes and unconditional redaction of text on
+  password or backend-marked sensitive elements
+- bounded hierarchy, state, action, focus, and logical-bounds projections
+- fixed state/action vocabularies plus hard native-reference size bounds
+- explicit unsupported/permission/unavailable capability states
+- zeroing of retained backend references on observation release and session
+  close
+
+The contract intentionally advertises no usable production backend until its
+native adapter is present and probed. AT-SPI, Windows UI Automation, and macOS
+Accessibility adapters are the next implementation layer; none may broaden
+the immutable policy or expose raw handles, object paths, arbitrary platform
+properties, backend errors, or consent prompts.
 
 ## Action contract
 

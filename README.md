@@ -855,7 +855,8 @@ changing the legacy package-level API. One process-exclusive session exposes a
 versioned operation catalog, policy and confirmation gates, bounded observation,
 dry-run, typed move/click/scroll/drag/text/chord/activation requests,
 stale-target protection, post-action verification, privacy-safe visual
-conditions, and sanitized structured results. Scroll and drag are
+conditions, a bounded semantic UI-inspection contract, and sanitized
+structured results. Scroll and drag are
 cooperatively cancelable between events. The operation catalog reports
 supported scroll axes structurally; Pure-Go X11 currently advertises only
 vertical scrolling. A chord validates the allow-listed process title, passes
@@ -922,6 +923,19 @@ is zeroed immediately. A successful wait returns an observation ID for later
 conditions or action lineage; `Session.ReleaseObservation` promptly zeroes and
 removes that final sensitive buffer without exposing its capture digest.
 
+`Session.InspectUI` is the semantic-first observation boundary for unfamiliar
+GUIs. It selects one immutable allow-listed process or window, revalidates its
+exact title before inspection, and returns only policy-approved roles and
+properties within fixed node, depth, string-byte, query, observation, minimum
+query-interval, and session-lifetime limits. Element IDs are opaque and
+observation-scoped; platform handles and object paths remain private. Hidden and offscreen nodes
+are omitted, password/sensitive text is redacted, invalid backend identities
+fail closed, and `ReleaseObservation` or session close zeroes retained backend
+references. Native AT-SPI, UI Automation, and macOS Accessibility adapters
+will use the same capability contract; until an adapter is active the
+catalog reports `desktop.inspect-ui` as unsupported rather than returning an
+empty or misleading tree.
+
 An action can reference a captured observation through
 `ObservationPrecondition`. RobotGo recaptures the same internally retained
 region immediately before input and rejects a changed target as `stale-target`.
@@ -968,9 +982,10 @@ go run ./examples/agent_conditions -allow-capture -mode wait \
 ### Local MCP adapter for agents
 
 `robotgo-mcp` exposes the policy-gated session to a local MCP client over
-stdio. It has seven focused tools: `robotgo_capabilities`, `robotgo_observe`,
-`robotgo_find`, `robotgo_wait`, `robotgo_release_observation`, `robotgo_act`,
-and `robotgo_close`. With no policy flag it is diagnostics-only: capture,
+stdio. It has eight focused tools: `robotgo_capabilities`, `robotgo_observe`,
+`robotgo_inspect_ui`, `robotgo_find`, `robotgo_wait`,
+`robotgo_release_observation`, `robotgo_act`, and `robotgo_close`. With no
+policy flag it is diagnostics-only: semantic inspection, capture,
 visual queries, display access, and desktop mutation are denied. `robotgo_act`
 is also dry-run by default, so actual input needs both an explicit policy and
 `mode: "execute"`; normal session confirmation rules still apply.
@@ -1016,6 +1031,32 @@ Policy input is size-bounded, rejects unknown fields and trailing JSON, and is
 never read from stdin. MCP observation output includes sanitized diagnostics
 and optional geometry, but never pixels or internal capture digests. Session
 close zeroes any in-memory captures.
+
+Semantic inspection is separately deny-by-default. A policy must identify the
+exact allowed window title, roles, and properties and set every hard bound:
+
+```json
+{
+  "allowed_operations": ["desktop.inspect-ui"],
+  "allowed_windows": [
+    {"target": 1234, "kind": "process", "expected_title": "Self-owned fixture"}
+  ],
+  "allowed_ui_roles": ["window", "button", "textbox", "password", "label"],
+  "allowed_ui_properties": ["role", "name", "state", "bounds", "focus", "actions", "hierarchy"],
+  "max_actions": 0,
+  "max_text_runes": 0,
+  "max_observations": 10,
+  "max_queries": 10,
+  "max_ui_elements": 200,
+  "max_ui_tree_depth": 8,
+  "max_ui_string_bytes": 16384,
+  "min_ui_query_interval_ms": 250,
+  "session_timeout_ms": 300000
+}
+```
+
+This permits reading only the declared semantic projection; it does not grant
+clicks, typing, focus changes, screenshots, OCR, or any other mutation/read.
 
 The same `robotgo_act` tool also carries the bounded `pointer.scroll`,
 `pointer.drag`, `keyboard.chord`, and `window.activate` request variants. They
