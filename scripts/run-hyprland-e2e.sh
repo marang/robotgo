@@ -269,6 +269,10 @@ go run ./internal/cmd/compositorevidence preflight \
 	-require-headless-hyprland
 
 failure_stage="$ROBOTGO_HYPRLAND_FAILURE_STAGE_INTEGRATION_TEST"
+# Keep cold-cache compiler diagnostics, which may contain private checkout
+# paths, out of the canonical evidence input. The private warm-up stream is
+# discarded on every exit path.
+go test -asan -run '^$' -tags=wayland,hyprlandintegration . >/dev/null 2>&1
 setsid go test -asan -count=1 -timeout=2m -tags=wayland,hyprlandintegration . \
 	-run "^${test_name}$" -v >"$output_dir/raw-test.log" 2>&1 &
 test_pid=$!

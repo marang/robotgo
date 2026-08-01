@@ -267,6 +267,11 @@ go run ./internal/cmd/compositorevidence preflight \
 	-require-headless-sway
 
 failure_stage="$ROBOTGO_SWAY_FAILURE_STAGE_INTEGRATION_TEST"
+# Populate the exact tagged build cache before opening the evidence log. On a
+# cold hosted runner, compiler diagnostics may contain the private checkout
+# path; the warm-up output is discarded, while the evidence log contains only
+# the executed test protocol.
+go test -run '^$' -tags=wayland,swayintegration . >/dev/null 2>&1
 setsid go test -count=1 -timeout=2m -tags=wayland,swayintegration . \
 	-run "^${test_name}$" -v >"$output_dir/raw-test.log" 2>&1 &
 test_pid=$!
