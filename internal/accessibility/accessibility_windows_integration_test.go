@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"runtime"
+	"slices"
 	"syscall"
 	"testing"
 	"time"
@@ -76,22 +77,7 @@ func TestWindowsUIAInspectsAndActsOnlyOnSelfOwnedBoundedFixture(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(t.Context(), 15*time.Second)
 	defer cancel()
-	snapshot, err := Inspect(ctx, Target{
-		NativeWindowHandle: int(fixture.handle),
-		ExpectedTitle:      windowsFixtureTitle,
-	}, Limits{
-		MaxElements: 64, MaxDepth: 8, MaxStringBytes: 4096,
-		MaxReferenceBytes: 256, MaxTotalReferenceBytes: 16 * 1024,
-		AllowedRoles: map[string]bool{
-			"window": true, "group": true, "generic": true, "label": true,
-			"button": true, "textbox": true, "password": true,
-		},
-		ReadName: true, ReadDescription: true, ReadValue: true,
-		ReadStates: true, ReadBounds: true, ReadFocus: true, ReadActions: true,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	snapshot := waitForWindowsUIAFixtureSnapshot(t, ctx, fixture.handle)
 	defer clearSnapshot(&snapshot)
 
 	var foundButton, foundInput, foundPassword bool
@@ -150,6 +136,44 @@ func TestWindowsUIAInspectsAndActsOnlyOnSelfOwnedBoundedFixture(t *testing.T) {
 	}
 	if !foundUpdated {
 		t.Fatalf("UIA set-value was not observable: %+v", updated.Nodes)
+	}
+}
+
+func waitForWindowsUIAFixtureSnapshot(t *testing.T, ctx context.Context, handle uintptr) Snapshot {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		snapshot, err := Inspect(ctx, Target{
+			NativeWindowHandle: int(handle),
+			ExpectedTitle:      windowsFixtureTitle,
+		}, Limits{
+			MaxElements: 64, MaxDepth: 8, MaxStringBytes: 4096,
+			MaxReferenceBytes: 256, MaxTotalReferenceBytes: 16 * 1024,
+			AllowedRoles: map[string]bool{
+				"window": true, "group": true, "generic": true, "label": true,
+				"button": true, "textbox": true, "password": true,
+			},
+			ReadName: true, ReadDescription: true, ReadValue: true,
+			ReadStates: true, ReadBounds: true, ReadFocus: true, ReadActions: true,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, node := range snapshot.Nodes {
+			if node.Role == "textbox" && node.Value == windowsFixtureVisible && node.Bounds != nil &&
+				slices.Contains(node.States, "enabled") && slices.Contains(node.Actions, "set-value") {
+				return snapshot
+			}
+		}
+		clearSnapshot(&snapshot)
+		if time.Now().After(deadline) {
+			t.Fatal("editable fixture did not become actionable before the bounded deadline")
+		}
+		select {
+		case <-ctx.Done():
+			t.Fatal(ctx.Err())
+		case <-time.After(50 * time.Millisecond):
+		}
 	}
 }
 
