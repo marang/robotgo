@@ -790,11 +790,11 @@ func TestWaylandCatalogDoesNotAdvertiseImplicitPortalCapture(t *testing.T) {
 	if capability.CaptureAvailable || !strings.Contains(capability.Remediation, "will not open portal consent implicitly") {
 		t.Fatalf("portal-only capture capability = %+v", capability)
 	}
-	waitCapability := buildCatalog(policy, capabilities).Operations[3]
+	waitCapability := buildCatalog(policy, capabilities).Operations[4]
 	if waitCapability.Available || !strings.Contains(waitCapability.Remediation, "will not open portal consent implicitly") {
 		t.Fatalf("portal-only wait capability = %+v", waitCapability)
 	}
-	findCapability := buildCatalog(policy, capabilities).Operations[2]
+	findCapability := buildCatalog(policy, capabilities).Operations[3]
 	if findCapability.Available || !strings.Contains(findCapability.Remediation, "will not open portal consent implicitly") {
 		t.Fatalf("portal-only find capability = %+v", findCapability)
 	}
@@ -806,10 +806,10 @@ func TestWaylandCatalogDoesNotAdvertiseImplicitPortalCapture(t *testing.T) {
 	if capability = buildCatalog(policy, capabilities).Operations[0]; !capability.CaptureAvailable {
 		t.Fatalf("active ScreenCast capability = %+v", capability)
 	}
-	if waitCapability = buildCatalog(policy, capabilities).Operations[3]; !waitCapability.Available {
+	if waitCapability = buildCatalog(policy, capabilities).Operations[4]; !waitCapability.Available {
 		t.Fatalf("active ScreenCast wait capability = %+v", waitCapability)
 	}
-	if findCapability = buildCatalog(policy, capabilities).Operations[2]; !findCapability.Available {
+	if findCapability = buildCatalog(policy, capabilities).Operations[3]; !findCapability.Available {
 		t.Fatalf("active ScreenCast find capability = %+v", findCapability)
 	}
 
@@ -821,10 +821,10 @@ func TestWaylandCatalogDoesNotAdvertiseImplicitPortalCapture(t *testing.T) {
 	if capability = buildCatalog(policy, capabilities).Operations[0]; !capability.CaptureAvailable {
 		t.Fatalf("explicit native-only capture capability = %+v", capability)
 	}
-	if waitCapability = buildCatalog(policy, capabilities).Operations[3]; !waitCapability.Available {
+	if waitCapability = buildCatalog(policy, capabilities).Operations[4]; !waitCapability.Available {
 		t.Fatalf("explicit native-only wait capability = %+v", waitCapability)
 	}
-	if findCapability = buildCatalog(policy, capabilities).Operations[2]; !findCapability.Available {
+	if findCapability = buildCatalog(policy, capabilities).Operations[3]; !findCapability.Available {
 		t.Fatalf("explicit native-only find capability = %+v", findCapability)
 	}
 }

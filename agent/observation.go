@@ -154,6 +154,7 @@ type Observation struct {
 	Capture       *CaptureMetadata   `json:"capture,omitempty"`
 
 	capture *captureBuffer
+	source  Operation
 }
 
 type observationRecord struct {
@@ -161,6 +162,7 @@ type observationRecord struct {
 	region     CaptureRegion
 	digest     string
 	hasCapture bool
+	source     Operation
 	uiElements map[string][]byte
 }
 
@@ -447,7 +449,17 @@ func (s *Session) authorizeObservation(request ObserveRequest) error {
 }
 
 func (s *Session) capture(ctx context.Context, region CaptureRegion, count bool) (*capturedFrame, error) {
-	if err := validateCaptureRegion(region, s.policy.MaxCapturePixels); err != nil {
+	return s.captureWith(ctx, region, s.policy.MaxCapturePixels, count, s.driver.Capture)
+}
+
+func (s *Session) captureWith(
+	ctx context.Context,
+	region CaptureRegion,
+	maxPixels uint64,
+	count bool,
+	capture func(context.Context, CaptureRegion) (image.Image, error),
+) (*capturedFrame, error) {
+	if err := validateCaptureRegion(region, maxPixels); err != nil {
 		return nil, observationActionError(ErrorInvalidInput, "invalid capture region", err)
 	}
 	if _, allowed := s.policy.allowDisplay[region.DisplayID]; !allowed {
@@ -473,22 +485,22 @@ func (s *Session) capture(ctx context.Context, region CaptureRegion, count bool)
 		}
 		s.usedObservations++
 	}
-	img, err := s.driver.Capture(ctx, region)
+	img, err := capture(ctx, region)
 	if err != nil {
 		wipeMutableImage(img)
 		code, message := classifyBackendError(err)
 		return nil, observationActionError(code, message, err)
 	}
 	defer wipeMutableImage(img)
-	capture, err := newCaptureObservation(region, img, s.policy.MaxCapturePixels)
+	frame, err := newCaptureObservation(region, img, maxPixels)
 	if err != nil {
 		return nil, observationActionError(ErrorBackendFailure, "desktop backend returned an invalid capture", err)
 	}
 	if err := ctx.Err(); err != nil {
-		_ = capture.buffer.close()
+		_ = frame.buffer.close()
 		return nil, observationContextError(ctx)
 	}
-	return capture, nil
+	return frame, nil
 }
 
 func validateCaptureRegion(region CaptureRegion, maxPixels uint64) error {
@@ -497,6 +509,10 @@ func validateCaptureRegion(region CaptureRegion, maxPixels uint64) error {
 	}
 	if region.Width <= 0 || region.Height <= 0 {
 		return errors.New("capture width and height must be positive")
+	}
+	maximum := int(^uint(0) >> 1)
+	if region.X > maximum-region.Width || region.Y > maximum-region.Height {
+		return errors.New("capture coordinates overflow")
 	}
 	width, height := uint64(region.Width), uint64(region.Height)
 	if maxPixels == 0 || width > maxPixels/height {
@@ -583,7 +599,10 @@ func wipeMutableImage(img image.Image) {
 }
 
 func (s *Session) storeObservation(observation *Observation) {
-	record := observationRecord{capture: observation.capture}
+	record := observationRecord{capture: observation.capture, source: observation.source}
+	if record.source == "" {
+		record.source = OperationObserve
+	}
 	if observation.Capture != nil {
 		record.region = observation.Capture.Region
 		record.digest = observation.Capture.SHA256
@@ -608,6 +627,7 @@ func (s *Session) ReleaseObservation(id string) error {
 	if !validObservationID(id) {
 		return observationActionError(ErrorInvalidInput, "invalid RobotGo observation ID", nil)
 	}
+	s.releaseView(id)
 	s.observationMu.Lock()
 	record, ok := s.observations[id]
 	if ok {

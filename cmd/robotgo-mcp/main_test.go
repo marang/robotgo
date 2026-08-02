@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	robotgo "github.com/marang/robotgo"
 	"github.com/marang/robotgo/agent"
 	"github.com/marang/robotgo/agent/mcpserver"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -115,6 +116,120 @@ func TestRunUsesDefaultPolicyAndClosesOnTransportFailure(t *testing.T) {
 	if session.closes != 1 {
 		t.Fatalf("Close calls = %d, want 1", session.closes)
 	}
+}
+
+func TestRunImageFlagEmitsOnlyExplicitPrivacyNotice(t *testing.T) {
+	transportErr := errors.New("transport stopped")
+	session := &commandSession{}
+	var stderr bytes.Buffer
+	err := run(t.Context(), []string{"-allow-image-content"}, &stderr,
+		failingTransport{transportErr}, func(agent.Config) (mcpserver.Session, error) {
+			return session, nil
+		})
+	if !errors.Is(err, transportErr) {
+		t.Fatalf("run error = %v", err)
+	}
+	if stderr.String() != imageStartupNotice {
+		t.Fatalf("startup notice = %q", stderr.String())
+	}
+	for _, forbidden := range []string{"data:", "base64", "pixel bytes", "iVBOR"} {
+		if strings.Contains(stderr.String(), forbidden) {
+			t.Fatalf("startup notice contains sensitive payload marker %q", forbidden)
+		}
+	}
+	if session.closes != 1 {
+		t.Fatalf("Close calls = %d", session.closes)
+	}
+
+	session = &commandSession{}
+	stderr.Reset()
+	err = run(t.Context(), nil, &stderr, failingTransport{transportErr}, func(agent.Config) (mcpserver.Session, error) {
+		return session, nil
+	})
+	if !errors.Is(err, transportErr) || stderr.Len() != 0 {
+		t.Fatalf("default startup = err %v, stderr %q", err, stderr.String())
+	}
+}
+
+func TestRunPortalViewRequiresBothImageAndValidatedPolicyGrantsBeforeConsent(t *testing.T) {
+	validPolicy := `{
+		"allowed_operations":["desktop.view"],
+		"allowed_display_ids":[0],
+		"allowed_view_regions":[{"x":0,"y":0,"width":64,"height":64,"display_id":0}],
+		"allow_portal_view":true,
+		"max_actions":0,
+		"max_text_runes":0,
+		"max_observations":2,
+		"max_view_source_pixels":4096,
+		"max_view_encoded_bytes":65536,
+		"max_view_width":64,
+		"max_view_height":64,
+		"max_views":1,
+		"max_concurrent_views":1,
+		"min_view_interval_ms":100,
+		"view_timeout_ms":5000,
+		"session_timeout_ms":10000
+	}`
+	policyPath := writePolicy(t, validPolicy)
+
+	for name, args := range map[string][]string{
+		"missing image grant": {"-start-portal-view"},
+		"missing view policy": {"-allow-image-content", "-start-portal-view"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			started := false
+			created := false
+			var stderr bytes.Buffer
+			err := runWithScreenCast(t.Context(), args, &stderr, failingTransport{}, func(agent.Config) (mcpserver.Session, error) {
+				created = true
+				return &commandSession{}, nil
+			}, screenCastLifecycle{
+				start: func(context.Context, robotgo.ScreenCastCaptureOptions, ...int) error {
+					started = true
+					return nil
+				},
+				close: func() error { return nil },
+			})
+			if err == nil {
+				t.Fatal("unsafe portal startup unexpectedly succeeded")
+			}
+			if started || created {
+				t.Fatalf("denied portal startup reached consent=%v session=%v", started, created)
+			}
+		})
+	}
+
+	t.Run("explicit grants start and close one session", func(t *testing.T) {
+		transportErr := errors.New("transport stopped")
+		session := &commandSession{}
+		starts, closes := 0, 0
+		var stderr bytes.Buffer
+		err := runWithScreenCast(t.Context(), []string{
+			"-policy", policyPath, "-allow-image-content", "-start-portal-view",
+		}, &stderr, failingTransport{transportErr}, func(agent.Config) (mcpserver.Session, error) {
+			return session, nil
+		}, screenCastLifecycle{
+			start: func(_ context.Context, options robotgo.ScreenCastCaptureOptions, streamIndex ...int) error {
+				starts++
+				if options.Sources != robotgo.ScreenCastSourceMonitor ||
+					options.Cursor != robotgo.ScreenCastCursorHidden ||
+					options.Persist != robotgo.ScreenCastPersistNone || len(streamIndex) != 0 {
+					t.Fatalf("portal options = %+v, stream=%v", options, streamIndex)
+				}
+				return nil
+			},
+			close: func() error { closes++; return nil },
+		})
+		if !errors.Is(err, transportErr) {
+			t.Fatalf("run error = %v", err)
+		}
+		if starts != 1 || closes != 1 || session.closes != 1 {
+			t.Fatalf("lifecycle starts=%d closes=%d session-closes=%d", starts, closes, session.closes)
+		}
+		if stderr.String() != imageStartupNotice+portalStartupNotice {
+			t.Fatalf("startup notice = %q", stderr.String())
+		}
+	})
 }
 
 func TestRunRejectsArgumentsBeforeCreatingSession(t *testing.T) {

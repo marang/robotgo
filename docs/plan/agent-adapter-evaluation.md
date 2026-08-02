@@ -1,6 +1,6 @@
 # Agent Adapter and Evaluation Plan
 
-Status: Base completed by LAB-13; visual-condition extension completed by LAB-15
+Status: Base and visual-condition extensions complete; semantic, action, and opt-in image extensions delivered through P010
 
 Linear coordination:
 
@@ -35,13 +35,15 @@ RobotGo platform backends
 
 The adapter uses the stable official
 `github.com/modelcontextprotocol/go-sdk` module. It provides one session per
-process. LAB-13 established four tools; LAB-15 extends the same boundary to
-seven focused tools after the underlying Go contract was accepted:
+process. Later P010 slices extend the accepted base to eight default tools and
+one separately enabled image tool:
 
 | Tool | Contract |
 |---|---|
 | `robotgo_capabilities` | Return the immutable policy-filtered operation catalog without desktop I/O. |
 | `robotgo_observe` | Ask the session for diagnostics or an explicitly policy-bounded capture, then return diagnostics and geometry only. Pixels and lineage digests stay in-process. |
+| `robotgo_view` | Only when `-allow-image-content` is present, return one policy-bounded metadata-free PNG as MCP image content plus sanitized metadata. |
+| `robotgo_inspect_ui` | Return one policy-bounded accessibility projection for an exact allow-listed window without native references or password values. |
 | `robotgo_find` | Evaluate a typed condition against one explicit live observation without implicit capture. |
 | `robotgo_wait` | Perform a finite policy-bounded wait over one explicit region and retain only a matched observation. |
 | `robotgo_release_observation` | Idempotently zero and remove one retained observation without desktop I/O. |
@@ -60,11 +62,13 @@ denied. A broader policy must come from an explicit file passed with `-policy`.
 Policy JSON is size-bounded, rejects unknown fields and trailing values, and is
 never read from protocol stdin.
 
-MCP output never contains observation pixels, capture SHA-256 lineage, typed
-text, raw backend errors, clipboard data, OCR data, or file-backed desktop
-artifacts. The in-process session keeps any optional capture solely for stale
-target checks, visual queries, and verification. Clients can release
-observations explicitly; session close remains the final zeroing boundary.
+Default MCP output never contains observation pixels, capture SHA-256 lineage,
+typed text, raw backend errors, clipboard data, OCR data, or file-backed desktop
+artifacts. Image pixels cross only the explicitly enabled `robotgo_view`
+boundary and are never duplicated into its structured output. The in-process
+session keeps an optional redacted capture solely for stale-target checks,
+visual queries, and verification. Clients can release observations explicitly;
+session close remains the final zeroing boundary.
 
 ## Evaluation evidence
 
@@ -80,7 +84,7 @@ artifact.
 ## Non-goals
 
 - HTTP, SSE, OAuth, remote access, or multi-tenant service hosting
-- OCR, accessibility trees, clipboard, window, or process tools
+- OCR, clipboard, general process control, or implicit image tools
 - implicit portal consent or automatic policy expansion
 - duplicate validation, policy, quota, or backend logic in the adapter
 - treating MCP tool annotations as an authorization boundary

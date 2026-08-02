@@ -238,20 +238,25 @@ turn missing Accessibility consent into a passing runtime claim.
 
 The MCP adapter suite uses the official SDK's paired in-memory transports and a
 fake session. It performs real protocol initialization, listing, typed calls,
-find/wait projection, explicit observation release, cancellation, concurrent
-close, schema rejection, output-redaction, and transport-cleanup checks without
-reading or changing the developer's desktop. The command tests use only private
-`t.TempDir()` policy fixtures, which test cleanup removes:
+find/wait projection, opt-in image-content transfer, independent observation
+release, cancellation, concurrent close, schema rejection, output-redaction,
+and transport-cleanup checks without reading or changing the developer's
+desktop. Synthetic PNGs and captures exist only in memory; tests prove
+redaction-before-downscale, rejection of ancillary metadata, single ownership
+transfer, zeroing after serialization and transport write, and raw-observation
+cleanup. The command tests use only private `t.TempDir()` policy fixtures,
+which test cleanup removes:
 
 ```bash
 go test -race ./agent/mcpserver ./cmd/robotgo-mcp
 CGO_ENABLED=0 go test ./agent/mcpserver ./cmd/robotgo-mcp
 ```
 
-No MCP test starts stdio, opens portal consent, captures pixels, injects input,
-or persists protocol data. Condition fixtures stay in memory, and serialized
-results are checked for target-color, tolerance, pixel, digest, and backend
-payload leakage.
+No MCP test starts stdio, opens portal consent, reads developer pixels, injects
+input, or persists protocol data. The explicit portal-start test uses only an
+in-memory lifecycle fake. Condition and image fixtures stay in memory, and
+serialized results are checked for target-color, tolerance, digest, duplicate
+image, metadata, and backend payload leakage.
 
 The opt-in runtime path performs one real pointer move to explicit coordinates:
 

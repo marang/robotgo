@@ -21,6 +21,11 @@ const (
 	maxAgentUIElements             = 10_000
 	maxAgentUITreeDepth            = 64
 	maxAgentUIStringBytes          = 1 << 20
+	maxAgentViewRegions            = 1024
+	maxAgentViewEncodedBytes       = 16 << 20
+	maxAgentViewDimension          = 8192
+	maxAgentViewIntervalMS         = 60_000
+	maxAgentViewTimeoutMS          = 300_000
 	maxAgentVerificationAttempts   = 100
 	maxAgentVerificationIntervalMS = 60_000
 	maxAgentVerificationTimeoutMS  = 300_000
@@ -41,38 +46,50 @@ type WindowTarget struct {
 // Policy constrains every observation, query, and mutation performed by a Session.
 // Empty allow lists deny access; callers must opt in explicitly.
 type Policy struct {
-	AllowedOperations          []Operation    `json:"allowed_operations"`
-	ConfirmOperations          []Operation    `json:"confirm_operations,omitempty"`
-	AllowedDisplayIDs          []int          `json:"allowed_display_ids,omitempty"`
-	AllowedMouseButtons        []MouseButton  `json:"allowed_mouse_buttons,omitempty"`
-	AllowedKeys                []string       `json:"allowed_keys,omitempty"`
-	AllowedModifiers           []KeyModifier  `json:"allowed_modifiers,omitempty"`
-	AllowedWindows             []WindowTarget `json:"allowed_windows,omitempty"`
-	AllowedUIRoles             []UIRole       `json:"allowed_ui_roles,omitempty"`
-	AllowedUIProperties        []UIProperty   `json:"allowed_ui_properties,omitempty"`
-	MaxActions                 uint64         `json:"max_actions"`
-	MaxTextRunes               int            `json:"max_text_runes"`
-	AllowDoubleClick           bool           `json:"allow_double_click,omitempty"`
-	MaxScrollEvents            uint32         `json:"max_scroll_events,omitempty"`
-	MaxScrollDistance          uint64         `json:"max_scroll_distance,omitempty"`
-	MaxDragDistance            uint64         `json:"max_drag_distance,omitempty"`
-	MaxDragDurationMillis      int            `json:"max_drag_duration_ms,omitempty"`
-	MaxChordKeys               uint32         `json:"max_chord_keys,omitempty"`
-	MinActionIntervalMillis    int            `json:"min_action_interval_ms,omitempty"`
-	MinUIQueryIntervalMillis   int            `json:"min_ui_query_interval_ms,omitempty"`
-	SessionTimeoutMillis       int            `json:"session_timeout_ms,omitempty"`
-	MaxObservations            uint64         `json:"max_observations,omitempty"`
-	MaxCapturePixels           uint64         `json:"max_capture_pixels,omitempty"`
-	MaxQueries                 uint64         `json:"max_queries,omitempty"`
-	MaxUIElements              uint32         `json:"max_ui_elements,omitempty"`
-	MaxUITreeDepth             uint32         `json:"max_ui_tree_depth,omitempty"`
-	MaxUIStringBytes           uint32         `json:"max_ui_string_bytes,omitempty"`
-	WaitAttempts               uint32         `json:"wait_attempts,omitempty"`
-	WaitIntervalMillis         int            `json:"wait_interval_ms,omitempty"`
-	WaitTimeoutMillis          int            `json:"wait_timeout_ms,omitempty"`
-	VerificationAttempts       uint32         `json:"verification_attempts,omitempty"`
-	VerificationIntervalMillis int            `json:"verification_interval_ms,omitempty"`
-	VerificationTimeoutMillis  int            `json:"verification_timeout_ms,omitempty"`
+	AllowedOperations          []Operation     `json:"allowed_operations"`
+	ConfirmOperations          []Operation     `json:"confirm_operations,omitempty"`
+	AllowedDisplayIDs          []int           `json:"allowed_display_ids,omitempty"`
+	AllowedMouseButtons        []MouseButton   `json:"allowed_mouse_buttons,omitempty"`
+	AllowedKeys                []string        `json:"allowed_keys,omitempty"`
+	AllowedModifiers           []KeyModifier   `json:"allowed_modifiers,omitempty"`
+	AllowedWindows             []WindowTarget  `json:"allowed_windows,omitempty"`
+	AllowedUIRoles             []UIRole        `json:"allowed_ui_roles,omitempty"`
+	AllowedUIProperties        []UIProperty    `json:"allowed_ui_properties,omitempty"`
+	AllowedViewRegions         []CaptureRegion `json:"allowed_view_regions,omitempty"`
+	ViewRedactionMasks         []CaptureRegion `json:"view_redaction_masks,omitempty"`
+	MaxActions                 uint64          `json:"max_actions"`
+	MaxTextRunes               int             `json:"max_text_runes"`
+	AllowDoubleClick           bool            `json:"allow_double_click,omitempty"`
+	MaxScrollEvents            uint32          `json:"max_scroll_events,omitempty"`
+	MaxScrollDistance          uint64          `json:"max_scroll_distance,omitempty"`
+	MaxDragDistance            uint64          `json:"max_drag_distance,omitempty"`
+	MaxDragDurationMillis      int             `json:"max_drag_duration_ms,omitempty"`
+	MaxChordKeys               uint32          `json:"max_chord_keys,omitempty"`
+	MinActionIntervalMillis    int             `json:"min_action_interval_ms,omitempty"`
+	MinUIQueryIntervalMillis   int             `json:"min_ui_query_interval_ms,omitempty"`
+	SessionTimeoutMillis       int             `json:"session_timeout_ms,omitempty"`
+	MaxObservations            uint64          `json:"max_observations,omitempty"`
+	MaxCapturePixels           uint64          `json:"max_capture_pixels,omitempty"`
+	MaxQueries                 uint64          `json:"max_queries,omitempty"`
+	MaxUIElements              uint32          `json:"max_ui_elements,omitempty"`
+	MaxUITreeDepth             uint32          `json:"max_ui_tree_depth,omitempty"`
+	MaxUIStringBytes           uint32          `json:"max_ui_string_bytes,omitempty"`
+	AllowFullDisplayView       bool            `json:"allow_full_display_view,omitempty"`
+	AllowPortalView            bool            `json:"allow_portal_view,omitempty"`
+	MaxViewSourcePixels        uint64          `json:"max_view_source_pixels,omitempty"`
+	MaxViewEncodedBytes        uint64          `json:"max_view_encoded_bytes,omitempty"`
+	MaxViewWidth               int             `json:"max_view_width,omitempty"`
+	MaxViewHeight              int             `json:"max_view_height,omitempty"`
+	MaxViews                   uint64          `json:"max_views,omitempty"`
+	MaxConcurrentViews         uint32          `json:"max_concurrent_views,omitempty"`
+	MinViewIntervalMillis      int             `json:"min_view_interval_ms,omitempty"`
+	ViewTimeoutMillis          int             `json:"view_timeout_ms,omitempty"`
+	WaitAttempts               uint32          `json:"wait_attempts,omitempty"`
+	WaitIntervalMillis         int             `json:"wait_interval_ms,omitempty"`
+	WaitTimeoutMillis          int             `json:"wait_timeout_ms,omitempty"`
+	VerificationAttempts       uint32          `json:"verification_attempts,omitempty"`
+	VerificationIntervalMillis int             `json:"verification_interval_ms,omitempty"`
+	VerificationTimeoutMillis  int             `json:"verification_timeout_ms,omitempty"`
 	allowOperation             map[Operation]struct{}
 	requireConfirmation        map[Operation]struct{}
 	allowDisplay               map[int]struct{}
@@ -87,6 +104,15 @@ type Policy struct {
 type windowTargetIdentity struct {
 	target int
 	kind   WindowTargetKind
+}
+
+// ValidatePolicy verifies every immutable session-policy bound without
+// acquiring the process-exclusive session owner or touching a desktop
+// backend. Callers that must complete an explicit local consent step before
+// NewSession can use it to fail closed before presenting that prompt.
+func ValidatePolicy(policy Policy) error {
+	_, err := preparePolicy(policy)
+	return err
 }
 
 func preparePolicy(input Policy) (Policy, error) {
@@ -107,6 +133,31 @@ func preparePolicy(input Policy) (Policy, error) {
 	}
 	if input.MaxUIStringBytes > maxAgentUIStringBytes {
 		return Policy{}, fmt.Errorf("agent: max UI string bytes exceeds hard limit %d", maxAgentUIStringBytes)
+	}
+	if len(input.AllowedViewRegions) > maxAgentViewRegions || len(input.ViewRedactionMasks) > maxAgentViewRegions {
+		return Policy{}, fmt.Errorf("agent: view region or redaction mask count exceeds hard limit %d", maxAgentViewRegions)
+	}
+	if input.MaxViewSourcePixels > maxAgentCapturePixels {
+		return Policy{}, fmt.Errorf("agent: max view source pixels exceeds hard limit %d", maxAgentCapturePixels)
+	}
+	if input.MaxViewEncodedBytes > maxAgentViewEncodedBytes {
+		return Policy{}, fmt.Errorf("agent: max view encoded bytes exceeds hard limit %d", maxAgentViewEncodedBytes)
+	}
+	if input.MaxViewWidth < 0 || input.MaxViewWidth > maxAgentViewDimension ||
+		input.MaxViewHeight < 0 || input.MaxViewHeight > maxAgentViewDimension {
+		return Policy{}, fmt.Errorf("agent: max view dimensions must be between 0 and %d", maxAgentViewDimension)
+	}
+	if input.MaxConcurrentViews > 1 {
+		return Policy{}, fmt.Errorf("agent: max concurrent views exceeds the process-safe limit 1")
+	}
+	if input.MaxViews > maxAgentQueries {
+		return Policy{}, fmt.Errorf("agent: max views exceeds hard limit %d", maxAgentQueries)
+	}
+	if input.MinViewIntervalMillis < 0 || input.MinViewIntervalMillis > maxAgentViewIntervalMS {
+		return Policy{}, fmt.Errorf("agent: minimum view interval must be between 0 and %dms", maxAgentViewIntervalMS)
+	}
+	if input.ViewTimeoutMillis < 0 || input.ViewTimeoutMillis > maxAgentViewTimeoutMS {
+		return Policy{}, fmt.Errorf("agent: view timeout must be between 0 and %dms", maxAgentViewTimeoutMS)
 	}
 	if input.MaxScrollEvents > maxAgentScrollEvents {
 		return Policy{}, fmt.Errorf("agent: max scroll events exceeds hard limit %d", maxAgentScrollEvents)
@@ -169,6 +220,8 @@ func preparePolicy(input Policy) (Policy, error) {
 		AllowedWindows:      append([]WindowTarget(nil), input.AllowedWindows...),
 		AllowedUIRoles:      append([]UIRole(nil), input.AllowedUIRoles...),
 		AllowedUIProperties: append([]UIProperty(nil), input.AllowedUIProperties...),
+		AllowedViewRegions:  append([]CaptureRegion(nil), input.AllowedViewRegions...),
+		ViewRedactionMasks:  append([]CaptureRegion(nil), input.ViewRedactionMasks...),
 		MaxActions:          input.MaxActions, MaxTextRunes: input.MaxTextRunes,
 		AllowDoubleClick:           input.AllowDoubleClick,
 		MaxScrollEvents:            input.MaxScrollEvents,
@@ -185,6 +238,16 @@ func preparePolicy(input Policy) (Policy, error) {
 		MaxUIElements:              input.MaxUIElements,
 		MaxUITreeDepth:             input.MaxUITreeDepth,
 		MaxUIStringBytes:           input.MaxUIStringBytes,
+		AllowFullDisplayView:       input.AllowFullDisplayView,
+		AllowPortalView:            input.AllowPortalView,
+		MaxViewSourcePixels:        input.MaxViewSourcePixels,
+		MaxViewEncodedBytes:        input.MaxViewEncodedBytes,
+		MaxViewWidth:               input.MaxViewWidth,
+		MaxViewHeight:              input.MaxViewHeight,
+		MaxViews:                   input.MaxViews,
+		MaxConcurrentViews:         input.MaxConcurrentViews,
+		MinViewIntervalMillis:      input.MinViewIntervalMillis,
+		ViewTimeoutMillis:          input.ViewTimeoutMillis,
 		WaitAttempts:               input.WaitAttempts,
 		WaitIntervalMillis:         input.WaitIntervalMillis,
 		WaitTimeoutMillis:          input.WaitTimeoutMillis,
@@ -284,6 +347,22 @@ func preparePolicy(input Policy) (Policy, error) {
 		}
 		prepared.allowUIProperty[property] = struct{}{}
 	}
+	for _, region := range prepared.AllowedViewRegions {
+		if err := validateCaptureRegion(region, maxAgentCapturePixels); err != nil {
+			return Policy{}, fmt.Errorf("agent: invalid allowed view region: %w", err)
+		}
+		if _, allowed := prepared.allowDisplay[region.DisplayID]; !allowed {
+			return Policy{}, fmt.Errorf("agent: allowed view region requires an allowed display ID")
+		}
+	}
+	for _, mask := range prepared.ViewRedactionMasks {
+		if err := validateCaptureRegion(mask, maxAgentCapturePixels); err != nil {
+			return Policy{}, fmt.Errorf("agent: invalid view redaction mask: %w", err)
+		}
+		if _, allowed := prepared.allowDisplay[mask.DisplayID]; !allowed {
+			return Policy{}, fmt.Errorf("agent: view redaction mask requires an allowed display ID")
+		}
+	}
 	if _, allowed := prepared.allowOperation[OperationClick]; allowed && len(prepared.allowButton) == 0 {
 		return Policy{}, fmt.Errorf("agent: pointer.click requires allowed mouse buttons")
 	}
@@ -326,6 +405,17 @@ func preparePolicy(input Policy) (Policy, error) {
 			return Policy{}, fmt.Errorf("agent: desktop.inspect-ui requires the role property")
 		}
 	}
+	if _, allowed := prepared.allowOperation[OperationView]; allowed {
+		if len(prepared.allowDisplay) == 0 ||
+			(len(prepared.AllowedViewRegions) == 0 && !prepared.AllowFullDisplayView) ||
+			prepared.MaxViewSourcePixels == 0 || prepared.MaxViewEncodedBytes == 0 ||
+			prepared.MaxViewWidth == 0 || prepared.MaxViewHeight == 0 ||
+			prepared.MaxViews == 0 || prepared.MaxObservations == 0 ||
+			prepared.MaxConcurrentViews != 1 || prepared.MinViewIntervalMillis == 0 ||
+			prepared.ViewTimeoutMillis == 0 || prepared.SessionTimeoutMillis == 0 {
+			return Policy{}, fmt.Errorf("agent: desktop.view requires allowed displays and regions plus bounded source pixels, encoded bytes, dimensions, count, concurrency, rate, view duration, observation count, and session lifetime")
+		}
+	}
 	if allowsExtendedMutation(prepared.allowOperation) {
 		if prepared.MinActionIntervalMillis == 0 || prepared.SessionTimeoutMillis == 0 {
 			return Policy{}, fmt.Errorf("agent: extended mutations require bounded action interval and session timeout")
@@ -356,8 +446,10 @@ func preparePolicy(input Policy) (Policy, error) {
 		}
 	}
 	if prepared.VerificationAttempts > 0 {
-		if _, allowed := prepared.allowOperation[OperationObserve]; !allowed ||
-			prepared.MaxCapturePixels == 0 || len(prepared.allowDisplay) == 0 {
+		_, observeAllowed := prepared.allowOperation[OperationObserve]
+		_, viewAllowed := prepared.allowOperation[OperationView]
+		if ((!observeAllowed || prepared.MaxCapturePixels == 0) &&
+			(!viewAllowed || prepared.MaxViewSourcePixels == 0)) || len(prepared.allowDisplay) == 0 {
 			return Policy{}, fmt.Errorf("agent: verification requires allowed bounded capture observations")
 		}
 		minimumObservations := uint64(prepared.VerificationAttempts) + 2
@@ -395,7 +487,7 @@ func knownOperation(operation Operation) bool {
 	switch operation {
 	case OperationMove, OperationClick, OperationScroll, OperationDrag,
 		OperationTypeText, OperationKeyChord, OperationActivate,
-		OperationObserve, OperationInspectUI, OperationFindColor, OperationWaitColor:
+		OperationObserve, OperationView, OperationInspectUI, OperationFindColor, OperationWaitColor:
 		return true
 	default:
 		return false

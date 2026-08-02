@@ -44,6 +44,7 @@ type fakeDriver struct {
 	captureImages    []image.Image
 	captureErr       error
 	captureCalls     int
+	viewPortalGrants []bool
 	captureHit       chan struct{}
 	captureGo        chan struct{}
 	capabilities     *robotgo.RuntimeCapabilities
@@ -249,6 +250,14 @@ func (d *fakeDriver) Capture(_ context.Context, region CaptureRegion) (image.Ima
 	return img, nil
 }
 
+func (d *fakeDriver) CaptureView(ctx context.Context, region CaptureRegion, allowPortal bool) (image.Image, string, error) {
+	d.mu.Lock()
+	d.viewPortalGrants = append(d.viewPortalGrants, allowPortal)
+	d.mu.Unlock()
+	img, err := d.Capture(ctx, region)
+	return img, "fake-capture", err
+}
+
 func (d *fakeDriver) captureCount() int {
 	d.mu.Lock()
 	defer d.mu.Unlock()
@@ -312,7 +321,7 @@ func TestCatalogIsStableAndDefensive(t *testing.T) {
 		t.Fatalf("schema = %q", catalog.SchemaVersion)
 	}
 	want := []Operation{
-		OperationObserve, OperationInspectUI, OperationFindColor, OperationWaitColor,
+		OperationObserve, OperationView, OperationInspectUI, OperationFindColor, OperationWaitColor,
 		OperationMove, OperationClick, OperationScroll, OperationDrag,
 		OperationTypeText, OperationKeyChord, OperationActivate,
 	}
@@ -322,7 +331,7 @@ func TestCatalogIsStableAndDefensive(t *testing.T) {
 			t.Fatalf("operation[%d] = %+v", index, got)
 		}
 		wantCancellation := CancellationPreflightOnly
-		if operation == OperationFindColor || operation == OperationWaitColor ||
+		if operation == OperationView || operation == OperationFindColor || operation == OperationWaitColor ||
 			operation == OperationInspectUI ||
 			operation == OperationScroll || operation == OperationDrag ||
 			operation == OperationKeyChord {
@@ -335,8 +344,8 @@ func TestCatalogIsStableAndDefensive(t *testing.T) {
 			t.Fatalf("process-global operation[%d] = %+v", index, got)
 		}
 	}
-	catalog.Operations[4].Backend = "mutated"
-	if got := session.Catalog().Operations[4].Backend; got != "fake-mouse" {
+	catalog.Operations[5].Backend = "mutated"
+	if got := session.Catalog().Operations[5].Backend; got != "fake-mouse" {
 		t.Fatalf("catalog mutation leaked into session: %q", got)
 	}
 }

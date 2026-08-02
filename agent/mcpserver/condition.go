@@ -45,7 +45,6 @@ type ReleaseObservationOutput struct {
 func (s *Server) registerConditionTools() {
 	closedWorld := false
 	openWorld := true
-	nondestructive := false
 
 	mcp.AddTool(s.protocol, &mcp.Tool{
 		Name:        ToolFind,
@@ -61,6 +60,11 @@ func (s *Server) registerConditionTools() {
 		Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, OpenWorldHint: &openWorld},
 	}, s.wait)
 
+}
+
+func (s *Server) registerReleaseTool() {
+	closedWorld := false
+	nondestructive := false
 	mcp.AddTool(s.protocol, &mcp.Tool{
 		Name:        ToolReleaseObservation,
 		Title:       "Release a RobotGo observation",
@@ -110,14 +114,22 @@ func (s *Server) releaseObservation(_ context.Context, _ *mcp.CallToolRequest, i
 	if toolErr != nil {
 		return errorResult(), ReleaseObservationOutput{Error: toolErr}, nil
 	}
-	visual, toolErr := visualConditionSession(session)
+	releaser, toolErr := observationReleaseSession(session)
 	if toolErr != nil {
 		return errorResult(), ReleaseObservationOutput{Error: toolErr}, nil
 	}
-	if err := visual.ReleaseObservation(input.ObservationID); err != nil {
+	if err := releaser.ReleaseObservation(input.ObservationID); err != nil {
 		return errorResult(), ReleaseObservationOutput{Error: safeToolError(err)}, nil
 	}
 	return nil, ReleaseObservationOutput{Released: true}, nil
+}
+
+func observationReleaseSession(session Session) (ObservationReleaseSession, *ToolError) {
+	releaser, ok := session.(ObservationReleaseSession)
+	if !ok {
+		return nil, &ToolError{Code: agent.ErrorUnsupported, Message: "RobotGo observation release is unavailable for this session"}
+	}
+	return releaser, nil
 }
 
 func visualConditionSession(session Session) (VisualConditionSession, *ToolError) {

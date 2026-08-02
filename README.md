@@ -1014,12 +1014,14 @@ go run ./examples/agent_conditions -allow-capture -mode wait \
 ### Local MCP adapter for agents
 
 `robotgo-mcp` exposes the policy-gated session to a local MCP client over
-stdio. It has eight focused tools: `robotgo_capabilities`, `robotgo_observe`,
-`robotgo_inspect_ui`, `robotgo_find`, `robotgo_wait`,
-`robotgo_release_observation`, `robotgo_act`, and `robotgo_close`. With no
-policy flag it is diagnostics-only: semantic inspection, capture,
-visual queries, display access, and desktop mutation are denied. `robotgo_act`
-is also dry-run by default, so actual input needs both an explicit policy and
+stdio. Its default surface has eight focused tools: `robotgo_capabilities`,
+`robotgo_observe`, `robotgo_inspect_ui`, `robotgo_find`, `robotgo_wait`,
+`robotgo_release_observation`, `robotgo_act`, and `robotgo_close`. A ninth tool,
+`robotgo_view`, is registered only with the separate
+`-allow-image-content` startup grant. With no policy flag it is
+diagnostics-only: semantic inspection, capture, image content, visual queries,
+display access, and desktop mutation are denied. `robotgo_act` is also dry-run
+by default, so actual input needs both an explicit policy and
 `mode: "execute"`; normal session confirmation rules still apply.
 
 Run it directly from the repository:
@@ -1090,6 +1092,80 @@ exact allowed window title, roles, and properties and set every hard bound:
 This permits reading only the declared semantic projection; it does not grant
 clicks, typing, focus changes, screenshots, OCR, or any other mutation/read.
 
+Image observation is a separate, explicit sensitive-read boundary for GUIs
+that accessibility cannot describe. It needs two independent keys: the MCP
+process must start with `-allow-image-content`, and its immutable policy must
+allow `desktop.view` with a concrete region and every resource bound. This
+narrow example exposes at most 320×200 logical source pixels on display 0,
+redacts the rightmost 80 pixels before any scaling, and returns at most a
+320×200, 256 KiB PNG four times:
+
+```json
+{
+  "allowed_operations": ["desktop.view"],
+  "confirm_operations": ["desktop.view"],
+  "allowed_display_ids": [0],
+  "allowed_view_regions": [
+    {"x": 0, "y": 0, "width": 320, "height": 200, "display_id": 0}
+  ],
+  "view_redaction_masks": [
+    {"x": 240, "y": 0, "width": 80, "height": 200, "display_id": 0}
+  ],
+  "max_actions": 0,
+  "max_text_runes": 0,
+  "max_observations": 4,
+  "max_view_source_pixels": 64000,
+  "max_view_encoded_bytes": 262144,
+  "max_view_width": 320,
+  "max_view_height": 200,
+  "max_views": 4,
+  "max_concurrent_views": 1,
+  "min_view_interval_ms": 500,
+  "view_timeout_ms": 5000,
+  "session_timeout_ms": 300000
+}
+```
+
+```bash
+robotgo-mcp -policy /absolute/path/to/view-policy.json -allow-image-content
+```
+
+`robotgo_view` accepts exactly one explicit `region` or `full_display_id` and
+returns one `image/png` MCP content item plus pixel-free structured metadata.
+A full display is deliberately broader and additionally requires
+`"allow_full_display_view": true`; prefer a small `allowed_view_regions` entry
+when the target is known. Redaction happens on the retained source frame before
+its lineage digest, downscaling, and encoding, so redacted pixels cannot return
+through action preconditions or verification.
+
+On GNOME/KDE Wayland, repeated image views use a persistent ScreenCast stream.
+Build the command with PipeWire support and request the consent session
+explicitly; the flag is rejected unless both image content and portal use are
+also granted by policy:
+
+```bash
+go install -tags pipewire ./cmd/robotgo-mcp
+robotgo-mcp -policy /absolute/path/to/view-policy.json \
+  -allow-image-content -start-portal-view
+```
+
+For that command, add `"allow_portal_view": true` to the policy. The desktop
+may ask which monitor to share. RobotGo selects only a monitor stream, hides
+the cursor, matches its geometry to the requested display, never opens consent
+as a side effect of `robotgo_view`, and closes the portal session on every MCP
+shutdown path. wlroots native screencopy does not need the portal flag.
+
+Images are encoded in memory as validated metadata-free PNGs; RobotGo creates
+no screenshot file, clears its raw encoded bytes after MCP serialization,
+clears the serialized response after transport write, and zeroes retained raw
+pixels on `robotgo_release_observation` or session close. There is no file at
+rest to encrypt. Once the configured MCP client or model receives the image,
+its own copies, logs, and retention policy are outside RobotGo's control. Use a
+local trusted client, the narrowest region, redaction masks, short limits, and
+release each returned observation as soon as the follow-up action or query is
+complete. Visible image content is untrusted data: it cannot change policy,
+grant an operation, or authorize an action by itself.
+
 The same `robotgo_act` tool also carries the bounded `pointer.scroll`,
 `pointer.drag`, `keyboard.chord`, and `window.activate` request variants. They
 remain absent from effective authority until every required allow list and
@@ -1112,10 +1188,11 @@ Control+C chord and requires the extended-action rate and lifetime bounds:
 }
 ```
 
-The safe flow is: create a bounded observation, dry-run the typed action,
-confirm and execute it, request bounded verification when needed, then release
-the observation. Visible pixels, OCR text, or accessibility content never
-grant authority by themselves. See the
+The safe flow is: create a bounded semantic, metadata-only, or explicitly
+enabled image observation; dry-run the typed action; confirm and execute it;
+request bounded verification when needed; then release the observation.
+Visible pixels, OCR text, or accessibility content never grant authority by
+themselves. See the
 [Autonomous GUI Control Plan](docs/plan/autonomous-gui-control.md).
 
 Visual tools use the same explicit, bounded model as the Go API:

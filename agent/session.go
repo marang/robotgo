@@ -135,6 +135,8 @@ type Session struct {
 	cleanupComplete  bool
 	observationMu    sync.Mutex
 	observations     map[string]observationRecord
+	viewMu           sync.Mutex
+	views            map[string]*View
 	usedObservations uint64
 	usedQueries      uint64
 	auditSink        AuditSink
@@ -143,6 +145,8 @@ type Session struct {
 	inputTainted     bool
 	lastAction       time.Time
 	lastUIQuery      time.Time
+	lastView         time.Time
+	usedViews        uint64
 	now              func() time.Time
 }
 
@@ -191,8 +195,9 @@ func newSessionWithAudit(policy Policy, driver inputDriver, capabilities robotgo
 	s := &Session{
 		policy: policy, driver: driver, catalog: buildCatalog(policy, capabilities),
 		ctx: ctx, cancel: cancel, actionGate: make(chan struct{}, 1),
-		observations: make(map[string]observationRecord), auditSink: auditSink,
-		now: time.Now,
+		observations: make(map[string]observationRecord), views: make(map[string]*View),
+		auditSink: auditSink,
+		now:       time.Now,
 	}
 	s.actionGate <- struct{}{}
 	ownerMu.Lock()
@@ -221,6 +226,7 @@ func (s *Session) Close() error {
 	s.closeOnce.Do(func() {
 		s.cancel()
 		<-s.actionGate
+		s.closeViews()
 		s.closeObservations()
 		s.actionGate <- struct{}{}
 	})
