@@ -1,6 +1,6 @@
 # Autonomous GUI Control Plan
 
-Status: LAB-75 complete; LAB-73 semantic observation in progress
+Status: LAB-75 and LAB-73 complete; LAB-72 implementation complete pending merge
 
 Linear coordination:
 
@@ -69,6 +69,47 @@ Semantic element IDs are observation-bound but are not accepted by any current
 mutation API. A later element-action contract must re-resolve the private
 backend reference and revalidate target identity, role, state, and bounds; the
 inspection capability alone never grants mutation.
+
+## Explicit image observation contract
+
+LAB-72 adds the schema-v7 `desktop.view` operation and opt-in
+`robotgo_view` MCP tool for an unfamiliar GUI that has no usable accessibility
+projection. The boundary deliberately needs independent grants at three
+levels:
+
+1. `-allow-image-content` registers the MCP image tool for this process.
+2. Policy must allow `desktop.view`, display/region scope, confirmation when
+   configured, and finite source-pixel, encoded-byte, output-dimension, view,
+   observation, concurrency, rate, per-view timeout, and session-lifetime
+   limits.
+3. GNOME/KDE ScreenCast additionally needs `allow_portal_view` and the explicit
+   `-start-portal-view` startup action; a view request never opens consent.
+
+Region view is the normal grant. Full-display selection has a distinct
+`allow_full_display_view` switch and still remains bound by display and source
+pixel limits. Redaction masks are applied to the session-owned raw frame before
+its digest, downscaling, PNG encoding, action-lineage comparison, and
+verification. Output is one bounded, fully decoded and structurally validated,
+non-indexed, metadata-free PNG plus sanitized geometry/backend metadata. It is
+never duplicated into structured output or written to a temporary file.
+
+The Go `View` transfers encoded-byte ownership exactly once. The MCP adapter
+clears those owned bytes immediately after JSON serialization and tracks them
+until then so shutdown also clears content whose serialization was skipped.
+Serialized JSON-RPC buffers are owned by the configured SDK transport and are
+not mutated by RobotGo because a batch-capable transport may retain several
+responses until delivery. The separate redacted raw observation remains in
+memory only for explicit follow-up lineage and is zeroed by
+`robotgo_release_observation` or session close. Client/model copies and provider
+retention begin beyond the RobotGo boundary and are stated at startup and in
+user documentation.
+
+Visible content is always untrusted data. It cannot add policy, bypass the
+adapter startup grant, authorize mutation, or replace typed action confirmation.
+Custom MCP session implementations must construct images through
+`agent.NewImageView`, which rejects malformed envelopes, dimension mismatch,
+ancillary PNG chunks, indexed palettes, bad checksums, and invalid encoded
+payloads without taking ownership on failure.
 
 ## Action contract
 

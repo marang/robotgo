@@ -1145,6 +1145,43 @@ static int dispatch_until(struct wl_display *display, long deadline_ms) {
   return 1;
 }
 
+struct deadline_roundtrip {
+  int done;
+};
+
+static void deadline_roundtrip_done(void *data, struct wl_callback *callback,
+                                    uint32_t serial) {
+  (void)serial;
+  struct deadline_roundtrip *state = data;
+  state->done = 1;
+  wl_callback_destroy(callback);
+}
+
+static const struct wl_callback_listener deadline_roundtrip_listener = {
+    .done = deadline_roundtrip_done,
+};
+
+static int roundtrip_until(struct wl_display *display, long deadline_ms) {
+  struct wl_callback *callback = wl_display_sync(display);
+  if (!callback) {
+    return -1;
+  }
+  struct deadline_roundtrip state = {0};
+  if (wl_callback_add_listener(callback, &deadline_roundtrip_listener, &state) <
+      0) {
+    wl_callback_destroy(callback);
+    return -1;
+  }
+  while (!state.done) {
+    int result = dispatch_until(display, deadline_ms);
+    if (result <= 0) {
+      wl_callback_destroy(callback);
+      return result;
+    }
+  }
+  return 1;
+}
+
 static void cleanup_capture(struct capture *cap) {
   if (cap->using_dmabuf) {
     if (cap->data && cap->bo && cap->map_data) {
@@ -1247,7 +1284,7 @@ uint32_t robotgo_wayland_screencopy_version(void) {
 MMBitmapRef capture_screen_wayland_impl(int32_t x, int32_t y, int32_t w,
                                         int32_t h, int32_t display_id,
                                         int8_t isPid, int32_t backend,
-                                        int32_t *err) {
+                                        long deadline_ms, int32_t *err) {
   (void)isPid;
   if (err) {
     *err = ScreengrabOK;
@@ -1272,9 +1309,23 @@ MMBitmapRef capture_screen_wayland_impl(int32_t x, int32_t y, int32_t w,
     return NULL;
   }
   wl_registry_add_listener(cap.registry, &registry_listener, &cap);
-  wl_display_roundtrip(cap.display);
+  int roundtrip_result = roundtrip_until(cap.display, deadline_ms);
+  if (roundtrip_result <= 0) {
+    if (err) {
+      *err = roundtrip_result == 0 ? ScreengrabErrTimeout : ScreengrabErrFailed;
+    }
+    cleanup_capture(&cap);
+    return NULL;
+  }
   // Drain output listeners so geometry/mode/scale metadata is populated.
-  wl_display_roundtrip(cap.display);
+  roundtrip_result = roundtrip_until(cap.display, deadline_ms);
+  if (roundtrip_result <= 0) {
+    if (err) {
+      *err = roundtrip_result == 0 ? ScreengrabErrTimeout : ScreengrabErrFailed;
+    }
+    cleanup_capture(&cap);
+    return NULL;
+  }
 
   if (backend == WAYLAND_BACKEND_WL_SHM) {
     if (cap.dmabuf) {
@@ -1316,7 +1367,14 @@ MMBitmapRef capture_screen_wayland_impl(int32_t x, int32_t y, int32_t w,
     if (cap.fb.fb) {
       zwp_linux_dmabuf_feedback_v1_add_listener(cap.fb.fb, &feedback_listener,
                                                 &cap);
-      wl_display_roundtrip(cap.display);
+      roundtrip_result = roundtrip_until(cap.display, deadline_ms);
+      if (roundtrip_result <= 0) {
+        if (err) {
+          *err = roundtrip_result == 0 ? ScreengrabErrTimeout : ScreengrabErrFailed;
+        }
+        cleanup_capture(&cap);
+        return NULL;
+      }
     }
   }
   struct output *out = NULL;
@@ -1395,9 +1453,6 @@ MMBitmapRef capture_screen_wayland_impl(int32_t x, int32_t y, int32_t w,
   }
   zwlr_screencopy_frame_v1_add_listener(cap.frame, &frame_listener, &cap);
 
-  const long timeout_ms = 2000; // 2s safety timeout
-  long start_ms = monotonic_millis();
-  long deadline_ms = start_ms < 0 ? 0 : start_ms + timeout_ms;
   while (!cap.done && !cap.failed) {
     int dres = dispatch_until(cap.display, deadline_ms);
     if (dres < 0) {
@@ -1407,7 +1462,7 @@ MMBitmapRef capture_screen_wayland_impl(int32_t x, int32_t y, int32_t w,
     }
     if (dres == 0) {
       cap.failed = 1;
-      cap.err_code = ScreengrabErrFailed;
+      cap.err_code = ScreengrabErrTimeout;
       break;
     }
   }

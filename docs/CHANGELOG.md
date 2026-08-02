@@ -2,6 +2,22 @@
 
 ## Unreleased
 
+- Added the schema-v7, deny-by-default `desktop.view` agent contract and the
+  separately enabled `robotgo_view` MCP image tool. Image access now requires
+  both an immutable bounded region/full-display policy and the adapter's
+  `-allow-image-content` startup grant. GNOME/KDE persistent capture adds a
+  third explicit `allow_portal_view` plus `-start-portal-view` consent gate;
+  view calls never open a portal implicitly. Source pixels are redacted before
+  lineage hashing and downscaling, encoded only in memory as bounded,
+  metadata-free PNG, cleared after serialization/transport, and retained only
+  as redacted action lineage until explicit observation release or session
+  close. Full-display access, portal reuse, counts, concurrency, rate,
+  dimensions, source pixels, encoded bytes, per-view timeout, and session
+  lifetime are independently bounded. Custom image sessions use a validating,
+  ownership-transferring constructor that rejects contradictory scaling
+  metadata and checks PNG dimensions before full decode, and the release tool
+  is now exposed for every observation-producing session extension rather than
+  being coupled to visual find/wait support.
 - Added the schema-v6, deny-by-default `desktop.inspect-ui` agent/MCP contract
   for accessibility-first GUI discovery. One exact allow-listed window is
   revalidated before a backend call; immutable role/property, node, depth,

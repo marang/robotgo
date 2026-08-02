@@ -211,7 +211,7 @@ func (s *Session) WaitColor(ctx context.Context, request WaitColorRequest) (Wait
 				diagnosticsErr = s.normalizeConditionError(OperationWaitColor, diagnosticsErr)
 				return result, s.finishConditionFailure(ctx, OperationWaitColor, result.ConditionID, "", result.Status, attempt, diagnosticsErr)
 			}
-			observation := observationFromFrame(frame, diagnostics)
+			observation := observationFromFrame(frame, diagnostics, OperationObserve)
 			s.storeObservation(observation)
 			result.Status = ConditionMatched
 			result.Match = match

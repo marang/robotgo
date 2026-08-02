@@ -24,15 +24,18 @@ func (s *Session) prepareActionLineage(ctx context.Context, request ActionReques
 	if request.Precondition == nil {
 		return nil, nil
 	}
-	if _, allowed := s.policy.allowOperation[OperationObserve]; !allowed {
-		return nil, actionLineageError(ErrorPolicyDenied, "agent policy denies observation lineage", ErrPolicyDenied)
-	}
-	if _, required := s.policy.requireConfirmation[OperationObserve]; required && !request.Confirmed {
-		return nil, actionLineageError(ErrorPolicyDenied, "agent policy requires observation confirmation", ErrPolicyDenied)
-	}
 	record, ok := s.observation(request.Precondition.ObservationID)
 	if !ok || !record.hasCapture || !record.capture.usable() {
 		return nil, actionLineageError(ErrorStaleTarget, "precondition observation is unavailable or closed", ErrStaleTarget)
+	}
+	if record.source != OperationObserve && record.source != OperationView {
+		return nil, actionLineageError(ErrorStaleTarget, "precondition observation has no capture lineage", ErrStaleTarget)
+	}
+	if _, allowed := s.policy.allowOperation[record.source]; !allowed {
+		return nil, actionLineageError(ErrorPolicyDenied, "agent policy denies observation lineage", ErrPolicyDenied)
+	}
+	if _, required := s.policy.requireConfirmation[record.source]; required && !request.Confirmed {
+		return nil, actionLineageError(ErrorPolicyDenied, "agent policy requires observation confirmation", ErrPolicyDenied)
 	}
 	requiredCaptures := uint64(1)
 	if request.Verification != nil {
@@ -47,7 +50,7 @@ func (s *Session) prepareActionLineage(ctx context.Context, request ActionReques
 		return nil, actionLineageError(ErrorPolicyDenied, "agent policy observation limit cannot satisfy lineage proof", ErrPolicyDenied)
 	}
 
-	current, err := s.capture(ctx, record.region, true)
+	current, err := s.recaptureLineage(ctx, record)
 	if err != nil {
 		return nil, err
 	}
@@ -74,7 +77,7 @@ func (s *Session) verifyAction(ctx context.Context, actionID string, request Act
 	}()
 
 	for attempt := uint32(1); attempt <= s.policy.VerificationAttempts; attempt++ {
-		frame, err := s.capture(verifyCtx, lineage.record.region, true)
+		frame, err := s.recaptureLineage(verifyCtx, lineage.record)
 		result.Attempts = attempt
 		if err != nil {
 			err = s.normalizeVerificationError(err)
@@ -96,7 +99,7 @@ func (s *Session) verifyAction(ctx context.Context, actionID string, request Act
 				}
 				return nil, result, diagnosticsErr
 			}
-			observation := observationFromFrame(frame, diagnostics)
+			observation := observationFromFrame(frame, diagnostics, lineage.record.source)
 			s.storeObservation(observation)
 			if matched {
 				result.Status = VerificationPassed
@@ -166,7 +169,7 @@ func waitForVerification(ctx context.Context, interval time.Duration) error {
 	}
 }
 
-func observationFromFrame(frame *capturedFrame, diagnostics RuntimeDiagnostics) *Observation {
+func observationFromFrame(frame *capturedFrame, diagnostics RuntimeDiagnostics, source Operation) *Observation {
 	return &Observation{
 		SchemaVersion: ObservationSchemaVersion,
 		ObservationID: newObservationID(),
@@ -174,6 +177,7 @@ func observationFromFrame(frame *capturedFrame, diagnostics RuntimeDiagnostics) 
 		Diagnostics:   diagnostics,
 		Capture:       &frame.metadata,
 		capture:       frame.buffer,
+		source:        source,
 	}
 }
 

@@ -112,6 +112,22 @@ func CaptureImgNative(args ...int) (image.Image, error) {
 	return capturePureGoNative(args)
 }
 
+// CaptureImgNativeContext is the context-aware Pure-Go native capture entry.
+func CaptureImgNativeContext(ctx context.Context, args ...int) (image.Image, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	img, err := CaptureImgNative(args...)
+	if contextErr := ctx.Err(); contextErr != nil {
+		wipeCaptureImage(img)
+		return nil, contextErr
+	}
+	return img, err
+}
+
 func capturePureGoNative(args []int) (image.Image, error) {
 	if !pureGoScreenshotSupported(runtime.GOOS, runtime.GOARCH) {
 		return nil, fmt.Errorf("%w: Pure-Go capture is unavailable on %s/%s", ErrNotSupported, runtime.GOOS, runtime.GOARCH)
@@ -126,6 +142,7 @@ func capturePureGoNative(args []int) (image.Image, error) {
 
 	img, err := pureGoCaptureImage(args...)
 	if err != nil {
+		wipeCaptureImage(img)
 		if errors.Is(err, screenshot.ErrUnsupported) {
 			return nil, fmt.Errorf("%w: Pure-Go capture on %s via %s: %w", ErrNotSupported, runtime.GOOS, backend, err)
 		}

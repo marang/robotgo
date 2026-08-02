@@ -135,6 +135,8 @@ type Session struct {
 	cleanupComplete  bool
 	observationMu    sync.Mutex
 	observations     map[string]observationRecord
+	viewMu           sync.Mutex
+	views            map[string]*View
 	usedObservations uint64
 	usedQueries      uint64
 	auditSink        AuditSink
@@ -143,6 +145,8 @@ type Session struct {
 	inputTainted     bool
 	lastAction       time.Time
 	lastUIQuery      time.Time
+	lastView         time.Time
+	usedViews        uint64
 	now              func() time.Time
 }
 
@@ -191,8 +195,9 @@ func newSessionWithAudit(policy Policy, driver inputDriver, capabilities robotgo
 	s := &Session{
 		policy: policy, driver: driver, catalog: buildCatalog(policy, capabilities),
 		ctx: ctx, cancel: cancel, actionGate: make(chan struct{}, 1),
-		observations: make(map[string]observationRecord), auditSink: auditSink,
-		now: time.Now,
+		observations: make(map[string]observationRecord), views: make(map[string]*View),
+		auditSink: auditSink,
+		now:       time.Now,
 	}
 	s.actionGate <- struct{}{}
 	ownerMu.Lock()
@@ -221,6 +226,7 @@ func (s *Session) Close() error {
 	s.closeOnce.Do(func() {
 		s.cancel()
 		<-s.actionGate
+		s.closeViews()
 		s.closeObservations()
 		s.actionGate <- struct{}{}
 	})
@@ -797,15 +803,24 @@ func classifyBackendError(err error) (ErrorCode, string) {
 		return ErrorStaleTarget, "agent observation target is stale"
 	case errors.Is(err, ErrInputCleanup):
 		return ErrorCleanupFailed, "pressed input cleanup failed; do not retry the action"
-	case errors.Is(err, robotgo.ErrNotSupported):
-		return ErrorUnsupported, "operation is unsupported by the selected backend"
-	case errors.Is(err, robotgo.ErrPermissionDenied):
-		return ErrorPermissionDenied, "desktop permission denied"
 	case errors.Is(err, context.DeadlineExceeded):
 		return ErrorTimedOut, "backend action deadline exceeded"
 	case errors.Is(err, context.Canceled):
 		return ErrorCanceled, "backend action canceled"
+	case isBackendTimeout(err):
+		return ErrorTimedOut, "desktop backend operation timed out"
+	case errors.Is(err, robotgo.ErrNotSupported):
+		return ErrorUnsupported, "operation is unsupported by the selected backend"
+	case errors.Is(err, robotgo.ErrPermissionDenied):
+		return ErrorPermissionDenied, "desktop permission denied"
 	default:
 		return ErrorBackendFailure, "desktop backend operation failed"
 	}
+}
+
+func isBackendTimeout(err error) bool {
+	var timeout interface {
+		Timeout() bool
+	}
+	return errors.As(err, &timeout) && timeout.Timeout()
 }

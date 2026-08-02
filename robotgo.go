@@ -558,6 +558,16 @@ var (
 	ErrPermissionDenied   = errors.New("permission denied by desktop security policy")
 )
 
+type captureTimeoutError struct {
+	backend CaptureBackend
+}
+
+func (err captureTimeoutError) Error() string {
+	return fmt.Sprintf("%s capture timed out", err.backend)
+}
+
+func (captureTimeoutError) Timeout() bool { return true }
+
 func waylandWindowNotSupported(op string) error {
 	return fmt.Errorf("%w: %s on Wayland", ErrNotSupported, op)
 }
@@ -1567,6 +1577,99 @@ func CaptureImgNative(args ...int) (image.Image, error) {
 	defer FreeBitmap(bit)
 
 	return ToImage(bit), nil
+}
+
+// CaptureImgNativeContext captures through the native backend while honoring
+// a context deadline for native Wayland screencopy dispatch. It never opens or
+// reuses a desktop portal.
+func CaptureImgNativeContext(ctx context.Context, args ...int) (image.Image, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	if runtime.GOOS != "linux" || selectedDisplayServer() != DisplayServerWayland {
+		return CaptureImgNative(args...)
+	}
+
+	bit, err := captureScreenWaylandNativeContext(ctx, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer FreeBitmap(bit)
+	img := ToImage(bit)
+	return finishNativeContextCapture(ctx, img)
+}
+
+func finishNativeContextCapture(ctx context.Context, img image.Image) (image.Image, error) {
+	if err := ctx.Err(); err != nil {
+		wipeCaptureImage(img)
+		return nil, err
+	}
+	return img, nil
+}
+
+func captureScreenWaylandNativeContext(ctx context.Context, args ...int) (CBitmap, error) {
+	argX, argY, argW, argH, argErr := captureRegionFromArgs(args)
+	if argErr != nil {
+		return nil, argErr
+	}
+	var x, y, w, h C.int32_t
+	displayID := currentDisplayID()
+	if len(args) > 4 {
+		displayID = args[4]
+	}
+	if len(args) > 3 {
+		x, y = C.int32_t(argX), C.int32_t(argY)
+		w, h = C.int32_t(argW), C.int32_t(argH)
+	}
+	isPID := 0
+	if currentTreatAsHandle() || len(args) > 5 {
+		isPID = 1
+	}
+	backend := selectedWaylandBackend()
+	if envBackend, ok := waylandBackendFromEnv(); ok {
+		backend = envBackend
+	}
+	timeout := 2 * time.Second
+	contextControlsTimeout := false
+	if deadline, ok := ctx.Deadline(); ok {
+		remaining := time.Until(deadline)
+		if remaining <= 0 {
+			if err := ctx.Err(); err != nil {
+				return nil, err
+			}
+			return nil, context.DeadlineExceeded
+		}
+		if remaining < timeout {
+			timeout = remaining
+			contextControlsTimeout = true
+		}
+	}
+	timeoutMillis := max(int64(1), int64((timeout+time.Millisecond-1)/time.Millisecond))
+	var captureErr C.int32_t
+	bit := C.capture_screen_wayland_timeout(
+		x, y, w, h, C.int32_t(displayID), C.int8_t(isPID), C.int32_t(backend),
+		C.int32_t(timeoutMillis), &captureErr,
+	)
+	if bit == nil {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		if captureErr == C.ScreengrabErrTimeout {
+			if contextControlsTimeout {
+				return nil, context.DeadlineExceeded
+			}
+			return nil, captureTimeoutError{backend: BackendScreencopy}
+		}
+		if deadline, ok := ctx.Deadline(); ok && !time.Now().Before(deadline) {
+			return nil, context.DeadlineExceeded
+		}
+		return nil, waylandErr(captureErr)
+	}
+	setLastBackend(BackendScreencopy)
+	return CBitmap(bit), nil
 }
 
 // FreeBitmap free and dealloc the C bitmap

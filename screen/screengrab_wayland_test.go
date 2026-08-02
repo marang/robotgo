@@ -4,6 +4,7 @@
 package screen
 
 import (
+	"context"
 	"errors"
 	"image/color"
 	"os"
@@ -20,6 +21,7 @@ import (
 const (
 	mockModeStall           = 1
 	mockModeFailAfterDmabuf = 2
+	mockModeRegistryStall   = 3
 )
 
 func cleanupMockServer(t *testing.T, done <-chan struct{}) {
@@ -215,6 +217,101 @@ func TestScreencopyTimeoutIsBounded(t *testing.T) {
 	}
 	if elapsed := time.Since(started); elapsed < 1500*time.Millisecond || elapsed > 4*time.Second {
 		t.Fatalf("capture did not respect the configured timeout window: %v", elapsed)
+	}
+}
+
+func TestScreencopyContextDeadlineIsBounded(t *testing.T) {
+	dir := t.TempDir()
+	sock := "robotgo-wl-context-timeout"
+	t.Setenv("XDG_RUNTIME_DIR", dir)
+	t.Setenv("WAYLAND_DISPLAY", sock)
+	t.Setenv("ROBOTGO_DISABLE_PORTAL", "1")
+	robotgo.SetWaylandBackend(robotgo.WaylandBackendWlShm)
+	t.Cleanup(func() { robotgo.SetWaylandBackend(robotgo.WaylandBackendAuto) })
+
+	done := make(chan struct{})
+	startMockServerMode(sock, 0, 0, 0, mockModeStall, done)
+	t.Cleanup(func() {
+		cleanupMockServer(t, done)
+	})
+	waitForMockServer(t, dir, sock)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+	started := time.Now()
+	img, err := robotgo.CaptureImgNativeContext(ctx)
+	if img != nil {
+		t.Fatal("stalled context capture returned an image")
+	}
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("capture error = %v, want context deadline", err)
+	}
+	if elapsed := time.Since(started); elapsed < 50*time.Millisecond || elapsed > time.Second {
+		t.Fatalf("capture did not respect the context deadline: %v", elapsed)
+	}
+}
+
+func TestScreencopyContextDeadlineBoundsRegistryRoundtrip(t *testing.T) {
+	dir := t.TempDir()
+	sock := "robotgo-wl-registry-timeout"
+	t.Setenv("XDG_RUNTIME_DIR", dir)
+	t.Setenv("WAYLAND_DISPLAY", sock)
+	t.Setenv("ROBOTGO_DISABLE_PORTAL", "1")
+	robotgo.SetWaylandBackend(robotgo.WaylandBackendWlShm)
+	t.Cleanup(func() { robotgo.SetWaylandBackend(robotgo.WaylandBackendAuto) })
+
+	done := make(chan struct{})
+	startMockServerMode(sock, 0, 0, 0, mockModeRegistryStall, done)
+	t.Cleanup(func() {
+		cleanupMockServer(t, done)
+	})
+	waitForMockServer(t, dir, sock)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+	started := time.Now()
+	img, err := robotgo.CaptureImgNativeContext(ctx)
+	if img != nil {
+		t.Fatal("stalled registry roundtrip returned an image")
+	}
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("capture error = %v, want context deadline", err)
+	}
+	if elapsed := time.Since(started); elapsed < 50*time.Millisecond || elapsed > time.Second {
+		t.Fatalf("registry roundtrip did not respect the context deadline: %v", elapsed)
+	}
+}
+
+func TestScreencopyBackendTimeoutPrecedesLongContextDeadline(t *testing.T) {
+	dir := t.TempDir()
+	sock := "robotgo-wl-backend-timeout"
+	t.Setenv("XDG_RUNTIME_DIR", dir)
+	t.Setenv("WAYLAND_DISPLAY", sock)
+	t.Setenv("ROBOTGO_DISABLE_PORTAL", "1")
+	robotgo.SetWaylandBackend(robotgo.WaylandBackendWlShm)
+	t.Cleanup(func() { robotgo.SetWaylandBackend(robotgo.WaylandBackendAuto) })
+
+	done := make(chan struct{})
+	startMockServerMode(sock, 0, 0, 0, mockModeStall, done)
+	t.Cleanup(func() { cleanupMockServer(t, done) })
+	waitForMockServer(t, dir, sock)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	started := time.Now()
+	img, err := robotgo.CaptureImgNativeContext(ctx)
+	if img != nil {
+		t.Fatal("stalled backend capture returned an image")
+	}
+	if errors.Is(err, context.DeadlineExceeded) || ctx.Err() != nil {
+		t.Fatalf("backend timeout was reported as caller deadline: err=%v ctx=%v", err, ctx.Err())
+	}
+	var timeout interface{ Timeout() bool }
+	if !errors.As(err, &timeout) || !timeout.Timeout() {
+		t.Fatalf("capture error = %v, want backend timeout", err)
+	}
+	if elapsed := time.Since(started); elapsed < 1500*time.Millisecond || elapsed > 2500*time.Millisecond {
+		t.Fatalf("backend timeout returned outside its safety window: %v", elapsed)
 	}
 }
 

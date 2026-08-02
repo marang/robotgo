@@ -154,6 +154,7 @@ type Observation struct {
 	Capture       *CaptureMetadata   `json:"capture,omitempty"`
 
 	capture *captureBuffer
+	source  Operation
 }
 
 type observationRecord struct {
@@ -161,6 +162,7 @@ type observationRecord struct {
 	region     CaptureRegion
 	digest     string
 	hasCapture bool
+	source     Operation
 	uiElements map[string][]byte
 }
 
@@ -240,23 +242,135 @@ func (robotGoDriver) Capture(ctx context.Context, region CaptureRegion) (image.I
 			ctx,
 			region,
 			os.Getenv(disablePortalEnv) != "",
-			robotgo.CaptureImgNative,
+			robotgo.CaptureImgNativeContext,
 			robotgo.ScreenCastCaptureReady,
 			robotgo.CaptureScreenCastDisplay,
 		)
 	}
-	img, err := robotgo.CaptureImg(region.X, region.Y, region.Width, region.Height, region.DisplayID)
-	if err != nil {
-		return nil, err
-	}
-	if err := ctx.Err(); err != nil {
-		wipeMutableImage(img)
-		return nil, err
-	}
-	return img, nil
+	return captureImageWithContext(ctx, func() (image.Image, error) {
+		return robotgo.CaptureImg(region.X, region.Y, region.Width, region.Height, region.DisplayID)
+	})
 }
 
-type nativeCaptureFunc func(...int) (image.Image, error)
+type captureImageResult struct {
+	image image.Image
+	err   error
+}
+
+type displayBoundsResult struct {
+	bounds displayBounds
+	err    error
+}
+
+var synchronousDesktopReadSlot = make(chan struct{}, 1)
+
+// captureImageWithContext bounds synchronous native capture APIs that cannot
+// accept a context themselves. A late result remains owned by the worker and
+// is wiped instead of crossing the canceled operation boundary.
+func captureImageWithContext(
+	ctx context.Context,
+	capture func() (image.Image, error),
+) (image.Image, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	select {
+	case synchronousDesktopReadSlot <- struct{}{}:
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+	if ctx.Done() == nil {
+		defer func() { <-synchronousDesktopReadSlot }()
+		img, err := capture()
+		if err != nil {
+			wipeMutableImage(img)
+			return nil, err
+		}
+		return img, nil
+	}
+
+	result := make(chan captureImageResult)
+	go func() {
+		defer func() { <-synchronousDesktopReadSlot }()
+		if ctx.Err() != nil {
+			return
+		}
+		img, err := capture()
+		select {
+		case result <- captureImageResult{image: img, err: err}:
+		case <-ctx.Done():
+			wipeMutableImage(img)
+		}
+	}()
+
+	select {
+	case captured := <-result:
+		if err := ctx.Err(); err != nil {
+			wipeMutableImage(captured.image)
+			return nil, err
+		}
+		if captured.err != nil {
+			wipeMutableImage(captured.image)
+			return nil, captured.err
+		}
+		return captured.image, nil
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+}
+
+// displayBoundsWithContext applies the same single-flight cancellation
+// boundary as synchronous capture. The native lookup may finish after the
+// caller returns, but it cannot retain sensitive pixels or start additional
+// synchronous desktop reads while it remains blocked.
+func displayBoundsWithContext(
+	ctx context.Context,
+	lookup func() (displayBounds, error),
+) (displayBounds, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if err := ctx.Err(); err != nil {
+		return displayBounds{}, err
+	}
+	select {
+	case synchronousDesktopReadSlot <- struct{}{}:
+	case <-ctx.Done():
+		return displayBounds{}, ctx.Err()
+	}
+	if ctx.Done() == nil {
+		defer func() { <-synchronousDesktopReadSlot }()
+		return lookup()
+	}
+
+	result := make(chan displayBoundsResult)
+	go func() {
+		defer func() { <-synchronousDesktopReadSlot }()
+		if ctx.Err() != nil {
+			return
+		}
+		bounds, err := lookup()
+		select {
+		case result <- displayBoundsResult{bounds: bounds, err: err}:
+		case <-ctx.Done():
+		}
+	}()
+
+	select {
+	case resolved := <-result:
+		if err := ctx.Err(); err != nil {
+			return displayBounds{}, err
+		}
+		return resolved.bounds, resolved.err
+	case <-ctx.Done():
+		return displayBounds{}, ctx.Err()
+	}
+}
+
+type nativeCaptureFunc func(context.Context, ...int) (image.Image, error)
 type screenCastReadyFunc func() error
 type screenCastDisplayCaptureFunc func(context.Context, int, ...int) (image.Image, error)
 
@@ -268,13 +382,27 @@ func captureWaylandAgent(
 	screenCastReady screenCastReadyFunc,
 	screenCastCapture screenCastDisplayCaptureFunc,
 ) (image.Image, error) {
-	img, nativeErr := nativeCapture(region.X, region.Y, region.Width, region.Height, region.DisplayID)
+	img, _, err := captureWaylandAgentWithBackend(
+		ctx, region, portalDisabled, nativeCapture, screenCastReady, screenCastCapture,
+	)
+	return img, err
+}
+
+func captureWaylandAgentWithBackend(
+	ctx context.Context,
+	region CaptureRegion,
+	portalDisabled bool,
+	nativeCapture nativeCaptureFunc,
+	screenCastReady screenCastReadyFunc,
+	screenCastCapture screenCastDisplayCaptureFunc,
+) (image.Image, string, error) {
+	img, nativeErr := nativeCapture(ctx, region.X, region.Y, region.Width, region.Height, region.DisplayID)
 	if nativeErr == nil && img != nil && !img.Bounds().Empty() {
 		if err := ctx.Err(); err != nil {
 			wipeMutableImage(img)
-			return nil, err
+			return nil, "", err
 		}
-		return img, nil
+		return img, string(robotgo.BackendScreencopy), nil
 	}
 	if nativeErr == nil {
 		nativeErr = errors.New("native Wayland capture returned an empty image")
@@ -283,7 +411,7 @@ func captureWaylandAgent(
 		wipeMutableImage(img)
 	}
 	if err := ctx.Err(); err != nil {
-		return nil, err
+		return nil, "", err
 	}
 
 	if !portalDisabled && screenCastReady() == nil {
@@ -298,9 +426,9 @@ func captureWaylandAgent(
 		if screenCastErr == nil && img != nil && !img.Bounds().Empty() {
 			if err := ctx.Err(); err != nil {
 				wipeMutableImage(img)
-				return nil, err
+				return nil, "", err
 			}
-			return img, nil
+			return img, string(robotgo.BackendScreenCast), nil
 		}
 		if screenCastErr == nil {
 			screenCastErr = errors.New("ScreenCast capture returned an empty image")
@@ -308,10 +436,10 @@ func captureWaylandAgent(
 		if img != nil {
 			wipeMutableImage(img)
 		}
-		return nil, errors.Join(nativeErr, screenCastErr)
+		return nil, "", errors.Join(nativeErr, screenCastErr)
 	}
 
-	return nil, errors.Join(
+	return nil, "", errors.Join(
 		nativeErr,
 		fmt.Errorf(
 			"%w: native Wayland capture failed and agent capture will not open portal consent implicitly; start ScreenCast explicitly for an authorized fallback",
@@ -447,7 +575,17 @@ func (s *Session) authorizeObservation(request ObserveRequest) error {
 }
 
 func (s *Session) capture(ctx context.Context, region CaptureRegion, count bool) (*capturedFrame, error) {
-	if err := validateCaptureRegion(region, s.policy.MaxCapturePixels); err != nil {
+	return s.captureWith(ctx, region, s.policy.MaxCapturePixels, count, s.driver.Capture)
+}
+
+func (s *Session) captureWith(
+	ctx context.Context,
+	region CaptureRegion,
+	maxPixels uint64,
+	count bool,
+	capture func(context.Context, CaptureRegion) (image.Image, error),
+) (*capturedFrame, error) {
+	if err := validateCaptureRegion(region, maxPixels); err != nil {
 		return nil, observationActionError(ErrorInvalidInput, "invalid capture region", err)
 	}
 	if _, allowed := s.policy.allowDisplay[region.DisplayID]; !allowed {
@@ -456,7 +594,9 @@ func (s *Session) capture(ctx context.Context, region CaptureRegion, count bool)
 	if err := ctx.Err(); err != nil {
 		return nil, observationContextError(ctx)
 	}
-	bounds, err := s.driver.DisplayBounds(region.DisplayID)
+	bounds, err := displayBoundsWithContext(ctx, func() (displayBounds, error) {
+		return s.driver.DisplayBounds(region.DisplayID)
+	})
 	if err != nil {
 		code, message := classifyBackendError(err)
 		return nil, observationActionError(code, message, err)
@@ -473,22 +613,22 @@ func (s *Session) capture(ctx context.Context, region CaptureRegion, count bool)
 		}
 		s.usedObservations++
 	}
-	img, err := s.driver.Capture(ctx, region)
+	img, err := capture(ctx, region)
 	if err != nil {
 		wipeMutableImage(img)
 		code, message := classifyBackendError(err)
 		return nil, observationActionError(code, message, err)
 	}
 	defer wipeMutableImage(img)
-	capture, err := newCaptureObservation(region, img, s.policy.MaxCapturePixels)
+	frame, err := newCaptureObservation(region, img, maxPixels)
 	if err != nil {
 		return nil, observationActionError(ErrorBackendFailure, "desktop backend returned an invalid capture", err)
 	}
 	if err := ctx.Err(); err != nil {
-		_ = capture.buffer.close()
+		_ = frame.buffer.close()
 		return nil, observationContextError(ctx)
 	}
-	return capture, nil
+	return frame, nil
 }
 
 func validateCaptureRegion(region CaptureRegion, maxPixels uint64) error {
@@ -497,6 +637,10 @@ func validateCaptureRegion(region CaptureRegion, maxPixels uint64) error {
 	}
 	if region.Width <= 0 || region.Height <= 0 {
 		return errors.New("capture width and height must be positive")
+	}
+	maximum := int(^uint(0) >> 1)
+	if region.X > maximum-region.Width || region.Y > maximum-region.Height {
+		return errors.New("capture coordinates overflow")
 	}
 	width, height := uint64(region.Width), uint64(region.Height)
 	if maxPixels == 0 || width > maxPixels/height {
@@ -583,7 +727,10 @@ func wipeMutableImage(img image.Image) {
 }
 
 func (s *Session) storeObservation(observation *Observation) {
-	record := observationRecord{capture: observation.capture}
+	record := observationRecord{capture: observation.capture, source: observation.source}
+	if record.source == "" {
+		record.source = OperationObserve
+	}
 	if observation.Capture != nil {
 		record.region = observation.Capture.Region
 		record.digest = observation.Capture.SHA256
@@ -608,6 +755,7 @@ func (s *Session) ReleaseObservation(id string) error {
 	if !validObservationID(id) {
 		return observationActionError(ErrorInvalidInput, "invalid RobotGo observation ID", nil)
 	}
+	s.releaseView(id)
 	s.observationMu.Lock()
 	record, ok := s.observations[id]
 	if ok {

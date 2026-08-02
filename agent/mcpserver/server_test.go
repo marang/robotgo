@@ -1,9 +1,13 @@
 package mcpserver
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
+	"image"
+	"image/color"
+	"image/png"
 	"slices"
 	"strings"
 	"sync"
@@ -24,6 +28,7 @@ type fakeSession struct {
 	waitFunc    func(context.Context, agent.WaitColorRequest) (agent.WaitColorResult, error)
 	releaseFunc func(string) error
 	inspectFunc func(context.Context, agent.InspectUIRequest) (agent.UIObservation, error)
+	viewFunc    func(context.Context, agent.ViewRequest) (*agent.View, error)
 	dryRunFunc  func(context.Context, agent.ActionRequest) (agent.ActionResult, error)
 	executeFunc func(context.Context, agent.ActionRequest) (agent.ActionResult, error)
 	closeFunc   func() error
@@ -34,7 +39,34 @@ type fakeSession struct {
 	waits    int
 	releases int
 	inspects int
+	views    int
 	closes   int
+}
+
+// imageOnlySession verifies that observation cleanup is not coupled to the
+// optional visual-condition or accessibility extensions.
+type imageOnlySession struct {
+	viewFunc    func(context.Context, agent.ViewRequest) (*agent.View, error)
+	releasedIDs []string
+}
+
+func (*imageOnlySession) Catalog() agent.OperationCatalog { return agent.OperationCatalog{} }
+func (*imageOnlySession) Observe(context.Context, agent.ObserveRequest) (*agent.Observation, error) {
+	return nil, errors.New("unused")
+}
+func (*imageOnlySession) DryRun(context.Context, agent.ActionRequest) (agent.ActionResult, error) {
+	return agent.ActionResult{}, errors.New("unused")
+}
+func (*imageOnlySession) Execute(context.Context, agent.ActionRequest) (agent.ActionResult, error) {
+	return agent.ActionResult{}, errors.New("unused")
+}
+func (*imageOnlySession) Close() error { return nil }
+func (session *imageOnlySession) View(ctx context.Context, request agent.ViewRequest) (*agent.View, error) {
+	return session.viewFunc(ctx, request)
+}
+func (session *imageOnlySession) ReleaseObservation(id string) error {
+	session.releasedIDs = append(session.releasedIDs, id)
+	return nil
 }
 
 func (f *fakeSession) Catalog() agent.OperationCatalog { return f.catalog }
@@ -84,6 +116,16 @@ func (f *fakeSession) InspectUI(ctx context.Context, request agent.InspectUIRequ
 		return f.inspectFunc(ctx, request)
 	}
 	return agent.UIObservation{}, errors.New("unused")
+}
+
+func (f *fakeSession) View(ctx context.Context, request agent.ViewRequest) (*agent.View, error) {
+	f.mu.Lock()
+	f.views++
+	f.mu.Unlock()
+	if f.viewFunc != nil {
+		return f.viewFunc(ctx, request)
+	}
+	return nil, errors.New("unused")
 }
 
 func (f *fakeSession) DryRun(ctx context.Context, request agent.ActionRequest) (agent.ActionResult, error) {
@@ -163,6 +205,15 @@ func newProtocolServer(t *testing.T, session Session) *Server {
 	return server
 }
 
+func newImageProtocolServer(t *testing.T, session Session) *Server {
+	t.Helper()
+	server, err := NewWithOptions(session, Options{AllowImageContent: true})
+	if err != nil {
+		t.Fatalf("NewWithOptions: %v", err)
+	}
+	return server
+}
+
 func callTool(t *testing.T, client *protocolClient, name string, arguments any) *mcp.CallToolResult {
 	t.Helper()
 	result, err := client.clientSession.CallTool(t.Context(), &mcp.CallToolParams{Name: name, Arguments: arguments})
@@ -224,7 +275,7 @@ func TestProtocolInitializesAndListsFocusedTools(t *testing.T) {
 			}
 		}
 		switch tool.Name {
-		case ToolFind, ToolWait, ToolInspectUI:
+		case ToolFind, ToolWait, ToolInspectUI, ToolView:
 			if tool.Annotations == nil || !tool.Annotations.ReadOnlyHint {
 				t.Errorf("tool %q is not marked read-only", tool.Name)
 			}
@@ -244,6 +295,281 @@ func TestProtocolInitializesAndListsFocusedTools(t *testing.T) {
 	if !slices.Equal(names, want) {
 		t.Fatalf("tools = %v, want %v", names, want)
 	}
+}
+
+func TestImageViewToolRequiresAdapterStartupGrant(t *testing.T) {
+	fake := &fakeSession{}
+	for name, server := range map[string]*Server{
+		"default": newProtocolServer(t, fake),
+		"enabled": newImageProtocolServer(t, fake),
+	} {
+		t.Run(name, func(t *testing.T) {
+			client := connectProtocol(t, server)
+			result, err := client.clientSession.ListTools(t.Context(), nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			found := false
+			for _, tool := range result.Tools {
+				if tool.Name == ToolView {
+					found = true
+					if tool.Annotations == nil || !tool.Annotations.ReadOnlyHint {
+						t.Fatalf("view annotations = %+v", tool.Annotations)
+					}
+				}
+			}
+			if found != (name == "enabled") {
+				t.Fatalf("view tool visible = %v", found)
+			}
+		})
+	}
+}
+
+func TestImageOnlySessionExposesViewAndIndependentReleaseTool(t *testing.T) {
+	metadata := agent.ViewMetadata{
+		SchemaVersion: agent.ViewSchemaVersion, ObservationID: "observation-93",
+		CreatedAt: time.Unix(499, 0).UTC(),
+		Region:    agent.CaptureRegion{Width: 1, Height: 1, DisplayID: 0},
+		Width:     1, Height: 1, Backend: "fixture-capture", MIMEType: agent.ViewMIMEType,
+	}
+	session := &imageOnlySession{viewFunc: func(context.Context, agent.ViewRequest) (*agent.View, error) {
+		return agent.NewImageView(metadata, testPNG(t, 1, 1))
+	}}
+	client := connectProtocol(t, newImageProtocolServer(t, session))
+	listed, err := client.clientSession.ListTools(t.Context(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var names []string
+	for _, tool := range listed.Tools {
+		names = append(names, tool.Name)
+	}
+	slices.Sort(names)
+	want := []string{ToolAct, ToolCapabilities, ToolClose, ToolObserve, ToolReleaseObservation, ToolView}
+	slices.Sort(want)
+	if !slices.Equal(names, want) {
+		t.Fatalf("image-only tools = %v, want %v", names, want)
+	}
+	viewResult := callTool(t, client, ToolView, agent.ViewRequest{Region: &metadata.Region})
+	if viewResult.IsError {
+		t.Fatalf("image-only view failed: %s", serializedResult(t, viewResult))
+	}
+	releaseResult := callTool(t, client, ToolReleaseObservation, ReleaseObservationInput{
+		ObservationID: metadata.ObservationID,
+	})
+	if releaseResult.IsError || !slices.Equal(session.releasedIDs, []string{metadata.ObservationID}) {
+		t.Fatalf("image-only release = %s, calls=%v", serializedResult(t, releaseResult), session.releasedIDs)
+	}
+}
+
+func TestOfficialMCPClientReceivesImageContentWithoutStructuredDuplication(t *testing.T) {
+	pngData := testPNG(t, 2, 1)
+	expectedPNG := append([]byte(nil), pngData...)
+	serverOwned := pngData
+	metadata := agent.ViewMetadata{
+		SchemaVersion: agent.ViewSchemaVersion, ObservationID: "observation-91",
+		CreatedAt: time.Unix(500, 0).UTC(),
+		Region:    agent.CaptureRegion{X: 10, Y: 20, Width: 2, Height: 1, DisplayID: 0},
+		Width:     2, Height: 1, Backend: "fixture-capture", MIMEType: agent.ViewMIMEType,
+		CaptureDurationMillis: 3,
+	}
+	fake := &fakeSession{viewFunc: func(_ context.Context, request agent.ViewRequest) (*agent.View, error) {
+		if request.Region == nil || request.Region.X != 10 || !request.Confirmed {
+			return nil, errors.New("unexpected view request")
+		}
+		return agent.NewImageView(metadata, serverOwned)
+	}}
+	client := connectProtocol(t, newImageProtocolServer(t, fake))
+	result := callTool(t, client, ToolView, agent.ViewRequest{
+		Region: &metadata.Region, Confirmed: true,
+	})
+	if result.IsError || len(result.Content) != 1 {
+		t.Fatalf("view result = %s", serializedResult(t, result))
+	}
+	imageContent, ok := result.Content[0].(*mcp.ImageContent)
+	if !ok || imageContent.MIMEType != agent.ViewMIMEType || !bytes.Equal(imageContent.Data, expectedPNG) {
+		t.Fatalf("image content = %#v", result.Content[0])
+	}
+	output := decodeOutput[ViewOutput](t, result)
+	if output.View == nil || output.View.ObservationID != metadata.ObservationID || output.Error != nil {
+		t.Fatalf("view output = %+v", output)
+	}
+	structured, err := json.Marshal(result.StructuredContent)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bytes.Contains(structured, pngData) || strings.Contains(string(structured), `"data"`) {
+		t.Fatalf("structured output duplicated image bytes: %s", structured)
+	}
+	deadline := time.Now().Add(time.Second)
+	for !allZero(serverOwned) && time.Now().Before(deadline) {
+		time.Sleep(time.Millisecond)
+	}
+	if !allZero(serverOwned) {
+		t.Fatal("server-owned encoded image was not zeroed after MCP serialization")
+	}
+	if _, _, releases := fake.conditionCounts(); releases != 0 {
+		t.Fatalf("successful view unexpectedly released lineage: %d", releases)
+	}
+	release := callTool(t, client, ToolReleaseObservation, ReleaseObservationInput{ObservationID: metadata.ObservationID})
+	if release.IsError {
+		t.Fatalf("release view lineage = %s", serializedResult(t, release))
+	}
+	if _, _, releases := fake.conditionCounts(); releases != 1 {
+		t.Fatalf("view lineage release calls = %d", releases)
+	}
+}
+
+func TestImageViewFailureZeroesPayloadAndReleasesCompletedLineage(t *testing.T) {
+	data := testPNG(t, 1, 1)
+	metadata := agent.ViewMetadata{
+		SchemaVersion: agent.ViewSchemaVersion, ObservationID: "observation-92",
+		CreatedAt: time.Unix(501, 0).UTC(),
+		Region:    agent.CaptureRegion{Width: 1, Height: 1, DisplayID: 0},
+		Width:     1, Height: 1, Backend: "fixture-capture", MIMEType: agent.ViewMIMEType,
+	}
+	fake := &fakeSession{viewFunc: func(context.Context, agent.ViewRequest) (*agent.View, error) {
+		view, err := agent.NewImageView(metadata, data)
+		if err != nil {
+			return nil, err
+		}
+		return view, &agent.ActionError{
+			Code: agent.ErrorAuditDelivery, Operation: agent.OperationView,
+			Message: "image view completed but audit delivery failed",
+		}
+	}}
+	client := connectProtocol(t, newImageProtocolServer(t, fake))
+	result := callTool(t, client, ToolView, agent.ViewRequest{
+		Region: &metadata.Region,
+	})
+	output := decodeOutput[ViewOutput](t, result)
+	if !result.IsError || output.View != nil || output.Error == nil ||
+		output.Error.Code != agent.ErrorAuditDelivery {
+		t.Fatalf("failed view output = %+v", output)
+	}
+	if !allZero(data) {
+		t.Fatal("failed view retained encoded image bytes")
+	}
+	if _, _, releases := fake.conditionCounts(); releases != 1 {
+		t.Fatalf("failed completed view releases = %d", releases)
+	}
+}
+
+func TestServerCloseClearsImageContentBeforeSerialization(t *testing.T) {
+	server := newImageProtocolServer(t, &fakeSession{})
+	data := testPNG(t, 1, 1)
+	content := server.newClearingImageContent(data, agent.ViewMIMEType)
+	if content == nil || allZero(data) {
+		t.Fatal("pending image content was not retained for serialization")
+	}
+	if err := server.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if !allZero(data) {
+		t.Fatal("server close retained image content that was never serialized")
+	}
+	lateData := testPNG(t, 1, 1)
+	server.newClearingImageContent(lateData, agent.ViewMIMEType)
+	if !allZero(lateData) {
+		t.Fatal("closed server accepted new pending image content")
+	}
+}
+
+func TestServerClosePreventsImageTransferAfterPendingRegistration(t *testing.T) {
+	server := newImageProtocolServer(t, &fakeSession{})
+	content := server.newClearingImageContent(nil, agent.ViewMIMEType)
+	data := testPNG(t, 1, 1)
+	view, err := agent.NewImageView(agent.ViewMetadata{
+		SchemaVersion: agent.ViewSchemaVersion, ObservationID: "observation-93",
+		CreatedAt: time.Unix(502, 0).UTC(),
+		Region:    agent.CaptureRegion{Width: 1, Height: 1, DisplayID: 0},
+		Width:     1, Height: 1, Backend: "fixture-capture", MIMEType: agent.ViewMIMEType,
+	}, data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := server.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := content.take(view); !errors.Is(err, agent.ErrObservationClosed) {
+		t.Fatalf("content transfer after close error = %v", err)
+	}
+	if err := view.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if !allZero(data) {
+		t.Fatal("server close race retained image bytes in the untransferred view")
+	}
+}
+
+func TestServerCloseWaitsForAtomicImageTransfer(t *testing.T) {
+	server := newImageProtocolServer(t, &fakeSession{})
+	content := server.newClearingImageContent(nil, agent.ViewMIMEType)
+	data := testPNG(t, 1, 1)
+	view, err := agent.NewImageView(agent.ViewMetadata{
+		SchemaVersion: agent.ViewSchemaVersion, ObservationID: "observation-94",
+		CreatedAt: time.Unix(503, 0).UTC(),
+		Region:    agent.CaptureRegion{Width: 1, Height: 1, DisplayID: 0},
+		Width:     1, Height: 1, Backend: "fixture-capture", MIMEType: agent.ViewMIMEType,
+	}, data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	transferred := make(chan struct{})
+	resume := make(chan struct{})
+	takeDone := make(chan error, 1)
+	go func() {
+		takeDone <- content.takeWith(func() ([]byte, error) {
+			encoded, takeErr := view.TakePNG()
+			close(transferred)
+			<-resume
+			return encoded, takeErr
+		})
+	}()
+	<-transferred
+
+	closeDone := make(chan error, 1)
+	go func() { closeDone <- server.Close() }()
+	select {
+	case err := <-closeDone:
+		t.Fatalf("server close returned before image handoff completed: %v", err)
+	case <-time.After(20 * time.Millisecond):
+	}
+	close(resume)
+	if err := <-takeDone; err != nil {
+		t.Fatal(err)
+	}
+	if err := <-closeDone; err != nil {
+		t.Fatal(err)
+	}
+	if !allZero(data) {
+		t.Fatal("server close retained bytes after waiting for atomic image handoff")
+	}
+}
+
+func testPNG(t *testing.T, width, height int) []byte {
+	t.Helper()
+	img := image.NewRGBA(image.Rect(0, 0, width, height))
+	for y := 0; y < height; y++ {
+		for x := 0; x < width; x++ {
+			img.SetRGBA(x, y, color.RGBA{R: uint8(20 + x), G: uint8(40 + y), B: 60, A: 255})
+		}
+	}
+	var buffer bytes.Buffer
+	if err := png.Encode(&buffer, img); err != nil {
+		t.Fatal(err)
+	}
+	clear(img.Pix)
+	return buffer.Bytes()
+}
+
+func allZero(data []byte) bool {
+	for _, value := range data {
+		if value != 0 {
+			return false
+		}
+	}
+	return true
 }
 
 func TestInspectUIReturnsOnlyPrivacyReducedSemanticContract(t *testing.T) {

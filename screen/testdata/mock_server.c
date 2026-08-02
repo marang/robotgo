@@ -24,12 +24,14 @@
 #define MOCK_MODE_NORMAL 0
 #define MOCK_MODE_STALL 1
 #define MOCK_MODE_FAIL_AFTER_DMABUF 2
+#define MOCK_MODE_REGISTRY_STALL 3
 
 static struct wl_display *mock_display;
 static dev_t mock_dev;
 static uint64_t mock_modifier;
 static int use_shm;
 static uint32_t mock_mode;
+static volatile int mock_stop_requested;
 
 struct zwlr_screencopy_frame_v1_interface {
     void (*copy)(struct wl_client *, struct wl_resource *, struct wl_resource *);
@@ -212,6 +214,7 @@ void run_mock_server_mode(const char *socket, uint32_t maj, uint32_t min, uint64
     mock_dev = makedev(maj, min);
     mock_modifier = modifier;
     mock_mode = mode;
+    mock_stop_requested = 0;
     use_shm = (maj == 0 && min == 0 && modifier == 0);
     mock_display = wl_display_create();
     wl_display_add_socket(mock_display, socket);
@@ -222,7 +225,13 @@ void run_mock_server_mode(const char *socket, uint32_t maj, uint32_t min, uint64
         wl_global_create(mock_display, &wl_shm_interface, 1, NULL, bind_shm);
     }
     wl_global_create(mock_display, &zwlr_screencopy_manager_v1_interface, 3, NULL, bind_screencopy_manager);
-    wl_display_run(mock_display);
+    if (mock_mode == MOCK_MODE_REGISTRY_STALL) {
+        while (!mock_stop_requested) {
+            usleep(1000);
+        }
+    } else {
+        wl_display_run(mock_display);
+    }
     wl_display_destroy(mock_display);
     mock_display = NULL;
 }
@@ -232,6 +241,7 @@ void run_mock_server(const char *socket, uint32_t maj, uint32_t min, uint64_t mo
 }
 
 void stop_mock_server(void) {
+    mock_stop_requested = 1;
     if (mock_display) {
         wl_display_terminate(mock_display);
     }

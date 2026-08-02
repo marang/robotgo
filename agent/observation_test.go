@@ -790,11 +790,11 @@ func TestWaylandCatalogDoesNotAdvertiseImplicitPortalCapture(t *testing.T) {
 	if capability.CaptureAvailable || !strings.Contains(capability.Remediation, "will not open portal consent implicitly") {
 		t.Fatalf("portal-only capture capability = %+v", capability)
 	}
-	waitCapability := buildCatalog(policy, capabilities).Operations[3]
+	waitCapability := buildCatalog(policy, capabilities).Operations[4]
 	if waitCapability.Available || !strings.Contains(waitCapability.Remediation, "will not open portal consent implicitly") {
 		t.Fatalf("portal-only wait capability = %+v", waitCapability)
 	}
-	findCapability := buildCatalog(policy, capabilities).Operations[2]
+	findCapability := buildCatalog(policy, capabilities).Operations[3]
 	if findCapability.Available || !strings.Contains(findCapability.Remediation, "will not open portal consent implicitly") {
 		t.Fatalf("portal-only find capability = %+v", findCapability)
 	}
@@ -806,10 +806,10 @@ func TestWaylandCatalogDoesNotAdvertiseImplicitPortalCapture(t *testing.T) {
 	if capability = buildCatalog(policy, capabilities).Operations[0]; !capability.CaptureAvailable {
 		t.Fatalf("active ScreenCast capability = %+v", capability)
 	}
-	if waitCapability = buildCatalog(policy, capabilities).Operations[3]; !waitCapability.Available {
+	if waitCapability = buildCatalog(policy, capabilities).Operations[4]; !waitCapability.Available {
 		t.Fatalf("active ScreenCast wait capability = %+v", waitCapability)
 	}
-	if findCapability = buildCatalog(policy, capabilities).Operations[2]; !findCapability.Available {
+	if findCapability = buildCatalog(policy, capabilities).Operations[3]; !findCapability.Available {
 		t.Fatalf("active ScreenCast find capability = %+v", findCapability)
 	}
 
@@ -821,10 +821,10 @@ func TestWaylandCatalogDoesNotAdvertiseImplicitPortalCapture(t *testing.T) {
 	if capability = buildCatalog(policy, capabilities).Operations[0]; !capability.CaptureAvailable {
 		t.Fatalf("explicit native-only capture capability = %+v", capability)
 	}
-	if waitCapability = buildCatalog(policy, capabilities).Operations[3]; !waitCapability.Available {
+	if waitCapability = buildCatalog(policy, capabilities).Operations[4]; !waitCapability.Available {
 		t.Fatalf("explicit native-only wait capability = %+v", waitCapability)
 	}
-	if findCapability = buildCatalog(policy, capabilities).Operations[2]; !findCapability.Available {
+	if findCapability = buildCatalog(policy, capabilities).Operations[3]; !findCapability.Available {
 		t.Fatalf("explicit native-only find capability = %+v", findCapability)
 	}
 }
@@ -832,11 +832,11 @@ func TestWaylandCatalogDoesNotAdvertiseImplicitPortalCapture(t *testing.T) {
 func TestWaylandAgentCapturePrefersNativeBeforeActiveScreenCast(t *testing.T) {
 	want := image.NewRGBA(image.Rect(0, 0, 1, 1))
 	var calls []string
-	img, err := captureWaylandAgent(
+	img, backend, err := captureWaylandAgentWithBackend(
 		context.Background(),
 		CaptureRegion{Width: 1, Height: 1, DisplayID: 0},
 		false,
-		func(...int) (image.Image, error) {
+		func(context.Context, ...int) (image.Image, error) {
 			calls = append(calls, "native")
 			return want, nil
 		},
@@ -852,6 +852,9 @@ func TestWaylandAgentCapturePrefersNativeBeforeActiveScreenCast(t *testing.T) {
 	if err != nil || img != want {
 		t.Fatalf("captureWaylandAgent = (%v, %v)", img, err)
 	}
+	if backend != string(robotgo.BackendScreencopy) {
+		t.Fatalf("capture backend = %q", backend)
+	}
 	if got := strings.Join(calls, ","); got != "native" {
 		t.Fatalf("backend order = %q, want native only", got)
 	}
@@ -861,11 +864,11 @@ func TestWaylandAgentCaptureUsesOnlyActiveScreenCastFallback(t *testing.T) {
 	nativeErr := errors.New("native unavailable")
 	want := image.NewRGBA(image.Rect(0, 0, 1, 1))
 	var calls []string
-	img, err := captureWaylandAgent(
+	img, backend, err := captureWaylandAgentWithBackend(
 		context.Background(),
 		CaptureRegion{X: -10, Y: 5, Width: 1, Height: 1, DisplayID: 2},
 		false,
-		func(args ...int) (image.Image, error) {
+		func(_ context.Context, args ...int) (image.Image, error) {
 			calls = append(calls, "native")
 			if got := fmt.Sprint(args); got != "[-10 5 1 1 2]" {
 				t.Fatalf("native args = %s", got)
@@ -887,6 +890,9 @@ func TestWaylandAgentCaptureUsesOnlyActiveScreenCastFallback(t *testing.T) {
 	if err != nil || img != want {
 		t.Fatalf("captureWaylandAgent = (%v, %v)", img, err)
 	}
+	if backend != string(robotgo.BackendScreenCast) {
+		t.Fatalf("capture backend = %q", backend)
+	}
 	if got := strings.Join(calls, ","); got != "native,ready,screencast" {
 		t.Fatalf("backend order = %q", got)
 	}
@@ -899,7 +905,7 @@ func TestWaylandAgentCaptureDisabledPortalStopsAfterNative(t *testing.T) {
 		context.Background(),
 		CaptureRegion{Width: 1, Height: 1, DisplayID: 0},
 		true,
-		func(...int) (image.Image, error) { return nil, nativeErr },
+		func(context.Context, ...int) (image.Image, error) { return nil, nativeErr },
 		func() error {
 			fallbackCalled = true
 			return nil
@@ -914,6 +920,31 @@ func TestWaylandAgentCaptureDisabledPortalStopsAfterNative(t *testing.T) {
 	}
 	if fallbackCalled {
 		t.Fatal("portal fallback was consulted while disabled")
+	}
+}
+
+type backendTimeoutFixture struct{}
+
+func (backendTimeoutFixture) Error() string { return "backend timeout" }
+func (backendTimeoutFixture) Timeout() bool { return true }
+
+func TestWaylandAgentCapturePreservesTimeoutAcrossDisabledFallback(t *testing.T) {
+	_, err := captureWaylandAgent(
+		context.Background(),
+		CaptureRegion{Width: 1, Height: 1, DisplayID: 0},
+		true,
+		func(context.Context, ...int) (image.Image, error) {
+			return nil, backendTimeoutFixture{}
+		},
+		func() error { return nil },
+		func(context.Context, int, ...int) (image.Image, error) { return nil, nil },
+	)
+	if code, _ := classifyBackendError(err); code != ErrorTimedOut {
+		t.Fatalf("joined disabled-fallback timeout classified as %q: %v", code, err)
+	}
+	joinedDeadline := errors.Join(context.DeadlineExceeded, robotgo.ErrNotSupported)
+	if code, _ := classifyBackendError(joinedDeadline); code != ErrorTimedOut {
+		t.Fatalf("joined context deadline classified as %q", code)
 	}
 }
 

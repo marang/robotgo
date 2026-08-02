@@ -17,6 +17,7 @@ func buildCatalog(policy Policy, capabilities robotgo.RuntimeCapabilities) Opera
 		SchemaVersion: CatalogSchemaVersion,
 		Operations: []OperationCapability{
 			observationCapability(policy, capabilities),
+			viewCapability(policy, capabilities),
 			inspectUICapability(policy, capabilities),
 			findColorCapability(policy, capabilities),
 			waitColorCapability(policy, capabilities),
@@ -28,6 +29,39 @@ func buildCatalog(policy Policy, capabilities robotgo.RuntimeCapabilities) Opera
 			keyChordCapability(policy, capabilities),
 			activationCapability(policy, capabilities),
 		},
+	}
+}
+
+func viewCapability(policy Policy, capabilities robotgo.RuntimeCapabilities) OperationCapability {
+	_, confirmationRequired := policy.requireConfirmation[OperationView]
+	_, operationAllowed := policy.allowOperation[OperationView]
+	available, backend, fallback, remediation := agentCaptureCapability(capabilities)
+	policyAllowed := operationAllowed && len(policy.allowDisplay) > 0 &&
+		(len(policy.AllowedViewRegions) > 0 || policy.AllowFullDisplayView) &&
+		policy.MaxViewSourcePixels > 0 && policy.MaxViewEncodedBytes > 0 &&
+		policy.MaxViewWidth > 0 && policy.MaxViewHeight > 0 && policy.MaxViews > 0 &&
+		policy.MaxObservations > 0 && policy.MaxConcurrentViews == 1 &&
+		policy.MinViewIntervalMillis > 0 && policy.ViewTimeoutMillis > 0 &&
+		policy.SessionTimeoutMillis > 0
+	if capabilities.Runtime.GOOS == goOSLinux &&
+		capabilities.Runtime.DisplayServer == robotgo.DisplayServerWayland &&
+		backend == robotgo.FeatureBackendScreenCast && !policy.AllowPortalView {
+		policyAllowed = false
+		remediation = "enable allow_portal_view only after the operator has explicitly established an authorized ScreenCast session"
+	}
+	unavailableCode := featureUnavailableCode(capabilities.Capture)
+	if !available && unavailableCode == "" {
+		unavailableCode = ErrorUnsupported
+	}
+	return OperationCapability{
+		Operation: OperationView, Available: available, PolicyAllowed: policyAllowed,
+		Backend: backend, Fallback: fallback, Risk: RiskSensitiveRead,
+		ConfirmationRequired: confirmationRequired,
+		Cancellation:         CancellationCooperative, ProcessGlobalBackend: true,
+		ExclusiveAgentSession: true, Reason: capabilities.Capture.Reason,
+		Remediation: remediation, UnavailableCode: unavailableCode,
+		CaptureAvailable: available, CapturePolicyAllowed: policyAllowed,
+		CaptureFallback: fallback, CaptureBackend: backend,
 	}
 }
 
