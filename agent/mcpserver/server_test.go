@@ -496,6 +496,22 @@ func (connection *recordingConnection) Write(_ context.Context, message jsonrpc.
 func (*recordingConnection) Close() error      { return nil }
 func (*recordingConnection) SessionID() string { return "fixture" }
 
+type queuedResponseConnection struct {
+	responses []*jsonrpc.Response
+}
+
+func (*queuedResponseConnection) Read(context.Context) (jsonrpc.Message, error) { return nil, io.EOF }
+func (connection *queuedResponseConnection) Write(_ context.Context, message jsonrpc.Message) error {
+	response, ok := message.(*jsonrpc.Response)
+	if !ok {
+		return errors.New("unexpected message")
+	}
+	connection.responses = append(connection.responses, response)
+	return nil
+}
+func (*queuedResponseConnection) Close() error      { return nil }
+func (*queuedResponseConnection) SessionID() string { return "fixture" }
+
 func TestClearingConnectionZeroesSerializedResponseAfterWrite(t *testing.T) {
 	delegate := &recordingConnection{}
 	connection := clearingConnection{delegate: delegate}
@@ -510,6 +526,34 @@ func TestClearingConnectionZeroesSerializedResponseAfterWrite(t *testing.T) {
 	}
 	if response.Result != nil || !allZero(raw) {
 		t.Fatal("serialized response buffer was retained after transport write")
+	}
+}
+
+func TestClearingConnectionPreservesQueuedBatchResults(t *testing.T) {
+	delegate := &queuedResponseConnection{}
+	connection := clearingConnection{delegate: delegate}
+	firstRaw := json.RawMessage(`{"result":"first"}`)
+	secondRaw := json.RawMessage(`{"result":"second"}`)
+	first := &jsonrpc.Response{Result: firstRaw}
+	second := &jsonrpc.Response{Result: secondRaw}
+
+	if err := connection.Write(context.Background(), first); err != nil {
+		t.Fatal(err)
+	}
+	if err := connection.Write(context.Background(), second); err != nil {
+		t.Fatal(err)
+	}
+	if len(delegate.responses) != 2 {
+		t.Fatalf("queued responses = %d", len(delegate.responses))
+	}
+	if got := string(delegate.responses[0].Result); got != `{"result":"first"}` {
+		t.Fatalf("first queued result = %q", got)
+	}
+	if got := string(delegate.responses[1].Result); got != `{"result":"second"}` {
+		t.Fatalf("second queued result = %q", got)
+	}
+	if first.Result != nil || second.Result != nil || !allZero(firstRaw) || !allZero(secondRaw) {
+		t.Fatal("middleware response buffers were retained after transport ownership transfer")
 	}
 }
 

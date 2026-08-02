@@ -5,6 +5,7 @@ package mcpserver
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"reflect"
@@ -582,12 +583,19 @@ func (connection clearingConnection) Read(ctx context.Context) (jsonrpc.Message,
 }
 
 func (connection clearingConnection) Write(ctx context.Context, message jsonrpc.Message) error {
-	err := connection.delegate.Write(ctx, message)
 	if response, ok := message.(*jsonrpc.Response); ok {
+		// A transport may retain responses until an incoming JSON-RPC batch is
+		// complete. Give it an independent result buffer before clearing the
+		// SDK-owned response passed to this middleware; otherwise an earlier
+		// batch result can be erased before the transport serializes the batch.
+		transportResponse := *response
+		transportResponse.Result = append(json.RawMessage(nil), response.Result...)
+		err := connection.delegate.Write(ctx, &transportResponse)
 		clear(response.Result)
 		response.Result = nil
+		return err
 	}
-	return err
+	return connection.delegate.Write(ctx, message)
 }
 
 func (connection clearingConnection) Close() error      { return connection.delegate.Close() }
