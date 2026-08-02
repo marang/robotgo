@@ -1185,7 +1185,8 @@ deadline, RobotGo reports a backend timeout rather than a caller deadline or an
 unsupported fallback. Action precondition and verification recaptures derived
 from an image view use the same policy deadline and session-cancellation link.
 The Pure-Go context entry clears and discards any native image that completes
-after its caller has canceled.
+after its caller has canceled. Native CGO Wayland capture follows the same
+no-image-on-cancellation and pixel-zeroing contract.
 
 The same `robotgo_act` tool also carries the bounded `pointer.scroll`,
 `pointer.drag`, `keyboard.chord`, and `window.activate` request variants. They

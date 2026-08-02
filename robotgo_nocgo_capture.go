@@ -122,44 +122,10 @@ func CaptureImgNativeContext(ctx context.Context, args ...int) (image.Image, err
 	}
 	img, err := CaptureImgNative(args...)
 	if contextErr := ctx.Err(); contextErr != nil {
-		wipePureGoCaptureImage(img)
+		wipeCaptureImage(img)
 		return nil, contextErr
 	}
 	return img, err
-}
-
-func wipePureGoCaptureImage(img image.Image) {
-	switch typed := img.(type) {
-	case *image.RGBA:
-		clear(typed.Pix)
-	case *image.NRGBA:
-		clear(typed.Pix)
-	case *image.RGBA64:
-		clear(typed.Pix)
-	case *image.NRGBA64:
-		clear(typed.Pix)
-	case *image.Gray:
-		clear(typed.Pix)
-	case *image.Gray16:
-		clear(typed.Pix)
-	case *image.Alpha:
-		clear(typed.Pix)
-	case *image.Alpha16:
-		clear(typed.Pix)
-	case *image.CMYK:
-		clear(typed.Pix)
-	case *image.Paletted:
-		clear(typed.Pix)
-	case *image.YCbCr:
-		clear(typed.Y)
-		clear(typed.Cb)
-		clear(typed.Cr)
-	case *image.NYCbCrA:
-		clear(typed.Y)
-		clear(typed.Cb)
-		clear(typed.Cr)
-		clear(typed.A)
-	}
 }
 
 func capturePureGoNative(args []int) (image.Image, error) {
@@ -176,7 +142,7 @@ func capturePureGoNative(args []int) (image.Image, error) {
 
 	img, err := pureGoCaptureImage(args...)
 	if err != nil {
-		wipePureGoCaptureImage(img)
+		wipeCaptureImage(img)
 		if errors.Is(err, screenshot.ErrUnsupported) {
 			return nil, fmt.Errorf("%w: Pure-Go capture on %s via %s: %w", ErrNotSupported, runtime.GOOS, backend, err)
 		}

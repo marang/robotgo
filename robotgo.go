@@ -1599,8 +1599,13 @@ func CaptureImgNativeContext(ctx context.Context, args ...int) (image.Image, err
 	}
 	defer FreeBitmap(bit)
 	img := ToImage(bit)
+	return finishNativeContextCapture(ctx, img)
+}
+
+func finishNativeContextCapture(ctx context.Context, img image.Image) (image.Image, error) {
 	if err := ctx.Err(); err != nil {
-		return img, err
+		wipeCaptureImage(img)
+		return nil, err
 	}
 	return img, nil
 }
