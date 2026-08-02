@@ -9,7 +9,7 @@ package agent
 #include <tesseract/capi.h>
 #include <leptonica/allheaders.h>
 
-static void robotgoDestroyPix(Pix *pix) {
+static void robotgoDestroyPix(PIX *pix) {
 	if (pix != NULL) {
 		pixDestroy(&pix);
 	}
