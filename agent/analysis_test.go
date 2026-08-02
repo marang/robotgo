@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"errors"
 	"image"
 	"image/color"
 	"math"
@@ -18,6 +19,21 @@ type fakeOCRAnalyzer struct {
 	calls     int
 	languages []string
 	retained  *image.RGBA
+}
+
+type cancelAfterFirstErrCheck struct {
+	context.Context
+	cancel context.CancelFunc
+	checks int
+}
+
+func (ctx *cancelAfterFirstErrCheck) Err() error {
+	ctx.checks++
+	if ctx.checks == 1 {
+		ctx.cancel()
+		return nil
+	}
+	return ctx.Context.Err()
 }
 
 func (analyzer *fakeOCRAnalyzer) Analyze(ctx context.Context, source *image.RGBA, languages []string) ([]rawOCRBox, error) {
@@ -140,6 +156,19 @@ func TestVisualDetectionUsesCornerConsensusInsteadOfOneCornerOutlier(t *testing.
 		X: 13, Y: 21, Width: 3, Height: 3, DisplayID: 2,
 	}) {
 		t.Fatalf("corner-consensus proposals = %+v, truncated=%v, err=%v", result, truncated, err)
+	}
+}
+
+func TestVisualDetectionPollsCancellationInsideComponentFloodFill(t *testing.T) {
+	source := solidImage(32, 2, color.RGBA{R: 255, G: 255, B: 255, A: 255})
+	fillRect(source, image.Rect(1, 0, 31, 2), color.RGBA{A: 255})
+	base, cancel := context.WithCancel(context.Background())
+	ctx := &cancelAfterFirstErrCheck{Context: base, cancel: cancel}
+	_, _, err := detectVisualComponents(
+		ctx, source, CaptureRegion{Width: 32, Height: 2, DisplayID: 0}, 0.5, 4,
+	)
+	if !errors.Is(err, context.Canceled) || ctx.checks < 2 {
+		t.Fatalf("flood-fill cancellation checks=%d err=%v", ctx.checks, err)
 	}
 }
 
@@ -302,8 +331,8 @@ func TestOCRTimeoutZeroesInputAndSanitizesBackendFailure(t *testing.T) {
 		t.Fatalf("OCR timeout = %v", err)
 	}
 	select {
-	case <-ocrWorkerGate:
-		ocrWorkerGate <- struct{}{}
+	case <-analysisWorkerGate:
+		analysisWorkerGate <- struct{}{}
 	case <-time.After(time.Second):
 		t.Fatal("OCR worker did not release its global slot")
 	}
@@ -312,8 +341,10 @@ func TestOCRTimeoutZeroesInputAndSanitizesBackendFailure(t *testing.T) {
 	}
 }
 
-func TestOCRTimeoutDoesNotMultiplyLateNativeWorkers(t *testing.T) {
+func TestOCRTimeoutKeepsEveryAnalysisBehindLateNativeWorker(t *testing.T) {
 	policy := analysisPolicy(OperationOCR)
+	policy.AllowedOperations = append(policy.AllowedOperations, OperationDetectElements)
+	policy.MaxVisualElements = 4
 	policy.AnalysisTimeoutMillis = 10
 	policy.MinAnalysisIntervalMillis = 1
 	session := newTestSession(t, policy, &fakeDriver{captureImages: []image.Image{
@@ -336,13 +367,20 @@ func TestOCRTimeoutDoesNotMultiplyLateNativeWorkers(t *testing.T) {
 		t.Fatalf("late OCR held caller for %s", elapsed)
 	}
 	time.Sleep(2 * time.Millisecond)
+	if _, err := session.DetectVisualElements(context.Background(), VisualElementsRequest{
+		ObservationID: view.Metadata.ObservationID,
+		Region:        request.Region,
+	}); !hasErrorCode(err, ErrorTimedOut) {
+		t.Fatalf("visual analysis behind occupied worker slot = %v", err)
+	}
+	time.Sleep(2 * time.Millisecond)
 	if _, err := session.OCR(context.Background(), request); !hasErrorCode(err, ErrorTimedOut) {
 		t.Fatalf("OCR behind occupied worker slot = %v", err)
 	}
 	close(release)
 	select {
-	case <-ocrWorkerGate:
-		ocrWorkerGate <- struct{}{}
+	case <-analysisWorkerGate:
+		analysisWorkerGate <- struct{}{}
 	case <-time.After(time.Second):
 		t.Fatal("late OCR worker did not release its global slot")
 	}

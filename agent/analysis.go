@@ -18,7 +18,7 @@ const (
 // AnalysisSchemaVersion identifies the OCR and visual-proposal result contract.
 const AnalysisSchemaVersion = "1"
 
-var ocrWorkerGate = func() chan struct{} {
+var analysisWorkerGate = func() chan struct{} {
 	gate := make(chan struct{}, 1)
 	gate <- struct{}{}
 	return gate
@@ -166,6 +166,10 @@ func (s *Session) DetectVisualElements(ctx context.Context, request VisualElemen
 		return result, err
 	}
 	defer cancel()
+	if err := acquireAnalysisWorker(analysisCtx); err != nil {
+		return result, s.finishAnalysisFailure(ctx, OperationDetectElements, request.ObservationID, analysisOperationError(OperationDetectElements, err))
+	}
+	defer releaseAnalysisWorker()
 	img, redacted, err := s.analysisImage(analysisCtx, OperationDetectElements, request.ObservationID, request.Region)
 	if err != nil {
 		return result, s.finishAnalysisFailure(ctx, OperationDetectElements, request.ObservationID, err)
@@ -193,15 +197,13 @@ type ocrWorkerResult struct {
 }
 
 func runOCRAnalyzer(ctx context.Context, analyzer ocrAnalyzer, source *image.RGBA, languages []string) ([]rawOCRBox, error) {
-	select {
-	case <-ctx.Done():
+	if err := acquireAnalysisWorker(ctx); err != nil {
 		wipeMutableImage(source)
-		return nil, ctx.Err()
-	case <-ocrWorkerGate:
+		return nil, err
 	}
 	completed := make(chan ocrWorkerResult)
 	go func() {
-		defer func() { ocrWorkerGate <- struct{}{} }()
+		defer releaseAnalysisWorker()
 		defer wipeMutableImage(source)
 		boxes, err := analyzer.Analyze(ctx, source, languages)
 		result := ocrWorkerResult{boxes: boxes, err: err}
@@ -218,6 +220,17 @@ func runOCRAnalyzer(ctx context.Context, analyzer ocrAnalyzer, source *image.RGB
 		return nil, ctx.Err()
 	}
 }
+
+func acquireAnalysisWorker(ctx context.Context) error {
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-analysisWorkerGate:
+		return nil
+	}
+}
+
+func releaseAnalysisWorker() { analysisWorkerGate <- struct{}{} }
 
 func analysisMetadata(id string, region CaptureRegion, backend, model string) AnalysisMetadata {
 	return AnalysisMetadata{

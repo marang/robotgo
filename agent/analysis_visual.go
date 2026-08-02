@@ -21,6 +21,7 @@ func detectVisualComponents(ctx context.Context, source *image.RGBA, region Capt
 	proposals := make([]VisualElementProposal, 0, maximum)
 	truncated := false
 	queue := make([]int, 0, 256)
+	defer clear(queue)
 	for y := 0; y < height; y++ {
 		if y&63 == 0 {
 			if err := ctx.Err(); err != nil {
@@ -37,6 +38,11 @@ func detectVisualComponents(ctx context.Context, source *image.RGBA, region Capt
 			queue = append(queue[:0], index)
 			minX, maxX, minY, maxY, count, contrast := x, x, y, y, 0, 0.0
 			for head := 0; head < len(queue); head++ {
+				if head&4095 == 0 {
+					if err := ctx.Err(); err != nil {
+						return nil, false, err
+					}
+				}
 				current := queue[head]
 				cx, cy := current%width, current/width
 				count++
@@ -77,7 +83,6 @@ func detectVisualComponents(ctx context.Context, source *image.RGBA, region Capt
 			})
 		}
 	}
-	clear(queue)
 	sort.Slice(proposals, func(i, j int) bool {
 		if proposals[i].Bounds.Y != proposals[j].Bounds.Y {
 			return proposals[i].Bounds.Y < proposals[j].Bounds.Y
