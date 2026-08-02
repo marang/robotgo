@@ -132,6 +132,9 @@ func actAccessibilityOnThread(ctx context.Context, request AccessibilityActionRe
 		return AccessibilityActionResult{}, ErrAccessibilityStaleTarget
 	}
 	validateWindow := func() error {
+		if err := validateAXElementWindow(api, element, windowID); err != nil {
+			return err
+		}
 		liveRoot, err := applicationWindowByID(ctx, api, application, windowID)
 		if err != nil {
 			return err
@@ -140,9 +143,6 @@ func actAccessibilityOnThread(ctx context.Context, request AccessibilityActionRe
 		api.cfRelease(liveRoot)
 		if titleErr != nil || liveTitle != request.Target.ExpectedTitle {
 			return ErrAccessibilityStaleTarget
-		}
-		if err := validateAXElementWindow(api, element, windowID); err != nil {
-			return err
 		}
 		return nil
 	}

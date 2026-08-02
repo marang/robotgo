@@ -68,6 +68,7 @@ const (
 	uiaPropertyValueReadOnly           int32 = 30046
 	uiaPropertyRangeValueValue         int32 = 30047
 	uiaPropertyRangeValueReadOnly      int32 = 30048
+	uiaPropertyRangeValueSmallChange   int32 = 30052
 	uiaPropertyExpandCollapseState     int32 = 30070
 	uiaPropertySelectionItemSelected   int32 = 30079
 	uiaPropertyToggleState             int32 = 30086
@@ -452,7 +453,11 @@ func (query *uiaCOMQuery) actions(
 		actions = append(actions, "set-value")
 	}
 	if !readOnly && rangeAvailable {
-		actions = append(actions, "set-value", "increment", "decrement")
+		step, supported, err := properties.number(uiaPropertyRangeValueSmallChange)
+		if err != nil {
+			return nil, err
+		}
+		actions = append(actions, uiaRangeValueActions(readOnly, rangeAvailable, supported, step)...)
 	}
 	return uniqueUIAStrings(actions), nil
 }

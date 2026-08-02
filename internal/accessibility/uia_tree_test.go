@@ -38,6 +38,32 @@ func newFakeUIAQuery(nodes map[int]fakeUIANode) *fakeUIAQuery {
 	return query
 }
 
+func TestUIARangeValueActionsRequireUsableSmallChange(t *testing.T) {
+	tests := []struct {
+		name          string
+		readOnly      bool
+		available     bool
+		stepSupported bool
+		step          float64
+		want          string
+	}{
+		{name: "writable slider", available: true, stepSupported: true, step: 1, want: "[set-value increment decrement]"},
+		{name: "zero step", available: true, stepSupported: true, want: "[set-value]"},
+		{name: "nan step", available: true, stepSupported: true, step: math.NaN(), want: "[set-value]"},
+		{name: "infinite step", available: true, stepSupported: true, step: math.Inf(1), want: "[set-value]"},
+		{name: "missing step", available: true, want: "[set-value]"},
+		{name: "read only", readOnly: true, available: true, stepSupported: true, step: 1, want: "[]"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			got := uiaRangeValueActions(test.readOnly, test.available, test.stepSupported, test.step)
+			if fmt.Sprint(got) != test.want {
+				t.Fatalf("uiaRangeValueActions() = %v, want %s", got, test.want)
+			}
+		})
+	}
+}
+
 func (query *fakeUIAQuery) processID(_ context.Context, reference int) (int32, error) {
 	query.processCalls[reference]++
 	node, ok := query.nodes[reference]

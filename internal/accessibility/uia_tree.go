@@ -14,6 +14,17 @@ const (
 	maxUIARuntimeIDInts = 256
 )
 
+func uiaRangeValueActions(readOnly, available, stepSupported bool, step float64) []string {
+	if readOnly || !available {
+		return nil
+	}
+	actions := []string{"set-value"}
+	if stepSupported && step > 0 && !math.IsInf(step, 0) {
+		actions = append(actions, "increment", "decrement")
+	}
+	return actions
+}
+
 // UI Automation control type identifiers are stable Windows API constants.
 const (
 	uiaControlButton      int32 = 50000
