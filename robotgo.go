@@ -1640,6 +1640,11 @@ func captureScreenWaylandNativeContext(ctx context.Context, args ...int) (CBitma
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
+		if captureErr == C.ScreengrabErrTimeout {
+			if _, ok := ctx.Deadline(); ok {
+				return nil, context.DeadlineExceeded
+			}
+		}
 		if deadline, ok := ctx.Deadline(); ok && !time.Now().Before(deadline) {
 			return nil, context.DeadlineExceeded
 		}

@@ -18,6 +18,7 @@ typedef enum {
   ScreengrabErrDmabufMap,
   ScreengrabErrPixelFormat,
   ScreengrabErrPortal,
+  ScreengrabErrTimeout,
   ScreengrabErrFailed,
 } ScreengrabError;
 // Stubs to satisfy cgo references on non-Linux builds.
@@ -66,6 +67,7 @@ typedef enum {
   ScreengrabErrDmabufMap,
   ScreengrabErrPixelFormat,
   ScreengrabErrPortal,
+  ScreengrabErrTimeout,
   ScreengrabErrFailed,
 } ScreengrabError;
 
@@ -119,6 +121,7 @@ typedef enum {
   ScreengrabErrDmabufMap,
   ScreengrabErrPixelFormat,
   ScreengrabErrPortal,
+  ScreengrabErrTimeout,
   ScreengrabErrFailed,
 } ScreengrabError;
 

@@ -1309,17 +1309,19 @@ MMBitmapRef capture_screen_wayland_impl(int32_t x, int32_t y, int32_t w,
     return NULL;
   }
   wl_registry_add_listener(cap.registry, &registry_listener, &cap);
-  if (roundtrip_until(cap.display, deadline_ms) <= 0) {
+  int roundtrip_result = roundtrip_until(cap.display, deadline_ms);
+  if (roundtrip_result <= 0) {
     if (err) {
-      *err = ScreengrabErrFailed;
+      *err = roundtrip_result == 0 ? ScreengrabErrTimeout : ScreengrabErrFailed;
     }
     cleanup_capture(&cap);
     return NULL;
   }
   // Drain output listeners so geometry/mode/scale metadata is populated.
-  if (roundtrip_until(cap.display, deadline_ms) <= 0) {
+  roundtrip_result = roundtrip_until(cap.display, deadline_ms);
+  if (roundtrip_result <= 0) {
     if (err) {
-      *err = ScreengrabErrFailed;
+      *err = roundtrip_result == 0 ? ScreengrabErrTimeout : ScreengrabErrFailed;
     }
     cleanup_capture(&cap);
     return NULL;
@@ -1365,9 +1367,10 @@ MMBitmapRef capture_screen_wayland_impl(int32_t x, int32_t y, int32_t w,
     if (cap.fb.fb) {
       zwp_linux_dmabuf_feedback_v1_add_listener(cap.fb.fb, &feedback_listener,
                                                 &cap);
-      if (roundtrip_until(cap.display, deadline_ms) <= 0) {
+      roundtrip_result = roundtrip_until(cap.display, deadline_ms);
+      if (roundtrip_result <= 0) {
         if (err) {
-          *err = ScreengrabErrFailed;
+          *err = roundtrip_result == 0 ? ScreengrabErrTimeout : ScreengrabErrFailed;
         }
         cleanup_capture(&cap);
         return NULL;
@@ -1459,7 +1462,7 @@ MMBitmapRef capture_screen_wayland_impl(int32_t x, int32_t y, int32_t w,
     }
     if (dres == 0) {
       cap.failed = 1;
-      cap.err_code = ScreengrabErrFailed;
+      cap.err_code = ScreengrabErrTimeout;
       break;
     }
   }
