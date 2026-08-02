@@ -26,6 +26,12 @@ const (
 	maxAgentViewDimension          = 8192
 	maxAgentViewIntervalMS         = 60_000
 	maxAgentViewTimeoutMS          = 300_000
+	maxAgentAnalysisBoxes          = 10_000
+	maxAgentAnalysisTextBytes      = 1 << 20
+	maxAgentAnalysisLanguages      = 16
+	maxAgentAnalysisLanguageBytes  = 64
+	maxAgentAnalysisIntervalMS     = 60_000
+	maxAgentAnalysisTimeoutMS      = 300_000
 	maxAgentVerificationAttempts   = 100
 	maxAgentVerificationIntervalMS = 60_000
 	maxAgentVerificationTimeoutMS  = 300_000
@@ -84,6 +90,16 @@ type Policy struct {
 	MaxConcurrentViews         uint32          `json:"max_concurrent_views,omitempty"`
 	MinViewIntervalMillis      int             `json:"min_view_interval_ms,omitempty"`
 	ViewTimeoutMillis          int             `json:"view_timeout_ms,omitempty"`
+	AllowedOCRLanguages        []string        `json:"allowed_ocr_languages,omitempty"`
+	AllowFullViewAnalysis      bool            `json:"allow_full_view_analysis,omitempty"`
+	MaxAnalysisPixels          uint64          `json:"max_analysis_pixels,omitempty"`
+	MaxOCRBoxes                uint32          `json:"max_ocr_boxes,omitempty"`
+	MaxOCRTextBytes            uint32          `json:"max_ocr_text_bytes,omitempty"`
+	MaxVisualElements          uint32          `json:"max_visual_elements,omitempty"`
+	MaxAnalyses                uint64          `json:"max_analyses,omitempty"`
+	MaxConcurrentAnalyses      uint32          `json:"max_concurrent_analyses,omitempty"`
+	MinAnalysisIntervalMillis  int             `json:"min_analysis_interval_ms,omitempty"`
+	AnalysisTimeoutMillis      int             `json:"analysis_timeout_ms,omitempty"`
 	WaitAttempts               uint32          `json:"wait_attempts,omitempty"`
 	WaitIntervalMillis         int             `json:"wait_interval_ms,omitempty"`
 	WaitTimeoutMillis          int             `json:"wait_timeout_ms,omitempty"`
@@ -99,6 +115,7 @@ type Policy struct {
 	allowWindow                map[windowTargetIdentity]WindowTarget
 	allowUIRole                map[UIRole]struct{}
 	allowUIProperty            map[UIProperty]struct{}
+	allowOCRLanguage           map[string]struct{}
 }
 
 type windowTargetIdentity struct {
@@ -158,6 +175,30 @@ func preparePolicy(input Policy) (Policy, error) {
 	}
 	if input.ViewTimeoutMillis < 0 || input.ViewTimeoutMillis > maxAgentViewTimeoutMS {
 		return Policy{}, fmt.Errorf("agent: view timeout must be between 0 and %dms", maxAgentViewTimeoutMS)
+	}
+	if input.MaxAnalysisPixels > maxAgentCapturePixels {
+		return Policy{}, fmt.Errorf("agent: max analysis pixels exceeds hard limit %d", maxAgentCapturePixels)
+	}
+	if input.MaxOCRBoxes > maxAgentAnalysisBoxes || input.MaxVisualElements > maxAgentAnalysisBoxes {
+		return Policy{}, fmt.Errorf("agent: analysis result count exceeds hard limit %d", maxAgentAnalysisBoxes)
+	}
+	if input.MaxOCRTextBytes > maxAgentAnalysisTextBytes {
+		return Policy{}, fmt.Errorf("agent: max OCR text bytes exceeds hard limit %d", maxAgentAnalysisTextBytes)
+	}
+	if len(input.AllowedOCRLanguages) > maxAgentAnalysisLanguages {
+		return Policy{}, fmt.Errorf("agent: OCR language count exceeds hard limit %d", maxAgentAnalysisLanguages)
+	}
+	if input.MaxConcurrentAnalyses > 1 {
+		return Policy{}, fmt.Errorf("agent: max concurrent analyses exceeds the process-safe limit 1")
+	}
+	if input.MaxAnalyses > maxAgentQueries {
+		return Policy{}, fmt.Errorf("agent: max analyses exceeds hard limit %d", maxAgentQueries)
+	}
+	if input.MinAnalysisIntervalMillis < 0 || input.MinAnalysisIntervalMillis > maxAgentAnalysisIntervalMS {
+		return Policy{}, fmt.Errorf("agent: minimum analysis interval must be between 0 and %dms", maxAgentAnalysisIntervalMS)
+	}
+	if input.AnalysisTimeoutMillis < 0 || input.AnalysisTimeoutMillis > maxAgentAnalysisTimeoutMS {
+		return Policy{}, fmt.Errorf("agent: analysis timeout must be between 0 and %dms", maxAgentAnalysisTimeoutMS)
 	}
 	if input.MaxScrollEvents > maxAgentScrollEvents {
 		return Policy{}, fmt.Errorf("agent: max scroll events exceeds hard limit %d", maxAgentScrollEvents)
@@ -248,6 +289,16 @@ func preparePolicy(input Policy) (Policy, error) {
 		MaxConcurrentViews:         input.MaxConcurrentViews,
 		MinViewIntervalMillis:      input.MinViewIntervalMillis,
 		ViewTimeoutMillis:          input.ViewTimeoutMillis,
+		AllowedOCRLanguages:        append([]string(nil), input.AllowedOCRLanguages...),
+		AllowFullViewAnalysis:      input.AllowFullViewAnalysis,
+		MaxAnalysisPixels:          input.MaxAnalysisPixels,
+		MaxOCRBoxes:                input.MaxOCRBoxes,
+		MaxOCRTextBytes:            input.MaxOCRTextBytes,
+		MaxVisualElements:          input.MaxVisualElements,
+		MaxAnalyses:                input.MaxAnalyses,
+		MaxConcurrentAnalyses:      input.MaxConcurrentAnalyses,
+		MinAnalysisIntervalMillis:  input.MinAnalysisIntervalMillis,
+		AnalysisTimeoutMillis:      input.AnalysisTimeoutMillis,
 		WaitAttempts:               input.WaitAttempts,
 		WaitIntervalMillis:         input.WaitIntervalMillis,
 		WaitTimeoutMillis:          input.WaitTimeoutMillis,
@@ -263,6 +314,7 @@ func preparePolicy(input Policy) (Policy, error) {
 		allowWindow:                make(map[windowTargetIdentity]WindowTarget),
 		allowUIRole:                make(map[UIRole]struct{}),
 		allowUIProperty:            make(map[UIProperty]struct{}),
+		allowOCRLanguage:           make(map[string]struct{}),
 	}
 	for _, operation := range prepared.AllowedOperations {
 		if !knownOperation(operation) {
@@ -347,6 +399,15 @@ func preparePolicy(input Policy) (Policy, error) {
 		}
 		prepared.allowUIProperty[property] = struct{}{}
 	}
+	for _, language := range prepared.AllowedOCRLanguages {
+		if !validOCRLanguage(language) {
+			return Policy{}, fmt.Errorf("agent: invalid allowed OCR language %q", language)
+		}
+		if _, exists := prepared.allowOCRLanguage[language]; exists {
+			return Policy{}, fmt.Errorf("agent: duplicate allowed OCR language %q", language)
+		}
+		prepared.allowOCRLanguage[language] = struct{}{}
+	}
 	for _, region := range prepared.AllowedViewRegions {
 		if err := validateCaptureRegion(region, maxAgentCapturePixels); err != nil {
 			return Policy{}, fmt.Errorf("agent: invalid allowed view region: %w", err)
@@ -415,6 +476,24 @@ func preparePolicy(input Policy) (Policy, error) {
 			prepared.ViewTimeoutMillis == 0 || prepared.SessionTimeoutMillis == 0 {
 			return Policy{}, fmt.Errorf("agent: desktop.view requires allowed displays and regions plus bounded source pixels, encoded bytes, dimensions, count, concurrency, rate, view duration, observation count, and session lifetime")
 		}
+	}
+	_, ocrAllowed := prepared.allowOperation[OperationOCR]
+	_, detectionAllowed := prepared.allowOperation[OperationDetectElements]
+	if ocrAllowed || detectionAllowed {
+		if _, viewAllowed := prepared.allowOperation[OperationView]; !viewAllowed {
+			return Policy{}, fmt.Errorf("agent: image analysis requires desktop.view")
+		}
+		if prepared.MaxAnalysisPixels == 0 || prepared.MaxAnalyses == 0 ||
+			prepared.MaxConcurrentAnalyses != 1 || prepared.MinAnalysisIntervalMillis == 0 ||
+			prepared.AnalysisTimeoutMillis == 0 || prepared.SessionTimeoutMillis == 0 {
+			return Policy{}, fmt.Errorf("agent: image analysis requires bounded pixels, count, concurrency, rate, duration, and session lifetime")
+		}
+	}
+	if ocrAllowed && (len(prepared.allowOCRLanguage) == 0 || prepared.MaxOCRBoxes == 0 || prepared.MaxOCRTextBytes == 0) {
+		return Policy{}, fmt.Errorf("agent: desktop.ocr requires allowed languages and bounded boxes and text bytes")
+	}
+	if detectionAllowed && prepared.MaxVisualElements == 0 {
+		return Policy{}, fmt.Errorf("agent: desktop.detect-elements requires a bounded element count")
 	}
 	if allowsExtendedMutation(prepared.allowOperation) {
 		if prepared.MinActionIntervalMillis == 0 || prepared.SessionTimeoutMillis == 0 {
@@ -487,11 +566,26 @@ func knownOperation(operation Operation) bool {
 	switch operation {
 	case OperationMove, OperationClick, OperationScroll, OperationDrag,
 		OperationTypeText, OperationKeyChord, OperationActivate,
-		OperationObserve, OperationView, OperationInspectUI, OperationFindColor, OperationWaitColor:
+		OperationObserve, OperationView, OperationOCR, OperationDetectElements,
+		OperationInspectUI, OperationFindColor, OperationWaitColor:
 		return true
 	default:
 		return false
 	}
+}
+
+func validOCRLanguage(language string) bool {
+	if language == "" || len(language) > maxAgentAnalysisLanguageBytes {
+		return false
+	}
+	for _, value := range language {
+		if value >= 'a' && value <= 'z' || value >= 'A' && value <= 'Z' ||
+			value >= '0' && value <= '9' || value == '_' || value == '-' {
+			continue
+		}
+		return false
+	}
+	return true
 }
 
 func validMouseButton(button MouseButton) bool {

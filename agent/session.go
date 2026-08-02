@@ -147,6 +147,11 @@ type Session struct {
 	lastUIQuery      time.Time
 	lastView         time.Time
 	usedViews        uint64
+	lastAnalysis     time.Time
+	usedAnalyses     uint64
+	ocrAnalyzer      ocrAnalyzer
+	ocrBackend       string
+	ocrModel         string
 	now              func() time.Time
 }
 
@@ -196,8 +201,11 @@ func newSessionWithAudit(policy Policy, driver inputDriver, capabilities robotgo
 		policy: policy, driver: driver, catalog: buildCatalog(policy, capabilities),
 		ctx: ctx, cancel: cancel, actionGate: make(chan struct{}, 1),
 		observations: make(map[string]observationRecord), views: make(map[string]*View),
-		auditSink: auditSink,
-		now:       time.Now,
+		auditSink:   auditSink,
+		ocrAnalyzer: defaultOCRAnalyzer(),
+		ocrBackend:  ocrBackendName,
+		ocrModel:    ocrModelName,
+		now:         time.Now,
 	}
 	s.actionGate <- struct{}{}
 	ownerMu.Lock()

@@ -29,6 +29,8 @@ type fakeSession struct {
 	releaseFunc func(string) error
 	inspectFunc func(context.Context, agent.InspectUIRequest) (agent.UIObservation, error)
 	viewFunc    func(context.Context, agent.ViewRequest) (*agent.View, error)
+	ocrFunc     func(context.Context, agent.OCRRequest) (agent.OCRResult, error)
+	detectFunc  func(context.Context, agent.VisualElementsRequest) (agent.VisualElementsResult, error)
 	dryRunFunc  func(context.Context, agent.ActionRequest) (agent.ActionResult, error)
 	executeFunc func(context.Context, agent.ActionRequest) (agent.ActionResult, error)
 	closeFunc   func() error
@@ -40,6 +42,8 @@ type fakeSession struct {
 	releases int
 	inspects int
 	views    int
+	ocrs     int
+	detects  int
 	closes   int
 }
 
@@ -126,6 +130,26 @@ func (f *fakeSession) View(ctx context.Context, request agent.ViewRequest) (*age
 		return f.viewFunc(ctx, request)
 	}
 	return nil, errors.New("unused")
+}
+
+func (f *fakeSession) OCR(ctx context.Context, request agent.OCRRequest) (agent.OCRResult, error) {
+	f.mu.Lock()
+	f.ocrs++
+	f.mu.Unlock()
+	if f.ocrFunc != nil {
+		return f.ocrFunc(ctx, request)
+	}
+	return agent.OCRResult{}, errors.New("unused")
+}
+
+func (f *fakeSession) DetectVisualElements(ctx context.Context, request agent.VisualElementsRequest) (agent.VisualElementsResult, error) {
+	f.mu.Lock()
+	f.detects++
+	f.mu.Unlock()
+	if f.detectFunc != nil {
+		return f.detectFunc(ctx, request)
+	}
+	return agent.VisualElementsResult{}, errors.New("unused")
 }
 
 func (f *fakeSession) DryRun(ctx context.Context, request agent.ActionRequest) (agent.ActionResult, error) {
@@ -275,7 +299,7 @@ func TestProtocolInitializesAndListsFocusedTools(t *testing.T) {
 			}
 		}
 		switch tool.Name {
-		case ToolFind, ToolWait, ToolInspectUI, ToolView:
+		case ToolFind, ToolWait, ToolInspectUI, ToolView, ToolOCR, ToolDetectElements:
 			if tool.Annotations == nil || !tool.Annotations.ReadOnlyHint {
 				t.Errorf("tool %q is not marked read-only", tool.Name)
 			}
@@ -309,19 +333,84 @@ func TestImageViewToolRequiresAdapterStartupGrant(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			found := false
+			found := map[string]bool{}
 			for _, tool := range result.Tools {
-				if tool.Name == ToolView {
-					found = true
+				if tool.Name == ToolView || tool.Name == ToolOCR || tool.Name == ToolDetectElements {
+					found[tool.Name] = true
 					if tool.Annotations == nil || !tool.Annotations.ReadOnlyHint {
-						t.Fatalf("view annotations = %+v", tool.Annotations)
+						t.Fatalf("sensitive image tool annotations = %+v", tool.Annotations)
 					}
 				}
 			}
-			if found != (name == "enabled") {
-				t.Fatalf("view tool visible = %v", found)
+			for _, toolName := range []string{ToolView, ToolOCR, ToolDetectElements} {
+				if found[toolName] != (name == "enabled") {
+					t.Fatalf("tool %s visible = %v", toolName, found[toolName])
+				}
 			}
 		})
+	}
+}
+
+func TestImageAnalysisToolsReturnOnlyBoundedStructuredResults(t *testing.T) {
+	metadata := agent.AnalysisMetadata{
+		SchemaVersion: agent.AnalysisSchemaVersion, ObservationID: "observation-81",
+		Region:  agent.CaptureRegion{X: 10, Y: 20, Width: 20, Height: 10, DisplayID: 0},
+		Backend: "fixture-memory", Model: "fixture-v1", Untrusted: true,
+	}
+	fake := &fakeSession{
+		ocrFunc: func(_ context.Context, request agent.OCRRequest) (agent.OCRResult, error) {
+			if request.ObservationID != metadata.ObservationID || len(request.Languages) != 1 || request.Languages[0] != "eng" {
+				return agent.OCRResult{}, errors.New("unexpected request")
+			}
+			return agent.OCRResult{Metadata: metadata, Boxes: []agent.OCRTextBox{{
+				Text: "Export", Bounds: agent.CaptureRegion{X: 12, Y: 22, Width: 8, Height: 4, DisplayID: 0}, Confidence: 0.98,
+			}}}, nil
+		},
+		detectFunc: func(_ context.Context, request agent.VisualElementsRequest) (agent.VisualElementsResult, error) {
+			if request.ObservationID != metadata.ObservationID {
+				return agent.VisualElementsResult{}, errors.New("unexpected request")
+			}
+			return agent.VisualElementsResult{Metadata: metadata, Elements: []agent.VisualElementProposal{{
+				Kind: "visual-region", Bounds: agent.CaptureRegion{X: 11, Y: 21, Width: 10, Height: 6, DisplayID: 0}, Confidence: 0.91,
+			}}}, nil
+		},
+	}
+	client := connectProtocol(t, newImageProtocolServer(t, fake))
+	ocrResult := callTool(t, client, ToolOCR, agent.OCRRequest{
+		ObservationID: metadata.ObservationID, Region: metadata.Region, Languages: []string{"eng"},
+	})
+	if ocrResult.IsError {
+		t.Fatalf("OCR MCP result = %s", serializedResult(t, ocrResult))
+	}
+	ocrOutput := decodeOutput[OCROutput](t, ocrResult)
+	if ocrOutput.Result == nil || len(ocrOutput.Result.Boxes) != 1 || ocrOutput.Result.Boxes[0].Text != "Export" ||
+		!ocrOutput.Result.Metadata.Untrusted || ocrOutput.Error != nil {
+		t.Fatalf("OCR MCP output = %+v", ocrOutput)
+	}
+	detectResult := callTool(t, client, ToolDetectElements, agent.VisualElementsRequest{
+		ObservationID: metadata.ObservationID, Region: metadata.Region,
+	})
+	if detectResult.IsError {
+		t.Fatalf("visual MCP result = %s", serializedResult(t, detectResult))
+	}
+	detectOutput := decodeOutput[VisualElementsOutput](t, detectResult)
+	if detectOutput.Result == nil || len(detectOutput.Result.Elements) != 1 ||
+		detectOutput.Result.Elements[0].Kind != "visual-region" || detectOutput.Error != nil {
+		t.Fatalf("visual MCP output = %+v", detectOutput)
+	}
+}
+
+func TestImageAnalysisBackendErrorsAreSanitized(t *testing.T) {
+	fake := &fakeSession{ocrFunc: func(context.Context, agent.OCRRequest) (agent.OCRResult, error) {
+		return agent.OCRResult{}, errors.New("secret OCR diagnostic and /tmp/private.png")
+	}}
+	client := connectProtocol(t, newImageProtocolServer(t, fake))
+	result := callTool(t, client, ToolOCR, agent.OCRRequest{
+		ObservationID: "observation-82", Region: agent.CaptureRegion{Width: 1, Height: 1}, Languages: []string{"eng"},
+	})
+	serialized := serializedResult(t, result)
+	if !result.IsError || strings.Contains(serialized, "secret OCR") || strings.Contains(serialized, "private.png") {
+		t.Fatalf("analysis error leaked backend detail: %s", serialized)
 	}
 }
 

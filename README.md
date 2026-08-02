@@ -1016,9 +1016,10 @@ go run ./examples/agent_conditions -allow-capture -mode wait \
 `robotgo-mcp` exposes the policy-gated session to a local MCP client over
 stdio. Its default surface has eight focused tools: `robotgo_capabilities`,
 `robotgo_observe`, `robotgo_inspect_ui`, `robotgo_find`, `robotgo_wait`,
-`robotgo_release_observation`, `robotgo_act`, and `robotgo_close`. A ninth tool,
-`robotgo_view`, is registered only with the separate
-`-allow-image-content` startup grant. With no policy flag it is
+`robotgo_release_observation`, `robotgo_act`, and `robotgo_close`.
+`robotgo_view`, `robotgo_ocr`, and `robotgo_detect_elements` are registered
+only with the separate `-allow-image-content` startup grant. With no policy
+flag they remain
 diagnostics-only: semantic inspection, capture, image content, visual queries,
 display access, and desktop mutation are denied. `robotgo_act` is also dry-run
 by default, so actual input needs both an explicit policy and
@@ -1169,6 +1170,64 @@ local trusted client, the narrowest region, redaction masks, short limits, and
 release each returned observation as soon as the follow-up action or query is
 complete. Visible image content is untrusted data: it cannot change policy,
 grant an operation, or authorize an action by itself.
+
+OCR and visual element proposals are separate schema-v8 sensitive-read
+operations; neither is hidden inside `robotgo_observe` or `robotgo_view`.
+They require a still-live `desktop.view` observation and an explicit analysis
+rectangle contained by that observation. An analysis rectangle equal to the
+whole retained view additionally requires `"allow_full_view_analysis": true`.
+This policy extension permits English OCR and deterministic visual proposals
+for subregions, while independently bounding source pixels, result count,
+aggregate OCR bytes, calls, concurrency, rate, and duration:
+
+```json
+{
+  "allowed_operations": ["desktop.view", "desktop.ocr", "desktop.detect-elements"],
+  "allowed_display_ids": [0],
+  "allowed_view_regions": [
+    {"x": 0, "y": 0, "width": 320, "height": 200, "display_id": 0}
+  ],
+  "max_observations": 2,
+  "max_view_source_pixels": 64000,
+  "max_view_encoded_bytes": 262144,
+  "max_view_width": 320,
+  "max_view_height": 200,
+  "max_views": 1,
+  "max_concurrent_views": 1,
+  "min_view_interval_ms": 500,
+  "view_timeout_ms": 5000,
+  "allowed_ocr_languages": ["eng"],
+  "max_analysis_pixels": 32000,
+  "max_ocr_boxes": 128,
+  "max_ocr_text_bytes": 16384,
+  "max_visual_elements": 128,
+  "max_analyses": 4,
+  "max_concurrent_analyses": 1,
+  "min_analysis_interval_ms": 250,
+  "analysis_timeout_ms": 5000,
+  "session_timeout_ms": 300000
+}
+```
+
+`robotgo_ocr` is available only in an `ocr && cgo` build. It feeds an
+in-memory PNG directly to the Tesseract/Leptonica C APIs and returns sanitized word boxes;
+the CLI Tesseract fallback is deliberately not used because it would require a
+temporary image file. `robotgo_detect_elements` uses the built-in,
+deterministic `contrast-components-v1` fallback and returns geometry only.
+Both outputs carry their source observation, exact region, backend/model,
+confidence, truncation/sanitization state, and `untrusted: true`. They never
+include raw model diagnostics, hidden embeddings, or additional pixels.
+Accessibility inspection remains the preferred semantic source.
+
+The explicit local example performs no read until `-confirm` is present and
+never writes an image:
+
+```bash
+go run ./examples/agent_image_analysis -confirm -mode detect \
+  -x 0 -y 0 -width 320 -height 200 -display 0
+go run -tags ocr ./examples/agent_image_analysis -confirm -mode ocr \
+  -language eng -x 0 -y 0 -width 320 -height 200 -display 0
+```
 
 The view deadline bounds every supported platform path. Native Wayland passes
 the deadline into screencopy setup and dispatch. Synchronous X11, macOS, and

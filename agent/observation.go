@@ -164,6 +164,7 @@ type observationRecord struct {
 	hasCapture bool
 	source     Operation
 	uiElements map[string][]byte
+	redacted   bool
 }
 
 func (record *observationRecord) close() error {

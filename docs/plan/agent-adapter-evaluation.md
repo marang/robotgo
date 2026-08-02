@@ -35,14 +35,16 @@ RobotGo platform backends
 
 The adapter uses the stable official
 `github.com/modelcontextprotocol/go-sdk` module. It provides one session per
-process. Later P010 slices extend the accepted base to eight default tools and
-one separately enabled image tool:
+process. P010 keeps eight default tools and adds three separately enabled
+image/derived-image tools:
 
 | Tool | Contract |
 |---|---|
 | `robotgo_capabilities` | Return the immutable policy-filtered operation catalog without desktop I/O. |
 | `robotgo_observe` | Ask the session for diagnostics or an explicitly policy-bounded capture, then return diagnostics and geometry only. Pixels and lineage digests stay in-process. |
 | `robotgo_view` | Only when `-allow-image-content` is present, return one policy-bounded metadata-free PNG as MCP image content plus sanitized metadata. |
+| `robotgo_ocr` | With the same startup grant plus explicit operation policy, return bounded sanitized word boxes from one subregion of a live image observation. |
+| `robotgo_detect_elements` | With the same startup grant plus explicit operation policy, return deterministic geometry-only visual proposals from one subregion of a live image observation. |
 | `robotgo_inspect_ui` | Return one policy-bounded accessibility projection for an exact allow-listed window without native references or password values. |
 | `robotgo_find` | Evaluate a typed condition against one explicit live observation without implicit capture. |
 | `robotgo_wait` | Perform a finite policy-bounded wait over one explicit region and retain only a matched observation. |
@@ -65,7 +67,9 @@ never read from protocol stdin.
 Default MCP output never contains observation pixels, capture SHA-256 lineage,
 typed text, raw backend errors, clipboard data, OCR data, or file-backed desktop
 artifacts. Image pixels cross only the explicitly enabled `robotgo_view`
-boundary and are never duplicated into its structured output. The in-process
+boundary and are never duplicated into its structured output. OCR text and
+visual proposals cross only their independently policy-allowed tools; they are
+marked untrusted and contain no pixels, diagnostics, or embeddings. The in-process
 session keeps an optional redacted capture solely for stale-target checks,
 visual queries, and verification. Clients can release observations explicitly;
 session close remains the final zeroing boundary.
