@@ -60,6 +60,45 @@ func TestNewImageViewRejectsMismatchedOrMetadataBearingPNGWithoutTakingOwnership
 	}
 }
 
+func TestCaptureImageWithContextBoundsSynchronousBackendAndWipesLateResult(t *testing.T) {
+	lateImage := syntheticCapture(2, 2, 91)
+	started := make(chan struct{})
+	release := make(chan struct{})
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	defer cancel()
+
+	begin := time.Now()
+	img, err := captureImageWithContext(ctx, func() (image.Image, error) {
+		close(started)
+		<-release
+		return lateImage, nil
+	})
+	if !errors.Is(err, context.DeadlineExceeded) || img != nil {
+		t.Fatalf("bounded capture = (%v, %v), want deadline error", img, err)
+	}
+	if elapsed := time.Since(begin); elapsed > 500*time.Millisecond {
+		t.Fatalf("bounded capture returned after %s", elapsed)
+	}
+	<-started
+	close(release)
+	deadline := time.Now().Add(time.Second)
+	for !allZeroBytes(lateImage.Pix) && time.Now().Before(deadline) {
+		time.Sleep(time.Millisecond)
+	}
+	if !allZeroBytes(lateImage.Pix) {
+		t.Fatal("late native capture retained sensitive pixels")
+	}
+}
+
+func allZeroBytes(data []byte) bool {
+	for _, value := range data {
+		if value != 0 {
+			return false
+		}
+	}
+	return true
+}
+
 func encodeTestPNG(t *testing.T, img image.Image) []byte {
 	t.Helper()
 	var buffer bytes.Buffer

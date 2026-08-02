@@ -247,15 +247,74 @@ func (robotGoDriver) Capture(ctx context.Context, region CaptureRegion) (image.I
 			robotgo.CaptureScreenCastDisplay,
 		)
 	}
-	img, err := robotgo.CaptureImg(region.X, region.Y, region.Width, region.Height, region.DisplayID)
-	if err != nil {
-		return nil, err
+	return captureImageWithContext(ctx, func() (image.Image, error) {
+		return robotgo.CaptureImg(region.X, region.Y, region.Width, region.Height, region.DisplayID)
+	})
+}
+
+type captureImageResult struct {
+	image image.Image
+	err   error
+}
+
+var synchronousCaptureSlot = make(chan struct{}, 1)
+
+// captureImageWithContext bounds synchronous native capture APIs that cannot
+// accept a context themselves. A late result remains owned by the worker and
+// is wiped instead of crossing the canceled operation boundary.
+func captureImageWithContext(
+	ctx context.Context,
+	capture func() (image.Image, error),
+) (image.Image, error) {
+	if ctx == nil {
+		ctx = context.Background()
 	}
 	if err := ctx.Err(); err != nil {
-		wipeMutableImage(img)
 		return nil, err
 	}
-	return img, nil
+	select {
+	case synchronousCaptureSlot <- struct{}{}:
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+	if ctx.Done() == nil {
+		defer func() { <-synchronousCaptureSlot }()
+		img, err := capture()
+		if err != nil {
+			wipeMutableImage(img)
+			return nil, err
+		}
+		return img, nil
+	}
+
+	result := make(chan captureImageResult)
+	go func() {
+		defer func() { <-synchronousCaptureSlot }()
+		if ctx.Err() != nil {
+			return
+		}
+		img, err := capture()
+		select {
+		case result <- captureImageResult{image: img, err: err}:
+		case <-ctx.Done():
+			wipeMutableImage(img)
+		}
+	}()
+
+	select {
+	case captured := <-result:
+		if err := ctx.Err(); err != nil {
+			wipeMutableImage(captured.image)
+			return nil, err
+		}
+		if captured.err != nil {
+			wipeMutableImage(captured.image)
+			return nil, captured.err
+		}
+		return captured.image, nil
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
 }
 
 type nativeCaptureFunc func(context.Context, ...int) (image.Image, error)

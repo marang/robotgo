@@ -1157,7 +1157,8 @@ shutdown path. wlroots native screencopy does not need the portal flag.
 
 Images are encoded in memory as validated metadata-free PNGs; RobotGo creates
 no screenshot file, clears its owned raw encoded bytes after MCP serialization,
-tracks and clears pending bytes if serialization is skipped during shutdown,
+registers the transport handoff before ownership leaves the view, tracks and
+clears pending bytes if serialization is skipped during shutdown,
 and zeroes retained raw pixels on `robotgo_release_observation` or session
 close. Serialized JSON-RPC buffers belong to the configured MCP SDK transport;
 RobotGo does not mutate them because transports may retain responses for batch
@@ -1168,6 +1169,14 @@ local trusted client, the narrowest region, redaction masks, short limits, and
 release each returned observation as soon as the follow-up action or query is
 complete. Visible image content is untrusted data: it cannot change policy,
 grant an operation, or authorize an action by itself.
+
+The view deadline bounds every supported platform path. Native Wayland passes
+the deadline into screencopy setup and dispatch. Synchronous X11, macOS, and
+Windows capture runs behind a cancelable ownership boundary, so the view and
+session close can return at the deadline; if the native call completes later,
+RobotGo wipes its returned pixels instead of publishing them. One shared slot
+prevents abandoned synchronous calls from multiplying; later bounded requests
+can time out while waiting for that slot without starting another native call.
 
 The same `robotgo_act` tool also carries the bounded `pointer.scroll`,
 `pointer.drag`, `keyboard.chord`, and `window.activate` request variants. They

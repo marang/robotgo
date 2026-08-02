@@ -405,12 +405,17 @@ func (s *Server) view(ctx context.Context, _ *mcp.CallToolRequest, input agent.V
 	if view == nil {
 		return errorResult(), ViewOutput{Error: safeToolError(errors.New("nil image view"))}, nil
 	}
+	content := s.newClearingImageContent(nil, agent.ViewMIMEType)
 	data, err := view.TakePNG()
 	if err != nil {
+		content.clear()
 		return s.finishViewError(viewer, view, err)
 	}
+	if !content.adopt(data) {
+		return s.finishViewError(viewer, view, agent.ErrObservationClosed)
+	}
 	if err := ctx.Err(); err != nil {
-		clear(data)
+		content.clear()
 		if releaseErr := viewer.ReleaseObservation(view.Metadata.ObservationID); releaseErr != nil {
 			return errorResult(), ViewOutput{Error: &ToolError{
 				Code: agent.ErrorCleanupFailed, Message: errorMessageFailed,
@@ -419,9 +424,7 @@ func (s *Server) view(ctx context.Context, _ *mcp.CallToolRequest, input agent.V
 		return errorResult(), ViewOutput{Error: safeToolError(err)}, nil
 	}
 	metadata := view.Metadata
-	return &mcp.CallToolResult{Content: []mcp.Content{s.newClearingImageContent(
-		data, agent.ViewMIMEType,
-	)}}, ViewOutput{View: &metadata}, nil
+	return &mcp.CallToolResult{Content: []mcp.Content{content}}, ViewOutput{View: &metadata}, nil
 }
 
 // clearingImageContent clears RobotGo-owned encoded pixels immediately after
@@ -438,7 +441,7 @@ type clearingImageContent struct {
 	done      func(*clearingImageContent)
 }
 
-func (s *Server) newClearingImageContent(data []byte, mimeType string) mcp.Content {
+func (s *Server) newClearingImageContent(data []byte, mimeType string) *clearingImageContent {
 	content := &clearingImageContent{data: data, mimeType: mimeType}
 	content.done = func(completed *clearingImageContent) {
 		s.pendingImageMu.Lock()
@@ -457,6 +460,20 @@ func (s *Server) newClearingImageContent(data []byte, mimeType string) mcp.Conte
 	s.pendingImages[content] = struct{}{}
 	s.pendingImageMu.Unlock()
 	return content
+}
+
+// adopt completes the transfer into an already registered content owner. If
+// server shutdown won the race, the incoming bytes are cleared immediately.
+func (content *clearingImageContent) adopt(data []byte) bool {
+	content.mu.Lock()
+	if content.marshaled || content.data != nil {
+		content.mu.Unlock()
+		clear(data)
+		return false
+	}
+	content.data = data
+	content.mu.Unlock()
+	return true
 }
 
 func (content *clearingImageContent) MarshalJSON() ([]byte, error) {

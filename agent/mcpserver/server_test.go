@@ -475,6 +475,21 @@ func TestServerCloseClearsImageContentBeforeSerialization(t *testing.T) {
 	}
 }
 
+func TestServerCloseClearsImageTransferredAfterPendingRegistration(t *testing.T) {
+	server := newImageProtocolServer(t, &fakeSession{})
+	content := server.newClearingImageContent(nil, agent.ViewMIMEType)
+	if err := server.Close(); err != nil {
+		t.Fatal(err)
+	}
+	data := testPNG(t, 1, 1)
+	if content.adopt(data) {
+		t.Fatal("content accepted image bytes after server close")
+	}
+	if !allZero(data) {
+		t.Fatal("server close race retained subsequently transferred image bytes")
+	}
+}
+
 func testPNG(t *testing.T, width, height int) []byte {
 	t.Helper()
 	img := image.NewRGBA(image.Rect(0, 0, width, height))

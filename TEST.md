@@ -244,9 +244,10 @@ and transport-cleanup checks without reading or changing the developer's
 desktop. Synthetic PNGs and captures exist only in memory; tests prove
 redaction-before-downscale, rejection of ancillary metadata, single ownership
 transfer, owned-byte zeroing after SDK serialization, batch-safe transport
-behavior, pre-serialization shutdown cleanup, and raw-observation cleanup. The
-command tests use only private `t.TempDir()` policy fixtures, which test cleanup
-removes:
+behavior, atomic registration before transport ownership transfer,
+pre-serialization shutdown cleanup, deadline-bounded synchronous native
+capture with late-result pixel zeroing, and raw-observation cleanup. The command
+tests use only private `t.TempDir()` policy fixtures, which test cleanup removes:
 
 ```bash
 go test -race ./agent/mcpserver ./cmd/robotgo-mcp
