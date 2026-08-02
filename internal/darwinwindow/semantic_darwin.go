@@ -131,16 +131,19 @@ func actAccessibilityOnThread(ctx context.Context, request AccessibilityActionRe
 		!slices.Contains(details.Actions, request.Action) || slices.Contains(details.States, "disabled") {
 		return AccessibilityActionResult{}, ErrAccessibilityStaleTarget
 	}
-	liveRoot, err := applicationWindowByID(ctx, api, application, windowID)
-	if err != nil {
-		return AccessibilityActionResult{}, err
+	validateWindow := func() error {
+		liveRoot, err := applicationWindowByID(ctx, api, application, windowID)
+		if err != nil {
+			return err
+		}
+		liveTitle, titleErr := semanticStringAttribute(api, liveRoot, api.axTitleAttribute)
+		api.cfRelease(liveRoot)
+		if titleErr != nil || liveTitle != request.Target.ExpectedTitle {
+			return ErrAccessibilityStaleTarget
+		}
+		return nil
 	}
-	liveTitle, titleErr := semanticStringAttribute(api, liveRoot, api.axTitleAttribute)
-	api.cfRelease(liveRoot)
-	if titleErr != nil || liveTitle != request.Target.ExpectedTitle {
-		return AccessibilityActionResult{}, ErrAccessibilityStaleTarget
-	}
-	return dispatchAXAction(ctx, api, element, structure.Role, request)
+	return dispatchAXAction(ctx, api, element, structure.Role, request, validateWindow)
 }
 
 func resolveAXPath(ctx context.Context, query *nativeAXSemanticQuery, root uintptr, path []uint32, processID int32) (uintptr, error) {
@@ -182,7 +185,7 @@ func equalAccessibilityActionBounds(left, right *AccessibilityBounds) bool {
 	return left == nil && right == nil || left != nil && right != nil && *left == *right
 }
 
-func dispatchAXAction(ctx context.Context, api *nativeAPI, element uintptr, role string, request AccessibilityActionRequest) (AccessibilityActionResult, error) {
+func dispatchAXAction(ctx context.Context, api *nativeAPI, element uintptr, role string, request AccessibilityActionRequest, validateWindow func() error) (AccessibilityActionResult, error) {
 	if err := ctx.Err(); err != nil {
 		return AccessibilityActionResult{}, err
 	}
@@ -192,14 +195,29 @@ func dispatchAXAction(ctx context.Context, api *nativeAPI, element uintptr, role
 		if role == "textbox" {
 			action = api.axConfirmAction
 		}
+		if err := validateWindow(); err != nil {
+			return AccessibilityActionResult{}, err
+		}
 		return AccessibilityActionResult{Dispatched: true}, semanticAXResult("perform semantic AX action", api.axUIElementPerformAction(element, action))
 	case "toggle":
+		if err := validateWindow(); err != nil {
+			return AccessibilityActionResult{}, err
+		}
 		return AccessibilityActionResult{Dispatched: true}, semanticAXResult("perform semantic AX action", api.axUIElementPerformAction(element, api.axPressAction))
 	case "increment":
+		if err := validateWindow(); err != nil {
+			return AccessibilityActionResult{}, err
+		}
 		return AccessibilityActionResult{Dispatched: true}, semanticAXResult("perform semantic AX action", api.axUIElementPerformAction(element, api.axIncrementAction))
 	case "decrement":
+		if err := validateWindow(); err != nil {
+			return AccessibilityActionResult{}, err
+		}
 		return AccessibilityActionResult{Dispatched: true}, semanticAXResult("perform semantic AX action", api.axUIElementPerformAction(element, api.axDecrementAction))
 	case "focus":
+		if err := validateWindow(); err != nil {
+			return AccessibilityActionResult{}, err
+		}
 		return AccessibilityActionResult{Dispatched: true}, semanticAXResult("focus semantic AX element", api.axUIElementSetAttributeValue(element, api.axFocusedAttribute, api.cfBooleanTrue))
 	case "expand", "collapse":
 		settable, err := semanticAttributeSettable(api, element, api.axExpandedAttribute)
@@ -211,9 +229,15 @@ func dispatchAXAction(ctx context.Context, api *nativeAPI, element uintptr, role
 			if request.Action == "collapse" {
 				value = api.cfBooleanFalse
 			}
+			if err := validateWindow(); err != nil {
+				return AccessibilityActionResult{}, err
+			}
 			return AccessibilityActionResult{Dispatched: true}, semanticAXResult("change semantic AX expansion", api.axUIElementSetAttributeValue(element, api.axExpandedAttribute, value))
 		}
 		if request.Action == "expand" {
+			if err := validateWindow(); err != nil {
+				return AccessibilityActionResult{}, err
+			}
 			return AccessibilityActionResult{Dispatched: true}, semanticAXResult("show semantic AX menu", api.axUIElementPerformAction(element, api.axShowMenuAction))
 		}
 		return AccessibilityActionResult{}, ErrAccessibilityStaleTarget
@@ -229,6 +253,9 @@ func dispatchAXAction(ctx context.Context, api *nativeAPI, element uintptr, role
 				return AccessibilityActionResult{}, ErrAccessibilityUnavailable
 			}
 			defer api.cfRelease(number)
+			if err := validateWindow(); err != nil {
+				return AccessibilityActionResult{}, err
+			}
 			return AccessibilityActionResult{Dispatched: true}, semanticAXResult("set semantic AX numeric value", api.axUIElementSetAttributeValue(element, api.axValueAttribute, number))
 		}
 		value, err := api.createTransientString(request.Value)
@@ -236,6 +263,9 @@ func dispatchAXAction(ctx context.Context, api *nativeAPI, element uintptr, role
 			return AccessibilityActionResult{}, err
 		}
 		defer api.cfRelease(value)
+		if err := validateWindow(); err != nil {
+			return AccessibilityActionResult{}, err
+		}
 		return AccessibilityActionResult{Dispatched: true}, semanticAXResult("set semantic AX text value", api.axUIElementSetAttributeValue(element, api.axValueAttribute, value))
 	default:
 		return AccessibilityActionResult{}, ErrUnsupported

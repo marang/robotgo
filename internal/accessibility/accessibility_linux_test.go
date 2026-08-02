@@ -41,6 +41,7 @@ type fakeATSPIQuery struct {
 	setNumericValue float64
 	mutationErr     error
 	actionNameHook  func()
+	minimumStepHook func()
 }
 
 func (query *fakeATSPIQuery) applications(context.Context) ([]atspiReference, error) {
@@ -182,6 +183,9 @@ func (query *fakeATSPIQuery) minimumIncrement(_ context.Context, reference atspi
 	object, err := query.object(reference)
 	if err != nil {
 		return 0, err
+	}
+	if query.minimumStepHook != nil {
+		query.minimumStepHook()
 	}
 	return object.minimumIncrement, nil
 }
@@ -486,6 +490,46 @@ func TestActATSPIPreservesPostDispatchBoundaryAndSupportsEmptyText(t *testing.T)
 	result, err = actATSPI(t.Context(), query, request, textbox)
 	if !errors.Is(err, ErrUnavailable) || !result.Dispatched {
 		t.Fatalf("post-dispatch failure = %+v, %v", result, err)
+	}
+}
+
+func TestActATSPIRevalidatesWindowAfterSliderPreparation(t *testing.T) {
+	application := atspiTestReference("application")
+	window := atspiTestReference("window")
+	slider := atspiTestReference("slider")
+	query := newFakeATSPIQuery(map[atspiReference]*fakeATSPIObject{
+		application: {children: []atspiReference{window}},
+		window: {
+			parent: application, children: []atspiReference{slider}, role: atspiRoleFrame,
+			properties: map[string]string{atspiPropertyName: "Fixture"},
+		},
+		slider: {
+			parent: window, role: atspiRoleSlider,
+			states:           atspiTestStates(atspiStateEnabled, atspiStateShowing, atspiStateVisible),
+			properties:       map[string]string{atspiPropertyName: "Volume"},
+			interfaces:       []string{atspiShortValue},
+			value:            4,
+			minimumIncrement: 1,
+		},
+	})
+	query.apps = []atspiReference{application}
+	query.pids[application.Bus] = 42
+	query.minimumStepHook = func() {
+		query.objects[referenceKey(window)].properties[atspiPropertyName] = "Replacement"
+		query.minimumStepHook = nil
+	}
+	request := ActionRequest{
+		Target:    Target{ProcessID: 42, ExpectedTitle: "Fixture"},
+		Reference: []byte(referenceKey(slider)), Action: "increment",
+		Expected: ElementExpectation{
+			Role: "slider", Name: "Volume", States: []string{"enabled"},
+			Actions: []string{"set-value", "increment", "decrement"},
+		},
+	}
+
+	result, err := actATSPI(t.Context(), query, request, slider)
+	if !errors.Is(err, ErrStaleTarget) || result.Dispatched || len(query.mutationCalls) != 0 {
+		t.Fatalf("late stale slider window = %+v, %v, calls=%v", result, err, query.mutationCalls)
 	}
 }
 
