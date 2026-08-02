@@ -1,13 +1,13 @@
 # RobotGo Workflow Conventions
 
-Version: 1.3
+Version: 1.4
 Status: Active  
 Audience: contributors, reviewers, and coding agents
 
 ## 1. Purpose and ownership
 
 This document is the canonical operational workflow for RobotGo planning,
-branches, pull requests, CI, reviews, merges, and branch cleanup.
+branches, worktrees, pull requests, CI, reviews, merges, and cleanup.
 
 Documentation ownership is split as follows:
 
@@ -100,7 +100,7 @@ technical source; keep their scope and status links synchronized.
 
 Normal implementation work follows this loop:
 
-`Linear issue -> In Progress -> current main -> isolated branch/worktree -> implementation and tests -> local review -> commit and push -> draft PR -> CI -> ready PR and In Review -> reviewer feedback -> merge -> Done/project update -> sync main -> branch cleanup`
+`Linear issue -> In Progress -> current main -> isolated branch/worktree -> implementation and tests -> local review -> commit and push -> draft PR -> CI -> ready PR and In Review -> reviewer feedback -> merge -> Done/project update -> sync main -> branch/worktree cleanup`
 
 1. Create or select exactly one Linear issue for an executable implementation
    or documentation slice, assign it to the correct RobotGo project, and apply
@@ -128,8 +128,8 @@ Normal implementation work follows this loop:
 14. Merge only when the gate in section 6 is satisfied.
 15. Move the issue to `Done` and update the project with the delivered outcome,
     merge evidence, and remaining follow-ups.
-16. Sync local `main`, verify the merge, and remove the completed feature branch
-    when it is no longer needed.
+16. Sync local `main`, verify the merge, and remove the completed feature
+    worktree and branch when they are no longer needed.
 
 The only issue-first exception is initial team/project creation and draft plan
 shaping before an executable slice exists. This exception must not carry product
@@ -154,6 +154,18 @@ Before committing or opening a PR:
 Keep parallel PRs separate until their scopes and conflict order are understood.
 Never place tokens or other credentials in worktree configuration committed to
 the repository.
+
+Treat issue worktrees as temporary delivery state. After a PR is merged or a
+slice is intentionally abandoned:
+
+1. inspect the worktree for modified and untracked files
+2. preserve or explicitly account for any work that is not already merged
+3. remove the worktree when no active work depends on it
+4. prune stale worktree metadata and delete the completed local branch only
+   after its merge or disposition is verified
+
+Keep only the canonical `main` worktree and worktrees for genuinely active
+work. Never force-remove a dirty worktree merely to complete cleanup.
 
 ### 3.2 Branch naming
 
@@ -292,7 +304,7 @@ A PR is ready to merge only when all applicable conditions are true:
   credential, diagnostic, or similar artifacts behind
 
 After merge, verify GitHub reports the PR as merged and local `main` contains the
-merge before deleting branches.
+merge before deleting branches or their worktrees.
 
 ## 7. Sensitive test and development data
 
@@ -347,4 +359,6 @@ Before declaring a PR complete:
       `TEST.md`, and the section 6 merge gate are satisfied.
 - [ ] The Linear issue and project reflect the merged result and follow-ups.
 - [ ] Useful issue context was archived before any free-tier cleanup.
-- [ ] GitHub merge state and local `main` were verified before branch cleanup.
+- [ ] GitHub merge state and local `main` were verified; completed worktrees
+      and local branches were removed after confirming they contain no needed
+      uncommitted or unmerged work.
