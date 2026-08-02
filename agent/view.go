@@ -205,22 +205,17 @@ func (robotGoDriver) CaptureView(
 	region CaptureRegion,
 	allowPortal bool,
 ) (image.Image, string, error) {
-	var (
-		img image.Image
-		err error
-	)
 	if runtime.GOOS == goOSLinux && robotgo.DetectDisplayServer() == robotgo.DisplayServerWayland {
-		img, err = captureWaylandAgent(
+		return captureWaylandAgentWithBackend(
 			ctx,
 			region,
 			!allowPortal || os.Getenv(disablePortalEnv) != "",
-			robotgo.CaptureImgNative,
+			robotgo.CaptureImgNativeContext,
 			robotgo.ScreenCastCaptureReady,
 			robotgo.CaptureScreenCastDisplay,
 		)
-	} else {
-		img, err = (robotGoDriver{}).Capture(ctx, region)
 	}
+	img, err := (robotGoDriver{}).Capture(ctx, region)
 	return img, string(robotgo.LastBackend()), err
 }
 

@@ -242,7 +242,7 @@ func (robotGoDriver) Capture(ctx context.Context, region CaptureRegion) (image.I
 			ctx,
 			region,
 			os.Getenv(disablePortalEnv) != "",
-			robotgo.CaptureImgNative,
+			robotgo.CaptureImgNativeContext,
 			robotgo.ScreenCastCaptureReady,
 			robotgo.CaptureScreenCastDisplay,
 		)
@@ -258,7 +258,7 @@ func (robotGoDriver) Capture(ctx context.Context, region CaptureRegion) (image.I
 	return img, nil
 }
 
-type nativeCaptureFunc func(...int) (image.Image, error)
+type nativeCaptureFunc func(context.Context, ...int) (image.Image, error)
 type screenCastReadyFunc func() error
 type screenCastDisplayCaptureFunc func(context.Context, int, ...int) (image.Image, error)
 
@@ -270,13 +270,27 @@ func captureWaylandAgent(
 	screenCastReady screenCastReadyFunc,
 	screenCastCapture screenCastDisplayCaptureFunc,
 ) (image.Image, error) {
-	img, nativeErr := nativeCapture(region.X, region.Y, region.Width, region.Height, region.DisplayID)
+	img, _, err := captureWaylandAgentWithBackend(
+		ctx, region, portalDisabled, nativeCapture, screenCastReady, screenCastCapture,
+	)
+	return img, err
+}
+
+func captureWaylandAgentWithBackend(
+	ctx context.Context,
+	region CaptureRegion,
+	portalDisabled bool,
+	nativeCapture nativeCaptureFunc,
+	screenCastReady screenCastReadyFunc,
+	screenCastCapture screenCastDisplayCaptureFunc,
+) (image.Image, string, error) {
+	img, nativeErr := nativeCapture(ctx, region.X, region.Y, region.Width, region.Height, region.DisplayID)
 	if nativeErr == nil && img != nil && !img.Bounds().Empty() {
 		if err := ctx.Err(); err != nil {
 			wipeMutableImage(img)
-			return nil, err
+			return nil, "", err
 		}
-		return img, nil
+		return img, string(robotgo.BackendScreencopy), nil
 	}
 	if nativeErr == nil {
 		nativeErr = errors.New("native Wayland capture returned an empty image")
@@ -285,7 +299,7 @@ func captureWaylandAgent(
 		wipeMutableImage(img)
 	}
 	if err := ctx.Err(); err != nil {
-		return nil, err
+		return nil, "", err
 	}
 
 	if !portalDisabled && screenCastReady() == nil {
@@ -300,9 +314,9 @@ func captureWaylandAgent(
 		if screenCastErr == nil && img != nil && !img.Bounds().Empty() {
 			if err := ctx.Err(); err != nil {
 				wipeMutableImage(img)
-				return nil, err
+				return nil, "", err
 			}
-			return img, nil
+			return img, string(robotgo.BackendScreenCast), nil
 		}
 		if screenCastErr == nil {
 			screenCastErr = errors.New("ScreenCast capture returned an empty image")
@@ -310,10 +324,10 @@ func captureWaylandAgent(
 		if img != nil {
 			wipeMutableImage(img)
 		}
-		return nil, errors.Join(nativeErr, screenCastErr)
+		return nil, "", errors.Join(nativeErr, screenCastErr)
 	}
 
-	return nil, errors.Join(
+	return nil, "", errors.Join(
 		nativeErr,
 		fmt.Errorf(
 			"%w: native Wayland capture failed and agent capture will not open portal consent implicitly; start ScreenCast explicitly for an authorized fallback",

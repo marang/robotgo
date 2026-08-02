@@ -1247,7 +1247,7 @@ uint32_t robotgo_wayland_screencopy_version(void) {
 MMBitmapRef capture_screen_wayland_impl(int32_t x, int32_t y, int32_t w,
                                         int32_t h, int32_t display_id,
                                         int8_t isPid, int32_t backend,
-                                        int32_t *err) {
+                                        long deadline_ms, int32_t *err) {
   (void)isPid;
   if (err) {
     *err = ScreengrabOK;
@@ -1395,9 +1395,6 @@ MMBitmapRef capture_screen_wayland_impl(int32_t x, int32_t y, int32_t w,
   }
   zwlr_screencopy_frame_v1_add_listener(cap.frame, &frame_listener, &cap);
 
-  const long timeout_ms = 2000; // 2s safety timeout
-  long start_ms = monotonic_millis();
-  long deadline_ms = start_ms < 0 ? 0 : start_ms + timeout_ms;
   while (!cap.done && !cap.failed) {
     int dres = dispatch_until(cap.display, deadline_ms);
     if (dres < 0) {

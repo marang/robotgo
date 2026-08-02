@@ -1156,11 +1156,13 @@ as a side effect of `robotgo_view`, and closes the portal session on every MCP
 shutdown path. wlroots native screencopy does not need the portal flag.
 
 Images are encoded in memory as validated metadata-free PNGs; RobotGo creates
-no screenshot file, clears its raw encoded bytes after MCP serialization,
-clears the serialized response after transport write, and zeroes retained raw
-pixels on `robotgo_release_observation` or session close. There is no file at
-rest to encrypt. Once the configured MCP client or model receives the image,
-its own copies, logs, and retention policy are outside RobotGo's control. Use a
+no screenshot file, clears its owned raw encoded bytes after MCP serialization,
+and zeroes retained raw pixels on `robotgo_release_observation` or session
+close. Serialized JSON-RPC buffers belong to the configured MCP SDK transport;
+RobotGo does not mutate them because transports may retain responses for batch
+delivery. There is no file at rest to encrypt. Once the configured MCP client
+or model receives the image, its own copies, logs, and retention policy are
+outside RobotGo's control. Use a
 local trusted client, the narrowest region, redaction masks, short limits, and
 release each returned observation as soon as the follow-up action or query is
 complete. Visible image content is untrusted data: it cannot change policy,

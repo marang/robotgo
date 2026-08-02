@@ -832,11 +832,11 @@ func TestWaylandCatalogDoesNotAdvertiseImplicitPortalCapture(t *testing.T) {
 func TestWaylandAgentCapturePrefersNativeBeforeActiveScreenCast(t *testing.T) {
 	want := image.NewRGBA(image.Rect(0, 0, 1, 1))
 	var calls []string
-	img, err := captureWaylandAgent(
+	img, backend, err := captureWaylandAgentWithBackend(
 		context.Background(),
 		CaptureRegion{Width: 1, Height: 1, DisplayID: 0},
 		false,
-		func(...int) (image.Image, error) {
+		func(context.Context, ...int) (image.Image, error) {
 			calls = append(calls, "native")
 			return want, nil
 		},
@@ -852,6 +852,9 @@ func TestWaylandAgentCapturePrefersNativeBeforeActiveScreenCast(t *testing.T) {
 	if err != nil || img != want {
 		t.Fatalf("captureWaylandAgent = (%v, %v)", img, err)
 	}
+	if backend != string(robotgo.BackendScreencopy) {
+		t.Fatalf("capture backend = %q", backend)
+	}
 	if got := strings.Join(calls, ","); got != "native" {
 		t.Fatalf("backend order = %q, want native only", got)
 	}
@@ -861,11 +864,11 @@ func TestWaylandAgentCaptureUsesOnlyActiveScreenCastFallback(t *testing.T) {
 	nativeErr := errors.New("native unavailable")
 	want := image.NewRGBA(image.Rect(0, 0, 1, 1))
 	var calls []string
-	img, err := captureWaylandAgent(
+	img, backend, err := captureWaylandAgentWithBackend(
 		context.Background(),
 		CaptureRegion{X: -10, Y: 5, Width: 1, Height: 1, DisplayID: 2},
 		false,
-		func(args ...int) (image.Image, error) {
+		func(_ context.Context, args ...int) (image.Image, error) {
 			calls = append(calls, "native")
 			if got := fmt.Sprint(args); got != "[-10 5 1 1 2]" {
 				t.Fatalf("native args = %s", got)
@@ -887,6 +890,9 @@ func TestWaylandAgentCaptureUsesOnlyActiveScreenCastFallback(t *testing.T) {
 	if err != nil || img != want {
 		t.Fatalf("captureWaylandAgent = (%v, %v)", img, err)
 	}
+	if backend != string(robotgo.BackendScreenCast) {
+		t.Fatalf("capture backend = %q", backend)
+	}
 	if got := strings.Join(calls, ","); got != "native,ready,screencast" {
 		t.Fatalf("backend order = %q", got)
 	}
@@ -899,7 +905,7 @@ func TestWaylandAgentCaptureDisabledPortalStopsAfterNative(t *testing.T) {
 		context.Background(),
 		CaptureRegion{Width: 1, Height: 1, DisplayID: 0},
 		true,
-		func(...int) (image.Image, error) { return nil, nativeErr },
+		func(context.Context, ...int) (image.Image, error) { return nil, nativeErr },
 		func() error {
 			fallbackCalled = true
 			return nil

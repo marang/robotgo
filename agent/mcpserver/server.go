@@ -5,7 +5,6 @@ package mcpserver
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"reflect"
@@ -15,7 +14,6 @@ import (
 
 	robotgo "github.com/marang/robotgo"
 	"github.com/marang/robotgo/agent"
-	"github.com/modelcontextprotocol/go-sdk/jsonrpc"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -134,7 +132,7 @@ func (s *Server) Run(ctx context.Context, transport mcp.Transport) (runErr error
 	if transport == nil {
 		return fmt.Errorf("mcpserver: nil transport")
 	}
-	return s.protocol.Run(ctx, clearingTransport{delegate: transport})
+	return s.protocol.Run(ctx, transport)
 }
 
 // Close closes the underlying agent session. It is safe to call repeatedly
@@ -565,38 +563,3 @@ func safeToolError(err error) *ToolError {
 		return &ToolError{Code: agent.ErrorBackendFailure, Message: errorMessageFailed}
 	}
 }
-
-type clearingTransport struct{ delegate mcp.Transport }
-
-func (transport clearingTransport) Connect(ctx context.Context) (mcp.Connection, error) {
-	connection, err := transport.delegate.Connect(ctx)
-	if err != nil {
-		return nil, err
-	}
-	return clearingConnection{delegate: connection}, nil
-}
-
-type clearingConnection struct{ delegate mcp.Connection }
-
-func (connection clearingConnection) Read(ctx context.Context) (jsonrpc.Message, error) {
-	return connection.delegate.Read(ctx)
-}
-
-func (connection clearingConnection) Write(ctx context.Context, message jsonrpc.Message) error {
-	if response, ok := message.(*jsonrpc.Response); ok {
-		// A transport may retain responses until an incoming JSON-RPC batch is
-		// complete. Give it an independent result buffer before clearing the
-		// SDK-owned response passed to this middleware; otherwise an earlier
-		// batch result can be erased before the transport serializes the batch.
-		transportResponse := *response
-		transportResponse.Result = append(json.RawMessage(nil), response.Result...)
-		err := connection.delegate.Write(ctx, &transportResponse)
-		clear(response.Result)
-		response.Result = nil
-		return err
-	}
-	return connection.delegate.Write(ctx, message)
-}
-
-func (connection clearingConnection) Close() error      { return connection.delegate.Close() }
-func (connection clearingConnection) SessionID() string { return connection.delegate.SessionID() }

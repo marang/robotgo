@@ -40,6 +40,12 @@ static inline MMBitmapRef capture_screen_wayland(int32_t x, int32_t y, int32_t w
   if (err) { *err = ScreengrabErrFailed; }
   return NULL;
 }
+static inline MMBitmapRef capture_screen_wayland_timeout(
+    int32_t x, int32_t y, int32_t w, int32_t h, int32_t display_id,
+    int8_t isPid, int32_t backend, int32_t timeout_ms, int32_t *err) {
+  (void)timeout_ms;
+  return capture_screen_wayland(x, y, w, h, display_id, isPid, backend, err);
+}
 static inline int robotgo_wayland_screencopy_ready(void) { return 0; }
 static inline uint32_t robotgo_wayland_screencopy_version(void) { return 0; }
 #elif defined(IS_LINUX)
@@ -67,6 +73,9 @@ typedef enum {
 MMBitmapRef capture_screen_wayland(int32_t x, int32_t y, int32_t w, int32_t h,
                                    int32_t display_id, int8_t isPid,
                                    int32_t backend, int32_t *err);
+MMBitmapRef capture_screen_wayland_timeout(
+    int32_t x, int32_t y, int32_t w, int32_t h, int32_t display_id,
+    int8_t isPid, int32_t backend, int32_t timeout_ms, int32_t *err);
 int robotgo_wayland_screencopy_ready(void);
 uint32_t robotgo_wayland_screencopy_version(void);
 #endif
@@ -85,6 +94,12 @@ static inline MMBitmapRef capture_screen_wayland(int32_t x, int32_t y,
   (void)x; (void)y; (void)w; (void)h; (void)display_id; (void)isPid; (void)backend;
   if (err) { *err = ScreengrabErrFailed; }
   return NULL;
+}
+static inline MMBitmapRef capture_screen_wayland_timeout(
+    int32_t x, int32_t y, int32_t w, int32_t h, int32_t display_id,
+    int8_t isPid, int32_t backend, int32_t timeout_ms, int32_t *err) {
+  (void)timeout_ms;
+  return capture_screen_wayland(x, y, w, h, display_id, isPid, backend, err);
 }
 static inline int robotgo_wayland_screencopy_ready(void) { return 0; }
 static inline uint32_t robotgo_wayland_screencopy_version(void) { return 0; }
@@ -132,6 +147,12 @@ static inline MMBitmapRef capture_screen_wayland(int32_t x, int32_t y, int32_t w
   (void)x; (void)y; (void)w; (void)h; (void)display_id; (void)isPid; (void)backend;
   if (err) { *err = ScreengrabErrFailed; }
   return NULL;
+}
+static inline MMBitmapRef capture_screen_wayland_timeout(
+    int32_t x, int32_t y, int32_t w, int32_t h, int32_t display_id,
+    int8_t isPid, int32_t backend, int32_t timeout_ms, int32_t *err) {
+  (void)timeout_ms;
+  return capture_screen_wayland(x, y, w, h, display_id, isPid, backend, err);
 }
 static inline int robotgo_wayland_screencopy_ready(void) { return 0; }
 static inline uint32_t robotgo_wayland_screencopy_version(void) { return 0; }

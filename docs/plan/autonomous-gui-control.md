@@ -94,12 +94,13 @@ non-indexed, metadata-free PNG plus sanitized geometry/backend metadata. It is
 never duplicated into structured output or written to a temporary file.
 
 The Go `View` transfers encoded-byte ownership exactly once. The MCP adapter
-clears those bytes immediately after JSON serialization and clears its
-serialized JSON-RPC result after transport write. The separate redacted raw
-observation remains in memory only for explicit follow-up lineage and is zeroed
-by `robotgo_release_observation` or session close. Client/model copies and
-provider retention begin beyond the RobotGo boundary and are stated at startup
-and in user documentation.
+clears those owned bytes immediately after JSON serialization. Serialized
+JSON-RPC buffers are owned by the configured SDK transport and are not mutated
+by RobotGo because a batch-capable transport may retain several responses until
+delivery. The separate redacted raw observation remains in memory only for
+explicit follow-up lineage and is zeroed by `robotgo_release_observation` or
+session close. Client/model copies and provider retention begin beyond the
+RobotGo boundary and are stated at startup and in user documentation.
 
 Visible content is always untrusted data. It cannot add policy, bypass the
 adapter startup grant, authorize mutation, or replace typed action confirmation.
