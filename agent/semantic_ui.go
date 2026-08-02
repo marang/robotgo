@@ -180,9 +180,10 @@ type uiBackendNode struct {
 }
 
 type uiBackendSnapshot struct {
-	Backend   string
-	Nodes     []uiBackendNode
-	Truncated bool
+	Backend           string
+	Nodes             []uiBackendNode
+	Truncated         bool
+	IdentityTruncated bool
 }
 
 type uiInspectDriver interface {
@@ -288,7 +289,7 @@ func (s *Session) InspectUI(ctx context.Context, request InspectUIRequest) (UIOb
 		return s.finishUIInspectionFailure(ctx, empty,
 			uiError(ErrorBackendFailure, "accessibility backend returned an invalid tree", errors.New("accessibility backend identity mismatch")))
 	}
-	elements, references, truncated, err := sanitizeUIBackendSnapshot(result.ObservationID, snapshot, s.policy)
+	elements, references, truncated, identityTruncated, err := sanitizeUIBackendSnapshot(result.ObservationID, snapshot, s.policy)
 	if err != nil {
 		closeUIReferences(references)
 		empty := emptyUIObservation(result.CreatedAt)
@@ -301,7 +302,9 @@ func (s *Session) InspectUI(ctx context.Context, request InspectUIRequest) (UIOb
 	}
 	result.Elements = elements
 	result.Truncated = snapshot.Truncated || truncated
-	s.storeUIObservation(result.ObservationID, references)
+	s.storeUIObservation(result.ObservationID, references, result.Elements, uiBackendTarget{
+		Target: request.Target, Kind: request.Kind, ExpectedTitle: policyTarget.ExpectedTitle,
+	}, result.Backend, !identityTruncated)
 	if err := s.emitAudit(ctx, AuditEvent{
 		Kind: AuditObservationFinished, Operation: OperationInspectUI,
 		ObservationID: result.ObservationID,
@@ -399,12 +402,12 @@ func (s *Session) authorizeUIInspection(request InspectUIRequest) error {
 	return nil
 }
 
-func sanitizeUIBackendSnapshot(observationID string, snapshot uiBackendSnapshot, policy Policy) ([]UIElement, map[string][]byte, bool, error) {
+func sanitizeUIBackendSnapshot(observationID string, snapshot uiBackendSnapshot, policy Policy) ([]UIElement, map[string][]byte, bool, bool, error) {
 	if snapshot.Backend == "" {
-		return nil, nil, false, errors.New("empty accessibility backend name")
+		return nil, nil, false, false, errors.New("empty accessibility backend name")
 	}
 	if len(snapshot.Nodes) > maxAgentUIElements {
-		return nil, nil, false, errors.New("accessibility tree exceeds the hard node limit")
+		return nil, nil, false, false, errors.New("accessibility tree exceeds the hard node limit")
 	}
 	limit := int(policy.MaxUIElements)
 	if limit > len(snapshot.Nodes) {
@@ -418,6 +421,7 @@ func sanitizeUIBackendSnapshot(observationID string, snapshot uiBackendSnapshot,
 	remainingReferences := maxUIBackendReferenceTotalBytes
 	rawStringBytes := 0
 	truncated := len(snapshot.Nodes) > limit
+	identityTruncated := snapshot.IdentityTruncated
 
 	for index, node := range snapshot.Nodes {
 		if index >= limit {
@@ -427,30 +431,30 @@ func sanitizeUIBackendSnapshot(observationID string, snapshot uiBackendSnapshot,
 			len(node.StableID) > remainingReferences || node.Depth > policy.MaxUITreeDepth ||
 			!validUIRole(node.Role) {
 			closeUIReferences(references)
-			return nil, nil, false, errors.New("invalid accessibility node identity, depth, or role")
+			return nil, nil, false, false, errors.New("invalid accessibility node identity, depth, or role")
 		}
 		remainingReferences -= len(node.StableID)
 		if node.Parent < -1 || node.Parent >= index ||
 			(node.Parent == -1 && node.Depth != 0) ||
 			(node.Parent >= 0 && snapshot.Nodes[node.Parent].Depth+1 != node.Depth) {
 			closeUIReferences(references)
-			return nil, nil, false, errors.New("invalid accessibility hierarchy")
+			return nil, nil, false, false, errors.New("invalid accessibility hierarchy")
 		}
 		stableKey := sha256.Sum256(node.StableID)
 		if _, duplicate := stableIDs[stableKey]; duplicate {
 			closeUIReferences(references)
-			return nil, nil, false, errors.New("duplicate accessibility node identity")
+			return nil, nil, false, false, errors.New("duplicate accessibility node identity")
 		}
 		stableIDs[stableKey] = struct{}{}
 		if len(node.States) > maxUIStatesPerNode || !validUniqueUIStates(node.States) ||
 			len(node.Actions) > maxUIActionsPerNode || !validUniqueUIActions(node.Actions) {
 			closeUIReferences(references)
-			return nil, nil, false, errors.New("invalid accessibility state or action set")
+			return nil, nil, false, false, errors.New("invalid accessibility state or action set")
 		}
 		for _, value := range []string{node.Name, node.Description, node.Value} {
 			if len(value) > maxAgentUIStringBytes-rawStringBytes {
 				closeUIReferences(references)
-				return nil, nil, false, errors.New("accessibility text exceeds the hard aggregate limit")
+				return nil, nil, false, false, errors.New("accessibility text exceeds the hard aggregate limit")
 			}
 			rawStringBytes += len(value)
 		}
@@ -471,6 +475,7 @@ func sanitizeUIBackendSnapshot(observationID string, snapshot uiBackendSnapshot,
 		} else {
 			if _, allowed := policy.allowUIProperty[UIPropertyName]; allowed {
 				element.Name, truncated = consumeSanitizedUIText(node.Name, &remaining, truncated)
+				identityTruncated = identityTruncated || element.Name != node.Name
 			}
 			if _, allowed := policy.allowUIProperty[UIPropertyDescription]; allowed {
 				element.Description, truncated = consumeSanitizedUIText(node.Description, &remaining, truncated)
@@ -491,7 +496,7 @@ func sanitizeUIBackendSnapshot(observationID string, snapshot uiBackendSnapshot,
 		if _, allowed := policy.allowUIProperty[UIPropertyBounds]; allowed && node.Bounds != nil {
 			if !validUIBounds(node.Bounds) {
 				closeUIReferences(references)
-				return nil, nil, false, errors.New("invalid accessibility bounds")
+				return nil, nil, false, false, errors.New("invalid accessibility bounds")
 			}
 			bounds := *node.Bounds
 			element.Bounds = &bounds
@@ -518,7 +523,7 @@ func sanitizeUIBackendSnapshot(observationID string, snapshot uiBackendSnapshot,
 			elements[parentIndex].ChildIDs = append(elements[parentIndex].ChildIDs, elementID)
 		}
 	}
-	return elements, references, truncated, nil
+	return elements, references, truncated, identityTruncated, nil
 }
 
 func consumeSanitizedUIText(value string, remaining *int, truncated bool) (string, bool) {
@@ -658,11 +663,28 @@ func clearUIBackendSnapshot(snapshot *uiBackendSnapshot) {
 	clear(snapshot.Nodes)
 	snapshot.Nodes = nil
 	snapshot.Backend = ""
+	snapshot.Truncated = false
+	snapshot.IdentityTruncated = false
 }
 
-func (s *Session) storeUIObservation(id string, references map[string][]byte) {
+func (s *Session) storeUIObservation(
+	id string,
+	references map[string][]byte,
+	elements []UIElement,
+	target uiBackendTarget,
+	backend string,
+	actionable bool,
+) {
+	expected := make(map[string]UIElementExpectation, len(elements))
+	for index := range elements {
+		element := &elements[index]
+		expected[element.ElementID] = expectationFromUIElement(element)
+	}
 	s.observationMu.Lock()
-	s.observations[id] = observationRecord{uiElements: references}
+	s.observations[id] = observationRecord{
+		uiElements: references, uiExpected: expected, uiTarget: &target, uiBackend: backend,
+		uiActionable: actionable,
+	}
 	s.observationMu.Unlock()
 }
 

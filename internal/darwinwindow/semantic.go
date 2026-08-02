@@ -60,9 +60,31 @@ type AccessibilityNode struct {
 }
 
 type AccessibilitySnapshot struct {
-	Backend   string
-	Nodes     []AccessibilityNode
-	Truncated bool
+	Backend           string
+	Nodes             []AccessibilityNode
+	Truncated         bool
+	IdentityTruncated bool
+}
+
+type AccessibilityElementExpectation struct {
+	Role      string
+	Name      string
+	Sensitive bool
+	States    []string
+	Bounds    *AccessibilityBounds
+	Actions   []string
+}
+
+type AccessibilityActionRequest struct {
+	Target    AccessibilityTarget
+	Reference []byte
+	Expected  AccessibilityElementExpectation
+	Action    string
+	Value     string
+}
+
+type AccessibilityActionResult struct {
+	Dispatched bool
 }
 
 func InspectAccessibility(
@@ -71,6 +93,10 @@ func InspectAccessibility(
 	limits AccessibilityLimits,
 ) (AccessibilitySnapshot, error) {
 	return inspectAccessibility(ctx, target, limits)
+}
+
+func ActAccessibility(ctx context.Context, request AccessibilityActionRequest) (AccessibilityActionResult, error) {
+	return actAccessibility(ctx, request)
 }
 
 func clearAccessibilitySnapshot(snapshot *AccessibilitySnapshot) {
@@ -84,4 +110,25 @@ func clearAccessibilitySnapshot(snapshot *AccessibilitySnapshot) {
 	clear(snapshot.Nodes)
 	snapshot.Nodes = nil
 	snapshot.Backend = ""
+	snapshot.Truncated = false
+	snapshot.IdentityTruncated = false
+}
+
+func expansionAction(expanded, hasExpanded, expandedSettable, showMenu bool) string {
+	if hasExpanded {
+		if expanded {
+			if expandedSettable {
+				return "collapse"
+			}
+			return ""
+		}
+		if expandedSettable || showMenu {
+			return "expand"
+		}
+		return ""
+	}
+	if showMenu {
+		return "expand"
+	}
+	return ""
 }

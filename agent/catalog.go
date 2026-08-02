@@ -21,6 +21,7 @@ func buildCatalog(policy Policy, capabilities robotgo.RuntimeCapabilities) Opera
 			analysisCapability(OperationOCR, policy),
 			analysisCapability(OperationDetectElements, policy),
 			inspectUICapability(policy, capabilities),
+			elementActCapability(policy, capabilities),
 			findColorCapability(policy, capabilities),
 			waitColorCapability(policy, capabilities),
 			operationCapability(OperationMove, policy, capabilities.Mouse),
@@ -31,6 +32,29 @@ func buildCatalog(policy Policy, capabilities robotgo.RuntimeCapabilities) Opera
 			keyChordCapability(policy, capabilities),
 			activationCapability(policy, capabilities),
 		},
+	}
+}
+
+func elementActCapability(policy Policy, capabilities robotgo.RuntimeCapabilities) OperationCapability {
+	_, confirmationRequired := policy.requireConfirmation[OperationElementAct]
+	_, operationAllowed := policy.allowOperation[OperationElementAct]
+	_, inspectAllowed := policy.allowOperation[OperationInspectUI]
+	policyAllowed := operationAllowed && inspectAllowed && len(policy.allowWindow) > 0 &&
+		len(policy.allowUIAction) > 0 && policy.MaxActions > 0 &&
+		policy.MinActionIntervalMillis > 0 && policy.UIActionTimeoutMillis > 0 &&
+		policy.SessionTimeoutMillis > 0
+	feature := capabilities.Accessibility
+	remediation := feature.Notes
+	if remediation == "" {
+		remediation = feature.Reason
+	}
+	return OperationCapability{
+		Operation: OperationElementAct, Available: feature.Available,
+		PolicyAllowed: policyAllowed, Backend: feature.Backend, Fallback: false,
+		Risk: RiskElevatedMutation, ConfirmationRequired: confirmationRequired,
+		Cancellation: CancellationCooperative, ProcessGlobalBackend: true,
+		ExclusiveAgentSession: true, Reason: feature.Reason, Remediation: remediation,
+		UnavailableCode: featureUnavailableCode(feature),
 	}
 }
 

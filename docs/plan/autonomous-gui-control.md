@@ -1,7 +1,6 @@
 # Autonomous GUI Control Plan
 
-Status: LAB-75, LAB-73, and LAB-72 complete; LAB-74 implementation complete
-pending review/merge
+Status: P010 complete; LAB-75, LAB-73, LAB-72, and LAB-74 merged
 
 Linear coordination:
 
@@ -66,10 +65,11 @@ and retained AX/CoreFoundation objects are deterministically released. Its
 hermetic policy/privacy/lifecycle contract and cross-build are blocking;
 permission-granted runtime evidence remains pending under LAB-69.
 
-Semantic element IDs are observation-bound but are not accepted by any current
-mutation API. A later element-action contract must re-resolve the private
-backend reference and revalidate target identity, role, state, and bounds; the
-inspection capability alone never grants mutation.
+P011/LAB-77 now consumes semantic element IDs through a separately authorized
+`desktop.element-act` operation. It re-resolves the private backend reference
+and revalidates exact window/process/title, role, name, state, bounds, and
+offered action. The inspection capability alone still never grants mutation.
+See the [Verified Adaptive Workflows Plan](verified-adaptive-workflows.md).
 
 ## Explicit image observation contract
 

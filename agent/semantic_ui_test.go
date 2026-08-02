@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -19,6 +20,28 @@ type semanticFakeDriver struct {
 	calls    int
 	handle   int
 	limits   uiBackendLimits
+	act      uiBackendElementAction
+	actRef   string
+	actCalls int
+	dispatch bool
+	actErr   error
+	actBlock bool
+	actStart func()
+}
+
+func (driver *semanticFakeDriver) ActUIElement(ctx context.Context, request uiBackendElementAction) (bool, error) {
+	driver.actCalls++
+	driver.actRef = string(request.Reference)
+	request.Reference = nil
+	driver.act = request
+	if driver.actStart != nil {
+		driver.actStart()
+	}
+	if driver.actBlock {
+		<-ctx.Done()
+		return false, ctx.Err()
+	}
+	return driver.dispatch, driver.actErr
 }
 
 type blockingSemanticDriver struct {
@@ -90,19 +113,31 @@ func semanticPolicy() Policy {
 	}
 }
 
+func semanticActionPolicy() Policy {
+	policy := semanticPolicy()
+	policy.AllowedOperations = append(policy.AllowedOperations, OperationElementAct)
+	policy.AllowedUIActions = []UIAction{UIActionPress, UIActionSetValue}
+	policy.MaxUIActionValueBytes = 32
+	policy.UIActionTimeoutMillis = 1000
+	policy.MaxActions = 4
+	policy.MinActionIntervalMillis = 1
+	return policy
+}
+
 func semanticSnapshot() uiBackendSnapshot {
 	return uiBackendSnapshot{
 		Backend: "fake-accessibility",
 		Nodes: []uiBackendNode{
 			{
 				StableID: []byte("native-window-991"), Parent: -1, Depth: 0,
-				Role: UIRoleWindow, Name: "Fixture\x00", States: []UIState{UIStateEnabled},
+				Role: UIRoleWindow, Name: "Fixture", States: []UIState{UIStateEnabled},
 				Bounds: &UIBounds{X: 10, Y: 20, Width: 300, Height: 200}, Focused: true,
 			},
 			{
 				StableID: []byte("native-button-992"), Parent: 0, Depth: 1,
 				Role: UIRoleButton, Name: "Save", Description: "Store changes",
-				Actions: []UIAction{UIActionPress}, Bounds: &UIBounds{X: 20, Y: 40, Width: 80, Height: 30},
+				States: []UIState{UIStateEnabled}, Actions: []UIAction{UIActionPress},
+				Bounds: &UIBounds{X: 20, Y: 40, Width: 80, Height: 30},
 			},
 			{
 				StableID: []byte("native-password-993"), Parent: 0, Depth: 1,
@@ -201,6 +236,212 @@ func TestInspectUISanitizesAndScopesSemanticTree(t *testing.T) {
 		if strings.Contains(string(serialized), secret) {
 			t.Fatalf("semantic observation leaked %q: %s", secret, serialized)
 		}
+	}
+}
+
+func TestElementActionUsesObservationBoundReferenceAndExpectation(t *testing.T) {
+	session, driver := newSemanticSession(t, semanticActionPolicy(), semanticSnapshot())
+	observation, err := session.InspectUI(t.Context(), InspectUIRequest{Target: 42, Kind: WindowTargetProcess})
+	if err != nil {
+		t.Fatal(err)
+	}
+	button := observation.Elements[1]
+	result, err := session.ActUIElement(t.Context(), ElementActionRequest{
+		ObservationID: observation.ObservationID, ElementID: button.ElementID,
+		Action: UIActionPress, Expected: expectationFromUIElement(&button), Confirmed: true,
+	})
+	if err != nil || result.Status != ActionSucceeded || result.Backend != "fake-accessibility" {
+		t.Fatalf("element action = %+v, %v", result, err)
+	}
+	if driver.actCalls != 1 || driver.actRef != "native-button-992" ||
+		driver.act.Target.ExpectedTitle != "fixture" || driver.act.Expected.Role != UIRoleButton {
+		t.Fatalf("backend action = %+v calls=%d", driver.act, driver.actCalls)
+	}
+}
+
+func TestElementActionRejectsChangedExpectationBeforeDispatch(t *testing.T) {
+	session, driver := newSemanticSession(t, semanticActionPolicy(), semanticSnapshot())
+	observation, err := session.InspectUI(t.Context(), InspectUIRequest{Target: 42, Kind: WindowTargetProcess})
+	if err != nil {
+		t.Fatal(err)
+	}
+	button := observation.Elements[1]
+	expected := expectationFromUIElement(&button)
+	expected.Name = "Delete"
+	result, err := session.ActUIElement(t.Context(), ElementActionRequest{
+		ObservationID: observation.ObservationID, ElementID: button.ElementID,
+		Action: UIActionPress, Expected: expected, Confirmed: true,
+	})
+	if !hasErrorCode(err, ErrorStaleTarget) || result.Status != ActionFailed || driver.actCalls != 0 {
+		t.Fatalf("changed expectation = %+v, %v calls=%d", result, err, driver.actCalls)
+	}
+}
+
+func TestElementActionRejectsElementIDFromAnotherObservation(t *testing.T) {
+	session, driver := newSemanticSession(t, semanticActionPolicy(), semanticSnapshot())
+	observation, err := session.InspectUI(t.Context(), InspectUIRequest{Target: 42, Kind: WindowTargetProcess})
+	if err != nil {
+		t.Fatal(err)
+	}
+	button := observation.Elements[1]
+	result, err := session.ActUIElement(t.Context(), ElementActionRequest{
+		ObservationID: observation.ObservationID, ElementID: "observation-999-element-2",
+		Action: UIActionPress, Expected: expectationFromUIElement(&button),
+	})
+	if !hasErrorCode(err, ErrorInvalidInput) || result.Status != ActionFailed || driver.actCalls != 0 {
+		t.Fatalf("foreign element ID = %+v, %v calls=%d", result, err, driver.actCalls)
+	}
+}
+
+func TestElementActionReportsPostDispatchFailureAsUnverified(t *testing.T) {
+	session, driver := newSemanticSession(t, semanticActionPolicy(), semanticSnapshot())
+	observation, err := session.InspectUI(t.Context(), InspectUIRequest{Target: 42, Kind: WindowTargetProcess})
+	if err != nil {
+		t.Fatal(err)
+	}
+	driver.dispatch = true
+	driver.actErr = errors.New("private backend detail")
+	button := observation.Elements[1]
+	result, err := session.ActUIElement(t.Context(), ElementActionRequest{
+		ObservationID: observation.ObservationID, ElementID: button.ElementID,
+		Action: UIActionPress, Expected: expectationFromUIElement(&button), Confirmed: true,
+	})
+	if !hasErrorCode(err, ErrorBackendFailure) || result.Status != ActionUnverified {
+		t.Fatalf("post-dispatch failure = %+v, %v", result, err)
+	}
+}
+
+func TestElementActionRejectsUnofferedAndSensitiveActionsBeforeDispatch(t *testing.T) {
+	session, driver := newSemanticSession(t, semanticActionPolicy(), semanticSnapshot())
+	observation, err := session.InspectUI(t.Context(), InspectUIRequest{Target: 42, Kind: WindowTargetProcess})
+	if err != nil {
+		t.Fatal(err)
+	}
+	button := observation.Elements[1]
+	expected := expectationFromUIElement(&button)
+	expected.Actions = []UIAction{UIActionSetValue}
+	result, err := session.ActUIElement(t.Context(), ElementActionRequest{
+		ObservationID: observation.ObservationID, ElementID: button.ElementID,
+		Action: UIActionSetValue, Expected: expected,
+	})
+	if !hasErrorCode(err, ErrorStaleTarget) || result.Status != ActionFailed || driver.actCalls != 0 {
+		t.Fatalf("unoffered action = %+v, %v calls=%d", result, err, driver.actCalls)
+	}
+	password := observation.Elements[2]
+	password.Actions = []UIAction{UIActionSetValue}
+	result, err = session.ActUIElement(t.Context(), ElementActionRequest{
+		ObservationID: observation.ObservationID, ElementID: password.ElementID,
+		Action: UIActionSetValue, Expected: expectationFromUIElement(&password),
+	})
+	if !hasErrorCode(err, ErrorInvalidInput) || result.Status != ActionFailed || driver.actCalls != 0 {
+		t.Fatalf("sensitive action = %+v, %v calls=%d", result, err, driver.actCalls)
+	}
+}
+
+func TestElementActionUsesIndependentPolicyTimeout(t *testing.T) {
+	policy := semanticActionPolicy()
+	policy.UIActionTimeoutMillis = 5
+	session, driver := newSemanticSession(t, policy, semanticSnapshot())
+	observation, err := session.InspectUI(t.Context(), InspectUIRequest{Target: 42, Kind: WindowTargetProcess})
+	if err != nil {
+		t.Fatal(err)
+	}
+	driver.actBlock = true
+	button := observation.Elements[1]
+	result, err := session.ActUIElement(t.Context(), ElementActionRequest{
+		ObservationID: observation.ObservationID, ElementID: button.ElementID,
+		Action: UIActionPress, Expected: expectationFromUIElement(&button),
+	})
+	if !hasErrorCode(err, ErrorTimedOut) || result.Status != ActionFailed || driver.actCalls != 1 {
+		t.Fatalf("timed semantic action = %+v, %v calls=%d", result, err, driver.actCalls)
+	}
+}
+
+func TestElementActionSessionLifetimeCancelsBackend(t *testing.T) {
+	session, driver := newSemanticSession(t, semanticActionPolicy(), semanticSnapshot())
+	observation, err := session.InspectUI(t.Context(), InspectUIRequest{Target: 42, Kind: WindowTargetProcess})
+	if err != nil {
+		t.Fatal(err)
+	}
+	deadlineCtx := &controlledDeadlineContext{done: make(chan struct{})}
+	session.cancel()
+	session.ctx = deadlineCtx
+	session.cancel = func() {}
+	driver.actBlock = true
+	driver.actStart = func() { close(deadlineCtx.done) }
+	button := observation.Elements[1]
+	result, err := session.ActUIElement(context.Background(), ElementActionRequest{
+		ObservationID: observation.ObservationID, ElementID: button.ElementID,
+		Action: UIActionPress, Expected: expectationFromUIElement(&button),
+	})
+	if !hasErrorCode(err, ErrorTimedOut) || result.Status != ActionFailed || driver.actCalls != 1 {
+		t.Fatalf("session-lifetime semantic action = %+v, %v calls=%d", result, err, driver.actCalls)
+	}
+}
+
+func TestRetainedElementActionOwnsReferenceAndExpectationCopies(t *testing.T) {
+	session, _ := newSemanticSession(t, semanticActionPolicy(), semanticSnapshot())
+	observation, err := session.InspectUI(t.Context(), InspectUIRequest{Target: 42, Kind: WindowTargetProcess})
+	if err != nil {
+		t.Fatal(err)
+	}
+	button := observation.Elements[1]
+	retained, ok := session.retainUIElementAction(observation.ObservationID, button.ElementID)
+	if !ok {
+		t.Fatal("failed to retain semantic action target")
+	}
+	defer clear(retained.reference)
+	if err := session.ReleaseObservation(observation.ObservationID); err != nil {
+		t.Fatal(err)
+	}
+	if string(retained.reference) != "native-button-992" || retained.expected.Name != "Save" ||
+		!slices.Equal(retained.expected.States, []UIState{UIStateEnabled}) ||
+		!slices.Equal(retained.expected.Actions, []UIAction{UIActionPress}) || retained.expected.Bounds == nil {
+		t.Fatalf("retained semantic action was changed by observation release: %+v", retained)
+	}
+}
+
+func TestElementActionRejectsTruncatedObservationBeforeDispatch(t *testing.T) {
+	snapshot := semanticSnapshot()
+	snapshot.Truncated = true
+	snapshot.IdentityTruncated = true
+	session, driver := newSemanticSession(t, semanticActionPolicy(), snapshot)
+	observation, err := session.InspectUI(t.Context(), InspectUIRequest{Target: 42, Kind: WindowTargetProcess})
+	if err != nil || !observation.Truncated {
+		t.Fatalf("truncated observation = %+v, %v", observation, err)
+	}
+	button := observation.Elements[1]
+	result, err := session.ActUIElement(t.Context(), ElementActionRequest{
+		ObservationID: observation.ObservationID, ElementID: button.ElementID,
+		Action: UIActionPress, Expected: expectationFromUIElement(&button),
+	})
+	if !hasErrorCode(err, ErrorStaleTarget) || result.Status != ActionFailed || driver.actCalls != 0 {
+		t.Fatalf("truncated action = %+v, %v calls=%d", result, err, driver.actCalls)
+	}
+}
+
+func TestElementActionPolicyRequiresExactSemanticAndDurationBounds(t *testing.T) {
+	for name, mutate := range map[string]func(*Policy){
+		"actions": func(policy *Policy) { policy.AllowedUIActions = nil },
+		"timeout": func(policy *Policy) { policy.UIActionTimeoutMillis = 0 },
+		"state": func(policy *Policy) {
+			policy.AllowedUIProperties = slices.DeleteFunc(policy.AllowedUIProperties, func(property UIProperty) bool {
+				return property == UIPropertyState
+			})
+		},
+		"bounds": func(policy *Policy) {
+			policy.AllowedUIProperties = slices.DeleteFunc(policy.AllowedUIProperties, func(property UIProperty) bool {
+				return property == UIPropertyBounds
+			})
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			policy := semanticActionPolicy()
+			mutate(&policy)
+			if _, err := preparePolicy(policy); err == nil {
+				t.Fatalf("unbounded semantic action policy succeeded: %+v", policy)
+			}
+		})
 	}
 }
 
@@ -438,7 +679,7 @@ func TestSanitizeUISnapshotRejectsMalformedStructureAndEnums(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			snapshot := semanticSnapshot()
 			mutate(&snapshot)
-			elements, references, _, err := sanitizeUIBackendSnapshot("observation-1", snapshot, policy)
+			elements, references, _, _, err := sanitizeUIBackendSnapshot("observation-1", snapshot, policy)
 			closeUIReferences(references)
 			if err == nil || len(elements) != 0 {
 				t.Fatalf("malformed snapshot result = %+v, %v", elements, err)
@@ -472,7 +713,7 @@ func TestSanitizeUISnapshotEnforcesNodeAndUTF8ByteLimits(t *testing.T) {
 	}
 	snapshot := semanticSnapshot()
 	snapshot.Nodes[0].Name = "€€"
-	elements, references, truncated, err := sanitizeUIBackendSnapshot("observation-1", snapshot, policy)
+	elements, references, truncated, _, err := sanitizeUIBackendSnapshot("observation-1", snapshot, policy)
 	t.Cleanup(func() { closeUIReferences(references) })
 	if err != nil {
 		t.Fatal(err)

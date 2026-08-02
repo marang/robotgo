@@ -21,6 +21,8 @@ const (
 	maxAgentUIElements             = 10_000
 	maxAgentUITreeDepth            = 64
 	maxAgentUIStringBytes          = 1 << 20
+	maxAgentUIActionValueBytes     = 1 << 20
+	maxAgentUIActionTimeoutMS      = 300_000
 	maxAgentViewRegions            = 1024
 	maxAgentViewEncodedBytes       = 16 << 20
 	maxAgentViewDimension          = 8192
@@ -61,6 +63,7 @@ type Policy struct {
 	AllowedWindows             []WindowTarget  `json:"allowed_windows,omitempty"`
 	AllowedUIRoles             []UIRole        `json:"allowed_ui_roles,omitempty"`
 	AllowedUIProperties        []UIProperty    `json:"allowed_ui_properties,omitempty"`
+	AllowedUIActions           []UIAction      `json:"allowed_ui_actions,omitempty"`
 	AllowedViewRegions         []CaptureRegion `json:"allowed_view_regions,omitempty"`
 	ViewRedactionMasks         []CaptureRegion `json:"view_redaction_masks,omitempty"`
 	MaxActions                 uint64          `json:"max_actions"`
@@ -80,6 +83,8 @@ type Policy struct {
 	MaxUIElements              uint32          `json:"max_ui_elements,omitempty"`
 	MaxUITreeDepth             uint32          `json:"max_ui_tree_depth,omitempty"`
 	MaxUIStringBytes           uint32          `json:"max_ui_string_bytes,omitempty"`
+	MaxUIActionValueBytes      uint32          `json:"max_ui_action_value_bytes,omitempty"`
+	UIActionTimeoutMillis      int             `json:"ui_action_timeout_ms,omitempty"`
 	AllowFullDisplayView       bool            `json:"allow_full_display_view,omitempty"`
 	AllowPortalView            bool            `json:"allow_portal_view,omitempty"`
 	MaxViewSourcePixels        uint64          `json:"max_view_source_pixels,omitempty"`
@@ -115,6 +120,7 @@ type Policy struct {
 	allowWindow                map[windowTargetIdentity]WindowTarget
 	allowUIRole                map[UIRole]struct{}
 	allowUIProperty            map[UIProperty]struct{}
+	allowUIAction              map[UIAction]struct{}
 	allowOCRLanguage           map[string]struct{}
 }
 
@@ -150,6 +156,12 @@ func preparePolicy(input Policy) (Policy, error) {
 	}
 	if input.MaxUIStringBytes > maxAgentUIStringBytes {
 		return Policy{}, fmt.Errorf("agent: max UI string bytes exceeds hard limit %d", maxAgentUIStringBytes)
+	}
+	if input.MaxUIActionValueBytes > maxAgentUIActionValueBytes {
+		return Policy{}, fmt.Errorf("agent: max UI action value bytes exceeds hard limit %d", maxAgentUIActionValueBytes)
+	}
+	if input.UIActionTimeoutMillis < 0 || input.UIActionTimeoutMillis > maxAgentUIActionTimeoutMS {
+		return Policy{}, fmt.Errorf("agent: semantic action timeout must be between 0 and %dms", maxAgentUIActionTimeoutMS)
 	}
 	if len(input.AllowedViewRegions) > maxAgentViewRegions || len(input.ViewRedactionMasks) > maxAgentViewRegions {
 		return Policy{}, fmt.Errorf("agent: view region or redaction mask count exceeds hard limit %d", maxAgentViewRegions)
@@ -261,6 +273,7 @@ func preparePolicy(input Policy) (Policy, error) {
 		AllowedWindows:      append([]WindowTarget(nil), input.AllowedWindows...),
 		AllowedUIRoles:      append([]UIRole(nil), input.AllowedUIRoles...),
 		AllowedUIProperties: append([]UIProperty(nil), input.AllowedUIProperties...),
+		AllowedUIActions:    append([]UIAction(nil), input.AllowedUIActions...),
 		AllowedViewRegions:  append([]CaptureRegion(nil), input.AllowedViewRegions...),
 		ViewRedactionMasks:  append([]CaptureRegion(nil), input.ViewRedactionMasks...),
 		MaxActions:          input.MaxActions, MaxTextRunes: input.MaxTextRunes,
@@ -279,6 +292,8 @@ func preparePolicy(input Policy) (Policy, error) {
 		MaxUIElements:              input.MaxUIElements,
 		MaxUITreeDepth:             input.MaxUITreeDepth,
 		MaxUIStringBytes:           input.MaxUIStringBytes,
+		MaxUIActionValueBytes:      input.MaxUIActionValueBytes,
+		UIActionTimeoutMillis:      input.UIActionTimeoutMillis,
 		AllowFullDisplayView:       input.AllowFullDisplayView,
 		AllowPortalView:            input.AllowPortalView,
 		MaxViewSourcePixels:        input.MaxViewSourcePixels,
@@ -314,6 +329,7 @@ func preparePolicy(input Policy) (Policy, error) {
 		allowWindow:                make(map[windowTargetIdentity]WindowTarget),
 		allowUIRole:                make(map[UIRole]struct{}),
 		allowUIProperty:            make(map[UIProperty]struct{}),
+		allowUIAction:              make(map[UIAction]struct{}),
 		allowOCRLanguage:           make(map[string]struct{}),
 	}
 	for _, operation := range prepared.AllowedOperations {
@@ -399,6 +415,15 @@ func preparePolicy(input Policy) (Policy, error) {
 		}
 		prepared.allowUIProperty[property] = struct{}{}
 	}
+	for _, action := range prepared.AllowedUIActions {
+		if !validUIAction(action) {
+			return Policy{}, fmt.Errorf("agent: unsupported allowed UI action %q", action)
+		}
+		if _, exists := prepared.allowUIAction[action]; exists {
+			return Policy{}, fmt.Errorf("agent: duplicate allowed UI action %q", action)
+		}
+		prepared.allowUIAction[action] = struct{}{}
+	}
 	for _, language := range prepared.AllowedOCRLanguages {
 		if !validOCRLanguage(language) {
 			return Policy{}, fmt.Errorf("agent: invalid allowed OCR language %q", language)
@@ -464,6 +489,23 @@ func preparePolicy(input Policy) (Policy, error) {
 		}
 		if _, allowed := prepared.allowUIProperty[UIPropertyRole]; !allowed {
 			return Policy{}, fmt.Errorf("agent: desktop.inspect-ui requires the role property")
+		}
+	}
+	if _, allowed := prepared.allowOperation[OperationElementAct]; allowed {
+		if _, inspectAllowed := prepared.allowOperation[OperationInspectUI]; !inspectAllowed {
+			return Policy{}, fmt.Errorf("agent: desktop.element-act requires desktop.inspect-ui")
+		}
+		if len(prepared.allowUIAction) == 0 || prepared.MaxActions == 0 || prepared.UIActionTimeoutMillis == 0 ||
+			prepared.MinActionIntervalMillis == 0 || prepared.SessionTimeoutMillis == 0 {
+			return Policy{}, fmt.Errorf("agent: desktop.element-act requires allowed semantic actions and bounded action count, rate, action duration, and lifetime")
+		}
+		if _, allowed := prepared.allowUIAction[UIActionSetValue]; allowed && prepared.MaxUIActionValueBytes == 0 {
+			return Policy{}, fmt.Errorf("agent: semantic set-value requires a bounded value byte limit")
+		}
+		for _, property := range []UIProperty{UIPropertyName, UIPropertyState, UIPropertyBounds, UIPropertyActions} {
+			if _, allowed := prepared.allowUIProperty[property]; !allowed {
+				return Policy{}, fmt.Errorf("agent: desktop.element-act requires the %s property", property)
+			}
 		}
 	}
 	if _, allowed := prepared.allowOperation[OperationView]; allowed {
@@ -543,6 +585,7 @@ func allowsMutation(operations map[Operation]struct{}) bool {
 	for _, operation := range []Operation{
 		OperationMove, OperationClick, OperationScroll, OperationDrag,
 		OperationTypeText, OperationKeyChord, OperationActivate,
+		OperationElementAct,
 	} {
 		if _, allowed := operations[operation]; allowed {
 			return true
@@ -554,6 +597,7 @@ func allowsMutation(operations map[Operation]struct{}) bool {
 func allowsExtendedMutation(operations map[Operation]struct{}) bool {
 	for _, operation := range []Operation{
 		OperationScroll, OperationDrag, OperationKeyChord, OperationActivate,
+		OperationElementAct,
 	} {
 		if _, allowed := operations[operation]; allowed {
 			return true
@@ -568,6 +612,8 @@ func knownOperation(operation Operation) bool {
 		OperationTypeText, OperationKeyChord, OperationActivate,
 		OperationObserve, OperationView, OperationOCR, OperationDetectElements,
 		OperationInspectUI, OperationFindColor, OperationWaitColor:
+		return true
+	case OperationElementAct:
 		return true
 	default:
 		return false

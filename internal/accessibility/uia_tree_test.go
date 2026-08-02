@@ -38,6 +38,87 @@ func newFakeUIAQuery(nodes map[int]fakeUIANode) *fakeUIAQuery {
 	return query
 }
 
+func TestUIARangeValueActionsRequireUsableSmallChange(t *testing.T) {
+	tests := []struct {
+		name          string
+		readOnly      bool
+		available     bool
+		stepSupported bool
+		step          float64
+		want          string
+	}{
+		{name: "writable slider", available: true, stepSupported: true, step: 1, want: "[set-value increment decrement]"},
+		{name: "zero step", available: true, stepSupported: true, want: "[set-value]"},
+		{name: "nan step", available: true, stepSupported: true, step: math.NaN(), want: "[set-value]"},
+		{name: "infinite step", available: true, stepSupported: true, step: math.Inf(1), want: "[set-value]"},
+		{name: "missing step", available: true, want: "[set-value]"},
+		{name: "read only", readOnly: true, available: true, stepSupported: true, step: 1, want: "[]"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			got := uiaRangeValueActions(test.readOnly, test.available, test.stepSupported, test.step)
+			if fmt.Sprint(got) != test.want {
+				t.Fatalf("uiaRangeValueActions() = %v, want %s", got, test.want)
+			}
+		})
+	}
+}
+
+func TestNextBoundedStepValueClampsBeforeDispatch(t *testing.T) {
+	tests := []struct {
+		name      string
+		current   float64
+		step      float64
+		minimum   float64
+		maximum   float64
+		decrement bool
+		want      float64
+		wantErr   bool
+	}{
+		{name: "increment", current: 4, step: 1, minimum: 0, maximum: 10, want: 5},
+		{name: "decrement", current: 4, step: 1, minimum: 0, maximum: 10, decrement: true, want: 3},
+		{name: "maximum endpoint", current: 10, step: 1, minimum: 0, maximum: 10, want: 10},
+		{name: "minimum endpoint", current: 0, step: 1, minimum: 0, maximum: 10, decrement: true, want: 0},
+		{name: "upper clamp", current: 9, step: 5, minimum: 0, maximum: 10, want: 10},
+		{name: "lower clamp", current: 1, step: 5, minimum: 0, maximum: 10, decrement: true, want: 0},
+		{name: "finite overflow", current: math.MaxFloat64, step: math.MaxFloat64, minimum: 0, maximum: math.MaxFloat64, want: math.MaxFloat64},
+		{name: "invalid range", current: 1, step: 1, minimum: 2, maximum: 1, wantErr: true},
+		{name: "invalid current", current: 11, step: 1, minimum: 0, maximum: 10, wantErr: true},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			got, err := nextBoundedStepValue(test.current, test.step, test.minimum, test.maximum, test.decrement)
+			if (err != nil) != test.wantErr || got != test.want {
+				t.Fatalf("nextBoundedStepValue() = %v, %v, want %v, error=%v", got, err, test.want, test.wantErr)
+			}
+		})
+	}
+}
+
+func TestValidateExplicitRangeValueRejectsInvalidInputBeforeDispatch(t *testing.T) {
+	for _, test := range []struct {
+		name                    string
+		value, minimum, maximum float64
+		wantErr                 bool
+	}{
+		{name: "inside", value: 4, minimum: 0, maximum: 10},
+		{name: "minimum", value: 0, minimum: 0, maximum: 10},
+		{name: "maximum", value: 10, minimum: 0, maximum: 10},
+		{name: "below", value: -1, minimum: 0, maximum: 10, wantErr: true},
+		{name: "above", value: 11, minimum: 0, maximum: 10, wantErr: true},
+		{name: "invalid range", value: 1, minimum: 2, maximum: 1, wantErr: true},
+		{name: "nan value", value: math.NaN(), minimum: 0, maximum: 10, wantErr: true},
+		{name: "infinite maximum", value: 1, minimum: 0, maximum: math.Inf(1), wantErr: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			err := validateExplicitRangeValue(test.value, test.minimum, test.maximum)
+			if (err != nil) != test.wantErr {
+				t.Fatalf("validateExplicitRangeValue() error = %v, want error=%v", err, test.wantErr)
+			}
+		})
+	}
+}
+
 func (query *fakeUIAQuery) processID(_ context.Context, reference int) (int32, error) {
 	query.processCalls[reference]++
 	node, ok := query.nodes[reference]
@@ -166,7 +247,7 @@ func TestBuildUIATreeMinimizesPrivateAndOutOfScopeReads(t *testing.T) {
 		},
 	}
 	query := newFakeUIAQuery(nodes)
-	snapshot, err := buildUIATree(t.Context(), query, 1, 42, uiaTestLimits())
+	snapshot, err := buildUIATree(t.Context(), query, 1, 42, 77, uiaTestLimits())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -209,7 +290,7 @@ func TestBuildUIATreeReleasesCurrentAndPrefetchedSiblingOnError(t *testing.T) {
 	}
 	query := newFakeUIAQuery(nodes)
 	query.nextError[2] = ErrUnavailable
-	if _, err := buildUIATree(t.Context(), query, 1, 42, uiaTestLimits()); !errors.Is(err, ErrUnavailable) {
+	if _, err := buildUIATree(t.Context(), query, 1, 42, 77, uiaTestLimits()); !errors.Is(err, ErrUnavailable) {
 		t.Fatalf("error = %v", err)
 	}
 	if query.releases[1] != 1 || query.releases[2] != 1 || query.releases[3] != 0 {
@@ -218,7 +299,7 @@ func TestBuildUIATreeReleasesCurrentAndPrefetchedSiblingOnError(t *testing.T) {
 
 	query = newFakeUIAQuery(nodes)
 	nodes[2] = fakeUIANode{structure: fakeUIAStructure(1, 42, uiaControlButton)}
-	if _, err := buildUIATree(t.Context(), query, 1, 42, uiaTestLimits()); !errors.Is(err, ErrInvalidTree) {
+	if _, err := buildUIATree(t.Context(), query, 1, 42, 77, uiaTestLimits()); !errors.Is(err, ErrInvalidTree) {
 		t.Fatalf("duplicate error = %v", err)
 	}
 	if query.releases[1] != 1 || query.releases[2] != 1 || query.releases[3] != 1 {
@@ -234,7 +315,7 @@ func TestBuildUIATreeBoundsNodesAndReferences(t *testing.T) {
 	limits := uiaTestLimits()
 	limits.MaxElements = 1
 	query := newFakeUIAQuery(nodes)
-	snapshot, err := buildUIATree(t.Context(), query, 1, 42, limits)
+	snapshot, err := buildUIATree(t.Context(), query, 1, 42, 77, limits)
 	if err != nil || len(snapshot.Nodes) != 1 || !snapshot.Truncated {
 		t.Fatalf("bounded snapshot = %+v, %v", snapshot, err)
 	}
@@ -245,7 +326,7 @@ func TestBuildUIATreeBoundsNodesAndReferences(t *testing.T) {
 	limits = uiaTestLimits()
 	limits.MaxReferenceBytes = 8
 	query = newFakeUIAQuery(nodes)
-	if _, err := buildUIATree(t.Context(), query, 1, 42, limits); !errors.Is(err, ErrInvalidTree) {
+	if _, err := buildUIATree(t.Context(), query, 1, 42, 77, limits); !errors.Is(err, ErrInvalidTree) {
 		t.Fatalf("reference limit error = %v", err)
 	}
 	if query.releases[1] != 1 {
@@ -266,11 +347,20 @@ func TestUIARoleReferenceAndNumericContracts(t *testing.T) {
 			t.Fatalf("role(%d) = %q, want %q", control, got, want)
 		}
 	}
-	reference, err := encodeUIAReference(42, []int32{1, -2, 3})
-	if err != nil || len(reference) != 19 || reference[0] != uiaReferenceVersion {
+	reference, err := encodeUIAReference(42, 77, []int32{1, -2, 3})
+	if err != nil || len(reference) != 27 || reference[0] != uiaReferenceVersion {
 		t.Fatalf("reference = %x, %v", reference, err)
 	}
-	if _, err := encodeUIAReference(0, []int32{1}); !errors.Is(err, ErrInvalidTree) {
+	pid, handle, runtimeID, err := decodeUIAReference(reference)
+	if err != nil || pid != 42 || handle != 77 || fmt.Sprint(runtimeID) != "[1 -2 3]" {
+		t.Fatalf("decoded reference = %d %d %v, %v", pid, handle, runtimeID, err)
+	}
+	for _, invalid := range [][]byte{nil, reference[:len(reference)-1], append(append([]byte(nil), reference...), 0)} {
+		if _, _, _, err := decodeUIAReference(invalid); !errors.Is(err, ErrStaleTarget) {
+			t.Fatalf("invalid reference %x error = %v", invalid, err)
+		}
+	}
+	if _, err := encodeUIAReference(0, 77, []int32{1}); !errors.Is(err, ErrInvalidTree) {
 		t.Fatalf("invalid process reference error = %v", err)
 	}
 	if _, err := uiaNumericValue(math.NaN()); !errors.Is(err, ErrInvalidTree) {

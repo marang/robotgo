@@ -63,6 +63,7 @@ func inspect(ctx context.Context, target Target, limits Limits) (Snapshot, error
 	snapshot := Snapshot{
 		Backend: BackendMacOSAccessibility,
 		Nodes:   make([]Node, 0, len(native.Nodes)), Truncated: native.Truncated,
+		IdentityTruncated: native.IdentityTruncated,
 	}
 	for index := range native.Nodes {
 		node := &native.Nodes[index]
@@ -85,6 +86,32 @@ func inspect(ctx context.Context, target Target, limits Limits) (Snapshot, error
 		snapshot.Nodes = append(snapshot.Nodes, converted)
 	}
 	return snapshot, nil
+}
+
+func act(ctx context.Context, request ActionRequest) (ActionResult, error) {
+	expected := darwinwindow.AccessibilityElementExpectation{
+		Role: request.Expected.Role, Name: request.Expected.Name,
+		Sensitive: request.Expected.Sensitive,
+		States:    append([]string(nil), request.Expected.States...),
+		Actions:   append([]string(nil), request.Expected.Actions...),
+	}
+	if request.Expected.Bounds != nil {
+		expected.Bounds = &darwinwindow.AccessibilityBounds{
+			X: request.Expected.Bounds.X, Y: request.Expected.Bounds.Y,
+			Width: request.Expected.Bounds.Width, Height: request.Expected.Bounds.Height,
+		}
+	}
+	result, err := darwinwindow.ActAccessibility(ctx, darwinwindow.AccessibilityActionRequest{
+		Target: darwinwindow.AccessibilityTarget{
+			ProcessID: request.Target.ProcessID, CGWindowID: request.Target.NativeWindowHandle,
+			ExpectedTitle: request.Target.ExpectedTitle,
+		},
+		Reference: request.Reference, Expected: expected, Action: request.Action, Value: request.Value,
+	})
+	if err != nil {
+		return ActionResult{Dispatched: result.Dispatched}, normalizeDarwinAccessibilityError(err)
+	}
+	return ActionResult{Dispatched: result.Dispatched}, nil
 }
 func darwinAccessibilityCapabilityError(err error) Capability {
 	if errors.Is(err, darwinwindow.ErrPermission) {

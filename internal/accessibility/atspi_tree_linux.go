@@ -5,6 +5,7 @@ package accessibility
 import (
 	"context"
 	"crypto/sha256"
+	"errors"
 	"math"
 	"strconv"
 	"strings"
@@ -166,6 +167,7 @@ func buildATSPITree(ctx context.Context, query atspiQuery, root atspiReference, 
 					return normalizeATSPIError(err)
 				}
 				node.Name = budget.take(value)
+				snapshot.IdentityTruncated = snapshot.IdentityTruncated || node.Name != value
 			}
 			if limits.ReadDescription {
 				value, err := query.stringProperty(ctx, reference, atspiPropertyDescription)
@@ -208,18 +210,15 @@ func buildATSPITree(ctx context.Context, query atspiQuery, root atspiReference, 
 			node.Bounds = &Bounds{X: int(rect.X), Y: int(rect.Y), Width: int(rect.Width), Height: int(rect.Height)}
 		}
 		if limits.ReadActions {
-			hasDefaultAction := false
-			if interfaces[atspiShortAction] && defaultATSPIAction(role) != "" {
-				count, err := query.actionCount(ctx, reference)
-				if err != nil {
-					return normalizeATSPIError(err)
-				}
-				if count < 0 || count > maxATSPIActions {
-					return ErrInvalidTree
-				}
-				hasDefaultAction = count > 0
+			actionNames, err := readATSPIActionNames(ctx, query, reference, interfaces)
+			if err != nil {
+				return err
 			}
-			node.Actions = inferATSPIActions(role, stateWords, interfaces, hasDefaultAction)
+			stepActions, err := usableATSPIStepActions(ctx, query, reference, role, interfaces)
+			if err != nil {
+				return err
+			}
+			node.Actions = inferATSPIActions(role, stateWords, interfaces, actionNames, stepActions)
 		}
 		if limits.ReadValue {
 			value, err := readATSPIValue(ctx, query, reference, role, interfaces, limits.MaxStringBytes)
@@ -388,28 +387,47 @@ func inferATSPIActions(
 	role string,
 	words []uint32,
 	interfaces map[string]bool,
-	hasDefaultAction bool,
+	actionNames []string,
+	stepActions bool,
 ) []string {
 	actions := make([]string, 0, 4)
-	if action := defaultATSPIAction(role); hasDefaultAction && action != "" {
+	if action := defaultATSPIAction(role); findATSPIActionIndex(action, actionNames) >= 0 {
 		actions = append(actions, action)
 	}
 	if interfaces[atspiShortComponent] && atspiStateSet(words, atspiStateFocusable) {
 		actions = append(actions, "focus")
 	}
-	if role == "textbox" && interfaces[atspiShortEditableText] {
+	if role == "textbox" && interfaces[atspiShortEditableText] && atspiStateSet(words, atspiStateEditable) {
 		actions = append(actions, "set-value")
 	}
-	if atspiStateSet(words, atspiStateCollapsed) {
+	if atspiStateSet(words, atspiStateCollapsed) && findATSPIActionIndex("expand", actionNames) >= 0 {
 		actions = append(actions, "expand")
 	}
-	if atspiStateSet(words, atspiStateExpanded) {
+	if atspiStateSet(words, atspiStateExpanded) && findATSPIActionIndex("collapse", actionNames) >= 0 {
 		actions = append(actions, "collapse")
 	}
 	if interfaces[atspiShortValue] && role == "slider" {
-		actions = append(actions, "set-value", "increment", "decrement")
+		actions = append(actions, "set-value")
+		if stepActions {
+			actions = append(actions, "increment", "decrement")
+		}
 	}
 	return uniqueStrings(actions)
+}
+
+func usableATSPIStepActions(ctx context.Context, query atspiQuery, reference atspiReference, role string, interfaces map[string]bool) (bool, error) {
+	if role != "slider" || !interfaces[atspiShortValue] {
+		return false, nil
+	}
+	step, err := query.minimumIncrement(ctx, reference)
+	if err != nil {
+		err = normalizeATSPIError(err)
+		if errors.Is(err, ErrUnsupported) {
+			return false, nil
+		}
+		return false, err
+	}
+	return step > 0 && !math.IsInf(step, 0), nil
 }
 
 func defaultATSPIAction(role string) string {

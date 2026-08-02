@@ -3,8 +3,12 @@
 package accessibility
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"math"
+	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -12,38 +16,44 @@ import (
 )
 
 const (
-	atspiBusDestination       = "org.a11y.Bus"
-	atspiBusPath              = dbus.ObjectPath("/org/a11y/bus")
-	atspiBusInterface         = "org.a11y.Bus"
-	atspiRegistryDestination  = "org.a11y.atspi.Registry"
-	atspiRootPath             = dbus.ObjectPath("/org/a11y/atspi/accessible/root")
-	atspiAccessibleInterface  = "org.a11y.atspi.Accessible"
-	atspiActionInterface      = "org.a11y.atspi.Action"
-	atspiComponentInterface   = "org.a11y.atspi.Component"
-	atspiTextInterface        = "org.a11y.atspi.Text"
-	atspiValueInterface       = "org.a11y.atspi.Value"
-	atspiPropertyChildCount   = "ChildCount"
-	atspiPropertyName         = "Name"
-	atspiPropertyDescription  = "Description"
-	atspiPropertyCurrentValue = "CurrentValue"
-	atspiPropertyActionCount  = "NActions"
-	atspiShortAction          = "Action"
-	atspiShortComponent       = "Component"
-	atspiShortEditableText    = "EditableText"
-	atspiShortText            = "Text"
-	atspiShortValue           = "Value"
-	dbusPropertiesInterface   = "org.freedesktop.DBus.Properties"
-	dbusDestination           = "org.freedesktop.DBus"
-	dbusPath                  = dbus.ObjectPath("/org/freedesktop/DBus")
-	dbusInterface             = "org.freedesktop.DBus"
-	atspiNullPath             = dbus.ObjectPath("/org/a11y/atspi/null")
-	atspiProbeTimeout         = 750 * time.Millisecond
-	maxATSPIApplications      = 4096
-	maxATSPITopLevelWindows   = 256
-	maxATSPIInterfaces        = 64
-	maxATSPIInterfaceBytes    = 128
-	maxATSPIActions           = 64
-	atspiCoordinateTypeScreen = uint32(0)
+	atspiBusDestination           = "org.a11y.Bus"
+	atspiBusPath                  = dbus.ObjectPath("/org/a11y/bus")
+	atspiBusInterface             = "org.a11y.Bus"
+	atspiRegistryDestination      = "org.a11y.atspi.Registry"
+	atspiRootPath                 = dbus.ObjectPath("/org/a11y/atspi/accessible/root")
+	atspiAccessibleInterface      = "org.a11y.atspi.Accessible"
+	atspiActionInterface          = "org.a11y.atspi.Action"
+	atspiComponentInterface       = "org.a11y.atspi.Component"
+	atspiEditableTextInterface    = "org.a11y.atspi.EditableText"
+	atspiTextInterface            = "org.a11y.atspi.Text"
+	atspiValueInterface           = "org.a11y.atspi.Value"
+	atspiPropertyChildCount       = "ChildCount"
+	atspiPropertyName             = "Name"
+	atspiPropertyDescription      = "Description"
+	atspiPropertyCurrentValue     = "CurrentValue"
+	atspiPropertyMinimumIncrement = "MinimumIncrement"
+	atspiPropertyMinimumValue     = "MinimumValue"
+	atspiPropertyMaximumValue     = "MaximumValue"
+	atspiPropertyActionCount      = "NActions"
+	atspiPropertyParent           = "Parent"
+	atspiShortAction              = "Action"
+	atspiShortComponent           = "Component"
+	atspiShortEditableText        = "EditableText"
+	atspiShortText                = "Text"
+	atspiShortValue               = "Value"
+	dbusPropertiesInterface       = "org.freedesktop.DBus.Properties"
+	dbusDestination               = "org.freedesktop.DBus"
+	dbusPath                      = dbus.ObjectPath("/org/freedesktop/DBus")
+	dbusInterface                 = "org.freedesktop.DBus"
+	atspiNullPath                 = dbus.ObjectPath("/org/a11y/atspi/null")
+	atspiProbeTimeout             = 750 * time.Millisecond
+	maxATSPIApplications          = 4096
+	maxATSPITopLevelWindows       = 256
+	maxATSPIInterfaces            = 64
+	maxATSPIInterfaceBytes        = 128
+	maxATSPIActions               = 64
+	maxATSPIAncestors             = 64
+	atspiCoordinateTypeScreen     = uint32(0)
 )
 
 type atspiReference struct {
@@ -71,6 +81,15 @@ type atspiQuery interface {
 	text(context.Context, atspiReference, int32) (string, error)
 	currentValue(context.Context, atspiReference) (float64, error)
 	actionCount(context.Context, atspiReference) (int32, error)
+	actionName(context.Context, atspiReference, int32) (string, error)
+	parent(context.Context, atspiReference) (atspiReference, error)
+	doAction(context.Context, atspiReference, int32) (bool, error)
+	grabFocus(context.Context, atspiReference) (bool, error)
+	setTextContents(context.Context, atspiReference, string) (bool, error)
+	minimumIncrement(context.Context, atspiReference) (float64, error)
+	minimumValue(context.Context, atspiReference) (float64, error)
+	maximumValue(context.Context, atspiReference) (float64, error)
+	setCurrentValue(context.Context, atspiReference, float64) error
 }
 
 type dbusATSPIQuery struct {
@@ -186,6 +205,439 @@ func inspect(ctx context.Context, target Target, limits Limits) (Snapshot, error
 	return snapshot, nil
 }
 
+func act(ctx context.Context, request ActionRequest) (ActionResult, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if request.Target.ProcessID <= 0 || request.Target.NativeWindowHandle != 0 ||
+		request.Target.ExpectedTitle == "" || request.Expected.Sensitive {
+		return ActionResult{}, ErrStaleTarget
+	}
+	reference, err := decodeATSPIReference(request.Reference)
+	if err != nil {
+		return ActionResult{}, err
+	}
+	session, err := connectSessionBusWithoutAutostart(ctx)
+	if err != nil {
+		return ActionResult{}, normalizeATSPIError(err)
+	}
+	defer func() { _ = session.Close() }()
+	owned, err := nameHasOwner(ctx, session, atspiBusDestination)
+	if err != nil || !owned {
+		if err == nil {
+			err = ErrUnavailable
+		}
+		return ActionResult{}, normalizeATSPIError(err)
+	}
+	address, err := accessibilityBusAddress(ctx, session)
+	if err != nil {
+		return ActionResult{}, normalizeATSPIError(err)
+	}
+	accessibilityBus, err := dbus.Connect(address, dbus.WithContext(ctx))
+	if err != nil {
+		return ActionResult{}, normalizeATSPIError(err)
+	}
+	defer func() { _ = accessibilityBus.Close() }()
+	owned, err = nameHasOwner(ctx, accessibilityBus, atspiRegistryDestination)
+	if err != nil || !owned {
+		if err == nil {
+			err = ErrUnavailable
+		}
+		return ActionResult{}, normalizeATSPIError(err)
+	}
+	return actATSPI(ctx, &dbusATSPIQuery{conn: accessibilityBus}, request, reference)
+}
+
+func actATSPI(ctx context.Context, query atspiQuery, request ActionRequest, reference atspiReference) (ActionResult, error) {
+	root, err := findATSPITarget(ctx, query, request.Target)
+	if err != nil {
+		return ActionResult{}, err
+	}
+	if err := validateATSPIMembership(ctx, query, root, reference, uint32(request.Target.ProcessID)); err != nil {
+		return ActionResult{}, err
+	}
+	liveTitle, err := query.stringProperty(ctx, root, atspiPropertyName)
+	if err != nil {
+		return ActionResult{}, normalizeATSPIError(err)
+	}
+	if liveTitle != request.Target.ExpectedTitle {
+		return ActionResult{}, ErrStaleTarget
+	}
+	target, err := validateATSPIElement(ctx, query, reference, request)
+	if err != nil {
+		return ActionResult{}, err
+	}
+	validateElement := func() (atspiActionTarget, error) {
+		return validateATSPIElement(ctx, query, reference, request)
+	}
+	validateWindow := func() error {
+		if err := validateATSPIMembership(ctx, query, root, reference, uint32(request.Target.ProcessID)); err != nil {
+			return err
+		}
+		liveTitle, err := query.stringProperty(ctx, root, atspiPropertyName)
+		if err != nil {
+			return normalizeATSPIError(err)
+		}
+		if liveTitle != request.Target.ExpectedTitle {
+			return ErrStaleTarget
+		}
+		return nil
+	}
+	return dispatchATSPIAction(ctx, query, reference, target.roleID, target.interfaces, request, validateElement, validateWindow)
+}
+
+type atspiActionTarget struct {
+	roleID     uint32
+	interfaces map[string]bool
+}
+
+func validateATSPIElement(ctx context.Context, query atspiQuery, reference atspiReference, request ActionRequest) (atspiActionTarget, error) {
+	roleID, err := query.role(ctx, reference)
+	if err != nil {
+		return atspiActionTarget{}, normalizeATSPIError(err)
+	}
+	states, err := query.states(ctx, reference)
+	if err != nil {
+		return atspiActionTarget{}, normalizeATSPIError(err)
+	}
+	if len(states) != 2 || roleID == atspiRolePasswordText {
+		return atspiActionTarget{}, ErrStaleTarget
+	}
+	name, err := query.stringProperty(ctx, reference, atspiPropertyName)
+	if err != nil {
+		return atspiActionTarget{}, normalizeATSPIError(err)
+	}
+	interfaces, err := readATSPIInterfaces(ctx, query, reference)
+	if err != nil {
+		return atspiActionTarget{}, err
+	}
+	bounds, err := liveATSPIBounds(ctx, query, reference, interfaces, request.Expected.Bounds != nil)
+	if err != nil {
+		return atspiActionTarget{}, err
+	}
+	actionNames, err := readATSPIActionNames(ctx, query, reference, interfaces)
+	if err != nil {
+		return atspiActionTarget{}, err
+	}
+	role := mapATSPIRole(roleID)
+	stepActions, err := usableATSPIStepActions(ctx, query, reference, role, interfaces)
+	if err != nil {
+		return atspiActionTarget{}, err
+	}
+	actions := inferATSPIActions(role, states, interfaces, actionNames, stepActions)
+	mappedStates := mapATSPIStates(role, states)
+	if role != request.Expected.Role || name != request.Expected.Name ||
+		!slices.Equal(mappedStates, request.Expected.States) ||
+		!equalAccessibilityBounds(bounds, request.Expected.Bounds) ||
+		!slices.Equal(actions, request.Expected.Actions) || !slices.Contains(actions, request.Action) ||
+		slices.Contains(mappedStates, "disabled") {
+		return atspiActionTarget{}, ErrStaleTarget
+	}
+	return atspiActionTarget{roleID: roleID, interfaces: interfaces}, nil
+}
+
+func decodeATSPIReference(data []byte) (atspiReference, error) {
+	separator := bytes.IndexByte(data, 0)
+	if separator <= 0 || separator == len(data)-1 || bytes.IndexByte(data[separator+1:], 0) >= 0 {
+		return atspiReference{}, ErrStaleTarget
+	}
+	reference := atspiReference{Bus: string(data[:separator]), Path: dbus.ObjectPath(string(data[separator+1:]))}
+	if !validATSPIReference(reference) {
+		return atspiReference{}, ErrStaleTarget
+	}
+	return reference, nil
+}
+
+func validateATSPIMembership(ctx context.Context, query atspiQuery, root, reference atspiReference, processID uint32) error {
+	livePID, err := query.processID(ctx, reference.Bus)
+	if err != nil {
+		return normalizeATSPIError(err)
+	}
+	if livePID != processID {
+		return ErrStaleTarget
+	}
+	seen := make(map[string]struct{}, maxATSPIAncestors)
+	current := reference
+	for depth := 0; depth <= maxATSPIAncestors; depth++ {
+		if current == root {
+			return nil
+		}
+		key := current.Bus + "\x00" + string(current.Path)
+		if _, duplicate := seen[key]; duplicate {
+			return ErrStaleTarget
+		}
+		seen[key] = struct{}{}
+		parent, err := query.parent(ctx, current)
+		if err != nil {
+			return normalizeATSPIError(err)
+		}
+		if !validATSPIReference(parent) {
+			return ErrStaleTarget
+		}
+		current = parent
+	}
+	return ErrStaleTarget
+}
+
+func readATSPIInterfaces(ctx context.Context, query atspiQuery, reference atspiReference) (map[string]bool, error) {
+	values, err := query.interfaces(ctx, reference)
+	if err != nil {
+		return nil, normalizeATSPIError(err)
+	}
+	if len(values) > maxATSPIInterfaces {
+		return nil, ErrInvalidTree
+	}
+	result := make(map[string]bool, len(values))
+	for _, value := range values {
+		if value == "" || len(value) > maxATSPIInterfaceBytes || strings.IndexByte(value, 0) >= 0 {
+			return nil, ErrInvalidTree
+		}
+		result[value] = true
+	}
+	return result, nil
+}
+
+func readATSPIActionNames(ctx context.Context, query atspiQuery, reference atspiReference, interfaces map[string]bool) ([]string, error) {
+	if !interfaces[atspiShortAction] {
+		return nil, nil
+	}
+	count, err := query.actionCount(ctx, reference)
+	if err != nil {
+		return nil, normalizeATSPIError(err)
+	}
+	if count < 0 || count > maxATSPIActions {
+		return nil, ErrInvalidTree
+	}
+	result := make([]string, 0, count)
+	for index := int32(0); index < count; index++ {
+		name, err := readATSPIActionName(ctx, query, reference, index)
+		if err != nil {
+			return nil, err
+		}
+		result = append(result, name)
+	}
+	return result, nil
+}
+
+func readATSPIActionName(ctx context.Context, query atspiQuery, reference atspiReference, index int32) (string, error) {
+	name, err := query.actionName(ctx, reference, index)
+	if err != nil {
+		return "", normalizeATSPIError(err)
+	}
+	name = strings.ToLower(strings.TrimSpace(name))
+	if name == "" || len(name) > maxATSPIInterfaceBytes || strings.IndexByte(name, 0) >= 0 {
+		return "", ErrInvalidTree
+	}
+	return name, nil
+}
+
+func liveATSPIBounds(ctx context.Context, query atspiQuery, reference atspiReference, interfaces map[string]bool, required bool) (*Bounds, error) {
+	if !required {
+		return nil, nil
+	}
+	if !interfaces[atspiShortComponent] {
+		return nil, ErrStaleTarget
+	}
+	rect, err := query.extents(ctx, reference)
+	if err != nil {
+		return nil, normalizeATSPIError(err)
+	}
+	return &Bounds{X: int(rect.X), Y: int(rect.Y), Width: int(rect.Width), Height: int(rect.Height)}, nil
+}
+
+func dispatchATSPIAction(
+	ctx context.Context,
+	query atspiQuery,
+	reference atspiReference,
+	roleID uint32,
+	interfaces map[string]bool,
+	request ActionRequest,
+	validateElement func() (atspiActionTarget, error),
+	validateWindow func() error,
+) (ActionResult, error) {
+	dispatched := ActionResult{Dispatched: true}
+	validateDispatch := func() (atspiActionTarget, error) {
+		target, err := validateElement()
+		if err != nil {
+			return atspiActionTarget{}, err
+		}
+		if err := validateWindow(); err != nil {
+			return atspiActionTarget{}, err
+		}
+		return target, nil
+	}
+	switch request.Action {
+	case "focus":
+		if !interfaces[atspiShortComponent] {
+			return ActionResult{}, ErrStaleTarget
+		}
+		if _, err := validateDispatch(); err != nil {
+			return ActionResult{}, err
+		}
+		ok, err := query.grabFocus(ctx, reference)
+		if err != nil {
+			return dispatched, normalizeATSPIError(err)
+		}
+		if !ok {
+			return dispatched, ErrUnavailable
+		}
+		return dispatched, nil
+	case "set-value":
+		if mapATSPIRole(roleID) == "textbox" && interfaces[atspiShortEditableText] {
+			if _, err := validateDispatch(); err != nil {
+				return ActionResult{}, err
+			}
+			ok, err := query.setTextContents(ctx, reference, request.Value)
+			if err != nil {
+				return dispatched, normalizeATSPIError(err)
+			}
+			if !ok {
+				return dispatched, ErrUnavailable
+			}
+			return dispatched, nil
+		}
+		if mapATSPIRole(roleID) != "slider" || !interfaces[atspiShortValue] {
+			return ActionResult{}, ErrStaleTarget
+		}
+		value, err := strconv.ParseFloat(request.Value, 64)
+		if err != nil || math.IsNaN(value) || math.IsInf(value, 0) {
+			return ActionResult{}, ErrInvalidTree
+		}
+		minimum, err := query.minimumValue(ctx, reference)
+		if err != nil {
+			return ActionResult{}, normalizeATSPIError(err)
+		}
+		maximum, err := query.maximumValue(ctx, reference)
+		if err != nil {
+			return ActionResult{}, normalizeATSPIError(err)
+		}
+		if err := validateExplicitRangeValue(value, minimum, maximum); err != nil {
+			return ActionResult{}, err
+		}
+		if _, err := validateDispatch(); err != nil {
+			return ActionResult{}, err
+		}
+		minimum, err = query.minimumValue(ctx, reference)
+		if err != nil {
+			return ActionResult{}, normalizeATSPIError(err)
+		}
+		maximum, err = query.maximumValue(ctx, reference)
+		if err != nil {
+			return ActionResult{}, normalizeATSPIError(err)
+		}
+		if err := validateExplicitRangeValue(value, minimum, maximum); err != nil {
+			return ActionResult{}, err
+		}
+		if _, err := validateDispatch(); err != nil {
+			return ActionResult{}, err
+		}
+		if err := query.setCurrentValue(ctx, reference, value); err != nil {
+			return dispatched, normalizeATSPIError(err)
+		}
+		return dispatched, nil
+	case "increment", "decrement":
+		if mapATSPIRole(roleID) != "slider" || !interfaces[atspiShortValue] {
+			return ActionResult{}, ErrStaleTarget
+		}
+		current, err := query.currentValue(ctx, reference)
+		if err != nil {
+			return ActionResult{}, normalizeATSPIError(err)
+		}
+		step, err := query.minimumIncrement(ctx, reference)
+		if err != nil {
+			return ActionResult{}, normalizeATSPIError(err)
+		}
+		minimum, err := query.minimumValue(ctx, reference)
+		if err != nil {
+			return ActionResult{}, normalizeATSPIError(err)
+		}
+		maximum, err := query.maximumValue(ctx, reference)
+		if err != nil {
+			return ActionResult{}, normalizeATSPIError(err)
+		}
+		if _, err := nextBoundedStepValue(current, step, minimum, maximum, request.Action == "decrement"); err != nil {
+			return ActionResult{}, ErrInvalidTree
+		}
+		if _, err := validateDispatch(); err != nil {
+			return ActionResult{}, err
+		}
+		current, err = query.currentValue(ctx, reference)
+		if err != nil {
+			return ActionResult{}, normalizeATSPIError(err)
+		}
+		step, err = query.minimumIncrement(ctx, reference)
+		if err != nil {
+			return ActionResult{}, normalizeATSPIError(err)
+		}
+		minimum, err = query.minimumValue(ctx, reference)
+		if err != nil {
+			return ActionResult{}, normalizeATSPIError(err)
+		}
+		maximum, err = query.maximumValue(ctx, reference)
+		if err != nil {
+			return ActionResult{}, normalizeATSPIError(err)
+		}
+		next, err := nextBoundedStepValue(current, step, minimum, maximum, request.Action == "decrement")
+		if err != nil {
+			return ActionResult{}, ErrInvalidTree
+		}
+		if _, err := validateDispatch(); err != nil {
+			return ActionResult{}, err
+		}
+		if err := query.setCurrentValue(ctx, reference, next); err != nil {
+			return dispatched, normalizeATSPIError(err)
+		}
+		return dispatched, nil
+	default:
+		target, err := validateDispatch()
+		if err != nil {
+			return ActionResult{}, err
+		}
+		finalNames, err := readATSPIActionNames(ctx, query, reference, target.interfaces)
+		if err != nil {
+			return ActionResult{}, err
+		}
+		index := findATSPIActionIndex(request.Action, finalNames)
+		if index < 0 {
+			return ActionResult{}, ErrStaleTarget
+		}
+		selectedName := finalNames[index]
+		if err := validateWindow(); err != nil {
+			return ActionResult{}, err
+		}
+		liveSelectedName, err := readATSPIActionName(ctx, query, reference, int32(index))
+		if err != nil {
+			return ActionResult{}, err
+		}
+		if liveSelectedName != selectedName || findATSPIActionIndex(request.Action, []string{liveSelectedName}) != 0 {
+			return ActionResult{}, ErrStaleTarget
+		}
+		ok, err := query.doAction(ctx, reference, int32(index))
+		if err != nil {
+			return dispatched, normalizeATSPIError(err)
+		}
+		if !ok {
+			return dispatched, ErrUnavailable
+		}
+		return dispatched, nil
+	}
+}
+
+func findATSPIActionIndex(action string, names []string) int {
+	allowed := map[string][]string{
+		"press":    {"press", "click", "activate", "jump"},
+		"toggle":   {"toggle", "press", "click", "activate"},
+		"expand":   {"expand", "open", "show", "toggle"},
+		"collapse": {"collapse", "close", "hide", "toggle"},
+	}[action]
+	for _, candidate := range allowed {
+		if index := slices.Index(names, candidate); index >= 0 {
+			return index
+		}
+	}
+	return -1
+}
+
 func connectSessionBusWithoutAutostart(ctx context.Context) (*dbus.Conn, error) {
 	conn, err := dbus.SessionBusPrivateNoAutoStartup(dbus.WithContext(ctx))
 	if err != nil {
@@ -264,11 +716,17 @@ func normalizeATSPIError(err error) error {
 	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 		return err
 	}
+	for _, known := range []error{ErrUnsupported, ErrUnavailable, ErrPermissionDenied, ErrStaleTarget, ErrInvalidTree} {
+		if errors.Is(err, known) {
+			return known
+		}
+	}
 	if name, ok := atspiDBusErrorName(err); ok {
 		switch name {
 		case "org.freedesktop.DBus.Error.AccessDenied", "org.freedesktop.DBus.Error.AuthFailed":
 			return ErrPermissionDenied
-		case "org.freedesktop.DBus.Error.UnknownMethod", "org.freedesktop.DBus.Error.NotSupported":
+		case "org.freedesktop.DBus.Error.UnknownMethod", "org.freedesktop.DBus.Error.UnknownProperty",
+			"org.freedesktop.DBus.Error.NotSupported":
 			return ErrUnsupported
 		default:
 			return ErrUnavailable

@@ -66,9 +66,12 @@ adjacent [Safe Agent Visual Conditions Plan](agent-visual-conditions.md) now
 has accepted bounded `find` and `wait` semantics in Go plus a thin,
 privacy-preserving MCP projection; neither effort broadens platform backend
 support or replaces phase exit gates.
-The active [Autonomous GUI Control Plan](autonomous-gui-control.md) builds on
-that boundary with deny-by-default observation-bound actions, followed by
-accessibility-first semantics and separately authorized image/OCR perception.
+The completed [Autonomous GUI Control Plan](autonomous-gui-control.md) provides
+deny-by-default typed input plus accessibility-first and separately authorized
+image/OCR perception. The active
+[Verified Adaptive Workflows Plan](verified-adaptive-workflows.md) builds on it
+with observation-bound native semantic actions and the longer
+resolve/validate/authorize/execute/verify/prove contract.
 
 ## Delivery Order
 

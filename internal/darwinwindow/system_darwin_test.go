@@ -3,6 +3,7 @@
 package darwinwindow
 
 import (
+	"context"
 	"errors"
 	"math"
 	"testing"
@@ -99,5 +100,49 @@ func TestCopyAttributeRejectsNilSuccessValue(t *testing.T) {
 	}
 	if _, err := copyAttributeLocked(api, 1, 2); err == nil {
 		t.Fatal("copyAttributeLocked accepted a nil value from a successful AX call")
+	}
+}
+
+func TestDispatchAXExpansionRevalidatesAfterPreparation(t *testing.T) {
+	prepared := false
+	mutated := false
+	api := &nativeAPI{
+		axExpandedAttribute: 1,
+		cfBooleanTrue:       2,
+		axUIElementIsAttributeSettable: func(_ uintptr, _ uintptr, settable *bool) int32 {
+			prepared = true
+			*settable = true
+			return axErrorSuccess
+		},
+		axUIElementSetAttributeValue: func(uintptr, uintptr, uintptr) int32 {
+			mutated = true
+			return axErrorSuccess
+		},
+	}
+	validate := func() error {
+		if !prepared {
+			t.Fatal("window validation ran before expansion preparation")
+		}
+		return ErrAccessibilityStaleTarget
+	}
+
+	result, err := dispatchAXAction(
+		context.Background(), api, 42, "button",
+		AccessibilityActionRequest{Action: "expand"}, validate,
+	)
+	if !errors.Is(err, ErrAccessibilityStaleTarget) || result.Dispatched || mutated {
+		t.Fatalf("stale expansion = %+v, %v, mutated=%v", result, err, mutated)
+	}
+}
+
+func TestValidateAXElementWindowRejectsReparentedElement(t *testing.T) {
+	api := &nativeAPI{
+		axUIElementGetWindow: func(_ uintptr, windowID *uint32) int32 {
+			*windowID = 99
+			return axErrorSuccess
+		},
+	}
+	if err := validateAXElementWindow(api, 42, 77); !errors.Is(err, ErrAccessibilityStaleTarget) {
+		t.Fatalf("validateAXElementWindow() error = %v", err)
 	}
 }

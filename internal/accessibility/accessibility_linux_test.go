@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"strings"
 	"testing"
 
@@ -13,26 +14,41 @@ import (
 )
 
 type fakeATSPIObject struct {
-	children    []atspiReference
-	role        uint32
-	states      []uint32
-	properties  map[string]string
-	interfaces  []string
-	rect        atspiRect
-	text        string
-	value       float64
-	actionCount int32
+	children         []atspiReference
+	role             uint32
+	states           []uint32
+	properties       map[string]string
+	interfaces       []string
+	rect             atspiRect
+	text             string
+	value            float64
+	minimumIncrement float64
+	minimumValue     float64
+	maximumValue     float64
+	actionCount      int32
+	actionNames      []string
+	parent           atspiReference
 }
 
 type fakeATSPIQuery struct {
-	apps           []atspiReference
-	pids           map[string]uint32
-	pidErrors      map[string]error
-	objects        map[string]*fakeATSPIObject
-	propertyCalls  map[string]int
-	childCalls     map[string]int
-	interfaceCalls map[string]int
-	textCalls      map[string]int
+	apps             []atspiReference
+	pids             map[string]uint32
+	pidErrors        map[string]error
+	objects          map[string]*fakeATSPIObject
+	propertyCalls    map[string]int
+	childCalls       map[string]int
+	interfaceCalls   map[string]int
+	textCalls        map[string]int
+	mutationCalls    []string
+	setTextValue     string
+	setNumericValue  float64
+	mutationErr      error
+	minimumStepErr   error
+	actionNameErr    error
+	actionNameHook   func()
+	minimumStepHook  func()
+	maximumValueHook func()
+	propertyHook     func(atspiReference, string)
 }
 
 func (query *fakeATSPIQuery) applications(context.Context) ([]atspiReference, error) {
@@ -89,6 +105,9 @@ func (query *fakeATSPIQuery) stringProperty(_ context.Context, reference atspiRe
 		return "", err
 	}
 	query.propertyCalls[referenceKey(reference)+":"+name]++
+	if query.propertyHook != nil {
+		query.propertyHook(reference, name)
+	}
 	return object.properties[name], nil
 }
 
@@ -132,6 +151,84 @@ func (query *fakeATSPIQuery) actionCount(_ context.Context, reference atspiRefer
 		return 0, err
 	}
 	return object.actionCount, nil
+}
+
+func (query *fakeATSPIQuery) actionName(_ context.Context, reference atspiReference, index int32) (string, error) {
+	if query.actionNameErr != nil {
+		return "", query.actionNameErr
+	}
+	object, err := query.object(reference)
+	if err != nil || index < 0 || int(index) >= len(object.actionNames) {
+		return "", ErrInvalidTree
+	}
+	name := object.actionNames[index]
+	if query.actionNameHook != nil {
+		query.actionNameHook()
+	}
+	return name, nil
+}
+
+func (query *fakeATSPIQuery) parent(_ context.Context, reference atspiReference) (atspiReference, error) {
+	object, err := query.object(reference)
+	if err != nil {
+		return atspiReference{}, err
+	}
+	return object.parent, nil
+}
+
+func (query *fakeATSPIQuery) doAction(_ context.Context, reference atspiReference, index int32) (bool, error) {
+	query.mutationCalls = append(query.mutationCalls, fmt.Sprintf("action:%s:%d", referenceKey(reference), index))
+	return query.mutationErr == nil, query.mutationErr
+}
+
+func (query *fakeATSPIQuery) grabFocus(_ context.Context, reference atspiReference) (bool, error) {
+	query.mutationCalls = append(query.mutationCalls, "focus:"+referenceKey(reference))
+	return query.mutationErr == nil, query.mutationErr
+}
+
+func (query *fakeATSPIQuery) setTextContents(_ context.Context, reference atspiReference, value string) (bool, error) {
+	query.mutationCalls = append(query.mutationCalls, "text:"+referenceKey(reference))
+	query.setTextValue = value
+	return query.mutationErr == nil, query.mutationErr
+}
+
+func (query *fakeATSPIQuery) minimumIncrement(_ context.Context, reference atspiReference) (float64, error) {
+	if query.minimumStepErr != nil {
+		return 0, query.minimumStepErr
+	}
+	object, err := query.object(reference)
+	if err != nil {
+		return 0, err
+	}
+	if query.minimumStepHook != nil {
+		query.minimumStepHook()
+	}
+	return object.minimumIncrement, nil
+}
+
+func (query *fakeATSPIQuery) minimumValue(_ context.Context, reference atspiReference) (float64, error) {
+	object, err := query.object(reference)
+	if err != nil {
+		return 0, err
+	}
+	return object.minimumValue, nil
+}
+
+func (query *fakeATSPIQuery) maximumValue(_ context.Context, reference atspiReference) (float64, error) {
+	object, err := query.object(reference)
+	if err != nil {
+		return 0, err
+	}
+	if query.maximumValueHook != nil {
+		query.maximumValueHook()
+	}
+	return object.maximumValue, nil
+}
+
+func (query *fakeATSPIQuery) setCurrentValue(_ context.Context, reference atspiReference, value float64) error {
+	query.mutationCalls = append(query.mutationCalls, "value:"+referenceKey(reference))
+	query.setNumericValue = value
+	return query.mutationErr
 }
 
 func (query *fakeATSPIQuery) object(reference atspiReference) (*fakeATSPIObject, error) {
@@ -237,7 +334,7 @@ func TestBuildATSPITreeMinimizesSensitiveAndHiddenReads(t *testing.T) {
 		button: {
 			role: atspiRoleButton, states: atspiTestStates(8, 11, 25, 30),
 			properties: map[string]string{"Name": "Save", "Description": "Store changes"},
-			interfaces: []string{"Action", "Component"}, actionCount: 1,
+			interfaces: []string{"Action", "Component"}, actionCount: 1, actionNames: []string{"click"},
 			rect: atspiRect{X: 20, Y: 40, Width: 80, Height: 30},
 		},
 		hidden: {
@@ -327,13 +424,415 @@ func TestATSPIFixedRoleStateAndActionMappings(t *testing.T) {
 	}
 	if got := fmt.Sprint(inferATSPIActions("checkbox", words, map[string]bool{
 		"Action": true, "Component": true,
-	}, true)); got != "[toggle focus expand]" {
+	}, []string{"toggle"}, false)); got != "[toggle focus expand]" {
 		t.Fatalf("actions = %s", got)
 	}
 	if got := fmt.Sprint(inferATSPIActions("checkbox", words, map[string]bool{
 		"Action": true,
-	}, false)); got != "[expand]" {
+	}, nil, false)); got != "[]" {
 		t.Fatalf("zero-count actions = %s", got)
+	}
+	if got := fmt.Sprint(inferATSPIActions("slider", words, map[string]bool{
+		atspiShortValue: true,
+	}, nil, false)); got != "[set-value]" {
+		t.Fatalf("slider without step = %s", got)
+	}
+	if got := fmt.Sprint(inferATSPIActions("slider", words, map[string]bool{
+		atspiShortValue: true,
+	}, nil, true)); got != "[set-value increment decrement]" {
+		t.Fatalf("slider with step = %s", got)
+	}
+	if got := fmt.Sprint(inferATSPIActions("textbox", atspiTestStates(atspiStateEnabled), map[string]bool{
+		atspiShortEditableText: true,
+	}, nil, false)); got != "[]" {
+		t.Fatalf("read-only textbox actions = %s", got)
+	}
+	if got := fmt.Sprint(inferATSPIActions("textbox", atspiTestStates(atspiStateEditable, atspiStateEnabled), map[string]bool{
+		atspiShortEditableText: true,
+	}, nil, false)); got != "[set-value]" {
+		t.Fatalf("editable textbox actions = %s", got)
+	}
+}
+
+func TestUsableATSPIStepActionsRequirePositiveFiniteIncrement(t *testing.T) {
+	slider := atspiTestReference("slider-step")
+	query := newFakeATSPIQuery(map[atspiReference]*fakeATSPIObject{
+		slider: {minimumIncrement: 1},
+	})
+	interfaces := map[string]bool{atspiShortValue: true}
+
+	for _, test := range []struct {
+		name string
+		step float64
+		want bool
+	}{
+		{name: "positive", step: 1, want: true},
+		{name: "zero"},
+		{name: "nan", step: math.NaN()},
+		{name: "infinite", step: math.Inf(1)},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			query.objects[referenceKey(slider)].minimumIncrement = test.step
+			got, err := usableATSPIStepActions(t.Context(), query, slider, "slider", interfaces)
+			if err != nil || got != test.want {
+				t.Fatalf("usableATSPIStepActions() = %v, %v, want %v", got, err, test.want)
+			}
+		})
+	}
+
+	query.minimumStepErr = dbus.Error{Name: "org.freedesktop.DBus.Error.UnknownProperty"}
+	if got, err := usableATSPIStepActions(t.Context(), query, slider, "slider", interfaces); err != nil || got {
+		t.Fatalf("unsupported increment = %v, %v", got, err)
+	}
+	query.minimumStepErr = ErrUnavailable
+	if _, err := usableATSPIStepActions(t.Context(), query, slider, "slider", interfaces); !errors.Is(err, ErrUnavailable) {
+		t.Fatalf("unavailable increment error = %v", err)
+	}
+}
+
+func TestActATSPIRevalidatesExactObservedElementBeforeDispatch(t *testing.T) {
+	application := atspiTestReference("application")
+	window := atspiTestReference("window")
+	button := atspiTestReference("button")
+	query := newFakeATSPIQuery(map[atspiReference]*fakeATSPIObject{
+		application: {children: []atspiReference{window}},
+		window: {
+			parent: application, children: []atspiReference{button}, role: atspiRoleFrame,
+			states:     atspiTestStates(atspiStateEnabled, atspiStateShowing, atspiStateVisible),
+			properties: map[string]string{atspiPropertyName: "Fixture"},
+		},
+		button: {
+			parent: window, role: atspiRoleButton,
+			states:      atspiTestStates(atspiStateEnabled, atspiStateFocusable, atspiStateShowing, atspiStateVisible),
+			properties:  map[string]string{atspiPropertyName: "Save"},
+			interfaces:  []string{atspiShortAction, atspiShortComponent},
+			actionCount: 1, actionNames: []string{"click"},
+			rect: atspiRect{X: 20, Y: 40, Width: 80, Height: 30},
+		},
+	})
+	query.apps = []atspiReference{application}
+	query.pids[application.Bus] = 42
+	request := ActionRequest{
+		Target:    Target{ProcessID: 42, ExpectedTitle: "Fixture"},
+		Reference: []byte(referenceKey(button)), Action: "press",
+		Expected: ElementExpectation{
+			Role: "button", Name: "Save", States: []string{"enabled"},
+			Bounds:  &Bounds{X: 20, Y: 40, Width: 80, Height: 30},
+			Actions: []string{"press", "focus"},
+		},
+	}
+	result, err := actATSPI(t.Context(), query, request, button)
+	if err != nil || !result.Dispatched || len(query.mutationCalls) != 1 ||
+		!strings.HasSuffix(query.mutationCalls[0], ":0") {
+		t.Fatalf("semantic press = %+v, %v, calls=%v", result, err, query.mutationCalls)
+	}
+
+	query.mutationCalls = nil
+	query.objects[referenceKey(button)].properties[atspiPropertyName] = "Delete"
+	result, err = actATSPI(t.Context(), query, request, button)
+	if !errors.Is(err, ErrStaleTarget) || result.Dispatched || len(query.mutationCalls) != 0 {
+		t.Fatalf("stale semantic press = %+v, %v, calls=%v", result, err, query.mutationCalls)
+	}
+
+	query.objects[referenceKey(button)].properties[atspiPropertyName] = "Save"
+	query.objects[referenceKey(button)].actionCount = 2
+	query.objects[referenceKey(button)].actionNames = []string{"click", "delete"}
+	windowTitleCalls := 0
+	query.propertyHook = func(reference atspiReference, name string) {
+		if reference == window && name == atspiPropertyName {
+			windowTitleCalls++
+		}
+		if windowTitleCalls == 3 {
+			query.objects[referenceKey(button)].actionNames = []string{"delete", "click"}
+			query.propertyHook = nil
+		}
+	}
+	result, err = actATSPI(t.Context(), query, request, button)
+	if err != nil || !result.Dispatched || len(query.mutationCalls) != 1 ||
+		!strings.HasSuffix(query.mutationCalls[0], ":1") {
+		t.Fatalf("reordered semantic press = %+v, %v, calls=%v", result, err, query.mutationCalls)
+	}
+
+	query.mutationCalls = nil
+	query.objects[referenceKey(button)].actionNames = []string{"click", "delete"}
+	windowTitleCalls = 0
+	query.propertyHook = func(reference atspiReference, name string) {
+		if reference == window && name == atspiPropertyName {
+			windowTitleCalls++
+		}
+		if windowTitleCalls == 3 {
+			query.actionNameHook = func() {
+				query.objects[referenceKey(button)].actionNames = []string{"delete", "click"}
+				query.actionNameHook = nil
+			}
+			query.propertyHook = nil
+		}
+	}
+	result, err = actATSPI(t.Context(), query, request, button)
+	if !errors.Is(err, ErrStaleTarget) || result.Dispatched || len(query.mutationCalls) != 0 {
+		t.Fatalf("hybrid action-name scan = %+v, %v, calls=%v", result, err, query.mutationCalls)
+	}
+
+	query.objects[referenceKey(button)].actionNames = []string{"click", "delete"}
+	windowTitleCalls = 0
+	query.propertyHook = func(reference atspiReference, name string) {
+		if reference == window && name == atspiPropertyName {
+			windowTitleCalls++
+		}
+		if windowTitleCalls == 4 {
+			query.actionNameErr = context.DeadlineExceeded
+			query.propertyHook = nil
+		}
+	}
+	result, err = actATSPI(t.Context(), query, request, button)
+	if !errors.Is(err, context.DeadlineExceeded) || result.Dispatched || len(query.mutationCalls) != 0 {
+		t.Fatalf("final action-name timeout = %+v, %v, calls=%v", result, err, query.mutationCalls)
+	}
+	query.actionNameErr = nil
+
+	query.actionNameHook = func() {
+		query.objects[referenceKey(window)].properties[atspiPropertyName] = "Replacement"
+		query.actionNameHook = nil
+	}
+	result, err = actATSPI(t.Context(), query, request, button)
+	if !errors.Is(err, ErrStaleTarget) || result.Dispatched || len(query.mutationCalls) != 0 {
+		t.Fatalf("late stale window title = %+v, %v, calls=%v", result, err, query.mutationCalls)
+	}
+}
+
+func TestActATSPIPreservesPostDispatchBoundaryAndSupportsEmptyText(t *testing.T) {
+	application := atspiTestReference("application")
+	window := atspiTestReference("window")
+	textbox := atspiTestReference("textbox")
+	query := newFakeATSPIQuery(map[atspiReference]*fakeATSPIObject{
+		application: {children: []atspiReference{window}},
+		window: {
+			parent: application, children: []atspiReference{textbox}, role: atspiRoleFrame,
+			properties: map[string]string{atspiPropertyName: "Fixture"},
+		},
+		textbox: {
+			parent: window, role: atspiRoleEntry,
+			states:     atspiTestStates(atspiStateEditable, atspiStateEnabled, atspiStateShowing, atspiStateVisible),
+			properties: map[string]string{atspiPropertyName: "Notes"},
+			interfaces: []string{atspiShortEditableText},
+		},
+	})
+	query.apps = []atspiReference{application}
+	query.pids[application.Bus] = 42
+	request := ActionRequest{
+		Target:    Target{ProcessID: 42, ExpectedTitle: "Fixture"},
+		Reference: []byte(referenceKey(textbox)), Action: "set-value", Value: "",
+		Expected: ElementExpectation{
+			Role: "textbox", Name: "Notes", States: []string{"enabled"},
+			Actions: []string{"set-value"},
+		},
+	}
+	result, err := actATSPI(t.Context(), query, request, textbox)
+	if err != nil || !result.Dispatched || query.setTextValue != "" || len(query.mutationCalls) != 1 {
+		t.Fatalf("empty set-value = %+v, %v, calls=%v", result, err, query.mutationCalls)
+	}
+
+	query.mutationErr = errors.New("private native failure")
+	result, err = actATSPI(t.Context(), query, request, textbox)
+	if !errors.Is(err, ErrUnavailable) || !result.Dispatched {
+		t.Fatalf("post-dispatch failure = %+v, %v", result, err)
+	}
+}
+
+func TestActATSPIRevalidatesWindowAfterSliderPreparation(t *testing.T) {
+	application := atspiTestReference("application")
+	window := atspiTestReference("window")
+	slider := atspiTestReference("slider")
+	query := newFakeATSPIQuery(map[atspiReference]*fakeATSPIObject{
+		application: {children: []atspiReference{window}},
+		window: {
+			parent: application, children: []atspiReference{slider}, role: atspiRoleFrame,
+			properties: map[string]string{atspiPropertyName: "Fixture"},
+		},
+		slider: {
+			parent: window, role: atspiRoleSlider,
+			states:           atspiTestStates(atspiStateEnabled, atspiStateShowing, atspiStateVisible),
+			properties:       map[string]string{atspiPropertyName: "Volume"},
+			interfaces:       []string{atspiShortValue},
+			value:            4,
+			minimumIncrement: 1,
+			minimumValue:     0,
+			maximumValue:     10,
+		},
+	})
+	query.apps = []atspiReference{application}
+	query.pids[application.Bus] = 42
+	query.minimumStepHook = func() {
+		query.objects[referenceKey(window)].properties[atspiPropertyName] = "Replacement"
+		query.minimumStepHook = nil
+	}
+	request := ActionRequest{
+		Target:    Target{ProcessID: 42, ExpectedTitle: "Fixture"},
+		Reference: []byte(referenceKey(slider)), Action: "increment",
+		Expected: ElementExpectation{
+			Role: "slider", Name: "Volume", States: []string{"enabled"},
+			Actions: []string{"set-value", "increment", "decrement"},
+		},
+	}
+
+	result, err := actATSPI(t.Context(), query, request, slider)
+	if !errors.Is(err, ErrStaleTarget) || result.Dispatched || len(query.mutationCalls) != 0 {
+		t.Fatalf("late stale slider window = %+v, %v, calls=%v", result, err, query.mutationCalls)
+	}
+}
+
+func TestActATSPIRevalidatesMembershipAfterSliderPreparation(t *testing.T) {
+	application := atspiTestReference("application")
+	window := atspiTestReference("window")
+	replacement := atspiTestReference("replacement")
+	slider := atspiTestReference("slider")
+	query := newFakeATSPIQuery(map[atspiReference]*fakeATSPIObject{
+		application: {children: []atspiReference{window, replacement}},
+		window: {
+			parent: application, children: []atspiReference{slider}, role: atspiRoleFrame,
+			properties: map[string]string{atspiPropertyName: "Fixture"},
+		},
+		replacement: {
+			parent: application, children: []atspiReference{slider}, role: atspiRoleFrame,
+			properties: map[string]string{atspiPropertyName: "Other"},
+		},
+		slider: {
+			parent: window, role: atspiRoleSlider,
+			states:           atspiTestStates(atspiStateEnabled, atspiStateShowing, atspiStateVisible),
+			properties:       map[string]string{atspiPropertyName: "Volume"},
+			interfaces:       []string{atspiShortValue},
+			value:            4,
+			minimumIncrement: 1,
+			minimumValue:     0,
+			maximumValue:     10,
+		},
+	})
+	query.apps = []atspiReference{application}
+	query.pids[application.Bus] = 42
+	query.minimumStepHook = func() {
+		query.objects[referenceKey(slider)].parent = replacement
+		query.minimumStepHook = nil
+	}
+	request := ActionRequest{
+		Target:    Target{ProcessID: 42, ExpectedTitle: "Fixture"},
+		Reference: []byte(referenceKey(slider)), Action: "increment",
+		Expected: ElementExpectation{
+			Role: "slider", Name: "Volume", States: []string{"enabled"},
+			Actions: []string{"set-value", "increment", "decrement"},
+		},
+	}
+
+	result, err := actATSPI(t.Context(), query, request, slider)
+	if !errors.Is(err, ErrStaleTarget) || result.Dispatched || len(query.mutationCalls) != 0 {
+		t.Fatalf("late reparented slider = %+v, %v, calls=%v", result, err, query.mutationCalls)
+	}
+}
+
+func TestActATSPIRevalidatesSliderSemanticsAfterRangePreparation(t *testing.T) {
+	application := atspiTestReference("application")
+	window := atspiTestReference("window")
+	slider := atspiTestReference("slider")
+	query := newFakeATSPIQuery(map[atspiReference]*fakeATSPIObject{
+		application: {children: []atspiReference{window}},
+		window: {
+			parent: application, children: []atspiReference{slider}, role: atspiRoleFrame,
+			properties: map[string]string{atspiPropertyName: "Fixture"},
+		},
+		slider: {
+			parent: window, role: atspiRoleSlider,
+			states:           atspiTestStates(atspiStateEnabled, atspiStateShowing, atspiStateVisible),
+			properties:       map[string]string{atspiPropertyName: "Volume"},
+			interfaces:       []string{atspiShortValue},
+			value:            4,
+			minimumIncrement: 1,
+			minimumValue:     0,
+			maximumValue:     10,
+		},
+	})
+	query.apps = []atspiReference{application}
+	query.pids[application.Bus] = 42
+	query.maximumValueHook = func() {
+		query.objects[referenceKey(slider)].properties[atspiPropertyName] = "Balance"
+		query.maximumValueHook = nil
+	}
+	request := ActionRequest{
+		Target:    Target{ProcessID: 42, ExpectedTitle: "Fixture"},
+		Reference: []byte(referenceKey(slider)), Action: "increment",
+		Expected: ElementExpectation{
+			Role: "slider", Name: "Volume", States: []string{"enabled"},
+			Actions: []string{"set-value", "increment", "decrement"},
+		},
+	}
+
+	result, err := actATSPI(t.Context(), query, request, slider)
+	if !errors.Is(err, ErrStaleTarget) || result.Dispatched || len(query.mutationCalls) != 0 {
+		t.Fatalf("late stale slider semantics = %+v, %v, calls=%v", result, err, query.mutationCalls)
+	}
+
+	query.objects[referenceKey(slider)].properties[atspiPropertyName] = "Volume"
+	request.Action = "set-value"
+	request.Value = "11"
+	result, err = actATSPI(t.Context(), query, request, slider)
+	if !errors.Is(err, ErrInvalidTree) || result.Dispatched || len(query.mutationCalls) != 0 {
+		t.Fatalf("out-of-range slider value = %+v, %v, calls=%v", result, err, query.mutationCalls)
+	}
+
+	request.Value = "8"
+	minimumStepCalls := 0
+	query.minimumStepHook = func() {
+		minimumStepCalls++
+		if minimumStepCalls == 2 {
+			query.objects[referenceKey(slider)].maximumValue = 5
+			query.minimumStepHook = nil
+		}
+	}
+	result, err = actATSPI(t.Context(), query, request, slider)
+	if !errors.Is(err, ErrInvalidTree) || result.Dispatched || len(query.mutationCalls) != 0 {
+		t.Fatalf("late out-of-range slider value = %+v, %v, calls=%v", result, err, query.mutationCalls)
+	}
+
+	query.objects[referenceKey(slider)].maximumValue = 10
+	maximumValueCalls := 0
+	query.maximumValueHook = func() {
+		maximumValueCalls++
+		if maximumValueCalls == 2 {
+			query.objects[referenceKey(window)].properties[atspiPropertyName] = "Replacement"
+			query.maximumValueHook = nil
+		}
+	}
+	result, err = actATSPI(t.Context(), query, request, slider)
+	if !errors.Is(err, ErrStaleTarget) || result.Dispatched || len(query.mutationCalls) != 0 {
+		t.Fatalf("late stale slider window after range read = %+v, %v, calls=%v", result, err, query.mutationCalls)
+	}
+
+	query.objects[referenceKey(window)].properties[atspiPropertyName] = "Fixture"
+	maximumValueCalls = 0
+	query.maximumValueHook = func() {
+		maximumValueCalls++
+		if maximumValueCalls == 2 {
+			query.objects[referenceKey(slider)].properties[atspiPropertyName] = "Balance"
+			query.maximumValueHook = nil
+		}
+	}
+	result, err = actATSPI(t.Context(), query, request, slider)
+	if !errors.Is(err, ErrStaleTarget) || result.Dispatched || len(query.mutationCalls) != 0 {
+		t.Fatalf("late stale slider semantics after range read = %+v, %v, calls=%v", result, err, query.mutationCalls)
+	}
+
+	query.objects[referenceKey(slider)].properties[atspiPropertyName] = "Volume"
+	request.Action = "increment"
+	request.Value = ""
+	minimumStepCalls = 0
+	query.minimumStepHook = func() {
+		minimumStepCalls++
+		if minimumStepCalls == 3 {
+			query.objects[referenceKey(slider)].value = 9
+			query.minimumStepHook = nil
+		}
+	}
+	result, err = actATSPI(t.Context(), query, request, slider)
+	if err != nil || !result.Dispatched || query.setNumericValue != 10 || len(query.mutationCalls) != 1 {
+		t.Fatalf("recomputed slider step = %+v, %v, value=%v, calls=%v", result, err, query.setNumericValue, query.mutationCalls)
 	}
 }
 
@@ -363,6 +862,7 @@ func TestNormalizeATSPIErrorUsesFixedErrorClasses(t *testing.T) {
 	}{
 		{name: "denied", err: dbus.Error{Name: "org.freedesktop.DBus.Error.AccessDenied"}, want: ErrPermissionDenied},
 		{name: "unsupported", err: dbus.Error{Name: "org.freedesktop.DBus.Error.UnknownMethod"}, want: ErrUnsupported},
+		{name: "unknown-property", err: dbus.Error{Name: "org.freedesktop.DBus.Error.UnknownProperty"}, want: ErrUnsupported},
 		{name: "pointer-denied", err: &dbus.Error{Name: "org.freedesktop.DBus.Error.AuthFailed"}, want: ErrPermissionDenied},
 		{name: "unavailable", err: dbus.Error{Name: "org.example.PrivateError", Body: []any{"sensitive details"}}, want: ErrUnavailable},
 		{name: "cancelled", err: context.Canceled, want: context.Canceled},

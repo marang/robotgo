@@ -30,6 +30,8 @@ const (
 	ToolDetectElements = "robotgo_detect_elements"
 	// ToolInspectUI returns one bounded, privacy-reduced accessibility tree.
 	ToolInspectUI = "robotgo_inspect_ui"
+	// ToolElementAct executes one observation-bound native semantic action.
+	ToolElementAct = "robotgo_element_act"
 	// ToolAct plans or executes one typed action.
 	ToolAct = "robotgo_act"
 	// ToolClose closes the underlying RobotGo agent session.
@@ -72,6 +74,13 @@ type ObservationReleaseSession interface {
 type SemanticUISession interface {
 	ObservationReleaseSession
 	InspectUI(context.Context, agent.InspectUIRequest) (agent.UIObservation, error)
+}
+
+// SemanticActionSession is the additive observation-bound semantic mutation
+// extension. Implementations without it expose inspection but no element tool.
+type SemanticActionSession interface {
+	SemanticUISession
+	ActUIElement(context.Context, agent.ElementActionRequest) (agent.ActionResult, error)
 }
 
 // ImageViewSession is the additive sensitive-image extension. Merely
@@ -255,6 +264,12 @@ type InspectUIOutput struct {
 	Error       *ToolError           `json:"error,omitempty"`
 }
 
+// ElementActOutput is the payload-free result of robotgo_element_act.
+type ElementActOutput struct {
+	Result *agent.ActionResult `json:"result,omitempty"`
+	Error  *ToolError          `json:"error,omitempty"`
+}
+
 // ViewOutput is the pixel-free structured output paired with MCP image
 // content. Image bytes exist only in CallToolResult.Content.
 type ViewOutput struct {
@@ -353,6 +368,14 @@ func (s *Server) registerTools() {
 			Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, OpenWorldHint: &openWorld},
 		}, s.inspectUI)
 	}
+	if _, ok := s.adapter.session.(SemanticActionSession); ok {
+		mcp.AddTool(s.protocol, &mcp.Tool{
+			Name:        ToolElementAct,
+			Title:       "Act on observed semantic element",
+			Description: "Revalidate and execute exactly one policy-approved native semantic action against a live observation-bound element. Pointer and keyboard fallback are never used.",
+			Annotations: &mcp.ToolAnnotations{DestructiveHint: &destructive, OpenWorldHint: &openWorld},
+		}, s.elementAct)
+	}
 
 	if _, ok := s.adapter.session.(VisualConditionSession); ok {
 		s.registerConditionTools()
@@ -422,6 +445,24 @@ func (s *Server) inspectUI(ctx context.Context, _ *mcp.CallToolRequest, input ag
 		return errorResult(), InspectUIOutput{Error: safeToolError(err)}, nil
 	}
 	return nil, InspectUIOutput{Observation: &observation}, nil
+}
+
+func (s *Server) elementAct(ctx context.Context, _ *mcp.CallToolRequest, input agent.ElementActionRequest) (*mcp.CallToolResult, ElementActOutput, error) {
+	session, toolErr := s.adapter.begin()
+	if toolErr != nil {
+		return errorResult(), ElementActOutput{Error: toolErr}, nil
+	}
+	semantic, ok := session.(SemanticActionSession)
+	if !ok {
+		return errorResult(), ElementActOutput{Error: &ToolError{
+			Code: agent.ErrorUnsupported, Message: "semantic element actions are unsupported",
+		}}, nil
+	}
+	result, err := semantic.ActUIElement(ctx, input)
+	if err != nil {
+		return errorResult(), ElementActOutput{Result: &result, Error: safeToolError(err)}, nil
+	}
+	return nil, ElementActOutput{Result: &result}, nil
 }
 
 func (s *Server) ocr(ctx context.Context, _ *mcp.CallToolRequest, input agent.OCRRequest) (*mcp.CallToolResult, OCROutput, error) {

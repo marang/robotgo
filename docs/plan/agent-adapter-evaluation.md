@@ -1,6 +1,6 @@
 # Agent Adapter and Evaluation Plan
 
-Status: Base and visual-condition extensions complete; semantic, action, and opt-in image extensions delivered through P010
+Status: Base, visual, semantic observation, typed input, opt-in image, and P011 semantic-action extensions delivered
 
 Linear coordination:
 
@@ -35,7 +35,7 @@ RobotGo platform backends
 
 The adapter uses the stable official
 `github.com/modelcontextprotocol/go-sdk` module. It provides one session per
-process. P010 keeps eight default tools and adds three separately enabled
+process. P011 exposes nine default tools and three separately enabled
 image/derived-image tools:
 
 | Tool | Contract |
@@ -46,6 +46,7 @@ image/derived-image tools:
 | `robotgo_ocr` | With the same startup grant plus explicit operation policy, return bounded sanitized word boxes from one subregion of a live image observation. |
 | `robotgo_detect_elements` | With the same startup grant plus explicit operation policy, return deterministic geometry-only visual proposals from one subregion of a live image observation. |
 | `robotgo_inspect_ui` | Return one policy-bounded accessibility projection for an exact allow-listed window without native references or password values. |
+| `robotgo_element_act` | Revalidate and execute one observation-bound native semantic action; never use pointer or keyboard fallback. |
 | `robotgo_find` | Evaluate a typed condition against one explicit live observation without implicit capture. |
 | `robotgo_wait` | Perform a finite policy-bounded wait over one explicit region and retain only a matched observation. |
 | `robotgo_release_observation` | Idempotently zero and remove one retained observation without desktop I/O. |

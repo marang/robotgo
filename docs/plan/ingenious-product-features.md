@@ -1,7 +1,7 @@
 # Ingenious RobotGo Product Features
 
-Status: Product strategy proposal; LAB-72 merged and LAB-74 implementation
-complete pending review/merge; later slices are not yet delivery commitments
+Status: Product strategy proposal; P010 complete and P011/LAB-77 semantic
+element-action slice complete
 
 ## Product thesis
 
@@ -35,6 +35,17 @@ limits, return observation-bound backend/model/confidence provenance, mark
 results untrusted, and zero their private subregion copy on every path. This is
 the visual fallback layer; LAB-73 accessibility remains authoritative for
 semantics.
+
+Implementation checkpoint (LAB-77): schema v9 adds the deny-by-default
+`desktop.element-act` operation and `robotgo_element_act` MCP tool. One action
+is bound to a live semantic observation and exact caller-visible role, name,
+states, bounds, and offered-action set. AT-SPI, Windows UI Automation, and
+macOS Accessibility re-resolve their private native references inside the
+same exact process/window/title immediately before native dispatch. Sensitive,
+disabled, changed, or no-longer-supported targets fail stale; coordinate,
+keyboard, clipboard, shell, and visual fallbacks are absent. A native-call
+error after dispatch remains explicitly unverified, and set values never enter
+results, audits, observations, files, or errors.
 
 ## 1. Semantic and visual scene graph
 
@@ -334,7 +345,8 @@ requested postcondition is already satisfied.
 
 ### Observation-bound semantic element actions
 
-The immediate post-P010 foundation is a typed `desktop.element-act` contract.
+The first P011 foundation is the typed `desktop.element-act` contract delivered
+by LAB-77.
 It consumes an observation ID, an observation-scoped element ID, one semantic
 action, exact expected identity/state, and an optional postcondition. Before
 dispatch RobotGo must:
@@ -452,8 +464,9 @@ The current autonomous-GUI work establishes the required safety boundaries.
 The recommended product sequence is:
 
 1. policy-gated MCP image observations (`LAB-72`, complete)
-2. bounded OCR and visual detection (`LAB-74`, implemented pending merge)
-3. add observation-bound semantic element actions with full live revalidation
+2. bounded OCR and visual detection (`LAB-74`, complete)
+3. observation-bound semantic element actions with full live revalidation
+   (`LAB-77`, complete)
 4. add semantic preconditions/postconditions and action proof v1
 5. introduce a versioned `TargetSpec` and deterministic explainable resolver
 6. add single-use capability leases plus strict, adaptive, and review healing
