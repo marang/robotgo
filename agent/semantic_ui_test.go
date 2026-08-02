@@ -26,6 +26,7 @@ type semanticFakeDriver struct {
 	dispatch bool
 	actErr   error
 	actBlock bool
+	actStart func()
 }
 
 func (driver *semanticFakeDriver) ActUIElement(ctx context.Context, request uiBackendElementAction) (bool, error) {
@@ -33,6 +34,9 @@ func (driver *semanticFakeDriver) ActUIElement(ctx context.Context, request uiBa
 	driver.actRef = string(request.Reference)
 	request.Reference = nil
 	driver.act = request
+	if driver.actStart != nil {
+		driver.actStart()
+	}
 	if driver.actBlock {
 		<-ctx.Done()
 		return false, ctx.Err()
@@ -350,6 +354,50 @@ func TestElementActionUsesIndependentPolicyTimeout(t *testing.T) {
 	})
 	if !hasErrorCode(err, ErrorTimedOut) || result.Status != ActionFailed || driver.actCalls != 1 {
 		t.Fatalf("timed semantic action = %+v, %v calls=%d", result, err, driver.actCalls)
+	}
+}
+
+func TestElementActionSessionLifetimeCancelsBackend(t *testing.T) {
+	session, driver := newSemanticSession(t, semanticActionPolicy(), semanticSnapshot())
+	observation, err := session.InspectUI(t.Context(), InspectUIRequest{Target: 42, Kind: WindowTargetProcess})
+	if err != nil {
+		t.Fatal(err)
+	}
+	deadlineCtx := &controlledDeadlineContext{done: make(chan struct{})}
+	session.cancel()
+	session.ctx = deadlineCtx
+	session.cancel = func() {}
+	driver.actBlock = true
+	driver.actStart = func() { close(deadlineCtx.done) }
+	button := observation.Elements[1]
+	result, err := session.ActUIElement(context.Background(), ElementActionRequest{
+		ObservationID: observation.ObservationID, ElementID: button.ElementID,
+		Action: UIActionPress, Expected: expectationFromUIElement(&button),
+	})
+	if !hasErrorCode(err, ErrorTimedOut) || result.Status != ActionFailed || driver.actCalls != 1 {
+		t.Fatalf("session-lifetime semantic action = %+v, %v calls=%d", result, err, driver.actCalls)
+	}
+}
+
+func TestRetainedElementActionOwnsReferenceAndExpectationCopies(t *testing.T) {
+	session, _ := newSemanticSession(t, semanticActionPolicy(), semanticSnapshot())
+	observation, err := session.InspectUI(t.Context(), InspectUIRequest{Target: 42, Kind: WindowTargetProcess})
+	if err != nil {
+		t.Fatal(err)
+	}
+	button := observation.Elements[1]
+	retained, ok := session.retainUIElementAction(observation.ObservationID, button.ElementID)
+	if !ok {
+		t.Fatal("failed to retain semantic action target")
+	}
+	defer clear(retained.reference)
+	if err := session.ReleaseObservation(observation.ObservationID); err != nil {
+		t.Fatal(err)
+	}
+	if string(retained.reference) != "native-button-992" || retained.expected.Name != "Save" ||
+		!slices.Equal(retained.expected.States, []UIState{UIStateEnabled}) ||
+		!slices.Equal(retained.expected.Actions, []UIAction{UIActionPress}) || retained.expected.Bounds == nil {
+		t.Fatalf("retained semantic action was changed by observation release: %+v", retained)
 	}
 }
 

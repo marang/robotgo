@@ -40,6 +40,7 @@ type fakeATSPIQuery struct {
 	setTextValue    string
 	setNumericValue float64
 	mutationErr     error
+	actionNameHook  func()
 }
 
 func (query *fakeATSPIQuery) applications(context.Context) ([]atspiReference, error) {
@@ -146,7 +147,11 @@ func (query *fakeATSPIQuery) actionName(_ context.Context, reference atspiRefere
 	if err != nil || index < 0 || int(index) >= len(object.actionNames) {
 		return "", ErrInvalidTree
 	}
-	return object.actionNames[index], nil
+	name := object.actionNames[index]
+	if query.actionNameHook != nil {
+		query.actionNameHook()
+	}
+	return name, nil
 }
 
 func (query *fakeATSPIQuery) parent(_ context.Context, reference atspiReference) (atspiReference, error) {
@@ -432,6 +437,16 @@ func TestActATSPIRevalidatesExactObservedElementBeforeDispatch(t *testing.T) {
 	result, err = actATSPI(t.Context(), query, request, button)
 	if !errors.Is(err, ErrStaleTarget) || result.Dispatched || len(query.mutationCalls) != 0 {
 		t.Fatalf("stale semantic press = %+v, %v, calls=%v", result, err, query.mutationCalls)
+	}
+
+	query.objects[referenceKey(button)].properties[atspiPropertyName] = "Save"
+	query.actionNameHook = func() {
+		query.objects[referenceKey(window)].properties[atspiPropertyName] = "Replacement"
+		query.actionNameHook = nil
+	}
+	result, err = actATSPI(t.Context(), query, request, button)
+	if !errors.Is(err, ErrStaleTarget) || result.Dispatched || len(query.mutationCalls) != 0 {
+		t.Fatalf("late stale window title = %+v, %v, calls=%v", result, err, query.mutationCalls)
 	}
 }
 

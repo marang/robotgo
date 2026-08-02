@@ -46,6 +46,13 @@ type uiElementActDriver interface {
 	ActUIElement(context.Context, uiBackendElementAction) (bool, error)
 }
 
+type retainedUIElementAction struct {
+	target    uiBackendTarget
+	reference []byte
+	expected  UIElementExpectation
+	backend   string
+}
+
 func (robotGoDriver) ActUIElement(ctx context.Context, request uiBackendElementAction) (bool, error) {
 	return actPlatformUIElement(ctx, request)
 }
@@ -59,11 +66,11 @@ func (s *Session) ActUIElement(ctx context.Context, request ElementActionRequest
 		ctx = context.Background()
 	}
 	if err := s.acquire(ctx); err != nil {
-		return elementActionFailure(id, started, elementActionOperationError(err), false)
+		return elementActionFailure(id, started, s.elementActionOperationError(err), false)
 	}
 	defer s.release()
 	if err := s.ensureOpen(); err != nil {
-		return elementActionFailure(id, started, elementActionOperationError(err), false)
+		return elementActionFailure(id, started, s.elementActionOperationError(err), false)
 	}
 	if err := validateElementActionRequest(request); err != nil {
 		return elementActionFailure(id, started, newActionError(ErrorInvalidInput, OperationElementAct, "invalid semantic element action", err), false)
@@ -80,16 +87,13 @@ func (s *Session) ActUIElement(ctx context.Context, request ElementActionRequest
 	if request.Action == UIActionSetValue && len(request.Value) > int(s.policy.MaxUIActionValueBytes) {
 		return elementActionFailure(id, started, newActionError(ErrorPolicyDenied, OperationElementAct, "semantic action value exceeds policy", ErrPolicyDenied), false)
 	}
-	record, ok := s.observation(request.ObservationID)
-	if !ok || record.uiTarget == nil || record.uiBackend == "" || !record.uiActionable {
+	retained, ok := s.retainUIElementAction(request.ObservationID, request.ElementID)
+	if !ok {
 		return elementActionStale(id, started)
 	}
-	reference, ok := record.uiElements[request.ElementID]
-	retainedExpected, expectedOK := record.uiExpected[request.ElementID]
-	if !ok || !expectedOK || len(reference) == 0 || !equalUIExpectation(request.Expected, retainedExpected) {
-		return elementActionStale(id, started)
-	}
-	if retainedExpected.Sensitive || !slices.Contains(retainedExpected.Actions, request.Action) {
+	defer clear(retained.reference)
+	if !equalUIExpectation(request.Expected, retained.expected) || retained.expected.Sensitive ||
+		!slices.Contains(retained.expected.Actions, request.Action) {
 		return elementActionStale(id, started)
 	}
 	if s.used >= s.policy.MaxActions {
@@ -109,21 +113,46 @@ func (s *Session) ActUIElement(ctx context.Context, request ElementActionRequest
 		return s.finishFailedActionAudit(ctx, result, actionErr)
 	}
 	backendRequest := uiBackendElementAction{
-		Target: *record.uiTarget, Reference: append([]byte(nil), reference...),
-		Expected: retainedExpected, Action: request.Action, Value: request.Value,
-		Backend: record.uiBackend,
+		Target: retained.target, Reference: retained.reference,
+		Expected: retained.expected, Action: request.Action, Value: request.Value,
+		Backend: retained.backend,
 	}
-	defer clear(backendRequest.Reference)
 	actionCtx, cancel := context.WithTimeout(ctx, time.Duration(s.policy.UIActionTimeoutMillis)*time.Millisecond)
-	defer cancel()
+	stopSessionCancel := context.AfterFunc(s.ctx, cancel)
+	defer func() {
+		stopSessionCancel()
+		cancel()
+	}()
+	if err := s.ctx.Err(); err != nil {
+		result, actionErr := elementActionFailure(id, started, s.elementActionOperationError(err), false)
+		return s.finishFailedActionAudit(ctx, result, actionErr)
+	}
 	dispatched, err := driver.ActUIElement(actionCtx, backendRequest)
 	if err != nil {
-		result, actionErr := elementActionFailure(id, started, elementActionOperationError(err), dispatched)
+		result, actionErr := elementActionFailure(id, started, s.elementActionOperationError(err), dispatched)
 		return s.finishFailedActionAudit(ctx, result, actionErr)
 	}
 	result := ActionResult{ActionID: id, Operation: OperationElementAct, Status: ActionSucceeded,
-		Backend: record.uiBackend, DurationMillis: time.Since(started).Milliseconds()}
+		Backend: retained.backend, DurationMillis: time.Since(started).Milliseconds()}
 	return s.finishSuccessfulActionAudit(ctx, result)
+}
+
+func (s *Session) retainUIElementAction(observationID, elementID string) (retainedUIElementAction, bool) {
+	s.observationMu.Lock()
+	defer s.observationMu.Unlock()
+	record, ok := s.observations[observationID]
+	if !ok || record.uiTarget == nil || record.uiBackend == "" || !record.uiActionable {
+		return retainedUIElementAction{}, false
+	}
+	reference, referenceOK := record.uiElements[elementID]
+	expected, expectedOK := record.uiExpected[elementID]
+	if !referenceOK || !expectedOK || len(reference) == 0 {
+		return retainedUIElementAction{}, false
+	}
+	return retainedUIElementAction{
+		target: *record.uiTarget, reference: append([]byte(nil), reference...),
+		expected: cloneUIElementExpectation(expected), backend: record.uiBackend,
+	}, true
 }
 
 func validateElementActionRequest(request ElementActionRequest) error {
@@ -173,6 +202,17 @@ func expectationFromUIElement(element *UIElement) UIElementExpectation {
 	return result
 }
 
+func cloneUIElementExpectation(expected UIElementExpectation) UIElementExpectation {
+	result := expected
+	result.States = append([]UIState(nil), expected.States...)
+	result.Actions = append([]UIAction(nil), expected.Actions...)
+	if expected.Bounds != nil {
+		bounds := *expected.Bounds
+		result.Bounds = &bounds
+	}
+	return result
+}
+
 func equalUIExpectation(left, right UIElementExpectation) bool {
 	return left.Role == right.Role && left.Name == right.Name && left.Sensitive == right.Sensitive &&
 		slices.Equal(left.States, right.States) && slices.Equal(left.Actions, right.Actions) &&
@@ -193,7 +233,13 @@ func elementActionFailure(id string, started time.Time, actionErr *ActionError, 
 	return result, actionErr
 }
 
-func elementActionOperationError(err error) *ActionError {
+func (s *Session) elementActionOperationError(err error) *ActionError {
+	if sessionErr := s.ctx.Err(); sessionErr != nil {
+		if errors.Is(sessionErr, context.DeadlineExceeded) {
+			return newActionError(ErrorTimedOut, OperationElementAct, "agent session lifetime expired", context.DeadlineExceeded)
+		}
+		return newActionError(ErrorSessionClosed, OperationElementAct, "agent session is closed", ErrSessionClosed)
+	}
 	var actionErr *ActionError
 	if errors.As(err, &actionErr) {
 		return newActionError(actionErr.Code, OperationElementAct, actionErr.Message, err)

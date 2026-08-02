@@ -294,6 +294,13 @@ func actATSPI(ctx context.Context, query atspiQuery, request ActionRequest, refe
 		slices.Contains(request.Expected.States, "disabled") {
 		return ActionResult{}, ErrStaleTarget
 	}
+	liveTitle, err = query.stringProperty(ctx, root, atspiPropertyName)
+	if err != nil {
+		return ActionResult{}, normalizeATSPIError(err)
+	}
+	if liveTitle != request.Target.ExpectedTitle {
+		return ActionResult{}, ErrStaleTarget
+	}
 	return dispatchATSPIAction(ctx, query, reference, roleID, interfaces, actionNames, request)
 }
 
