@@ -155,6 +155,99 @@ func TestViewDeadlineBoundsDisplayLookupAndAllowsClose(t *testing.T) {
 	}
 }
 
+func TestViewLineageRecaptureUsesViewDeadlineAndSessionCancellation(t *testing.T) {
+	for _, closeSession := range []bool{false, true} {
+		name := "view-deadline"
+		if closeSession {
+			name = "session-close"
+		}
+		t.Run(name, func(t *testing.T) {
+			policy := viewPolicy()
+			policy.AllowedOperations = append(policy.AllowedOperations, OperationClick)
+			policy.AllowedMouseButtons = []MouseButton{MouseButtonLeft}
+			policy.MaxActions = 1
+			policy.MaxViewWidth = 4
+			policy.ViewTimeoutMillis = 20
+			if closeSession {
+				policy.ViewTimeoutMillis = 5000
+			}
+			driver := &fakeDriver{captureImages: []image.Image{syntheticCapture(4, 2, 17)}}
+			session := newTestSession(t, policy, driver)
+			region := CaptureRegion{Width: 4, Height: 2, DisplayID: 0}
+			view, err := session.View(context.Background(), ViewRequest{Region: &region})
+			if err != nil {
+				t.Fatal(err)
+			}
+			data, err := view.TakePNG()
+			if err != nil {
+				t.Fatal(err)
+			}
+			clear(data)
+
+			boundsGo := make(chan struct{})
+			boundsDone := make(chan struct{}, 1)
+			driver.boundsHit = make(chan struct{}, 1)
+			driver.boundsGo = boundsGo
+			driver.boundsDone = boundsDone
+			executed := make(chan error, 1)
+			started := time.Now()
+			go func() {
+				_, executeErr := session.Execute(context.Background(), ActionRequest{
+					Operation: OperationClick,
+					Click:     &ClickAction{Button: MouseButtonLeft},
+					Precondition: &ObservationPrecondition{
+						ObservationID: view.Metadata.ObservationID,
+					},
+				})
+				executed <- executeErr
+			}()
+			select {
+			case <-driver.boundsHit:
+			case <-time.After(time.Second):
+				t.Fatal("lineage recapture did not reach display-bounds lookup")
+			}
+
+			if closeSession {
+				closed := make(chan error, 1)
+				go func() { closed <- session.Close() }()
+				select {
+				case err := <-closed:
+					if err != nil {
+						t.Fatal(err)
+					}
+				case <-time.After(500 * time.Millisecond):
+					t.Fatal("Session.Close blocked behind view-lineage recapture")
+				}
+			}
+			select {
+			case err := <-executed:
+				wantCode := ErrorTimedOut
+				if closeSession {
+					wantCode = ErrorCanceled
+				}
+				if !hasErrorCode(err, wantCode) {
+					t.Fatalf("lineage Execute error = %v, want %s", err, wantCode)
+				}
+			case <-time.After(500 * time.Millisecond):
+				t.Fatal("view-lineage action did not honor its bounded context")
+			}
+			if elapsed := time.Since(started); elapsed > 500*time.Millisecond {
+				t.Fatalf("bounded lineage action returned after %s", elapsed)
+			}
+			if driver.callCount() != 0 {
+				t.Fatal("timed-out lineage recapture reached input dispatch")
+			}
+
+			close(boundsGo)
+			select {
+			case <-boundsDone:
+			case <-time.After(time.Second):
+				t.Fatal("lineage bounds worker did not finish after release")
+			}
+		})
+	}
+}
+
 func allZeroBytes(data []byte) bool {
 	for _, value := range data {
 		if value != 0 {

@@ -1182,7 +1182,10 @@ multiplying; later bounded requests can time out while waiting for that slot
 without starting another native call.
 When Wayland's two-second native safety timeout precedes a longer policy
 deadline, RobotGo reports a backend timeout rather than a caller deadline or an
-unsupported fallback.
+unsupported fallback. Action precondition and verification recaptures derived
+from an image view use the same policy deadline and session-cancellation link.
+The Pure-Go context entry clears and discards any native image that completes
+after its caller has canceled.
 
 The same `robotgo_act` tool also carries the bounded `pointer.scroll`,
 `pointer.drag`, `keyboard.chord`, and `window.activate` request variants. They

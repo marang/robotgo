@@ -427,11 +427,23 @@ func (s *Session) recaptureLineage(ctx context.Context, record observationRecord
 	if record.source != OperationView {
 		return s.capture(ctx, record.region, true)
 	}
-	frame, _, err := s.captureViewFrame(ctx, record.region)
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	viewCtx, cancel := context.WithTimeout(ctx, time.Duration(s.policy.ViewTimeoutMillis)*time.Millisecond)
+	stopSessionCancel := context.AfterFunc(s.ctx, cancel)
+	defer func() {
+		stopSessionCancel()
+		cancel()
+	}()
+	if err := s.viewExecutionError(viewCtx); err != nil {
+		return nil, err
+	}
+	frame, _, err := s.captureViewFrame(viewCtx, record.region)
 	if err != nil {
 		return nil, err
 	}
-	if _, err := s.redactViewFrame(ctx, frame); err != nil {
+	if _, err := s.redactViewFrame(viewCtx, frame); err != nil {
 		_ = frame.buffer.close()
 		return nil, viewOperationError(err)
 	}

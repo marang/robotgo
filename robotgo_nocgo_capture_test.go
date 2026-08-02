@@ -295,6 +295,37 @@ func TestPureGoCaptureImgUsesX11Backend(t *testing.T) {
 	}
 }
 
+func TestCaptureImgNativeContextClearsResultCompletedAfterCancellation(t *testing.T) {
+	if !pureGoScreenshotSupported(runtime.GOOS, runtime.GOARCH) {
+		t.Skip("Pure-Go X11 screenshot dependency is unsupported on this architecture")
+	}
+	preservePureGoCaptureFakes(t)
+	t.Setenv("WAYLAND_DISPLAY", "")
+	t.Setenv("DISPLAY", ":99")
+	t.Setenv(envXDGSessionType, "x11")
+	for _, backendErr := range []error{nil, errors.New("late backend failure")} {
+		ctx, cancel := context.WithCancel(context.Background())
+		lateImage := image.NewRGBA(image.Rect(0, 0, 2, 2))
+		for index := range lateImage.Pix {
+			lateImage.Pix[index] = byte(index + 1)
+		}
+		pureGoCaptureImage = func(...int) (image.Image, error) {
+			cancel()
+			return lateImage, backendErr
+		}
+
+		img, err := CaptureImgNativeContext(ctx, 0, 0, 2, 2)
+		if img != nil || !errors.Is(err, context.Canceled) {
+			t.Fatalf("CaptureImgNativeContext = (%v, %v), want nil canceled result", img, err)
+		}
+		for index, value := range lateImage.Pix {
+			if value != 0 {
+				t.Fatalf("late capture byte %d = %d, want zero", index, value)
+			}
+		}
+	}
+}
+
 func TestPureGoPixelColorUsesCaptureBackend(t *testing.T) {
 	if !pureGoScreenshotSupported(runtime.GOOS, runtime.GOARCH) {
 		t.Skip("Pure-Go X11 screenshot dependency is unsupported on this architecture")

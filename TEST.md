@@ -247,8 +247,9 @@ transfer, owned-byte zeroing after SDK serialization, batch-safe transport
 behavior, an atomic transport ownership handoff that blocks concurrent close,
 pre-serialization shutdown cleanup, deadline-bounded synchronous native
 capture with late-result pixel zeroing, deadline-bounded display-geometry
-preflight for region and full-display views, distinct Wayland
-backend-versus-context timeout classification, and raw-observation cleanup. The command tests use only
+preflight for region, full-display, and lineage recapture paths, canceled
+Pure-Go result zeroing, distinct Wayland backend-versus-context timeout
+classification, and raw-observation cleanup. The command tests use only
 private `t.TempDir()` policy fixtures, which test cleanup removes:
 
 ```bash
