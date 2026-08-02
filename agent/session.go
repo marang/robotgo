@@ -803,15 +803,24 @@ func classifyBackendError(err error) (ErrorCode, string) {
 		return ErrorStaleTarget, "agent observation target is stale"
 	case errors.Is(err, ErrInputCleanup):
 		return ErrorCleanupFailed, "pressed input cleanup failed; do not retry the action"
-	case errors.Is(err, robotgo.ErrNotSupported):
-		return ErrorUnsupported, "operation is unsupported by the selected backend"
-	case errors.Is(err, robotgo.ErrPermissionDenied):
-		return ErrorPermissionDenied, "desktop permission denied"
 	case errors.Is(err, context.DeadlineExceeded):
 		return ErrorTimedOut, "backend action deadline exceeded"
 	case errors.Is(err, context.Canceled):
 		return ErrorCanceled, "backend action canceled"
+	case isBackendTimeout(err):
+		return ErrorTimedOut, "desktop backend operation timed out"
+	case errors.Is(err, robotgo.ErrNotSupported):
+		return ErrorUnsupported, "operation is unsupported by the selected backend"
+	case errors.Is(err, robotgo.ErrPermissionDenied):
+		return ErrorPermissionDenied, "desktop permission denied"
 	default:
 		return ErrorBackendFailure, "desktop backend operation failed"
 	}
+}
+
+func isBackendTimeout(err error) bool {
+	var timeout interface {
+		Timeout() bool
+	}
+	return errors.As(err, &timeout) && timeout.Timeout()
 }

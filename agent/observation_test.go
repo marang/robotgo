@@ -923,6 +923,31 @@ func TestWaylandAgentCaptureDisabledPortalStopsAfterNative(t *testing.T) {
 	}
 }
 
+type backendTimeoutFixture struct{}
+
+func (backendTimeoutFixture) Error() string { return "backend timeout" }
+func (backendTimeoutFixture) Timeout() bool { return true }
+
+func TestWaylandAgentCapturePreservesTimeoutAcrossDisabledFallback(t *testing.T) {
+	_, err := captureWaylandAgent(
+		context.Background(),
+		CaptureRegion{Width: 1, Height: 1, DisplayID: 0},
+		true,
+		func(context.Context, ...int) (image.Image, error) {
+			return nil, backendTimeoutFixture{}
+		},
+		func() error { return nil },
+		func(context.Context, int, ...int) (image.Image, error) { return nil, nil },
+	)
+	if code, _ := classifyBackendError(err); code != ErrorTimedOut {
+		t.Fatalf("joined disabled-fallback timeout classified as %q: %v", code, err)
+	}
+	joinedDeadline := errors.Join(context.DeadlineExceeded, robotgo.ErrNotSupported)
+	if code, _ := classifyBackendError(joinedDeadline); code != ErrorTimedOut {
+		t.Fatalf("joined context deadline classified as %q", code)
+	}
+}
+
 func TestWaylandAgentCaptureNeverOpensPortalImplicitly(t *testing.T) {
 	if runtime.GOOS != goOSLinux {
 		t.Skip("Wayland environment selection is Linux-specific")

@@ -1177,6 +1177,9 @@ session close can return at the deadline; if the native call completes later,
 RobotGo wipes its returned pixels instead of publishing them. One shared slot
 prevents abandoned synchronous calls from multiplying; later bounded requests
 can time out while waiting for that slot without starting another native call.
+When Wayland's two-second native safety timeout precedes a longer policy
+deadline, RobotGo reports a backend timeout rather than a caller deadline or an
+unsupported fallback.
 
 The same `robotgo_act` tool also carries the bounded `pointer.scroll`,
 `pointer.drag`, `keyboard.chord`, and `window.activate` request variants. They

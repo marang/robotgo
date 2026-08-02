@@ -282,6 +282,39 @@ func TestScreencopyContextDeadlineBoundsRegistryRoundtrip(t *testing.T) {
 	}
 }
 
+func TestScreencopyBackendTimeoutPrecedesLongContextDeadline(t *testing.T) {
+	dir := t.TempDir()
+	sock := "robotgo-wl-backend-timeout"
+	t.Setenv("XDG_RUNTIME_DIR", dir)
+	t.Setenv("WAYLAND_DISPLAY", sock)
+	t.Setenv("ROBOTGO_DISABLE_PORTAL", "1")
+	robotgo.SetWaylandBackend(robotgo.WaylandBackendWlShm)
+	t.Cleanup(func() { robotgo.SetWaylandBackend(robotgo.WaylandBackendAuto) })
+
+	done := make(chan struct{})
+	startMockServerMode(sock, 0, 0, 0, mockModeStall, done)
+	t.Cleanup(func() { cleanupMockServer(t, done) })
+	waitForMockServer(t, dir, sock)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	started := time.Now()
+	img, err := robotgo.CaptureImgNativeContext(ctx)
+	if img != nil {
+		t.Fatal("stalled backend capture returned an image")
+	}
+	if errors.Is(err, context.DeadlineExceeded) || ctx.Err() != nil {
+		t.Fatalf("backend timeout was reported as caller deadline: err=%v ctx=%v", err, ctx.Err())
+	}
+	var timeout interface{ Timeout() bool }
+	if !errors.As(err, &timeout) || !timeout.Timeout() {
+		t.Fatalf("capture error = %v, want backend timeout", err)
+	}
+	if elapsed := time.Since(started); elapsed < 1500*time.Millisecond || elapsed > 2500*time.Millisecond {
+		t.Fatalf("backend timeout returned outside its safety window: %v", elapsed)
+	}
+}
+
 func TestScreencopyDmabufFailureDoesNotCloseStdin(t *testing.T) {
 	if _, err := unix.FcntlInt(0, unix.F_GETFD, 0); err != nil {
 		t.Skipf("stdin is not open in this test environment: %v", err)

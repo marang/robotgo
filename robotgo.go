@@ -558,6 +558,16 @@ var (
 	ErrPermissionDenied   = errors.New("permission denied by desktop security policy")
 )
 
+type captureTimeoutError struct {
+	backend CaptureBackend
+}
+
+func (err captureTimeoutError) Error() string {
+	return fmt.Sprintf("%s capture timed out", err.backend)
+}
+
+func (captureTimeoutError) Timeout() bool { return true }
+
 func waylandWindowNotSupported(op string) error {
 	return fmt.Errorf("%w: %s on Wayland", ErrNotSupported, op)
 }
@@ -1618,6 +1628,7 @@ func captureScreenWaylandNativeContext(ctx context.Context, args ...int) (CBitma
 		backend = envBackend
 	}
 	timeout := 2 * time.Second
+	contextControlsTimeout := false
 	if deadline, ok := ctx.Deadline(); ok {
 		remaining := time.Until(deadline)
 		if remaining <= 0 {
@@ -1628,6 +1639,7 @@ func captureScreenWaylandNativeContext(ctx context.Context, args ...int) (CBitma
 		}
 		if remaining < timeout {
 			timeout = remaining
+			contextControlsTimeout = true
 		}
 	}
 	timeoutMillis := max(int64(1), int64((timeout+time.Millisecond-1)/time.Millisecond))
@@ -1641,9 +1653,10 @@ func captureScreenWaylandNativeContext(ctx context.Context, args ...int) (CBitma
 			return nil, err
 		}
 		if captureErr == C.ScreengrabErrTimeout {
-			if _, ok := ctx.Deadline(); ok {
+			if contextControlsTimeout {
 				return nil, context.DeadlineExceeded
 			}
+			return nil, captureTimeoutError{backend: BackendScreencopy}
 		}
 		if deadline, ok := ctx.Deadline(); ok && !time.Now().Before(deadline) {
 			return nil, context.DeadlineExceeded
