@@ -314,6 +314,17 @@ func dispatchUIAAction(
 			if err := validateDispatch(); err != nil {
 				return ActionResult{}, err
 			}
+			minimum, err = uiaPatternNumber(ctx, pattern, uiaRangeMethodMinimum)
+			if err != nil {
+				return ActionResult{}, err
+			}
+			maximum, err = uiaPatternNumber(ctx, pattern, uiaRangeMethodMaximum)
+			if err != nil {
+				return ActionResult{}, err
+			}
+			if err := validateExplicitRangeValue(value, minimum, maximum); err != nil {
+				return ActionResult{}, err
+			}
 			return ActionResult{Dispatched: true}, setUIARangeValue(ctx, pattern, value)
 		}
 		pattern, err := currentUIAPattern(ctx, element, uiaPatternValue)
@@ -347,12 +358,31 @@ func dispatchUIAAction(
 		if err != nil {
 			return ActionResult{}, err
 		}
-		next, err := nextBoundedStepValue(current, step, minimum, maximum, request.Action == "decrement")
-		if err != nil {
+		if _, err := nextBoundedStepValue(current, step, minimum, maximum, request.Action == "decrement"); err != nil {
 			return ActionResult{}, ErrInvalidTree
 		}
 		if err := validateDispatch(); err != nil {
 			return ActionResult{}, err
+		}
+		current, err = uiaPatternNumber(ctx, pattern, uiaRangeMethodCurrent)
+		if err != nil {
+			return ActionResult{}, err
+		}
+		step, err = uiaPatternNumber(ctx, pattern, uiaRangeMethodSmallChange)
+		if err != nil {
+			return ActionResult{}, err
+		}
+		minimum, err = uiaPatternNumber(ctx, pattern, uiaRangeMethodMinimum)
+		if err != nil {
+			return ActionResult{}, err
+		}
+		maximum, err = uiaPatternNumber(ctx, pattern, uiaRangeMethodMaximum)
+		if err != nil {
+			return ActionResult{}, err
+		}
+		next, err := nextBoundedStepValue(current, step, minimum, maximum, request.Action == "decrement")
+		if err != nil {
+			return ActionResult{}, ErrInvalidTree
 		}
 		return ActionResult{Dispatched: true}, setUIARangeValue(ctx, pattern, next)
 	default:

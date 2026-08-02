@@ -47,6 +47,7 @@ type fakeATSPIQuery struct {
 	actionNameHook   func()
 	minimumStepHook  func()
 	maximumValueHook func()
+	propertyHook     func(atspiReference, string)
 }
 
 func (query *fakeATSPIQuery) applications(context.Context) ([]atspiReference, error) {
@@ -103,6 +104,9 @@ func (query *fakeATSPIQuery) stringProperty(_ context.Context, reference atspiRe
 		return "", err
 	}
 	query.propertyCalls[referenceKey(reference)+":"+name]++
+	if query.propertyHook != nil {
+		query.propertyHook(reference, name)
+	}
 	return object.properties[name], nil
 }
 
@@ -529,12 +533,14 @@ func TestActATSPIRevalidatesExactObservedElementBeforeDispatch(t *testing.T) {
 	query.objects[referenceKey(button)].properties[atspiPropertyName] = "Save"
 	query.objects[referenceKey(button)].actionCount = 2
 	query.objects[referenceKey(button)].actionNames = []string{"click", "delete"}
-	actionNameCalls := 0
-	query.actionNameHook = func() {
-		actionNameCalls++
-		if actionNameCalls == 2 {
+	windowTitleCalls := 0
+	query.propertyHook = func(reference atspiReference, name string) {
+		if reference == window && name == atspiPropertyName {
+			windowTitleCalls++
+		}
+		if windowTitleCalls == 2 {
 			query.objects[referenceKey(button)].actionNames = []string{"delete", "click"}
-			query.actionNameHook = nil
+			query.propertyHook = nil
 		}
 	}
 	result, err = actATSPI(t.Context(), query, request, button)
@@ -729,6 +735,36 @@ func TestActATSPIRevalidatesSliderSemanticsAfterRangePreparation(t *testing.T) {
 	result, err = actATSPI(t.Context(), query, request, slider)
 	if !errors.Is(err, ErrInvalidTree) || result.Dispatched || len(query.mutationCalls) != 0 {
 		t.Fatalf("out-of-range slider value = %+v, %v, calls=%v", result, err, query.mutationCalls)
+	}
+
+	request.Value = "8"
+	minimumStepCalls := 0
+	query.minimumStepHook = func() {
+		minimumStepCalls++
+		if minimumStepCalls == 2 {
+			query.objects[referenceKey(slider)].maximumValue = 5
+			query.minimumStepHook = nil
+		}
+	}
+	result, err = actATSPI(t.Context(), query, request, slider)
+	if !errors.Is(err, ErrInvalidTree) || result.Dispatched || len(query.mutationCalls) != 0 {
+		t.Fatalf("late out-of-range slider value = %+v, %v, calls=%v", result, err, query.mutationCalls)
+	}
+
+	query.objects[referenceKey(slider)].maximumValue = 10
+	request.Action = "increment"
+	request.Value = ""
+	minimumStepCalls = 0
+	query.minimumStepHook = func() {
+		minimumStepCalls++
+		if minimumStepCalls == 3 {
+			query.objects[referenceKey(slider)].value = 9
+			query.minimumStepHook = nil
+		}
+	}
+	result, err = actATSPI(t.Context(), query, request, slider)
+	if err != nil || !result.Dispatched || query.setNumericValue != 10 || len(query.mutationCalls) != 1 {
+		t.Fatalf("recomputed slider step = %+v, %v, value=%v, calls=%v", result, err, query.setNumericValue, query.mutationCalls)
 	}
 }
 

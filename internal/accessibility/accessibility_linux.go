@@ -287,9 +287,8 @@ func actATSPI(ctx context.Context, query atspiQuery, request ActionRequest, refe
 }
 
 type atspiActionTarget struct {
-	roleID      uint32
-	interfaces  map[string]bool
-	actionNames []string
+	roleID     uint32
+	interfaces map[string]bool
 }
 
 func validateATSPIElement(ctx context.Context, query atspiQuery, reference atspiReference, request ActionRequest) (atspiActionTarget, error) {
@@ -334,7 +333,7 @@ func validateATSPIElement(ctx context.Context, query atspiQuery, reference atspi
 		slices.Contains(mappedStates, "disabled") {
 		return atspiActionTarget{}, ErrStaleTarget
 	}
-	return atspiActionTarget{roleID: roleID, interfaces: interfaces, actionNames: actionNames}, nil
+	return atspiActionTarget{roleID: roleID, interfaces: interfaces}, nil
 }
 
 func decodeATSPIReference(data []byte) (atspiReference, error) {
@@ -510,6 +509,17 @@ func dispatchATSPIAction(
 		if _, err := validateDispatch(); err != nil {
 			return ActionResult{}, err
 		}
+		minimum, err = query.minimumValue(ctx, reference)
+		if err != nil {
+			return ActionResult{}, normalizeATSPIError(err)
+		}
+		maximum, err = query.maximumValue(ctx, reference)
+		if err != nil {
+			return ActionResult{}, normalizeATSPIError(err)
+		}
+		if err := validateExplicitRangeValue(value, minimum, maximum); err != nil {
+			return ActionResult{}, err
+		}
 		if err := query.setCurrentValue(ctx, reference, value); err != nil {
 			return dispatched, normalizeATSPIError(err)
 		}
@@ -534,12 +544,31 @@ func dispatchATSPIAction(
 		if err != nil {
 			return ActionResult{}, normalizeATSPIError(err)
 		}
-		next, err := nextBoundedStepValue(current, step, minimum, maximum, request.Action == "decrement")
-		if err != nil {
+		if _, err := nextBoundedStepValue(current, step, minimum, maximum, request.Action == "decrement"); err != nil {
 			return ActionResult{}, ErrInvalidTree
 		}
 		if _, err := validateDispatch(); err != nil {
 			return ActionResult{}, err
+		}
+		current, err = query.currentValue(ctx, reference)
+		if err != nil {
+			return ActionResult{}, normalizeATSPIError(err)
+		}
+		step, err = query.minimumIncrement(ctx, reference)
+		if err != nil {
+			return ActionResult{}, normalizeATSPIError(err)
+		}
+		minimum, err = query.minimumValue(ctx, reference)
+		if err != nil {
+			return ActionResult{}, normalizeATSPIError(err)
+		}
+		maximum, err = query.maximumValue(ctx, reference)
+		if err != nil {
+			return ActionResult{}, normalizeATSPIError(err)
+		}
+		next, err := nextBoundedStepValue(current, step, minimum, maximum, request.Action == "decrement")
+		if err != nil {
+			return ActionResult{}, ErrInvalidTree
 		}
 		if err := query.setCurrentValue(ctx, reference, next); err != nil {
 			return dispatched, normalizeATSPIError(err)
@@ -550,7 +579,11 @@ func dispatchATSPIAction(
 		if err != nil {
 			return ActionResult{}, err
 		}
-		index := findATSPIActionIndex(request.Action, target.actionNames)
+		finalNames, err := readATSPIActionNames(ctx, query, reference, target.interfaces)
+		if err != nil {
+			return ActionResult{}, err
+		}
+		index := findATSPIActionIndex(request.Action, finalNames)
 		if index < 0 {
 			return ActionResult{}, ErrStaleTarget
 		}
