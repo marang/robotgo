@@ -31,21 +31,22 @@ type fakeATSPIObject struct {
 }
 
 type fakeATSPIQuery struct {
-	apps            []atspiReference
-	pids            map[string]uint32
-	pidErrors       map[string]error
-	objects         map[string]*fakeATSPIObject
-	propertyCalls   map[string]int
-	childCalls      map[string]int
-	interfaceCalls  map[string]int
-	textCalls       map[string]int
-	mutationCalls   []string
-	setTextValue    string
-	setNumericValue float64
-	mutationErr     error
-	minimumStepErr  error
-	actionNameHook  func()
-	minimumStepHook func()
+	apps             []atspiReference
+	pids             map[string]uint32
+	pidErrors        map[string]error
+	objects          map[string]*fakeATSPIObject
+	propertyCalls    map[string]int
+	childCalls       map[string]int
+	interfaceCalls   map[string]int
+	textCalls        map[string]int
+	mutationCalls    []string
+	setTextValue     string
+	setNumericValue  float64
+	mutationErr      error
+	minimumStepErr   error
+	actionNameHook   func()
+	minimumStepHook  func()
+	maximumValueHook func()
 }
 
 func (query *fakeATSPIQuery) applications(context.Context) ([]atspiReference, error) {
@@ -209,6 +210,9 @@ func (query *fakeATSPIQuery) maximumValue(_ context.Context, reference atspiRefe
 	object, err := query.object(reference)
 	if err != nil {
 		return 0, err
+	}
+	if query.maximumValueHook != nil {
+		query.maximumValueHook()
 	}
 	return object.maximumValue, nil
 }
@@ -430,6 +434,16 @@ func TestATSPIFixedRoleStateAndActionMappings(t *testing.T) {
 	}, nil, true)); got != "[set-value increment decrement]" {
 		t.Fatalf("slider with step = %s", got)
 	}
+	if got := fmt.Sprint(inferATSPIActions("textbox", atspiTestStates(atspiStateEnabled), map[string]bool{
+		atspiShortEditableText: true,
+	}, nil, false)); got != "[]" {
+		t.Fatalf("read-only textbox actions = %s", got)
+	}
+	if got := fmt.Sprint(inferATSPIActions("textbox", atspiTestStates(atspiStateEditable, atspiStateEnabled), map[string]bool{
+		atspiShortEditableText: true,
+	}, nil, false)); got != "[set-value]" {
+		t.Fatalf("editable textbox actions = %s", got)
+	}
 }
 
 func TestUsableATSPIStepActionsRequirePositiveFiniteIncrement(t *testing.T) {
@@ -648,6 +662,48 @@ func TestActATSPIRevalidatesMembershipAfterSliderPreparation(t *testing.T) {
 	result, err := actATSPI(t.Context(), query, request, slider)
 	if !errors.Is(err, ErrStaleTarget) || result.Dispatched || len(query.mutationCalls) != 0 {
 		t.Fatalf("late reparented slider = %+v, %v, calls=%v", result, err, query.mutationCalls)
+	}
+}
+
+func TestActATSPIRevalidatesSliderSemanticsAfterRangePreparation(t *testing.T) {
+	application := atspiTestReference("application")
+	window := atspiTestReference("window")
+	slider := atspiTestReference("slider")
+	query := newFakeATSPIQuery(map[atspiReference]*fakeATSPIObject{
+		application: {children: []atspiReference{window}},
+		window: {
+			parent: application, children: []atspiReference{slider}, role: atspiRoleFrame,
+			properties: map[string]string{atspiPropertyName: "Fixture"},
+		},
+		slider: {
+			parent: window, role: atspiRoleSlider,
+			states:           atspiTestStates(atspiStateEnabled, atspiStateShowing, atspiStateVisible),
+			properties:       map[string]string{atspiPropertyName: "Volume"},
+			interfaces:       []string{atspiShortValue},
+			value:            4,
+			minimumIncrement: 1,
+			minimumValue:     0,
+			maximumValue:     10,
+		},
+	})
+	query.apps = []atspiReference{application}
+	query.pids[application.Bus] = 42
+	query.maximumValueHook = func() {
+		query.objects[referenceKey(slider)].properties[atspiPropertyName] = "Balance"
+		query.maximumValueHook = nil
+	}
+	request := ActionRequest{
+		Target:    Target{ProcessID: 42, ExpectedTitle: "Fixture"},
+		Reference: []byte(referenceKey(slider)), Action: "increment",
+		Expected: ElementExpectation{
+			Role: "slider", Name: "Volume", States: []string{"enabled"},
+			Actions: []string{"set-value", "increment", "decrement"},
+		},
+	}
+
+	result, err := actATSPI(t.Context(), query, request, slider)
+	if !errors.Is(err, ErrStaleTarget) || result.Dispatched || len(query.mutationCalls) != 0 {
+		t.Fatalf("late stale slider semantics = %+v, %v, calls=%v", result, err, query.mutationCalls)
 	}
 }
 

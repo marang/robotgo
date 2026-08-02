@@ -397,7 +397,7 @@ func inferATSPIActions(
 	if interfaces[atspiShortComponent] && atspiStateSet(words, atspiStateFocusable) {
 		actions = append(actions, "focus")
 	}
-	if role == "textbox" && interfaces[atspiShortEditableText] {
+	if role == "textbox" && interfaces[atspiShortEditableText] && atspiStateSet(words, atspiStateEditable) {
 		actions = append(actions, "set-value")
 	}
 	if atspiStateSet(words, atspiStateCollapsed) && findATSPIActionIndex("expand", actionNames) >= 0 {

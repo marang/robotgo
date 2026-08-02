@@ -114,26 +114,13 @@ func actWindowsUIA(ctx context.Context, request ActionRequest) (ActionResult, er
 		return ActionResult{}, err
 	}
 	defer element.Release()
-	structure, err := client.query.structure(ctx, element)
+	role, err := validateUIAElement(ctx, client.query, element, request)
 	if err != nil {
 		return ActionResult{}, err
 	}
-	role := mapUIAControlType(structure.ControlType, structure.Password)
-	if structure.Password || structure.Offscreen || role != request.Expected.Role {
-		return ActionResult{}, ErrStaleTarget
-	}
-	details, err := client.query.details(ctx, element, role, Limits{
-		MaxStringBytes: 1 << 20, ReadName: true, ReadStates: true,
-		ReadBounds: true, ReadActions: true,
-	})
-	if err != nil {
-		return ActionResult{}, err
-	}
-	if details.Name != request.Expected.Name || !slices.Equal(details.States, request.Expected.States) ||
-		!equalAccessibilityBounds(details.Bounds, request.Expected.Bounds) ||
-		!slices.Equal(details.Actions, request.Expected.Actions) ||
-		!slices.Contains(details.Actions, request.Action) || slices.Contains(details.States, "disabled") {
-		return ActionResult{}, ErrStaleTarget
+	validateElement := func() error {
+		_, err := validateUIAElement(ctx, client.query, element, request)
+		return err
 	}
 	validateWindow := func() error {
 		liveRoot, err := client.elementFromHandle(ctx, uintptr(handle))
@@ -152,7 +139,32 @@ func actWindowsUIA(ctx context.Context, request ActionRequest) (ActionResult, er
 		}
 		return nil
 	}
-	return dispatchUIAAction(ctx, element, role, request, validateWindow)
+	return dispatchUIAAction(ctx, element, role, request, validateElement, validateWindow)
+}
+
+func validateUIAElement(ctx context.Context, query *uiaCOMQuery, element *ole.IUnknown, request ActionRequest) (string, error) {
+	structure, err := query.structure(ctx, element)
+	if err != nil {
+		return "", err
+	}
+	role := mapUIAControlType(structure.ControlType, structure.Password)
+	if structure.Password || structure.Offscreen || role != request.Expected.Role {
+		return "", ErrStaleTarget
+	}
+	details, err := query.details(ctx, element, role, Limits{
+		MaxStringBytes: 1 << 20, ReadName: true, ReadStates: true,
+		ReadBounds: true, ReadActions: true,
+	})
+	if err != nil {
+		return "", err
+	}
+	if details.Name != request.Expected.Name || !slices.Equal(details.States, request.Expected.States) ||
+		!equalAccessibilityBounds(details.Bounds, request.Expected.Bounds) ||
+		!slices.Equal(details.Actions, request.Expected.Actions) ||
+		!slices.Contains(details.Actions, request.Action) || slices.Contains(details.States, "disabled") {
+		return "", ErrStaleTarget
+	}
+	return role, nil
 }
 
 func findUIAElement(ctx context.Context, query *uiaCOMQuery, root *ole.IUnknown, processID int32, runtimeID []int32) (*ole.IUnknown, error) {
@@ -229,9 +241,22 @@ func findUIAElement(ctx context.Context, query *uiaCOMQuery, root *ole.IUnknown,
 	return result, nil
 }
 
-func dispatchUIAAction(ctx context.Context, element *ole.IUnknown, role string, request ActionRequest, validateWindow func() error) (ActionResult, error) {
+func dispatchUIAAction(
+	ctx context.Context,
+	element *ole.IUnknown,
+	role string,
+	request ActionRequest,
+	validateElement func() error,
+	validateWindow func() error,
+) (ActionResult, error) {
+	validateDispatch := func() error {
+		if err := validateElement(); err != nil {
+			return err
+		}
+		return validateWindow()
+	}
 	if request.Action == "focus" {
-		if err := validateWindow(); err != nil {
+		if err := validateDispatch(); err != nil {
 			return ActionResult{}, err
 		}
 		return ActionResult{Dispatched: true}, setUIAFocus(ctx, element)
@@ -275,7 +300,7 @@ func dispatchUIAAction(ctx context.Context, element *ole.IUnknown, role string, 
 				return ActionResult{}, ErrStaleTarget
 			}
 			defer pattern.Release()
-			if err := validateWindow(); err != nil {
+			if err := validateDispatch(); err != nil {
 				return ActionResult{}, err
 			}
 			return ActionResult{Dispatched: true}, setUIARangeValue(ctx, pattern, value)
@@ -285,7 +310,7 @@ func dispatchUIAAction(ctx context.Context, element *ole.IUnknown, role string, 
 			return ActionResult{}, ErrStaleTarget
 		}
 		defer pattern.Release()
-		if err := validateWindow(); err != nil {
+		if err := validateDispatch(); err != nil {
 			return ActionResult{}, err
 		}
 		return ActionResult{Dispatched: true}, setUIAStringValue(ctx, pattern, request.Value)
@@ -315,7 +340,7 @@ func dispatchUIAAction(ctx context.Context, element *ole.IUnknown, role string, 
 		if err != nil {
 			return ActionResult{}, ErrInvalidTree
 		}
-		if err := validateWindow(); err != nil {
+		if err := validateDispatch(); err != nil {
 			return ActionResult{}, err
 		}
 		return ActionResult{Dispatched: true}, setUIARangeValue(ctx, pattern, next)
@@ -327,7 +352,7 @@ func dispatchUIAAction(ctx context.Context, element *ole.IUnknown, role string, 
 		return ActionResult{}, ErrStaleTarget
 	}
 	defer pattern.Release()
-	if err := validateWindow(); err != nil {
+	if err := validateDispatch(); err != nil {
 		return ActionResult{}, err
 	}
 	return ActionResult{Dispatched: true}, callUIAPattern(ctx, pattern, method)

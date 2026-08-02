@@ -263,45 +263,13 @@ func actATSPI(ctx context.Context, query atspiQuery, request ActionRequest, refe
 	if liveTitle != request.Target.ExpectedTitle {
 		return ActionResult{}, ErrStaleTarget
 	}
-	roleID, err := query.role(ctx, reference)
-	if err != nil {
-		return ActionResult{}, normalizeATSPIError(err)
-	}
-	states, err := query.states(ctx, reference)
-	if err != nil {
-		return ActionResult{}, normalizeATSPIError(err)
-	}
-	if len(states) != 2 || roleID == atspiRolePasswordText {
-		return ActionResult{}, ErrStaleTarget
-	}
-	name, err := query.stringProperty(ctx, reference, atspiPropertyName)
-	if err != nil {
-		return ActionResult{}, normalizeATSPIError(err)
-	}
-	interfaces, err := readATSPIInterfaces(ctx, query, reference)
+	target, err := validateATSPIElement(ctx, query, reference, request)
 	if err != nil {
 		return ActionResult{}, err
 	}
-	liveBounds, err := liveATSPIBounds(ctx, query, reference, interfaces, request.Expected.Bounds != nil)
-	if err != nil {
-		return ActionResult{}, err
-	}
-	actionNames, err := readATSPIActionNames(ctx, query, reference, interfaces)
-	if err != nil {
-		return ActionResult{}, err
-	}
-	role := mapATSPIRole(roleID)
-	stepActions, err := usableATSPIStepActions(ctx, query, reference, role, interfaces)
-	if err != nil {
-		return ActionResult{}, err
-	}
-	liveActions := inferATSPIActions(role, states, interfaces, actionNames, stepActions)
-	if mapATSPIRole(roleID) != request.Expected.Role || name != request.Expected.Name ||
-		!slices.Equal(mapATSPIStates(mapATSPIRole(roleID), states), request.Expected.States) ||
-		!equalAccessibilityBounds(liveBounds, request.Expected.Bounds) ||
-		!slices.Equal(liveActions, request.Expected.Actions) || !slices.Contains(liveActions, request.Action) ||
-		slices.Contains(request.Expected.States, "disabled") {
-		return ActionResult{}, ErrStaleTarget
+	validateElement := func() error {
+		_, err := validateATSPIElement(ctx, query, reference, request)
+		return err
 	}
 	validateWindow := func() error {
 		if err := validateATSPIMembership(ctx, query, root, reference, uint32(request.Target.ProcessID)); err != nil {
@@ -316,7 +284,58 @@ func actATSPI(ctx context.Context, query atspiQuery, request ActionRequest, refe
 		}
 		return nil
 	}
-	return dispatchATSPIAction(ctx, query, reference, roleID, interfaces, actionNames, request, validateWindow)
+	return dispatchATSPIAction(ctx, query, reference, target.roleID, target.interfaces, target.actionNames, request, validateElement, validateWindow)
+}
+
+type atspiActionTarget struct {
+	roleID      uint32
+	interfaces  map[string]bool
+	actionNames []string
+}
+
+func validateATSPIElement(ctx context.Context, query atspiQuery, reference atspiReference, request ActionRequest) (atspiActionTarget, error) {
+	roleID, err := query.role(ctx, reference)
+	if err != nil {
+		return atspiActionTarget{}, normalizeATSPIError(err)
+	}
+	states, err := query.states(ctx, reference)
+	if err != nil {
+		return atspiActionTarget{}, normalizeATSPIError(err)
+	}
+	if len(states) != 2 || roleID == atspiRolePasswordText {
+		return atspiActionTarget{}, ErrStaleTarget
+	}
+	name, err := query.stringProperty(ctx, reference, atspiPropertyName)
+	if err != nil {
+		return atspiActionTarget{}, normalizeATSPIError(err)
+	}
+	interfaces, err := readATSPIInterfaces(ctx, query, reference)
+	if err != nil {
+		return atspiActionTarget{}, err
+	}
+	bounds, err := liveATSPIBounds(ctx, query, reference, interfaces, request.Expected.Bounds != nil)
+	if err != nil {
+		return atspiActionTarget{}, err
+	}
+	actionNames, err := readATSPIActionNames(ctx, query, reference, interfaces)
+	if err != nil {
+		return atspiActionTarget{}, err
+	}
+	role := mapATSPIRole(roleID)
+	stepActions, err := usableATSPIStepActions(ctx, query, reference, role, interfaces)
+	if err != nil {
+		return atspiActionTarget{}, err
+	}
+	actions := inferATSPIActions(role, states, interfaces, actionNames, stepActions)
+	mappedStates := mapATSPIStates(role, states)
+	if role != request.Expected.Role || name != request.Expected.Name ||
+		!slices.Equal(mappedStates, request.Expected.States) ||
+		!equalAccessibilityBounds(bounds, request.Expected.Bounds) ||
+		!slices.Equal(actions, request.Expected.Actions) || !slices.Contains(actions, request.Action) ||
+		slices.Contains(mappedStates, "disabled") {
+		return atspiActionTarget{}, ErrStaleTarget
+	}
+	return atspiActionTarget{roleID: roleID, interfaces: interfaces, actionNames: actionNames}, nil
 }
 
 func decodeATSPIReference(data []byte) (atspiReference, error) {
@@ -420,14 +439,30 @@ func liveATSPIBounds(ctx context.Context, query atspiQuery, reference atspiRefer
 	return &Bounds{X: int(rect.X), Y: int(rect.Y), Width: int(rect.Width), Height: int(rect.Height)}, nil
 }
 
-func dispatchATSPIAction(ctx context.Context, query atspiQuery, reference atspiReference, roleID uint32, interfaces map[string]bool, names []string, request ActionRequest, validateWindow func() error) (ActionResult, error) {
+func dispatchATSPIAction(
+	ctx context.Context,
+	query atspiQuery,
+	reference atspiReference,
+	roleID uint32,
+	interfaces map[string]bool,
+	names []string,
+	request ActionRequest,
+	validateElement func() error,
+	validateWindow func() error,
+) (ActionResult, error) {
 	dispatched := ActionResult{Dispatched: true}
+	validateDispatch := func() error {
+		if err := validateElement(); err != nil {
+			return err
+		}
+		return validateWindow()
+	}
 	switch request.Action {
 	case "focus":
 		if !interfaces[atspiShortComponent] {
 			return ActionResult{}, ErrStaleTarget
 		}
-		if err := validateWindow(); err != nil {
+		if err := validateDispatch(); err != nil {
 			return ActionResult{}, err
 		}
 		ok, err := query.grabFocus(ctx, reference)
@@ -440,7 +475,7 @@ func dispatchATSPIAction(ctx context.Context, query atspiQuery, reference atspiR
 		return dispatched, nil
 	case "set-value":
 		if mapATSPIRole(roleID) == "textbox" && interfaces[atspiShortEditableText] {
-			if err := validateWindow(); err != nil {
+			if err := validateDispatch(); err != nil {
 				return ActionResult{}, err
 			}
 			ok, err := query.setTextContents(ctx, reference, request.Value)
@@ -459,7 +494,7 @@ func dispatchATSPIAction(ctx context.Context, query atspiQuery, reference atspiR
 		if err != nil || math.IsNaN(value) || math.IsInf(value, 0) {
 			return ActionResult{}, ErrInvalidTree
 		}
-		if err := validateWindow(); err != nil {
+		if err := validateDispatch(); err != nil {
 			return ActionResult{}, err
 		}
 		if err := query.setCurrentValue(ctx, reference, value); err != nil {
@@ -490,7 +525,7 @@ func dispatchATSPIAction(ctx context.Context, query atspiQuery, reference atspiR
 		if err != nil {
 			return ActionResult{}, ErrInvalidTree
 		}
-		if err := validateWindow(); err != nil {
+		if err := validateDispatch(); err != nil {
 			return ActionResult{}, err
 		}
 		if err := query.setCurrentValue(ctx, reference, next); err != nil {
@@ -502,7 +537,7 @@ func dispatchATSPIAction(ctx context.Context, query atspiQuery, reference atspiR
 		if index < 0 {
 			return ActionResult{}, ErrStaleTarget
 		}
-		if err := validateWindow(); err != nil {
+		if err := validateDispatch(); err != nil {
 			return ActionResult{}, err
 		}
 		ok, err := query.doAction(ctx, reference, int32(index))
