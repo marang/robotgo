@@ -300,16 +300,25 @@ func dispatchUIAAction(ctx context.Context, element *ole.IUnknown, role string, 
 			return ActionResult{}, err
 		}
 		step, err := uiaPatternNumber(ctx, pattern, uiaRangeMethodSmallChange)
-		if err != nil || step <= 0 || math.IsNaN(step) || math.IsInf(step, 0) {
-			return ActionResult{}, ErrInvalidTree
+		if err != nil {
+			return ActionResult{}, err
 		}
-		if request.Action == "decrement" {
-			step = -step
+		minimum, err := uiaPatternNumber(ctx, pattern, uiaRangeMethodMinimum)
+		if err != nil {
+			return ActionResult{}, err
+		}
+		maximum, err := uiaPatternNumber(ctx, pattern, uiaRangeMethodMaximum)
+		if err != nil {
+			return ActionResult{}, err
+		}
+		next, err := nextBoundedStepValue(current, step, minimum, maximum, request.Action == "decrement")
+		if err != nil {
+			return ActionResult{}, ErrInvalidTree
 		}
 		if err := validateWindow(); err != nil {
 			return ActionResult{}, err
 		}
-		return ActionResult{Dispatched: true}, setUIARangeValue(ctx, pattern, current+step)
+		return ActionResult{Dispatched: true}, setUIARangeValue(ctx, pattern, next)
 	default:
 		return ActionResult{}, ErrUnsupported
 	}

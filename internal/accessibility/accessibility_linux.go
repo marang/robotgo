@@ -32,6 +32,8 @@ const (
 	atspiPropertyDescription      = "Description"
 	atspiPropertyCurrentValue     = "CurrentValue"
 	atspiPropertyMinimumIncrement = "MinimumIncrement"
+	atspiPropertyMinimumValue     = "MinimumValue"
+	atspiPropertyMaximumValue     = "MaximumValue"
 	atspiPropertyActionCount      = "NActions"
 	atspiPropertyParent           = "Parent"
 	atspiShortAction              = "Action"
@@ -85,6 +87,8 @@ type atspiQuery interface {
 	grabFocus(context.Context, atspiReference) (bool, error)
 	setTextContents(context.Context, atspiReference, string) (bool, error)
 	minimumIncrement(context.Context, atspiReference) (float64, error)
+	minimumValue(context.Context, atspiReference) (float64, error)
+	maximumValue(context.Context, atspiReference) (float64, error)
 	setCurrentValue(context.Context, atspiReference, float64) error
 }
 
@@ -286,7 +290,12 @@ func actATSPI(ctx context.Context, query atspiQuery, request ActionRequest, refe
 	if err != nil {
 		return ActionResult{}, err
 	}
-	liveActions := inferATSPIActions(mapATSPIRole(roleID), states, interfaces, actionNames)
+	role := mapATSPIRole(roleID)
+	stepActions, err := usableATSPIStepActions(ctx, query, reference, role, interfaces)
+	if err != nil {
+		return ActionResult{}, err
+	}
+	liveActions := inferATSPIActions(role, states, interfaces, actionNames, stepActions)
 	if mapATSPIRole(roleID) != request.Expected.Role || name != request.Expected.Name ||
 		!slices.Equal(mapATSPIStates(mapATSPIRole(roleID), states), request.Expected.States) ||
 		!equalAccessibilityBounds(liveBounds, request.Expected.Bounds) ||
@@ -469,16 +478,22 @@ func dispatchATSPIAction(ctx context.Context, query atspiQuery, reference atspiR
 		if err != nil {
 			return ActionResult{}, normalizeATSPIError(err)
 		}
-		if step <= 0 || math.IsNaN(step) || math.IsInf(step, 0) || math.IsNaN(current) || math.IsInf(current, 0) {
-			return ActionResult{}, ErrInvalidTree
+		minimum, err := query.minimumValue(ctx, reference)
+		if err != nil {
+			return ActionResult{}, normalizeATSPIError(err)
 		}
-		if request.Action == "decrement" {
-			step = -step
+		maximum, err := query.maximumValue(ctx, reference)
+		if err != nil {
+			return ActionResult{}, normalizeATSPIError(err)
+		}
+		next, err := nextBoundedStepValue(current, step, minimum, maximum, request.Action == "decrement")
+		if err != nil {
+			return ActionResult{}, ErrInvalidTree
 		}
 		if err := validateWindow(); err != nil {
 			return ActionResult{}, err
 		}
-		if err := query.setCurrentValue(ctx, reference, current+step); err != nil {
+		if err := query.setCurrentValue(ctx, reference, next); err != nil {
 			return dispatched, normalizeATSPIError(err)
 		}
 		return dispatched, nil
@@ -603,7 +618,8 @@ func normalizeATSPIError(err error) error {
 		switch name {
 		case "org.freedesktop.DBus.Error.AccessDenied", "org.freedesktop.DBus.Error.AuthFailed":
 			return ErrPermissionDenied
-		case "org.freedesktop.DBus.Error.UnknownMethod", "org.freedesktop.DBus.Error.NotSupported":
+		case "org.freedesktop.DBus.Error.UnknownMethod", "org.freedesktop.DBus.Error.UnknownProperty",
+			"org.freedesktop.DBus.Error.NotSupported":
 			return ErrUnsupported
 		default:
 			return ErrUnavailable

@@ -932,10 +932,11 @@ query-interval, and session-lifetime limits. Element IDs are opaque and
 observation-scoped; platform handles and object paths remain private. Hidden and offscreen nodes
 are omitted, password/sensitive text is redacted, invalid backend identities
 fail closed, and `ReleaseObservation` or session close zeroes retained backend
-references. No current action accepts a semantic element ID, so enabling
-inspection grants no element mutation. A future element action must re-resolve
-the retained native identity and revalidate role, state, bounds, target
-process/window, and title before performing input. On Linux, an already-active AT-SPI2 bus provides the first native
+references. Inspection alone grants no element mutation. `Session.ActUIElement`
+and the `desktop.element-act` operation require a separate deny-by-default
+policy grant, then re-resolve the retained native identity and revalidate role,
+state, bounds, action, target process/window, and title before native semantic
+dispatch. On Linux, an already-active AT-SPI2 bus provides the first native
 adapter for exact process-and-title targets on GNOME, KDE, and other accessible
 desktops. Its capability probe never starts the accessibility service; enable
 desktop accessibility before RobotGo when the catalog reports it unavailable.

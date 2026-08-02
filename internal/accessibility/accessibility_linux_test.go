@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"strings"
 	"testing"
 
@@ -22,6 +23,8 @@ type fakeATSPIObject struct {
 	text             string
 	value            float64
 	minimumIncrement float64
+	minimumValue     float64
+	maximumValue     float64
 	actionCount      int32
 	actionNames      []string
 	parent           atspiReference
@@ -40,6 +43,7 @@ type fakeATSPIQuery struct {
 	setTextValue    string
 	setNumericValue float64
 	mutationErr     error
+	minimumStepErr  error
 	actionNameHook  func()
 	minimumStepHook func()
 }
@@ -180,6 +184,9 @@ func (query *fakeATSPIQuery) setTextContents(_ context.Context, reference atspiR
 }
 
 func (query *fakeATSPIQuery) minimumIncrement(_ context.Context, reference atspiReference) (float64, error) {
+	if query.minimumStepErr != nil {
+		return 0, query.minimumStepErr
+	}
 	object, err := query.object(reference)
 	if err != nil {
 		return 0, err
@@ -188,6 +195,22 @@ func (query *fakeATSPIQuery) minimumIncrement(_ context.Context, reference atspi
 		query.minimumStepHook()
 	}
 	return object.minimumIncrement, nil
+}
+
+func (query *fakeATSPIQuery) minimumValue(_ context.Context, reference atspiReference) (float64, error) {
+	object, err := query.object(reference)
+	if err != nil {
+		return 0, err
+	}
+	return object.minimumValue, nil
+}
+
+func (query *fakeATSPIQuery) maximumValue(_ context.Context, reference atspiReference) (float64, error) {
+	object, err := query.object(reference)
+	if err != nil {
+		return 0, err
+	}
+	return object.maximumValue, nil
 }
 
 func (query *fakeATSPIQuery) setCurrentValue(_ context.Context, reference atspiReference, value float64) error {
@@ -389,13 +412,59 @@ func TestATSPIFixedRoleStateAndActionMappings(t *testing.T) {
 	}
 	if got := fmt.Sprint(inferATSPIActions("checkbox", words, map[string]bool{
 		"Action": true, "Component": true,
-	}, []string{"toggle"})); got != "[toggle focus expand]" {
+	}, []string{"toggle"}, false)); got != "[toggle focus expand]" {
 		t.Fatalf("actions = %s", got)
 	}
 	if got := fmt.Sprint(inferATSPIActions("checkbox", words, map[string]bool{
 		"Action": true,
-	}, nil)); got != "[]" {
+	}, nil, false)); got != "[]" {
 		t.Fatalf("zero-count actions = %s", got)
+	}
+	if got := fmt.Sprint(inferATSPIActions("slider", words, map[string]bool{
+		atspiShortValue: true,
+	}, nil, false)); got != "[set-value]" {
+		t.Fatalf("slider without step = %s", got)
+	}
+	if got := fmt.Sprint(inferATSPIActions("slider", words, map[string]bool{
+		atspiShortValue: true,
+	}, nil, true)); got != "[set-value increment decrement]" {
+		t.Fatalf("slider with step = %s", got)
+	}
+}
+
+func TestUsableATSPIStepActionsRequirePositiveFiniteIncrement(t *testing.T) {
+	slider := atspiTestReference("slider-step")
+	query := newFakeATSPIQuery(map[atspiReference]*fakeATSPIObject{
+		slider: {minimumIncrement: 1},
+	})
+	interfaces := map[string]bool{atspiShortValue: true}
+
+	for _, test := range []struct {
+		name string
+		step float64
+		want bool
+	}{
+		{name: "positive", step: 1, want: true},
+		{name: "zero"},
+		{name: "nan", step: math.NaN()},
+		{name: "infinite", step: math.Inf(1)},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			query.objects[referenceKey(slider)].minimumIncrement = test.step
+			got, err := usableATSPIStepActions(t.Context(), query, slider, "slider", interfaces)
+			if err != nil || got != test.want {
+				t.Fatalf("usableATSPIStepActions() = %v, %v, want %v", got, err, test.want)
+			}
+		})
+	}
+
+	query.minimumStepErr = dbus.Error{Name: "org.freedesktop.DBus.Error.UnknownProperty"}
+	if got, err := usableATSPIStepActions(t.Context(), query, slider, "slider", interfaces); err != nil || got {
+		t.Fatalf("unsupported increment = %v, %v", got, err)
+	}
+	query.minimumStepErr = ErrUnavailable
+	if _, err := usableATSPIStepActions(t.Context(), query, slider, "slider", interfaces); !errors.Is(err, ErrUnavailable) {
+		t.Fatalf("unavailable increment error = %v", err)
 	}
 }
 
@@ -510,6 +579,8 @@ func TestActATSPIRevalidatesWindowAfterSliderPreparation(t *testing.T) {
 			interfaces:       []string{atspiShortValue},
 			value:            4,
 			minimumIncrement: 1,
+			minimumValue:     0,
+			maximumValue:     10,
 		},
 	})
 	query.apps = []atspiReference{application}
@@ -555,6 +626,8 @@ func TestActATSPIRevalidatesMembershipAfterSliderPreparation(t *testing.T) {
 			interfaces:       []string{atspiShortValue},
 			value:            4,
 			minimumIncrement: 1,
+			minimumValue:     0,
+			maximumValue:     10,
 		},
 	})
 	query.apps = []atspiReference{application}
@@ -604,6 +677,7 @@ func TestNormalizeATSPIErrorUsesFixedErrorClasses(t *testing.T) {
 	}{
 		{name: "denied", err: dbus.Error{Name: "org.freedesktop.DBus.Error.AccessDenied"}, want: ErrPermissionDenied},
 		{name: "unsupported", err: dbus.Error{Name: "org.freedesktop.DBus.Error.UnknownMethod"}, want: ErrUnsupported},
+		{name: "unknown-property", err: dbus.Error{Name: "org.freedesktop.DBus.Error.UnknownProperty"}, want: ErrUnsupported},
 		{name: "pointer-denied", err: &dbus.Error{Name: "org.freedesktop.DBus.Error.AuthFailed"}, want: ErrPermissionDenied},
 		{name: "unavailable", err: dbus.Error{Name: "org.example.PrivateError", Body: []any{"sensitive details"}}, want: ErrUnavailable},
 		{name: "cancelled", err: context.Canceled, want: context.Canceled},

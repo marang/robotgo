@@ -5,6 +5,7 @@ package accessibility
 import (
 	"context"
 	"errors"
+	"math"
 )
 
 const (
@@ -148,4 +149,23 @@ func clearSnapshot(snapshot *Snapshot) {
 
 func equalAccessibilityBounds(left, right *Bounds) bool {
 	return left == nil && right == nil || left != nil && right != nil && *left == *right
+}
+
+func nextBoundedStepValue(current, step, minimum, maximum float64, decrement bool) (float64, error) {
+	if step <= 0 || minimum > maximum || current < minimum || current > maximum ||
+		math.IsNaN(current) || math.IsNaN(step) || math.IsNaN(minimum) || math.IsNaN(maximum) ||
+		math.IsInf(current, 0) || math.IsInf(step, 0) || math.IsInf(minimum, 0) || math.IsInf(maximum, 0) {
+		return 0, ErrInvalidTree
+	}
+	if decrement {
+		step = -step
+	}
+	next := current + step
+	if next < minimum {
+		return minimum, nil
+	}
+	if next > maximum {
+		return maximum, nil
+	}
+	return next, nil
 }

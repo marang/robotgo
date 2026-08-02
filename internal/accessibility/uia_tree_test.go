@@ -64,6 +64,37 @@ func TestUIARangeValueActionsRequireUsableSmallChange(t *testing.T) {
 	}
 }
 
+func TestNextBoundedStepValueClampsBeforeDispatch(t *testing.T) {
+	tests := []struct {
+		name      string
+		current   float64
+		step      float64
+		minimum   float64
+		maximum   float64
+		decrement bool
+		want      float64
+		wantErr   bool
+	}{
+		{name: "increment", current: 4, step: 1, minimum: 0, maximum: 10, want: 5},
+		{name: "decrement", current: 4, step: 1, minimum: 0, maximum: 10, decrement: true, want: 3},
+		{name: "maximum endpoint", current: 10, step: 1, minimum: 0, maximum: 10, want: 10},
+		{name: "minimum endpoint", current: 0, step: 1, minimum: 0, maximum: 10, decrement: true, want: 0},
+		{name: "upper clamp", current: 9, step: 5, minimum: 0, maximum: 10, want: 10},
+		{name: "lower clamp", current: 1, step: 5, minimum: 0, maximum: 10, decrement: true, want: 0},
+		{name: "finite overflow", current: math.MaxFloat64, step: math.MaxFloat64, minimum: 0, maximum: math.MaxFloat64, want: math.MaxFloat64},
+		{name: "invalid range", current: 1, step: 1, minimum: 2, maximum: 1, wantErr: true},
+		{name: "invalid current", current: 11, step: 1, minimum: 0, maximum: 10, wantErr: true},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			got, err := nextBoundedStepValue(test.current, test.step, test.minimum, test.maximum, test.decrement)
+			if (err != nil) != test.wantErr || got != test.want {
+				t.Fatalf("nextBoundedStepValue() = %v, %v, want %v, error=%v", got, err, test.want, test.wantErr)
+			}
+		})
+	}
+}
+
 func (query *fakeUIAQuery) processID(_ context.Context, reference int) (int32, error) {
 	query.processCalls[reference]++
 	node, ok := query.nodes[reference]

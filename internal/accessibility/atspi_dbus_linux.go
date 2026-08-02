@@ -190,6 +190,18 @@ func (query *dbusATSPIQuery) minimumIncrement(ctx context.Context, reference ats
 	return result, err
 }
 
+func (query *dbusATSPIQuery) minimumValue(ctx context.Context, reference atspiReference) (float64, error) {
+	var result float64
+	err := query.property(ctx, reference, atspiValueInterface, atspiPropertyMinimumValue, &result)
+	return result, err
+}
+
+func (query *dbusATSPIQuery) maximumValue(ctx context.Context, reference atspiReference) (float64, error) {
+	var result float64
+	err := query.property(ctx, reference, atspiValueInterface, atspiPropertyMaximumValue, &result)
+	return result, err
+}
+
 func (query *dbusATSPIQuery) setCurrentValue(ctx context.Context, reference atspiReference, value float64) error {
 	call := query.object(reference).CallWithContext(
 		ctx, dbusPropertiesInterface+".Set", 0, atspiValueInterface, atspiPropertyCurrentValue, dbus.MakeVariant(value),

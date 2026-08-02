@@ -54,6 +54,8 @@ const (
 	uiaPatternMethodPrimary   = 3
 	uiaPatternMethodSecondary = 4
 	uiaRangeMethodCurrent     = 4
+	uiaRangeMethodMaximum     = 6
+	uiaRangeMethodMinimum     = 7
 	uiaRangeMethodSmallChange = 9
 )
 
