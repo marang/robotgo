@@ -475,18 +475,75 @@ func TestServerCloseClearsImageContentBeforeSerialization(t *testing.T) {
 	}
 }
 
-func TestServerCloseClearsImageTransferredAfterPendingRegistration(t *testing.T) {
+func TestServerClosePreventsImageTransferAfterPendingRegistration(t *testing.T) {
 	server := newImageProtocolServer(t, &fakeSession{})
 	content := server.newClearingImageContent(nil, agent.ViewMIMEType)
+	data := testPNG(t, 1, 1)
+	view, err := agent.NewImageView(agent.ViewMetadata{
+		SchemaVersion: agent.ViewSchemaVersion, ObservationID: "observation-93",
+		CreatedAt: time.Unix(502, 0).UTC(),
+		Region:    agent.CaptureRegion{Width: 1, Height: 1, DisplayID: 0},
+		Width:     1, Height: 1, Backend: "fixture-capture", MIMEType: agent.ViewMIMEType,
+	}, data)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if err := server.Close(); err != nil {
 		t.Fatal(err)
 	}
-	data := testPNG(t, 1, 1)
-	if content.adopt(data) {
-		t.Fatal("content accepted image bytes after server close")
+	if err := content.take(view); !errors.Is(err, agent.ErrObservationClosed) {
+		t.Fatalf("content transfer after close error = %v", err)
+	}
+	if err := view.Close(); err != nil {
+		t.Fatal(err)
 	}
 	if !allZero(data) {
-		t.Fatal("server close race retained subsequently transferred image bytes")
+		t.Fatal("server close race retained image bytes in the untransferred view")
+	}
+}
+
+func TestServerCloseWaitsForAtomicImageTransfer(t *testing.T) {
+	server := newImageProtocolServer(t, &fakeSession{})
+	content := server.newClearingImageContent(nil, agent.ViewMIMEType)
+	data := testPNG(t, 1, 1)
+	view, err := agent.NewImageView(agent.ViewMetadata{
+		SchemaVersion: agent.ViewSchemaVersion, ObservationID: "observation-94",
+		CreatedAt: time.Unix(503, 0).UTC(),
+		Region:    agent.CaptureRegion{Width: 1, Height: 1, DisplayID: 0},
+		Width:     1, Height: 1, Backend: "fixture-capture", MIMEType: agent.ViewMIMEType,
+	}, data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	transferred := make(chan struct{})
+	resume := make(chan struct{})
+	takeDone := make(chan error, 1)
+	go func() {
+		takeDone <- content.takeWith(func() ([]byte, error) {
+			encoded, takeErr := view.TakePNG()
+			close(transferred)
+			<-resume
+			return encoded, takeErr
+		})
+	}()
+	<-transferred
+
+	closeDone := make(chan error, 1)
+	go func() { closeDone <- server.Close() }()
+	select {
+	case err := <-closeDone:
+		t.Fatalf("server close returned before image handoff completed: %v", err)
+	case <-time.After(20 * time.Millisecond):
+	}
+	close(resume)
+	if err := <-takeDone; err != nil {
+		t.Fatal(err)
+	}
+	if err := <-closeDone; err != nil {
+		t.Fatal(err)
+	}
+	if !allZero(data) {
+		t.Fatal("server close retained bytes after waiting for atomic image handoff")
 	}
 }
 

@@ -244,7 +244,7 @@ and transport-cleanup checks without reading or changing the developer's
 desktop. Synthetic PNGs and captures exist only in memory; tests prove
 redaction-before-downscale, rejection of ancillary metadata, single ownership
 transfer, owned-byte zeroing after SDK serialization, batch-safe transport
-behavior, atomic registration before transport ownership transfer,
+behavior, an atomic transport ownership handoff that blocks concurrent close,
 pre-serialization shutdown cleanup, deadline-bounded synchronous native
 capture with late-result pixel zeroing, and raw-observation cleanup. The command
 tests use only private `t.TempDir()` policy fixtures, which test cleanup removes:

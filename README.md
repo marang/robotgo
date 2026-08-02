@@ -1157,8 +1157,8 @@ shutdown path. wlroots native screencopy does not need the portal flag.
 
 Images are encoded in memory as validated metadata-free PNGs; RobotGo creates
 no screenshot file, clears its owned raw encoded bytes after MCP serialization,
-registers the transport handoff before ownership leaves the view, tracks and
-clears pending bytes if serialization is skipped during shutdown,
+performs the view-to-transport handoff under the same lock used by shutdown,
+tracks and clears pending bytes if serialization is skipped during shutdown,
 and zeroes retained raw pixels on `robotgo_release_observation` or session
 close. Serialized JSON-RPC buffers belong to the configured MCP SDK transport;
 RobotGo does not mutate them because transports may retain responses for batch

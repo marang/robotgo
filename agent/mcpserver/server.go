@@ -406,13 +406,9 @@ func (s *Server) view(ctx context.Context, _ *mcp.CallToolRequest, input agent.V
 		return errorResult(), ViewOutput{Error: safeToolError(errors.New("nil image view"))}, nil
 	}
 	content := s.newClearingImageContent(nil, agent.ViewMIMEType)
-	data, err := view.TakePNG()
-	if err != nil {
+	if err := content.take(view); err != nil {
 		content.clear()
 		return s.finishViewError(viewer, view, err)
-	}
-	if !content.adopt(data) {
-		return s.finishViewError(viewer, view, agent.ErrObservationClosed)
 	}
 	if err := ctx.Err(); err != nil {
 		content.clear()
@@ -462,18 +458,25 @@ func (s *Server) newClearingImageContent(data []byte, mimeType string) *clearing
 	return content
 }
 
-// adopt completes the transfer into an already registered content owner. If
-// server shutdown won the race, the incoming bytes are cleared immediately.
-func (content *clearingImageContent) adopt(data []byte) bool {
+// take atomically transfers an image into an already registered content owner.
+// Server shutdown uses the same lock, so it either prevents TakePNG entirely
+// or waits until the bytes are owned and can be cleared synchronously.
+func (content *clearingImageContent) take(view *agent.View) error {
+	return content.takeWith(view.TakePNG)
+}
+
+func (content *clearingImageContent) takeWith(take func() ([]byte, error)) error {
 	content.mu.Lock()
+	defer content.mu.Unlock()
 	if content.marshaled || content.data != nil {
-		content.mu.Unlock()
-		clear(data)
-		return false
+		return agent.ErrObservationClosed
+	}
+	data, err := take()
+	if err != nil {
+		return err
 	}
 	content.data = data
-	content.mu.Unlock()
-	return true
+	return nil
 }
 
 func (content *clearingImageContent) MarshalJSON() ([]byte, error) {
