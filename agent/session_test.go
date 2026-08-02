@@ -39,6 +39,7 @@ type fakeDriver struct {
 	boundsErr        error
 	boundsHit        chan struct{}
 	boundsGo         chan struct{}
+	boundsDone       chan struct{}
 	started          chan struct{}
 	release          chan struct{}
 	captureImages    []image.Image
@@ -59,6 +60,14 @@ type fakeDriver struct {
 }
 
 func (d *fakeDriver) DisplayBounds(displayID int) (displayBounds, error) {
+	if d.boundsDone != nil {
+		defer func() {
+			select {
+			case d.boundsDone <- struct{}{}:
+			default:
+			}
+		}()
+	}
 	if d.boundsHit != nil {
 		select {
 		case d.boundsHit <- struct{}{}:

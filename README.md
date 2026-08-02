@@ -1175,8 +1175,11 @@ the deadline into screencopy setup and dispatch. Synchronous X11, macOS, and
 Windows capture runs behind a cancelable ownership boundary, so the view and
 session close can return at the deadline; if the native call completes later,
 RobotGo wipes its returned pixels instead of publishing them. One shared slot
-prevents abandoned synchronous calls from multiplying; later bounded requests
-can time out while waiting for that slot without starting another native call.
+also bounds synchronous display-geometry preflight, preventing a stalled X11,
+macOS, or Windows bounds query from holding the view action gate or session
+close past the deadline. It prevents abandoned synchronous reads from
+multiplying; later bounded requests can time out while waiting for that slot
+without starting another native call.
 When Wayland's two-second native safety timeout precedes a longer policy
 deadline, RobotGo reports a backend timeout rather than a caller deadline or an
 unsupported fallback.

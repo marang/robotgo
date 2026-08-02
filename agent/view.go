@@ -267,7 +267,7 @@ func (s *Session) View(ctx context.Context, request ViewRequest) (*View, error) 
 	if err := s.viewExecutionError(viewCtx); err != nil {
 		return s.finishViewFailure(ctx, nil, err)
 	}
-	region, err := s.resolveViewRegion(request)
+	region, err := s.resolveViewRegion(viewCtx, request)
 	if err != nil {
 		return s.finishViewFailure(ctx, nil, err)
 	}
@@ -381,12 +381,17 @@ func (s *Session) beginView() error {
 	return nil
 }
 
-func (s *Session) resolveViewRegion(request ViewRequest) (CaptureRegion, error) {
+func (s *Session) resolveViewRegion(ctx context.Context, request ViewRequest) (CaptureRegion, error) {
 	if request.Region != nil {
 		return *request.Region, nil
 	}
-	bounds, err := s.driver.DisplayBounds(*request.FullDisplayID)
+	bounds, err := displayBoundsWithContext(ctx, func() (displayBounds, error) {
+		return s.driver.DisplayBounds(*request.FullDisplayID)
+	})
 	if err != nil {
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			return CaptureRegion{}, viewContextError(ctx)
+		}
 		code, message := classifyBackendError(err)
 		return CaptureRegion{}, viewError(code, message, err)
 	}

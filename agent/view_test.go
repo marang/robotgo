@@ -90,6 +90,71 @@ func TestCaptureImageWithContextBoundsSynchronousBackendAndWipesLateResult(t *te
 	}
 }
 
+func TestViewDeadlineBoundsDisplayLookupAndAllowsClose(t *testing.T) {
+	for _, fullDisplay := range []bool{false, true} {
+		name := "region"
+		if fullDisplay {
+			name = "full-display"
+		}
+		t.Run(name, func(t *testing.T) {
+			policy := viewPolicy()
+			policy.ViewTimeoutMillis = 20
+			policy.AllowFullDisplayView = fullDisplay
+			if fullDisplay {
+				policy.AllowedViewRegions = nil
+			}
+			boundsGo := make(chan struct{})
+			boundsDone := make(chan struct{}, 1)
+			driver := &fakeDriver{
+				boundsHit:  make(chan struct{}, 1),
+				boundsGo:   boundsGo,
+				boundsDone: boundsDone,
+			}
+			session := newTestSession(t, policy, driver)
+			region := CaptureRegion{Width: 4, Height: 2, DisplayID: 0}
+			displayID := 0
+			request := ViewRequest{Region: &region}
+			if fullDisplay {
+				request = ViewRequest{FullDisplayID: &displayID}
+			}
+
+			started := time.Now()
+			view, err := session.View(context.Background(), request)
+			if view != nil || !hasErrorCode(err, ErrorTimedOut) {
+				t.Fatalf("View = (%v, %v), want timed-out bounds lookup", view, err)
+			}
+			if elapsed := time.Since(started); elapsed > 500*time.Millisecond {
+				t.Fatalf("bounded view returned after %s", elapsed)
+			}
+			select {
+			case <-driver.boundsHit:
+			default:
+				t.Fatal("view did not reach display-bounds lookup")
+			}
+			if driver.captureCount() != 0 {
+				t.Fatal("timed-out bounds lookup reached capture")
+			}
+
+			closed := make(chan error, 1)
+			go func() { closed <- session.Close() }()
+			select {
+			case err := <-closed:
+				if err != nil {
+					t.Fatal(err)
+				}
+			case <-time.After(500 * time.Millisecond):
+				t.Fatal("Session.Close blocked behind timed-out display-bounds lookup")
+			}
+			close(boundsGo)
+			select {
+			case <-boundsDone:
+			case <-time.After(time.Second):
+				t.Fatal("display-bounds worker did not finish after release")
+			}
+		})
+	}
+}
+
 func allZeroBytes(data []byte) bool {
 	for _, value := range data {
 		if value != 0 {

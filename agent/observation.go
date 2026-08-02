@@ -257,7 +257,12 @@ type captureImageResult struct {
 	err   error
 }
 
-var synchronousCaptureSlot = make(chan struct{}, 1)
+type displayBoundsResult struct {
+	bounds displayBounds
+	err    error
+}
+
+var synchronousDesktopReadSlot = make(chan struct{}, 1)
 
 // captureImageWithContext bounds synchronous native capture APIs that cannot
 // accept a context themselves. A late result remains owned by the worker and
@@ -273,12 +278,12 @@ func captureImageWithContext(
 		return nil, err
 	}
 	select {
-	case synchronousCaptureSlot <- struct{}{}:
+	case synchronousDesktopReadSlot <- struct{}{}:
 	case <-ctx.Done():
 		return nil, ctx.Err()
 	}
 	if ctx.Done() == nil {
-		defer func() { <-synchronousCaptureSlot }()
+		defer func() { <-synchronousDesktopReadSlot }()
 		img, err := capture()
 		if err != nil {
 			wipeMutableImage(img)
@@ -289,7 +294,7 @@ func captureImageWithContext(
 
 	result := make(chan captureImageResult)
 	go func() {
-		defer func() { <-synchronousCaptureSlot }()
+		defer func() { <-synchronousDesktopReadSlot }()
 		if ctx.Err() != nil {
 			return
 		}
@@ -314,6 +319,54 @@ func captureImageWithContext(
 		return captured.image, nil
 	case <-ctx.Done():
 		return nil, ctx.Err()
+	}
+}
+
+// displayBoundsWithContext applies the same single-flight cancellation
+// boundary as synchronous capture. The native lookup may finish after the
+// caller returns, but it cannot retain sensitive pixels or start additional
+// synchronous desktop reads while it remains blocked.
+func displayBoundsWithContext(
+	ctx context.Context,
+	lookup func() (displayBounds, error),
+) (displayBounds, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if err := ctx.Err(); err != nil {
+		return displayBounds{}, err
+	}
+	select {
+	case synchronousDesktopReadSlot <- struct{}{}:
+	case <-ctx.Done():
+		return displayBounds{}, ctx.Err()
+	}
+	if ctx.Done() == nil {
+		defer func() { <-synchronousDesktopReadSlot }()
+		return lookup()
+	}
+
+	result := make(chan displayBoundsResult)
+	go func() {
+		defer func() { <-synchronousDesktopReadSlot }()
+		if ctx.Err() != nil {
+			return
+		}
+		bounds, err := lookup()
+		select {
+		case result <- displayBoundsResult{bounds: bounds, err: err}:
+		case <-ctx.Done():
+		}
+	}()
+
+	select {
+	case resolved := <-result:
+		if err := ctx.Err(); err != nil {
+			return displayBounds{}, err
+		}
+		return resolved.bounds, resolved.err
+	case <-ctx.Done():
+		return displayBounds{}, ctx.Err()
 	}
 }
 
@@ -541,7 +594,9 @@ func (s *Session) captureWith(
 	if err := ctx.Err(); err != nil {
 		return nil, observationContextError(ctx)
 	}
-	bounds, err := s.driver.DisplayBounds(region.DisplayID)
+	bounds, err := displayBoundsWithContext(ctx, func() (displayBounds, error) {
+		return s.driver.DisplayBounds(region.DisplayID)
+	})
 	if err != nil {
 		code, message := classifyBackendError(err)
 		return nil, observationActionError(code, message, err)
