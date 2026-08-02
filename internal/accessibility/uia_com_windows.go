@@ -107,13 +107,6 @@ type uiaCOMQuery struct {
 	walker *ole.IUnknown
 }
 
-type uiaRect struct {
-	Left   float64
-	Top    float64
-	Width  float64
-	Height float64
-}
-
 type uiaCallError uint32
 
 func (err uiaCallError) Error() string { return "Windows UI Automation call failed" }
@@ -789,24 +782,24 @@ func boundedBSTR(value *uint16, maxBytes uint32) string {
 }
 
 func elementBounds(ctx context.Context, element *ole.IUnknown) (*Bounds, error) {
-	var value uiaRect
+	var value windows.Rect
 	if err := callUIAMethod(ctx, element, uiaElementMethodBounds, uintptr(unsafe.Pointer(&value))); err != nil {
 		return nil, err
 	}
-	if math.IsNaN(value.Left) || math.IsNaN(value.Top) || math.IsNaN(value.Width) || math.IsNaN(value.Height) ||
-		math.IsInf(value.Left, 0) || math.IsInf(value.Top, 0) || math.IsInf(value.Width, 0) || math.IsInf(value.Height, 0) {
-		return nil, ErrInvalidTree
-	}
-	if value.Width <= 0 || value.Height <= 0 {
+	return boundsFromWindowsRect(value)
+}
+
+func boundsFromWindowsRect(value windows.Rect) (*Bounds, error) {
+	left, top := int64(value.Left), int64(value.Top)
+	width, height := int64(value.Right)-left, int64(value.Bottom)-top
+	if width <= 0 || height <= 0 {
 		return nil, nil
 	}
-	left, top := math.Floor(value.Left), math.Floor(value.Top)
-	right, bottom := math.Ceil(value.Left+value.Width), math.Ceil(value.Top+value.Height)
-	if left < float64(math.MinInt) || top < float64(math.MinInt) ||
-		right > float64(math.MaxInt) || bottom > float64(math.MaxInt) {
+	leftInt, topInt, widthInt, heightInt := int(left), int(top), int(width), int(height)
+	if int64(leftInt) != left || int64(topInt) != top || int64(widthInt) != width || int64(heightInt) != height {
 		return nil, ErrInvalidTree
 	}
-	return &Bounds{X: int(left), Y: int(top), Width: int(right - left), Height: int(bottom - top)}, nil
+	return &Bounds{X: leftInt, Y: topInt, Width: widthInt, Height: heightInt}, nil
 }
 
 func readUIAIntArray(ctx context.Context, array *ole.SafeArray) ([]int32, error) {
