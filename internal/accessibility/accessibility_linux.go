@@ -528,7 +528,7 @@ func dispatchATSPIAction(
 		if err := validateExplicitRangeValue(value, minimum, maximum); err != nil {
 			return ActionResult{}, err
 		}
-		if err := validateWindow(); err != nil {
+		if _, err := validateDispatch(); err != nil {
 			return ActionResult{}, err
 		}
 		if err := query.setCurrentValue(ctx, reference, value); err != nil {
@@ -581,7 +581,7 @@ func dispatchATSPIAction(
 		if err != nil {
 			return ActionResult{}, ErrInvalidTree
 		}
-		if err := validateWindow(); err != nil {
+		if _, err := validateDispatch(); err != nil {
 			return ActionResult{}, err
 		}
 		if err := query.setCurrentValue(ctx, reference, next); err != nil {
@@ -606,7 +606,10 @@ func dispatchATSPIAction(
 			return ActionResult{}, err
 		}
 		liveSelectedName, err := readATSPIActionName(ctx, query, reference, int32(index))
-		if err != nil || liveSelectedName != selectedName || findATSPIActionIndex(request.Action, []string{liveSelectedName}) != 0 {
+		if err != nil {
+			return ActionResult{}, err
+		}
+		if liveSelectedName != selectedName || findATSPIActionIndex(request.Action, []string{liveSelectedName}) != 0 {
 			return ActionResult{}, ErrStaleTarget
 		}
 		ok, err := query.doAction(ctx, reference, int32(index))

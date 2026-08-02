@@ -44,6 +44,7 @@ type fakeATSPIQuery struct {
 	setNumericValue  float64
 	mutationErr      error
 	minimumStepErr   error
+	actionNameErr    error
 	actionNameHook   func()
 	minimumStepHook  func()
 	maximumValueHook func()
@@ -153,6 +154,9 @@ func (query *fakeATSPIQuery) actionCount(_ context.Context, reference atspiRefer
 }
 
 func (query *fakeATSPIQuery) actionName(_ context.Context, reference atspiReference, index int32) (string, error) {
+	if query.actionNameErr != nil {
+		return "", query.actionNameErr
+	}
 	object, err := query.object(reference)
 	if err != nil || index < 0 || int(index) >= len(object.actionNames) {
 		return "", ErrInvalidTree
@@ -569,6 +573,23 @@ func TestActATSPIRevalidatesExactObservedElementBeforeDispatch(t *testing.T) {
 		t.Fatalf("hybrid action-name scan = %+v, %v, calls=%v", result, err, query.mutationCalls)
 	}
 
+	query.objects[referenceKey(button)].actionNames = []string{"click", "delete"}
+	windowTitleCalls = 0
+	query.propertyHook = func(reference atspiReference, name string) {
+		if reference == window && name == atspiPropertyName {
+			windowTitleCalls++
+		}
+		if windowTitleCalls == 4 {
+			query.actionNameErr = context.DeadlineExceeded
+			query.propertyHook = nil
+		}
+	}
+	result, err = actATSPI(t.Context(), query, request, button)
+	if !errors.Is(err, context.DeadlineExceeded) || result.Dispatched || len(query.mutationCalls) != 0 {
+		t.Fatalf("final action-name timeout = %+v, %v, calls=%v", result, err, query.mutationCalls)
+	}
+	query.actionNameErr = nil
+
 	query.actionNameHook = func() {
 		query.objects[referenceKey(window)].properties[atspiPropertyName] = "Replacement"
 		query.actionNameHook = nil
@@ -785,6 +806,20 @@ func TestActATSPIRevalidatesSliderSemanticsAfterRangePreparation(t *testing.T) {
 	}
 
 	query.objects[referenceKey(window)].properties[atspiPropertyName] = "Fixture"
+	maximumValueCalls = 0
+	query.maximumValueHook = func() {
+		maximumValueCalls++
+		if maximumValueCalls == 2 {
+			query.objects[referenceKey(slider)].properties[atspiPropertyName] = "Balance"
+			query.maximumValueHook = nil
+		}
+	}
+	result, err = actATSPI(t.Context(), query, request, slider)
+	if !errors.Is(err, ErrStaleTarget) || result.Dispatched || len(query.mutationCalls) != 0 {
+		t.Fatalf("late stale slider semantics after range read = %+v, %v, calls=%v", result, err, query.mutationCalls)
+	}
+
+	query.objects[referenceKey(slider)].properties[atspiPropertyName] = "Volume"
 	request.Action = "increment"
 	request.Value = ""
 	minimumStepCalls = 0

@@ -325,7 +325,7 @@ func dispatchUIAAction(
 			if err := validateExplicitRangeValue(value, minimum, maximum); err != nil {
 				return ActionResult{}, err
 			}
-			if err := validateWindow(); err != nil {
+			if err := validateDispatch(); err != nil {
 				return ActionResult{}, err
 			}
 			return ActionResult{Dispatched: true}, setUIARangeValue(ctx, pattern, value)
@@ -387,7 +387,7 @@ func dispatchUIAAction(
 		if err != nil {
 			return ActionResult{}, ErrInvalidTree
 		}
-		if err := validateWindow(); err != nil {
+		if err := validateDispatch(); err != nil {
 			return ActionResult{}, err
 		}
 		return ActionResult{Dispatched: true}, setUIARangeValue(ctx, pattern, next)
