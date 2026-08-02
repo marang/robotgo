@@ -85,10 +85,13 @@ type Options struct {
 
 // Server binds one process-exclusive agent session to one MCP connection.
 type Server struct {
-	adapter           *adapter
-	protocol          *mcp.Server
-	runStarted        atomic.Bool
-	allowImageContent bool
+	adapter             *adapter
+	protocol            *mcp.Server
+	runStarted          atomic.Bool
+	allowImageContent   bool
+	pendingImageMu      sync.Mutex
+	pendingImages       map[*clearingImageContent]struct{}
+	pendingImagesClosed bool
 }
 
 // New constructs a server without opening a transport or touching the desktop.
@@ -141,6 +144,7 @@ func (s *Server) Close() error {
 	if s == nil || s.adapter == nil {
 		return nil
 	}
+	s.closePendingImages()
 	return s.adapter.close()
 }
 
@@ -415,7 +419,7 @@ func (s *Server) view(ctx context.Context, _ *mcp.CallToolRequest, input agent.V
 		return errorResult(), ViewOutput{Error: safeToolError(err)}, nil
 	}
 	metadata := view.Metadata
-	return &mcp.CallToolResult{Content: []mcp.Content{newClearingImageContent(
+	return &mcp.CallToolResult{Content: []mcp.Content{s.newClearingImageContent(
 		data, agent.ViewMIMEType,
 	)}}, ViewOutput{View: &metadata}, nil
 }
@@ -431,26 +435,76 @@ type clearingImageContent struct {
 	data      []byte
 	mimeType  string
 	marshaled bool
+	done      func(*clearingImageContent)
 }
 
-func newClearingImageContent(data []byte, mimeType string) mcp.Content {
-	return &clearingImageContent{data: data, mimeType: mimeType}
+func (s *Server) newClearingImageContent(data []byte, mimeType string) mcp.Content {
+	content := &clearingImageContent{data: data, mimeType: mimeType}
+	content.done = func(completed *clearingImageContent) {
+		s.pendingImageMu.Lock()
+		delete(s.pendingImages, completed)
+		s.pendingImageMu.Unlock()
+	}
+	s.pendingImageMu.Lock()
+	if s.pendingImagesClosed {
+		s.pendingImageMu.Unlock()
+		content.clear()
+		return content
+	}
+	if s.pendingImages == nil {
+		s.pendingImages = make(map[*clearingImageContent]struct{})
+	}
+	s.pendingImages[content] = struct{}{}
+	s.pendingImageMu.Unlock()
+	return content
 }
 
 func (content *clearingImageContent) MarshalJSON() ([]byte, error) {
 	content.mu.Lock()
-	defer content.mu.Unlock()
 	if content.marshaled {
+		content.mu.Unlock()
 		return nil, errors.New("mcpserver: image content already serialized")
 	}
 	content.marshaled = true
-	defer func() {
-		clear(content.data)
-		content.data = nil
-	}()
-	return (&mcp.ImageContent{
+	result, err := (&mcp.ImageContent{
 		Data: content.data, MIMEType: content.mimeType,
 	}).MarshalJSON()
+	content.clearLocked()
+	return result, err
+}
+
+func (content *clearingImageContent) clear() {
+	if content == nil {
+		return
+	}
+	content.mu.Lock()
+	content.marshaled = true
+	content.clearLocked()
+}
+
+func (content *clearingImageContent) clearLocked() {
+	clear(content.data)
+	content.data = nil
+	done := content.done
+	content.done = nil
+	content.mu.Unlock()
+	if done != nil {
+		done(content)
+	}
+}
+
+func (s *Server) closePendingImages() {
+	s.pendingImageMu.Lock()
+	s.pendingImagesClosed = true
+	pending := make([]*clearingImageContent, 0, len(s.pendingImages))
+	for content := range s.pendingImages {
+		pending = append(pending, content)
+	}
+	clear(s.pendingImages)
+	s.pendingImageMu.Unlock()
+	for _, content := range pending {
+		content.clear()
+	}
 }
 
 func (s *Server) finishViewError(

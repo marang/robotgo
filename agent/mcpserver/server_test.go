@@ -455,6 +455,26 @@ func TestImageViewFailureZeroesPayloadAndReleasesCompletedLineage(t *testing.T) 
 	}
 }
 
+func TestServerCloseClearsImageContentBeforeSerialization(t *testing.T) {
+	server := newImageProtocolServer(t, &fakeSession{})
+	data := testPNG(t, 1, 1)
+	content := server.newClearingImageContent(data, agent.ViewMIMEType)
+	if content == nil || allZero(data) {
+		t.Fatal("pending image content was not retained for serialization")
+	}
+	if err := server.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if !allZero(data) {
+		t.Fatal("server close retained image content that was never serialized")
+	}
+	lateData := testPNG(t, 1, 1)
+	server.newClearingImageContent(lateData, agent.ViewMIMEType)
+	if !allZero(lateData) {
+		t.Fatal("closed server accepted new pending image content")
+	}
+}
+
 func testPNG(t *testing.T, width, height int) []byte {
 	t.Helper()
 	img := image.NewRGBA(image.Rect(0, 0, width, height))
