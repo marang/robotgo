@@ -527,6 +527,23 @@ func TestActATSPIRevalidatesExactObservedElementBeforeDispatch(t *testing.T) {
 	}
 
 	query.objects[referenceKey(button)].properties[atspiPropertyName] = "Save"
+	query.objects[referenceKey(button)].actionCount = 2
+	query.objects[referenceKey(button)].actionNames = []string{"click", "delete"}
+	actionNameCalls := 0
+	query.actionNameHook = func() {
+		actionNameCalls++
+		if actionNameCalls == 2 {
+			query.objects[referenceKey(button)].actionNames = []string{"delete", "click"}
+			query.actionNameHook = nil
+		}
+	}
+	result, err = actATSPI(t.Context(), query, request, button)
+	if err != nil || !result.Dispatched || len(query.mutationCalls) != 1 ||
+		!strings.HasSuffix(query.mutationCalls[0], ":1") {
+		t.Fatalf("reordered semantic press = %+v, %v, calls=%v", result, err, query.mutationCalls)
+	}
+
+	query.mutationCalls = nil
 	query.actionNameHook = func() {
 		query.objects[referenceKey(window)].properties[atspiPropertyName] = "Replacement"
 		query.actionNameHook = nil
@@ -704,6 +721,14 @@ func TestActATSPIRevalidatesSliderSemanticsAfterRangePreparation(t *testing.T) {
 	result, err := actATSPI(t.Context(), query, request, slider)
 	if !errors.Is(err, ErrStaleTarget) || result.Dispatched || len(query.mutationCalls) != 0 {
 		t.Fatalf("late stale slider semantics = %+v, %v, calls=%v", result, err, query.mutationCalls)
+	}
+
+	query.objects[referenceKey(slider)].properties[atspiPropertyName] = "Volume"
+	request.Action = "set-value"
+	request.Value = "11"
+	result, err = actATSPI(t.Context(), query, request, slider)
+	if !errors.Is(err, ErrInvalidTree) || result.Dispatched || len(query.mutationCalls) != 0 {
+		t.Fatalf("out-of-range slider value = %+v, %v, calls=%v", result, err, query.mutationCalls)
 	}
 }
 

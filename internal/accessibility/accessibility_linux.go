@@ -267,9 +267,8 @@ func actATSPI(ctx context.Context, query atspiQuery, request ActionRequest, refe
 	if err != nil {
 		return ActionResult{}, err
 	}
-	validateElement := func() error {
-		_, err := validateATSPIElement(ctx, query, reference, request)
-		return err
+	validateElement := func() (atspiActionTarget, error) {
+		return validateATSPIElement(ctx, query, reference, request)
 	}
 	validateWindow := func() error {
 		if err := validateATSPIMembership(ctx, query, root, reference, uint32(request.Target.ProcessID)); err != nil {
@@ -284,7 +283,7 @@ func actATSPI(ctx context.Context, query atspiQuery, request ActionRequest, refe
 		}
 		return nil
 	}
-	return dispatchATSPIAction(ctx, query, reference, target.roleID, target.interfaces, target.actionNames, request, validateElement, validateWindow)
+	return dispatchATSPIAction(ctx, query, reference, target.roleID, target.interfaces, request, validateElement, validateWindow)
 }
 
 type atspiActionTarget struct {
@@ -445,24 +444,27 @@ func dispatchATSPIAction(
 	reference atspiReference,
 	roleID uint32,
 	interfaces map[string]bool,
-	names []string,
 	request ActionRequest,
-	validateElement func() error,
+	validateElement func() (atspiActionTarget, error),
 	validateWindow func() error,
 ) (ActionResult, error) {
 	dispatched := ActionResult{Dispatched: true}
-	validateDispatch := func() error {
-		if err := validateElement(); err != nil {
-			return err
+	validateDispatch := func() (atspiActionTarget, error) {
+		target, err := validateElement()
+		if err != nil {
+			return atspiActionTarget{}, err
 		}
-		return validateWindow()
+		if err := validateWindow(); err != nil {
+			return atspiActionTarget{}, err
+		}
+		return target, nil
 	}
 	switch request.Action {
 	case "focus":
 		if !interfaces[atspiShortComponent] {
 			return ActionResult{}, ErrStaleTarget
 		}
-		if err := validateDispatch(); err != nil {
+		if _, err := validateDispatch(); err != nil {
 			return ActionResult{}, err
 		}
 		ok, err := query.grabFocus(ctx, reference)
@@ -475,7 +477,7 @@ func dispatchATSPIAction(
 		return dispatched, nil
 	case "set-value":
 		if mapATSPIRole(roleID) == "textbox" && interfaces[atspiShortEditableText] {
-			if err := validateDispatch(); err != nil {
+			if _, err := validateDispatch(); err != nil {
 				return ActionResult{}, err
 			}
 			ok, err := query.setTextContents(ctx, reference, request.Value)
@@ -494,7 +496,18 @@ func dispatchATSPIAction(
 		if err != nil || math.IsNaN(value) || math.IsInf(value, 0) {
 			return ActionResult{}, ErrInvalidTree
 		}
-		if err := validateDispatch(); err != nil {
+		minimum, err := query.minimumValue(ctx, reference)
+		if err != nil {
+			return ActionResult{}, normalizeATSPIError(err)
+		}
+		maximum, err := query.maximumValue(ctx, reference)
+		if err != nil {
+			return ActionResult{}, normalizeATSPIError(err)
+		}
+		if err := validateExplicitRangeValue(value, minimum, maximum); err != nil {
+			return ActionResult{}, err
+		}
+		if _, err := validateDispatch(); err != nil {
 			return ActionResult{}, err
 		}
 		if err := query.setCurrentValue(ctx, reference, value); err != nil {
@@ -525,7 +538,7 @@ func dispatchATSPIAction(
 		if err != nil {
 			return ActionResult{}, ErrInvalidTree
 		}
-		if err := validateDispatch(); err != nil {
+		if _, err := validateDispatch(); err != nil {
 			return ActionResult{}, err
 		}
 		if err := query.setCurrentValue(ctx, reference, next); err != nil {
@@ -533,12 +546,13 @@ func dispatchATSPIAction(
 		}
 		return dispatched, nil
 	default:
-		index := findATSPIActionIndex(request.Action, names)
+		target, err := validateDispatch()
+		if err != nil {
+			return ActionResult{}, err
+		}
+		index := findATSPIActionIndex(request.Action, target.actionNames)
 		if index < 0 {
 			return ActionResult{}, ErrStaleTarget
-		}
-		if err := validateDispatch(); err != nil {
-			return ActionResult{}, err
 		}
 		ok, err := query.doAction(ctx, reference, int32(index))
 		if err != nil {

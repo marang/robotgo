@@ -95,6 +95,30 @@ func TestNextBoundedStepValueClampsBeforeDispatch(t *testing.T) {
 	}
 }
 
+func TestValidateExplicitRangeValueRejectsInvalidInputBeforeDispatch(t *testing.T) {
+	for _, test := range []struct {
+		name                    string
+		value, minimum, maximum float64
+		wantErr                 bool
+	}{
+		{name: "inside", value: 4, minimum: 0, maximum: 10},
+		{name: "minimum", value: 0, minimum: 0, maximum: 10},
+		{name: "maximum", value: 10, minimum: 0, maximum: 10},
+		{name: "below", value: -1, minimum: 0, maximum: 10, wantErr: true},
+		{name: "above", value: 11, minimum: 0, maximum: 10, wantErr: true},
+		{name: "invalid range", value: 1, minimum: 2, maximum: 1, wantErr: true},
+		{name: "nan value", value: math.NaN(), minimum: 0, maximum: 10, wantErr: true},
+		{name: "infinite maximum", value: 1, minimum: 0, maximum: math.Inf(1), wantErr: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			err := validateExplicitRangeValue(test.value, test.minimum, test.maximum)
+			if (err != nil) != test.wantErr {
+				t.Fatalf("validateExplicitRangeValue() error = %v, want error=%v", err, test.wantErr)
+			}
+		})
+	}
+}
+
 func (query *fakeUIAQuery) processID(_ context.Context, reference int) (int32, error) {
 	query.processCalls[reference]++
 	node, ok := query.nodes[reference]

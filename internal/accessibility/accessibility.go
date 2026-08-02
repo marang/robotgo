@@ -151,6 +151,15 @@ func equalAccessibilityBounds(left, right *Bounds) bool {
 	return left == nil && right == nil || left != nil && right != nil && *left == *right
 }
 
+func validateExplicitRangeValue(value, minimum, maximum float64) error {
+	if minimum > maximum || value < minimum || value > maximum ||
+		math.IsNaN(value) || math.IsNaN(minimum) || math.IsNaN(maximum) ||
+		math.IsInf(value, 0) || math.IsInf(minimum, 0) || math.IsInf(maximum, 0) {
+		return ErrInvalidTree
+	}
+	return nil
+}
+
 func nextBoundedStepValue(current, step, minimum, maximum float64, decrement bool) (float64, error) {
 	if step <= 0 || minimum > maximum || current < minimum || current > maximum ||
 		math.IsNaN(current) || math.IsNaN(step) || math.IsNaN(minimum) || math.IsNaN(maximum) ||

@@ -300,6 +300,17 @@ func dispatchUIAAction(
 				return ActionResult{}, ErrStaleTarget
 			}
 			defer pattern.Release()
+			minimum, err := uiaPatternNumber(ctx, pattern, uiaRangeMethodMinimum)
+			if err != nil {
+				return ActionResult{}, err
+			}
+			maximum, err := uiaPatternNumber(ctx, pattern, uiaRangeMethodMaximum)
+			if err != nil {
+				return ActionResult{}, err
+			}
+			if err := validateExplicitRangeValue(value, minimum, maximum); err != nil {
+				return ActionResult{}, err
+			}
 			if err := validateDispatch(); err != nil {
 				return ActionResult{}, err
 			}
