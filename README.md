@@ -855,7 +855,8 @@ changing the legacy package-level API. One process-exclusive session exposes a
 versioned operation catalog, policy and confirmation gates, bounded observation,
 dry-run, typed move/click/scroll/drag/text/chord/activation requests,
 stale-target protection, post-action verification, privacy-safe visual
-conditions, a bounded semantic UI-inspection contract, and sanitized
+conditions, bounded semantic UI inspection, observation-bound native semantic
+element actions, and sanitized
 structured results. Scroll and drag are
 cooperatively cancelable between events. The operation catalog reports
 supported scroll axes structurally; Pure-Go X11 currently advertises only
@@ -1014,8 +1015,8 @@ go run ./examples/agent_conditions -allow-capture -mode wait \
 ### Local MCP adapter for agents
 
 `robotgo-mcp` exposes the policy-gated session to a local MCP client over
-stdio. Its default surface has eight focused tools: `robotgo_capabilities`,
-`robotgo_observe`, `robotgo_inspect_ui`, `robotgo_find`, `robotgo_wait`,
+stdio. Its default surface has nine focused tools: `robotgo_capabilities`,
+`robotgo_observe`, `robotgo_inspect_ui`, `robotgo_element_act`, `robotgo_find`, `robotgo_wait`,
 `robotgo_release_observation`, `robotgo_act`, and `robotgo_close`.
 `robotgo_view`, `robotgo_ocr`, and `robotgo_detect_elements` are registered
 only with the separate `-allow-image-content` startup grant. With no policy
@@ -1092,6 +1093,48 @@ exact allowed window title, roles, and properties and set every hard bound:
 
 This permits reading only the declared semantic projection; it does not grant
 clicks, typing, focus changes, screenshots, OCR, or any other mutation/read.
+
+Semantic mutation has its own deny-by-default `desktop.element-act` grant. It
+accepts only a still-live `desktop.inspect-ui` observation and an element's
+exact observed role, name, states, bounds, and action list. Immediately before
+dispatch, RobotGo re-resolves the private AT-SPI, UI Automation, or macOS
+Accessibility reference inside the same process/window/title and re-reads all
+of those facts. Changed, sensitive, disabled, foreign, or unsupported elements
+fail stale. Pointer, keyboard, clipboard, shell, and visual fallback are never
+used. An observation with truncated or sanitized identity text remains readable
+but cannot authorize mutation. Policy must additionally declare allowed semantic actions, action quota,
+rate, per-action timeout, and value-byte limit when `set-value` is allowed:
+
+```json
+{
+  "allowed_operations": ["desktop.inspect-ui", "desktop.element-act"],
+  "confirm_operations": ["desktop.element-act"],
+  "allowed_windows": [
+    {"target": 1234, "kind": "process", "expected_title": "Self-owned fixture"}
+  ],
+  "allowed_ui_roles": ["window", "button", "textbox"],
+  "allowed_ui_properties": ["role", "name", "state", "bounds", "actions", "hierarchy"],
+  "allowed_ui_actions": ["press", "focus", "set-value"],
+  "max_actions": 2,
+  "max_ui_action_value_bytes": 4096,
+  "ui_action_timeout_ms": 5000,
+  "min_action_interval_ms": 100,
+  "max_observations": 4,
+  "max_queries": 4,
+  "max_ui_elements": 200,
+  "max_ui_tree_depth": 8,
+  "max_ui_string_bytes": 16384,
+  "min_ui_query_interval_ms": 250,
+  "session_timeout_ms": 300000
+}
+```
+
+Run the self-owned native-button example with:
+
+```bash
+go run ./examples/semantic_element_action \
+  -pid 1234 -title 'Self-owned fixture' -button Save -confirm
+```
 
 Image observation is a separate, explicit sensitive-read boundary for GUIs
 that accessibility cannot describe. It needs two independent keys: the MCP

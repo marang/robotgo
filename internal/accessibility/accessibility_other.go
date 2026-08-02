@@ -14,3 +14,7 @@ func probe(context.Context) Capability {
 func inspect(context.Context, Target, Limits) (Snapshot, error) {
 	return Snapshot{}, ErrUnsupported
 }
+
+func act(context.Context, ActionRequest) (ActionResult, error) {
+	return ActionResult{}, ErrUnsupported
+}

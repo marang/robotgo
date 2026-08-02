@@ -36,7 +36,8 @@ func inspectAccessibilityUI(
 	}
 	result := uiBackendSnapshot{
 		Backend: snapshot.Backend, Truncated: snapshot.Truncated,
-		Nodes: make([]uiBackendNode, 0, len(snapshot.Nodes)),
+		IdentityTruncated: snapshot.IdentityTruncated,
+		Nodes:             make([]uiBackendNode, 0, len(snapshot.Nodes)),
 	}
 	for index := range snapshot.Nodes {
 		node := &snapshot.Nodes[index]
@@ -73,12 +74,41 @@ func agentAccessibilityError(err error) error {
 	case errors.Is(err, accessibility.ErrUnsupported):
 		return robotgo.ErrNotSupported
 	case errors.Is(err, accessibility.ErrInvalidTree):
-		return uiError(ErrorBackendFailure, "accessibility backend returned an invalid tree", err)
+		return uiError(ErrorBackendFailure, "accessibility backend returned invalid semantic data", err)
 	case errors.Is(err, accessibility.ErrUnavailable):
-		return uiError(ErrorUnavailable, "semantic UI inspection backend is unavailable", err)
+		return uiError(ErrorUnavailable, "native accessibility backend is unavailable", err)
 	case errors.Is(err, context.Canceled), errors.Is(err, context.DeadlineExceeded):
 		return err
 	default:
-		return uiError(ErrorBackendFailure, "native accessibility inspection failed", err)
+		return uiError(ErrorBackendFailure, "native accessibility operation failed", err)
 	}
+}
+
+func actAccessibilityUI(ctx context.Context, request uiBackendElementAction, target accessibility.Target) (bool, error) {
+	expected := accessibility.ElementExpectation{
+		Role: string(request.Expected.Role), Name: request.Expected.Name,
+		Sensitive: request.Expected.Sensitive,
+		States:    make([]string, 0, len(request.Expected.States)),
+		Actions:   make([]string, 0, len(request.Expected.Actions)),
+	}
+	for _, state := range request.Expected.States {
+		expected.States = append(expected.States, string(state))
+	}
+	for _, action := range request.Expected.Actions {
+		expected.Actions = append(expected.Actions, string(action))
+	}
+	if request.Expected.Bounds != nil {
+		expected.Bounds = &accessibility.Bounds{
+			X: request.Expected.Bounds.X, Y: request.Expected.Bounds.Y,
+			Width: request.Expected.Bounds.Width, Height: request.Expected.Bounds.Height,
+		}
+	}
+	result, err := accessibility.Act(ctx, accessibility.ActionRequest{
+		Target: target, Reference: request.Reference, Expected: expected,
+		Action: string(request.Action), Value: request.Value,
+	})
+	if err != nil {
+		return result.Dispatched, agentAccessibilityError(err)
+	}
+	return result.Dispatched, nil
 }

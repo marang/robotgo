@@ -142,6 +142,61 @@ func (query *dbusATSPIQuery) actionCount(ctx context.Context, reference atspiRef
 	return result, err
 }
 
+func (query *dbusATSPIQuery) actionName(ctx context.Context, reference atspiReference, index int32) (string, error) {
+	var result string
+	call := query.object(reference).CallWithContext(ctx, atspiActionInterface+".GetName", 0, index)
+	if call.Err != nil {
+		return "", call.Err
+	}
+	return result, call.Store(&result)
+}
+
+func (query *dbusATSPIQuery) parent(ctx context.Context, reference atspiReference) (atspiReference, error) {
+	var result atspiReference
+	err := query.property(ctx, reference, atspiAccessibleInterface, atspiPropertyParent, &result)
+	return result, err
+}
+
+func (query *dbusATSPIQuery) doAction(ctx context.Context, reference atspiReference, index int32) (bool, error) {
+	var result bool
+	call := query.object(reference).CallWithContext(ctx, atspiActionInterface+".DoAction", 0, index)
+	if call.Err != nil {
+		return false, call.Err
+	}
+	return result, call.Store(&result)
+}
+
+func (query *dbusATSPIQuery) grabFocus(ctx context.Context, reference atspiReference) (bool, error) {
+	var result bool
+	call := query.object(reference).CallWithContext(ctx, atspiComponentInterface+".GrabFocus", 0)
+	if call.Err != nil {
+		return false, call.Err
+	}
+	return result, call.Store(&result)
+}
+
+func (query *dbusATSPIQuery) setTextContents(ctx context.Context, reference atspiReference, value string) (bool, error) {
+	var result bool
+	call := query.object(reference).CallWithContext(ctx, atspiEditableTextInterface+".SetTextContents", 0, value)
+	if call.Err != nil {
+		return false, call.Err
+	}
+	return result, call.Store(&result)
+}
+
+func (query *dbusATSPIQuery) minimumIncrement(ctx context.Context, reference atspiReference) (float64, error) {
+	var result float64
+	err := query.property(ctx, reference, atspiValueInterface, atspiPropertyMinimumIncrement, &result)
+	return result, err
+}
+
+func (query *dbusATSPIQuery) setCurrentValue(ctx context.Context, reference atspiReference, value float64) error {
+	call := query.object(reference).CallWithContext(
+		ctx, dbusPropertiesInterface+".Set", 0, atspiValueInterface, atspiPropertyCurrentValue, dbus.MakeVariant(value),
+	)
+	return call.Err
+}
+
 func (query *dbusATSPIQuery) property(
 	ctx context.Context,
 	reference atspiReference,

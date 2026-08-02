@@ -26,6 +26,8 @@ const (
 	uiaMethodPutTransactionLimit = 63
 
 	uiaElementMethodRuntimeID         = 4
+	uiaElementMethodSetFocus          = 3
+	uiaElementMethodCurrentPattern    = 16
 	uiaElementMethodPropertyValue     = 10
 	uiaElementMethodProcessID         = 20
 	uiaElementMethodControlType       = 21
@@ -41,6 +43,18 @@ const (
 
 	uiaWalkerMethodFirstChild  = 4
 	uiaWalkerMethodNextSibling = 6
+
+	uiaPatternInvoke         int32 = 10000
+	uiaPatternValue          int32 = 10002
+	uiaPatternRangeValue     int32 = 10003
+	uiaPatternExpandCollapse int32 = 10005
+	uiaPatternSelectionItem  int32 = 10010
+	uiaPatternToggle         int32 = 10015
+
+	uiaPatternMethodPrimary   = 3
+	uiaPatternMethodSecondary = 4
+	uiaRangeMethodCurrent     = 4
+	uiaRangeMethodSmallChange = 9
 )
 
 const (
@@ -240,7 +254,7 @@ func (query *uiaCOMQuery) details(
 	result := uiaNodeDetails{}
 	var err error
 	if limits.ReadName {
-		result.Name, err = elementBSTR(ctx, element, uiaElementMethodName, limits.MaxStringBytes)
+		result.Name, result.NameTruncated, err = elementBSTRWithTruncation(ctx, element, uiaElementMethodName, limits.MaxStringBytes)
 		if err != nil {
 			return result, err
 		}
@@ -521,6 +535,55 @@ func (query *uiaCOMQuery) runtimeID(ctx context.Context, element *ole.IUnknown) 
 	return readUIAIntArray(ctx, array)
 }
 
+func currentUIAPattern(ctx context.Context, element *ole.IUnknown, patternID int32) (*ole.IUnknown, error) {
+	var pattern *ole.IUnknown
+	if err := callUIAMethod(ctx, element, uiaElementMethodCurrentPattern,
+		uintptr(patternID), uintptr(unsafe.Pointer(&pattern))); err != nil {
+		if pattern != nil {
+			pattern.Release()
+		}
+		return nil, err
+	}
+	if pattern == nil {
+		return nil, ErrStaleTarget
+	}
+	return pattern, nil
+}
+
+func setUIAFocus(ctx context.Context, element *ole.IUnknown) error {
+	return callUIAMethod(ctx, element, uiaElementMethodSetFocus)
+}
+
+func callUIAPattern(ctx context.Context, pattern *ole.IUnknown, method int) error {
+	return callUIAMethod(ctx, pattern, method)
+}
+
+func setUIAStringValue(ctx context.Context, pattern *ole.IUnknown, value string) error {
+	allocated := ole.SysAllocString(value)
+	if allocated == nil && value != "" {
+		return ErrUnavailable
+	}
+	defer func() { _ = ole.SysFreeString(allocated) }()
+	return callUIAMethod(ctx, pattern, uiaPatternMethodPrimary, uintptr(unsafe.Pointer(allocated)))
+}
+
+func setUIARangeValue(ctx context.Context, pattern *ole.IUnknown, value float64) error {
+	bits := math.Float64bits(value)
+	if unsafe.Sizeof(uintptr(0)) == 4 {
+		return callUIAMethod(ctx, pattern, uiaPatternMethodPrimary,
+			uintptr(uint32(bits)), uintptr(uint32(bits>>32)))
+	}
+	return callUIAMethod(ctx, pattern, uiaPatternMethodPrimary, uintptr(bits))
+}
+
+func uiaPatternNumber(ctx context.Context, pattern *ole.IUnknown, method int) (float64, error) {
+	var value float64
+	if err := callUIAMethod(ctx, pattern, method, uintptr(unsafe.Pointer(&value))); err != nil {
+		return 0, err
+	}
+	return value, nil
+}
+
 type uiaPropertyReader struct {
 	ctx      context.Context
 	element  *ole.IUnknown
@@ -681,18 +744,29 @@ func elementBool(ctx context.Context, element *ole.IUnknown, method int) (bool, 
 }
 
 func elementBSTR(ctx context.Context, element *ole.IUnknown, method int, maxBytes uint32) (string, error) {
+	value, _, err := elementBSTRWithTruncation(ctx, element, method, maxBytes)
+	return value, err
+}
+
+func elementBSTRWithTruncation(ctx context.Context, element *ole.IUnknown, method int, maxBytes uint32) (string, bool, error) {
 	var value *uint16
 	if err := callUIAMethod(ctx, element, method, uintptr(unsafe.Pointer(&value))); err != nil {
 		if value != nil {
 			_ = ole.SysFreeString((*int16)(unsafe.Pointer(value)))
 		}
-		return "", err
+		return "", false, err
 	}
 	if value == nil {
-		return "", nil
+		return "", false, nil
 	}
 	defer func() { _ = ole.SysFreeString((*int16)(unsafe.Pointer(value))) }()
-	return boundedBSTR(value, maxBytes), nil
+	result := boundedBSTR(value, maxBytes)
+	units := int(ole.SysStringLen((*int16)(unsafe.Pointer(value))))
+	truncated := units > int(maxBytes)
+	if !truncated {
+		truncated = len(string(utf16.Decode(unsafe.Slice(value, units)))) > int(maxBytes)
+	}
+	return result, truncated, nil
 }
 
 func boundedBSTR(value *uint16, maxBytes uint32) string {

@@ -166,6 +166,7 @@ func buildATSPITree(ctx context.Context, query atspiQuery, root atspiReference, 
 					return normalizeATSPIError(err)
 				}
 				node.Name = budget.take(value)
+				snapshot.IdentityTruncated = snapshot.IdentityTruncated || node.Name != value
 			}
 			if limits.ReadDescription {
 				value, err := query.stringProperty(ctx, reference, atspiPropertyDescription)
@@ -208,18 +209,11 @@ func buildATSPITree(ctx context.Context, query atspiQuery, root atspiReference, 
 			node.Bounds = &Bounds{X: int(rect.X), Y: int(rect.Y), Width: int(rect.Width), Height: int(rect.Height)}
 		}
 		if limits.ReadActions {
-			hasDefaultAction := false
-			if interfaces[atspiShortAction] && defaultATSPIAction(role) != "" {
-				count, err := query.actionCount(ctx, reference)
-				if err != nil {
-					return normalizeATSPIError(err)
-				}
-				if count < 0 || count > maxATSPIActions {
-					return ErrInvalidTree
-				}
-				hasDefaultAction = count > 0
+			actionNames, err := readATSPIActionNames(ctx, query, reference, interfaces)
+			if err != nil {
+				return err
 			}
-			node.Actions = inferATSPIActions(role, stateWords, interfaces, hasDefaultAction)
+			node.Actions = inferATSPIActions(role, stateWords, interfaces, actionNames)
 		}
 		if limits.ReadValue {
 			value, err := readATSPIValue(ctx, query, reference, role, interfaces, limits.MaxStringBytes)
@@ -388,10 +382,10 @@ func inferATSPIActions(
 	role string,
 	words []uint32,
 	interfaces map[string]bool,
-	hasDefaultAction bool,
+	actionNames []string,
 ) []string {
 	actions := make([]string, 0, 4)
-	if action := defaultATSPIAction(role); hasDefaultAction && action != "" {
+	if action := defaultATSPIAction(role); findATSPIActionIndex(action, actionNames) >= 0 {
 		actions = append(actions, action)
 	}
 	if interfaces[atspiShortComponent] && atspiStateSet(words, atspiStateFocusable) {
@@ -400,10 +394,10 @@ func inferATSPIActions(
 	if role == "textbox" && interfaces[atspiShortEditableText] {
 		actions = append(actions, "set-value")
 	}
-	if atspiStateSet(words, atspiStateCollapsed) {
+	if atspiStateSet(words, atspiStateCollapsed) && findATSPIActionIndex("expand", actionNames) >= 0 {
 		actions = append(actions, "expand")
 	}
-	if atspiStateSet(words, atspiStateExpanded) {
+	if atspiStateSet(words, atspiStateExpanded) && findATSPIActionIndex("collapse", actionNames) >= 0 {
 		actions = append(actions, "collapse")
 	}
 	if interfaces[atspiShortValue] && role == "slider" {

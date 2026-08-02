@@ -20,6 +20,7 @@ const (
 	windowsUIAIntegrationEnv = "ROBOTGO_REQUIRE_WINDOWS_ACCESSIBILITY_INTEGRATION"
 	windowsFixtureTitle      = "RobotGo UIA self-owned fixture"
 	windowsFixtureVisible    = "fixture-visible-value"
+	windowsFixtureUpdated    = "fixture-updated-value"
 	windowsFixtureSecret     = "fixture-password-secret"
 
 	windowStyleOverlapped = 0x00cf0000
@@ -63,7 +64,7 @@ type windowsFixture struct {
 	done     chan error
 }
 
-func TestWindowsUIAInspectsOnlySelfOwnedBoundedFixture(t *testing.T) {
+func TestWindowsUIAInspectsAndActsOnlyOnSelfOwnedBoundedFixture(t *testing.T) {
 	if os.Getenv(windowsUIAIntegrationEnv) != "1" {
 		t.Skip("set " + windowsUIAIntegrationEnv + "=1 on a disposable Windows desktop")
 	}
@@ -94,12 +95,15 @@ func TestWindowsUIAInspectsOnlySelfOwnedBoundedFixture(t *testing.T) {
 	defer clearSnapshot(&snapshot)
 
 	var foundButton, foundInput, foundPassword bool
+	var inputNode *Node
 	for _, node := range snapshot.Nodes {
 		if node.Name == "Save" && node.Role == "button" {
 			foundButton = true
 		}
 		if node.Role == "textbox" && node.Value == windowsFixtureVisible {
 			foundInput = true
+			copy := node
+			inputNode = &copy
 		}
 		if node.Role == "password" {
 			foundPassword = true
@@ -114,6 +118,38 @@ func TestWindowsUIAInspectsOnlySelfOwnedBoundedFixture(t *testing.T) {
 	if !foundButton || !foundInput || !foundPassword {
 		t.Fatalf("fixture semantics missing: button=%t input=%t password=%t nodes=%+v",
 			foundButton, foundInput, foundPassword, snapshot.Nodes)
+	}
+	if inputNode == nil || inputNode.Bounds == nil {
+		t.Fatal("editable fixture node lacks an actionable semantic identity")
+	}
+	action, err := Act(ctx, ActionRequest{
+		Target:    Target{NativeWindowHandle: int(fixture.handle), ExpectedTitle: windowsFixtureTitle},
+		Reference: inputNode.Reference, Action: "set-value", Value: windowsFixtureUpdated,
+		Expected: ElementExpectation{
+			Role: inputNode.Role, Name: inputNode.Name, Sensitive: inputNode.Sensitive,
+			States: inputNode.States, Bounds: inputNode.Bounds, Actions: inputNode.Actions,
+		},
+	})
+	if err != nil || !action.Dispatched {
+		t.Fatalf("self-owned UIA set-value = %+v, %v", action, err)
+	}
+	updated, err := Inspect(ctx, Target{
+		NativeWindowHandle: int(fixture.handle), ExpectedTitle: windowsFixtureTitle,
+	}, Limits{
+		MaxElements: 64, MaxDepth: 8, MaxStringBytes: 4096,
+		MaxReferenceBytes: 256, MaxTotalReferenceBytes: 16 * 1024,
+		AllowedRoles: map[string]bool{"textbox": true}, ReadName: true, ReadValue: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer clearSnapshot(&updated)
+	foundUpdated := false
+	for _, node := range updated.Nodes {
+		foundUpdated = foundUpdated || node.Role == "textbox" && node.Value == windowsFixtureUpdated
+	}
+	if !foundUpdated {
+		t.Fatalf("UIA set-value was not observable: %+v", updated.Nodes)
 	}
 }
 

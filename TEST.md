@@ -193,7 +193,7 @@ extend a call beyond the named cleanup delay and that the isolated Unix process
 group is gone afterward; they do not access real OCR, clipboard, compositor, or
 desktop data.
 
-Agent-session unit tests use an in-memory input driver and never contact or
+Agent-session unit tests use in-memory input and semantic-action drivers and never contact or
 mutate the desktop. They cover process-exclusive lifecycle, concurrent close,
 strict request validation, policy/confirmation/display/text/action limits,
 live display-bound enforcement, dry-run, quota handling, sanitized results,
@@ -201,11 +201,13 @@ backend errors, bounded synthetic capture, defensive pixel ownership and
 zeroing, stale-target rejection, changed/unchanged verification, timeout and
 attempt bounds, explicit-observation color search, bounded region waits, query
 and observation quotas, bounded semantic UI-tree projection, sensitive-text
-redaction, native-reference zeroing, no-match/timeout cleanup, payload-free
+redaction, observation-bound element-action validation, offered-action and
+value/timeout policy, native-reference zeroing, no-match/timeout cleanup, payload-free
 audit events, and the documented input and capture cancellation boundaries.
 The Linux AT-SPI unit suite uses an in-memory query fixture to verify exact
-process/title matching, role/property minimization, hidden-subtree pruning,
-fixed role/state/action mapping, and hard identity/tree limits. The shared
+process/title/object-ancestry matching, role/property minimization,
+hidden-subtree pruning, fixed role/state/action mapping, pre-dispatch semantic
+revalidation, post-dispatch status, and hard identity/tree limits. The shared
 Windows UI Automation tree fixture additionally proves that password,
 offscreen, disallowed-role, and foreign-process elements receive no content
 read, all acquired native references are released on errors and limits, and
@@ -219,18 +221,20 @@ or other private data:
 ```bash
 go test -race ./agent
 go test -race ./internal/accessibility
+go test ./agent/mcpserver ./internal/darwinwindow
 CGO_ENABLED=0 go test ./agent
 ```
 
 The protected Windows job creates only one in-process Win32 window with fixed
 button, input, and password fixture text. It verifies the real UI Automation
-adapter, password redaction, process scope, and cleanup without screenshots,
+adapter, password redaction, process scope, observation-bound native
+`set-value`, post-action semantic observation, and cleanup without screenshots,
 files, clipboard access, or foreign-window discovery:
 
 ```powershell
 $env:ROBOTGO_REQUIRE_WINDOWS_ACCESSIBILITY_INTEGRATION = "1"
 go test -tags windowsintegration ./internal/accessibility `
-  -run "^TestWindowsUIAInspectsOnlySelfOwnedBoundedFixture$" `
+  -run "^TestWindowsUIAInspectsAndActsOnlyOnSelfOwnedBoundedFixture$" `
   -count=1 -timeout=30s -v
 ```
 
@@ -243,6 +247,8 @@ screenshot:
 
 ```bash
 go run ./examples/semantic_ui -pid 1234 -title 'Self-owned fixture' -confirm
+go run ./examples/semantic_element_action \
+  -pid 1234 -title 'Self-owned fixture' -button Save -confirm
 ```
 
 macOS unit and cross-build checks are blocking, including fixed role/action

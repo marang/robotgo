@@ -10,7 +10,7 @@ import (
 )
 
 const (
-	uiaReferenceVersion = byte(1)
+	uiaReferenceVersion = byte(2)
 	maxUIARuntimeIDInts = 256
 )
 
@@ -57,13 +57,14 @@ type uiaNodeStructure struct {
 }
 
 type uiaNodeDetails struct {
-	Name        string
-	Description string
-	Value       string
-	States      []string
-	Bounds      *Bounds
-	Focused     bool
-	Actions     []string
+	Name          string
+	NameTruncated bool
+	Description   string
+	Value         string
+	States        []string
+	Bounds        *Bounds
+	Focused       bool
+	Actions       []string
 }
 
 // uiaTreeQuery keeps native object ownership behind a small interface so the
@@ -83,10 +84,11 @@ func buildUIATree[T comparable](
 	query uiaTreeQuery[T],
 	root T,
 	expectedProcessID int32,
+	expectedWindowHandle uint64,
 	limits Limits,
 ) (Snapshot, error) {
 	snapshot := Snapshot{Backend: BackendWindowsAutomation, Nodes: make([]Node, 0, limits.MaxElements)}
-	if expectedProcessID <= 0 || !validUIALimits(limits) {
+	if expectedProcessID <= 0 || expectedWindowHandle == 0 || !validUIALimits(limits) {
 		query.release(root)
 		return Snapshot{}, ErrInvalidTree
 	}
@@ -123,7 +125,7 @@ func buildUIATree[T comparable](
 		if err != nil {
 			return err
 		}
-		referenceData, err := encodeUIAReference(processID, structure.RuntimeID)
+		referenceData, err := encodeUIAReference(processID, expectedWindowHandle, structure.RuntimeID)
 		if err != nil || len(referenceData) > int(limits.MaxReferenceBytes) ||
 			len(referenceData) > int(limits.MaxTotalReferenceBytes)-referenceBytes {
 			return ErrInvalidTree
@@ -151,6 +153,7 @@ func buildUIATree[T comparable](
 			}
 			if limits.ReadName {
 				node.Name = budget.take(details.Name)
+				snapshot.IdentityTruncated = snapshot.IdentityTruncated || details.NameTruncated || node.Name != details.Name
 			}
 			if limits.ReadDescription {
 				node.Description = budget.take(details.Description)
@@ -228,18 +231,36 @@ func validUIALimits(limits Limits) bool {
 		limits.MaxReferenceBytes > 0 && limits.MaxTotalReferenceBytes > 0
 }
 
-func encodeUIAReference(processID int32, runtimeID []int32) ([]byte, error) {
-	if processID <= 0 || len(runtimeID) == 0 || len(runtimeID) > maxUIARuntimeIDInts {
+func encodeUIAReference(processID int32, windowHandle uint64, runtimeID []int32) ([]byte, error) {
+	if processID <= 0 || windowHandle == 0 || len(runtimeID) == 0 || len(runtimeID) > maxUIARuntimeIDInts {
 		return nil, ErrInvalidTree
 	}
-	reference := make([]byte, 7+len(runtimeID)*4)
+	reference := make([]byte, 15+len(runtimeID)*4)
 	reference[0] = uiaReferenceVersion
 	binary.LittleEndian.PutUint32(reference[1:5], uint32(processID))
-	binary.LittleEndian.PutUint16(reference[5:7], uint16(len(runtimeID)))
+	binary.LittleEndian.PutUint64(reference[5:13], windowHandle)
+	binary.LittleEndian.PutUint16(reference[13:15], uint16(len(runtimeID)))
 	for index, value := range runtimeID {
-		binary.LittleEndian.PutUint32(reference[7+index*4:], uint32(value))
+		binary.LittleEndian.PutUint32(reference[15+index*4:], uint32(value))
 	}
 	return reference, nil
+}
+
+func decodeUIAReference(reference []byte) (int32, uint64, []int32, error) {
+	if len(reference) < 19 || reference[0] != uiaReferenceVersion {
+		return 0, 0, nil, ErrStaleTarget
+	}
+	processID := int32(binary.LittleEndian.Uint32(reference[1:5]))
+	windowHandle := binary.LittleEndian.Uint64(reference[5:13])
+	count := int(binary.LittleEndian.Uint16(reference[13:15]))
+	if processID <= 0 || windowHandle == 0 || count <= 0 || count > maxUIARuntimeIDInts || len(reference) != 15+count*4 {
+		return 0, 0, nil, ErrStaleTarget
+	}
+	runtimeID := make([]int32, count)
+	for index := range runtimeID {
+		runtimeID[index] = int32(binary.LittleEndian.Uint32(reference[15+index*4:]))
+	}
+	return processID, windowHandle, runtimeID, nil
 }
 
 type uiaStringBudget struct {

@@ -18,3 +18,12 @@ func inspectPlatformUI(ctx context.Context, target uiBackendTarget, limits uiBac
 		ProcessID: target.Target, ExpectedTitle: target.ExpectedTitle,
 	}, limits)
 }
+
+func actPlatformUIElement(ctx context.Context, request uiBackendElementAction) (bool, error) {
+	if request.Target.Kind != WindowTargetProcess {
+		return false, fmt.Errorf("%w: AT-SPI actions require a process target", robotgo.ErrNotSupported)
+	}
+	return actAccessibilityUI(ctx, request, accessibility.Target{
+		ProcessID: request.Target.Target, ExpectedTitle: request.Target.ExpectedTitle,
+	})
+}

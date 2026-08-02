@@ -188,7 +188,7 @@ jobs:
           ROBOTGO_REQUIRE_WINDOWS_ACCESSIBILITY_INTEGRATION: "1"
         run: >-
           go test -tags windowsintegration ./internal/accessibility
-          -run "^TestWindowsUIAInspectsOnlySelfOwnedBoundedFixture$"
+          -run "^TestWindowsUIAInspectsAndActsOnlyOnSelfOwnedBoundedFixture$"
           -count=1 -timeout=30s -v
       - name: Check native macOS public Go API
         if: runner.os == 'macOS'

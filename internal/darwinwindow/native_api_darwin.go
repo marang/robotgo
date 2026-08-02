@@ -23,6 +23,7 @@ type nativeAPI struct {
 	axUIElementCopyAttributeValues         func(uintptr, uintptr, int64, int64, *uintptr) int32
 	axUIElementCopyActionNames             func(uintptr, *uintptr) int32
 	axUIElementGetAttributeValueCount      func(uintptr, uintptr, *int64) int32
+	axUIElementIsAttributeSettable         func(uintptr, uintptr, *bool) int32
 	axUIElementGetPID                      func(uintptr, *int32) int32
 	axUIElementGetTypeID                   func() uintptr
 	axUIElementPerformAction               func(uintptr, uintptr) int32
@@ -46,6 +47,7 @@ type nativeAPI struct {
 	cfDictionaryGetValue                   func(uintptr, uintptr) uintptr
 	cfGetTypeID                            func(uintptr) uintptr
 	cfNumberGetValue                       func(uintptr, int64, unsafe.Pointer) bool
+	cfNumberCreate                         func(uintptr, int64, unsafe.Pointer) uintptr
 	cfNumberGetTypeID                      func() uintptr
 	cfRelease                              func(uintptr)
 	cfRetain                               func(uintptr) uintptr
@@ -68,6 +70,10 @@ type nativeAPI struct {
 	axMinimizedAttribute     uintptr
 	axPositionAttribute      uintptr
 	axPressAction            uintptr
+	axConfirmAction          uintptr
+	axIncrementAction        uintptr
+	axDecrementAction        uintptr
+	axShowMenuAction         uintptr
 	axRaiseAction            uintptr
 	axRoleAttribute          uintptr
 	axSelectedAttribute      uintptr
@@ -122,6 +128,7 @@ func openNativeAPI() (*nativeAPI, error) {
 		{api.applicationServicesHandle, &api.axUIElementCopyAttributeValues, "AXUIElementCopyAttributeValues"},
 		{api.applicationServicesHandle, &api.axUIElementCopyActionNames, "AXUIElementCopyActionNames"},
 		{api.applicationServicesHandle, &api.axUIElementGetAttributeValueCount, "AXUIElementGetAttributeValueCount"},
+		{api.applicationServicesHandle, &api.axUIElementIsAttributeSettable, "AXUIElementIsAttributeSettable"},
 		{api.applicationServicesHandle, &api.axUIElementGetPID, "AXUIElementGetPid"},
 		{api.applicationServicesHandle, &api.axUIElementGetTypeID, "AXUIElementGetTypeID"},
 		{api.applicationServicesHandle, &api.axUIElementPerformAction, "AXUIElementPerformAction"},
@@ -145,6 +152,7 @@ func openNativeAPI() (*nativeAPI, error) {
 		{api.coreFoundationHandle, &api.cfDictionaryGetValue, "CFDictionaryGetValue"},
 		{api.coreFoundationHandle, &api.cfGetTypeID, "CFGetTypeID"},
 		{api.coreFoundationHandle, &api.cfNumberGetValue, "CFNumberGetValue"},
+		{api.coreFoundationHandle, &api.cfNumberCreate, "CFNumberCreate"},
 		{api.coreFoundationHandle, &api.cfNumberGetTypeID, "CFNumberGetTypeID"},
 		{api.coreFoundationHandle, &api.cfRelease, "CFRelease"},
 		{api.coreFoundationHandle, &api.cfRetain, "CFRetain"},
@@ -190,6 +198,10 @@ func openNativeAPI() (*nativeAPI, error) {
 		{&api.axMinimizedAttribute, axMinimizedAttributeName},
 		{&api.axPositionAttribute, axPositionAttributeName},
 		{&api.axPressAction, axPressActionName},
+		{&api.axConfirmAction, axConfirmActionName},
+		{&api.axIncrementAction, axIncrementActionName},
+		{&api.axDecrementAction, axDecrementActionName},
+		{&api.axShowMenuAction, axShowMenuActionName},
 		{&api.axRaiseAction, axRaiseActionName},
 		{&api.axRoleAttribute, axRoleAttributeName},
 		{&api.axSelectedAttribute, axSelectedAttributeName},
@@ -225,6 +237,16 @@ func (api *nativeAPI) createString(value string) (uintptr, error) {
 		)
 	}
 	api.ownedCFValues = append(api.ownedCFValues, ref)
+	return ref, nil
+}
+
+func (api *nativeAPI) createTransientString(value string) (uintptr, error) {
+	bytes := append([]byte(value), 0)
+	ref := api.cfStringCreateWithCString(0, &bytes[0], cfStringEncodingUTF8)
+	runtime.KeepAlive(bytes)
+	if ref == 0 {
+		return 0, ErrAccessibilityUnavailable
+	}
 	return ref, nil
 }
 

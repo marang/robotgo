@@ -31,6 +31,9 @@ Use the following documents as the primary entry points:
 - [Autonomous GUI control plan](plan/autonomous-gui-control.md) for bounded
   scroll, drag, shortcut, and activation actions followed by accessibility,
   explicit image, and OCR observation slices.
+- [Verified adaptive workflows plan](plan/verified-adaptive-workflows.md) for
+  observation-bound semantic actions and the resolve/validate/authorize/
+  execute/verify/prove product sequence.
 - [Explicit window identity plan](plan/explicit-window-identity.md) for
   error-returning active handle/PID queries and compositor-aware Wayland
   semantics plus protected Hyprland active-window geometry evidence.

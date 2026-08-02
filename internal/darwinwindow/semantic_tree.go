@@ -113,6 +113,7 @@ func buildAXSemanticTree[T comparable](
 			}
 			if limits.ReadName {
 				node.Name = budget.take(details.Name)
+				snapshot.IdentityTruncated = snapshot.IdentityTruncated || node.Name != details.Name
 			}
 			if limits.ReadDescription {
 				node.Description = budget.take(details.Description)
@@ -198,6 +199,23 @@ func encodeAccessibilityReference(processID int32, windowID uint32, path []uint3
 		binary.LittleEndian.PutUint32(reference[11+index*4:], child)
 	}
 	return reference, nil
+}
+
+func decodeAccessibilityReference(reference []byte) (int32, uint32, []uint32, error) {
+	if len(reference) < 11 || reference[0] != accessibilityReferenceVersion {
+		return 0, 0, nil, ErrAccessibilityStaleTarget
+	}
+	processID := int32(binary.LittleEndian.Uint32(reference[1:5]))
+	windowID := binary.LittleEndian.Uint32(reference[5:9])
+	count := int(binary.LittleEndian.Uint16(reference[9:11]))
+	if processID <= 0 || windowID == 0 || len(reference) != 11+count*4 {
+		return 0, 0, nil, ErrAccessibilityStaleTarget
+	}
+	path := make([]uint32, count)
+	for index := range path {
+		path[index] = binary.LittleEndian.Uint32(reference[11+index*4:])
+	}
+	return processID, windowID, path, nil
 }
 
 type axStringBudget struct {

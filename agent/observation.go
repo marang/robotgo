@@ -158,13 +158,17 @@ type Observation struct {
 }
 
 type observationRecord struct {
-	capture    *captureBuffer
-	region     CaptureRegion
-	digest     string
-	hasCapture bool
-	source     Operation
-	uiElements map[string][]byte
-	redacted   bool
+	capture      *captureBuffer
+	region       CaptureRegion
+	digest       string
+	hasCapture   bool
+	source       Operation
+	uiElements   map[string][]byte
+	uiExpected   map[string]UIElementExpectation
+	uiTarget     *uiBackendTarget
+	uiBackend    string
+	uiActionable bool
+	redacted     bool
 }
 
 func (record *observationRecord) close() error {
@@ -172,6 +176,11 @@ func (record *observationRecord) close() error {
 		return nil
 	}
 	closeUIReferences(record.uiElements)
+	clear(record.uiExpected)
+	record.uiExpected = nil
+	record.uiTarget = nil
+	record.uiBackend = ""
+	record.uiActionable = false
 	return record.capture.close()
 }
 

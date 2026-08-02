@@ -3,6 +3,7 @@ package darwinwindow
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 )
 
@@ -176,6 +177,19 @@ func TestEncodeAccessibilityReferenceRejectsInvalidIdentity(t *testing.T) {
 	} {
 		if _, err := encodeAccessibilityReference(test.pid, test.windowID, nil); !errors.Is(err, ErrAccessibilityInvalidTree) {
 			t.Fatalf("encode(%d,%d) error = %v", test.pid, test.windowID, err)
+		}
+	}
+	reference, err := encodeAccessibilityReference(42, 77, []uint32{1, 4, 9})
+	if err != nil {
+		t.Fatal(err)
+	}
+	pid, windowID, path, err := decodeAccessibilityReference(reference)
+	if err != nil || pid != 42 || windowID != 77 || fmt.Sprint(path) != "[1 4 9]" {
+		t.Fatalf("decoded reference = %d %d %v, %v", pid, windowID, path, err)
+	}
+	for _, invalid := range [][]byte{nil, reference[:len(reference)-1], append(append([]byte(nil), reference...), 0)} {
+		if _, _, _, err := decodeAccessibilityReference(invalid); !errors.Is(err, ErrAccessibilityStaleTarget) {
+			t.Fatalf("invalid reference %x error = %v", invalid, err)
 		}
 	}
 }

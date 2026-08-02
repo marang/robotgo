@@ -13,26 +13,33 @@ import (
 )
 
 type fakeATSPIObject struct {
-	children    []atspiReference
-	role        uint32
-	states      []uint32
-	properties  map[string]string
-	interfaces  []string
-	rect        atspiRect
-	text        string
-	value       float64
-	actionCount int32
+	children         []atspiReference
+	role             uint32
+	states           []uint32
+	properties       map[string]string
+	interfaces       []string
+	rect             atspiRect
+	text             string
+	value            float64
+	minimumIncrement float64
+	actionCount      int32
+	actionNames      []string
+	parent           atspiReference
 }
 
 type fakeATSPIQuery struct {
-	apps           []atspiReference
-	pids           map[string]uint32
-	pidErrors      map[string]error
-	objects        map[string]*fakeATSPIObject
-	propertyCalls  map[string]int
-	childCalls     map[string]int
-	interfaceCalls map[string]int
-	textCalls      map[string]int
+	apps            []atspiReference
+	pids            map[string]uint32
+	pidErrors       map[string]error
+	objects         map[string]*fakeATSPIObject
+	propertyCalls   map[string]int
+	childCalls      map[string]int
+	interfaceCalls  map[string]int
+	textCalls       map[string]int
+	mutationCalls   []string
+	setTextValue    string
+	setNumericValue float64
+	mutationErr     error
 }
 
 func (query *fakeATSPIQuery) applications(context.Context) ([]atspiReference, error) {
@@ -132,6 +139,52 @@ func (query *fakeATSPIQuery) actionCount(_ context.Context, reference atspiRefer
 		return 0, err
 	}
 	return object.actionCount, nil
+}
+
+func (query *fakeATSPIQuery) actionName(_ context.Context, reference atspiReference, index int32) (string, error) {
+	object, err := query.object(reference)
+	if err != nil || index < 0 || int(index) >= len(object.actionNames) {
+		return "", ErrInvalidTree
+	}
+	return object.actionNames[index], nil
+}
+
+func (query *fakeATSPIQuery) parent(_ context.Context, reference atspiReference) (atspiReference, error) {
+	object, err := query.object(reference)
+	if err != nil {
+		return atspiReference{}, err
+	}
+	return object.parent, nil
+}
+
+func (query *fakeATSPIQuery) doAction(_ context.Context, reference atspiReference, index int32) (bool, error) {
+	query.mutationCalls = append(query.mutationCalls, fmt.Sprintf("action:%s:%d", referenceKey(reference), index))
+	return query.mutationErr == nil, query.mutationErr
+}
+
+func (query *fakeATSPIQuery) grabFocus(_ context.Context, reference atspiReference) (bool, error) {
+	query.mutationCalls = append(query.mutationCalls, "focus:"+referenceKey(reference))
+	return query.mutationErr == nil, query.mutationErr
+}
+
+func (query *fakeATSPIQuery) setTextContents(_ context.Context, reference atspiReference, value string) (bool, error) {
+	query.mutationCalls = append(query.mutationCalls, "text:"+referenceKey(reference))
+	query.setTextValue = value
+	return query.mutationErr == nil, query.mutationErr
+}
+
+func (query *fakeATSPIQuery) minimumIncrement(_ context.Context, reference atspiReference) (float64, error) {
+	object, err := query.object(reference)
+	if err != nil {
+		return 0, err
+	}
+	return object.minimumIncrement, nil
+}
+
+func (query *fakeATSPIQuery) setCurrentValue(_ context.Context, reference atspiReference, value float64) error {
+	query.mutationCalls = append(query.mutationCalls, "value:"+referenceKey(reference))
+	query.setNumericValue = value
+	return query.mutationErr
 }
 
 func (query *fakeATSPIQuery) object(reference atspiReference) (*fakeATSPIObject, error) {
@@ -237,7 +290,7 @@ func TestBuildATSPITreeMinimizesSensitiveAndHiddenReads(t *testing.T) {
 		button: {
 			role: atspiRoleButton, states: atspiTestStates(8, 11, 25, 30),
 			properties: map[string]string{"Name": "Save", "Description": "Store changes"},
-			interfaces: []string{"Action", "Component"}, actionCount: 1,
+			interfaces: []string{"Action", "Component"}, actionCount: 1, actionNames: []string{"click"},
 			rect: atspiRect{X: 20, Y: 40, Width: 80, Height: 30},
 		},
 		hidden: {
@@ -327,13 +380,97 @@ func TestATSPIFixedRoleStateAndActionMappings(t *testing.T) {
 	}
 	if got := fmt.Sprint(inferATSPIActions("checkbox", words, map[string]bool{
 		"Action": true, "Component": true,
-	}, true)); got != "[toggle focus expand]" {
+	}, []string{"toggle"})); got != "[toggle focus expand]" {
 		t.Fatalf("actions = %s", got)
 	}
 	if got := fmt.Sprint(inferATSPIActions("checkbox", words, map[string]bool{
 		"Action": true,
-	}, false)); got != "[expand]" {
+	}, nil)); got != "[]" {
 		t.Fatalf("zero-count actions = %s", got)
+	}
+}
+
+func TestActATSPIRevalidatesExactObservedElementBeforeDispatch(t *testing.T) {
+	application := atspiTestReference("application")
+	window := atspiTestReference("window")
+	button := atspiTestReference("button")
+	query := newFakeATSPIQuery(map[atspiReference]*fakeATSPIObject{
+		application: {children: []atspiReference{window}},
+		window: {
+			parent: application, children: []atspiReference{button}, role: atspiRoleFrame,
+			states:     atspiTestStates(atspiStateEnabled, atspiStateShowing, atspiStateVisible),
+			properties: map[string]string{atspiPropertyName: "Fixture"},
+		},
+		button: {
+			parent: window, role: atspiRoleButton,
+			states:      atspiTestStates(atspiStateEnabled, atspiStateFocusable, atspiStateShowing, atspiStateVisible),
+			properties:  map[string]string{atspiPropertyName: "Save"},
+			interfaces:  []string{atspiShortAction, atspiShortComponent},
+			actionCount: 1, actionNames: []string{"click"},
+			rect: atspiRect{X: 20, Y: 40, Width: 80, Height: 30},
+		},
+	})
+	query.apps = []atspiReference{application}
+	query.pids[application.Bus] = 42
+	request := ActionRequest{
+		Target:    Target{ProcessID: 42, ExpectedTitle: "Fixture"},
+		Reference: []byte(referenceKey(button)), Action: "press",
+		Expected: ElementExpectation{
+			Role: "button", Name: "Save", States: []string{"enabled"},
+			Bounds:  &Bounds{X: 20, Y: 40, Width: 80, Height: 30},
+			Actions: []string{"press", "focus"},
+		},
+	}
+	result, err := actATSPI(t.Context(), query, request, button)
+	if err != nil || !result.Dispatched || len(query.mutationCalls) != 1 ||
+		!strings.HasSuffix(query.mutationCalls[0], ":0") {
+		t.Fatalf("semantic press = %+v, %v, calls=%v", result, err, query.mutationCalls)
+	}
+
+	query.mutationCalls = nil
+	query.objects[referenceKey(button)].properties[atspiPropertyName] = "Delete"
+	result, err = actATSPI(t.Context(), query, request, button)
+	if !errors.Is(err, ErrStaleTarget) || result.Dispatched || len(query.mutationCalls) != 0 {
+		t.Fatalf("stale semantic press = %+v, %v, calls=%v", result, err, query.mutationCalls)
+	}
+}
+
+func TestActATSPIPreservesPostDispatchBoundaryAndSupportsEmptyText(t *testing.T) {
+	application := atspiTestReference("application")
+	window := atspiTestReference("window")
+	textbox := atspiTestReference("textbox")
+	query := newFakeATSPIQuery(map[atspiReference]*fakeATSPIObject{
+		application: {children: []atspiReference{window}},
+		window: {
+			parent: application, children: []atspiReference{textbox}, role: atspiRoleFrame,
+			properties: map[string]string{atspiPropertyName: "Fixture"},
+		},
+		textbox: {
+			parent: window, role: atspiRoleEntry,
+			states:     atspiTestStates(atspiStateEditable, atspiStateEnabled, atspiStateShowing, atspiStateVisible),
+			properties: map[string]string{atspiPropertyName: "Notes"},
+			interfaces: []string{atspiShortEditableText},
+		},
+	})
+	query.apps = []atspiReference{application}
+	query.pids[application.Bus] = 42
+	request := ActionRequest{
+		Target:    Target{ProcessID: 42, ExpectedTitle: "Fixture"},
+		Reference: []byte(referenceKey(textbox)), Action: "set-value", Value: "",
+		Expected: ElementExpectation{
+			Role: "textbox", Name: "Notes", States: []string{"enabled"},
+			Actions: []string{"set-value"},
+		},
+	}
+	result, err := actATSPI(t.Context(), query, request, textbox)
+	if err != nil || !result.Dispatched || query.setTextValue != "" || len(query.mutationCalls) != 1 {
+		t.Fatalf("empty set-value = %+v, %v, calls=%v", result, err, query.mutationCalls)
+	}
+
+	query.mutationErr = errors.New("private native failure")
+	result, err = actATSPI(t.Context(), query, request, textbox)
+	if !errors.Is(err, ErrUnavailable) || !result.Dispatched {
+		t.Fatalf("post-dispatch failure = %+v, %v", result, err)
 	}
 }
 

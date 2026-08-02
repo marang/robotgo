@@ -85,9 +85,36 @@ type Node struct {
 
 // Snapshot is one bounded accessibility tree rooted at the exact target.
 type Snapshot struct {
-	Backend   string
-	Nodes     []Node
-	Truncated bool
+	Backend           string
+	Nodes             []Node
+	Truncated         bool
+	IdentityTruncated bool
+}
+
+// ElementExpectation contains only the semantic facts authorized at the agent
+// boundary and re-read immediately before native dispatch.
+type ElementExpectation struct {
+	Role      string
+	Name      string
+	Sensitive bool
+	States    []string
+	Bounds    *Bounds
+	Actions   []string
+}
+
+// ActionRequest binds one retained opaque reference to its exact top-level
+// target and expected live semantic identity.
+type ActionRequest struct {
+	Target    Target
+	Reference []byte
+	Expected  ElementExpectation
+	Action    string
+	Value     string
+}
+
+// ActionResult identifies the irreversible native dispatch boundary.
+type ActionResult struct {
+	Dispatched bool
 }
 
 // Probe checks native availability without opening an OS consent dialog.
@@ -96,6 +123,12 @@ func Probe(ctx context.Context) Capability { return probe(ctx) }
 // Inspect returns one bounded native semantic tree.
 func Inspect(ctx context.Context, target Target, limits Limits) (Snapshot, error) {
 	return inspect(ctx, target, limits)
+}
+
+// Act re-resolves and revalidates one retained element before performing one
+// native semantic action. It never uses pointer or keyboard fallback.
+func Act(ctx context.Context, request ActionRequest) (ActionResult, error) {
+	return act(ctx, request)
 }
 
 func clearSnapshot(snapshot *Snapshot) {
@@ -109,4 +142,10 @@ func clearSnapshot(snapshot *Snapshot) {
 	clear(snapshot.Nodes)
 	snapshot.Nodes = nil
 	snapshot.Backend = ""
+	snapshot.Truncated = false
+	snapshot.IdentityTruncated = false
+}
+
+func equalAccessibilityBounds(left, right *Bounds) bool {
+	return left == nil && right == nil || left != nil && right != nil && *left == *right
 }

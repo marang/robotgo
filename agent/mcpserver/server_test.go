@@ -21,30 +21,32 @@ import (
 type fakeSession struct {
 	mu sync.Mutex
 
-	catalog     agent.OperationCatalog
-	observation *agent.Observation
-	observeFunc func(context.Context, agent.ObserveRequest) (*agent.Observation, error)
-	findFunc    func(context.Context, agent.FindColorRequest) (agent.FindColorResult, error)
-	waitFunc    func(context.Context, agent.WaitColorRequest) (agent.WaitColorResult, error)
-	releaseFunc func(string) error
-	inspectFunc func(context.Context, agent.InspectUIRequest) (agent.UIObservation, error)
-	viewFunc    func(context.Context, agent.ViewRequest) (*agent.View, error)
-	ocrFunc     func(context.Context, agent.OCRRequest) (agent.OCRResult, error)
-	detectFunc  func(context.Context, agent.VisualElementsRequest) (agent.VisualElementsResult, error)
-	dryRunFunc  func(context.Context, agent.ActionRequest) (agent.ActionResult, error)
-	executeFunc func(context.Context, agent.ActionRequest) (agent.ActionResult, error)
-	closeFunc   func() error
+	catalog        agent.OperationCatalog
+	observation    *agent.Observation
+	observeFunc    func(context.Context, agent.ObserveRequest) (*agent.Observation, error)
+	findFunc       func(context.Context, agent.FindColorRequest) (agent.FindColorResult, error)
+	waitFunc       func(context.Context, agent.WaitColorRequest) (agent.WaitColorResult, error)
+	releaseFunc    func(string) error
+	inspectFunc    func(context.Context, agent.InspectUIRequest) (agent.UIObservation, error)
+	elementActFunc func(context.Context, agent.ElementActionRequest) (agent.ActionResult, error)
+	viewFunc       func(context.Context, agent.ViewRequest) (*agent.View, error)
+	ocrFunc        func(context.Context, agent.OCRRequest) (agent.OCRResult, error)
+	detectFunc     func(context.Context, agent.VisualElementsRequest) (agent.VisualElementsResult, error)
+	dryRunFunc     func(context.Context, agent.ActionRequest) (agent.ActionResult, error)
+	executeFunc    func(context.Context, agent.ActionRequest) (agent.ActionResult, error)
+	closeFunc      func() error
 
-	dryRuns  int
-	executes int
-	finds    int
-	waits    int
-	releases int
-	inspects int
-	views    int
-	ocrs     int
-	detects  int
-	closes   int
+	dryRuns     int
+	executes    int
+	finds       int
+	waits       int
+	releases    int
+	inspects    int
+	elementActs int
+	views       int
+	ocrs        int
+	detects     int
+	closes      int
 }
 
 // imageOnlySession verifies that observation cleanup is not coupled to the
@@ -120,6 +122,16 @@ func (f *fakeSession) InspectUI(ctx context.Context, request agent.InspectUIRequ
 		return f.inspectFunc(ctx, request)
 	}
 	return agent.UIObservation{}, errors.New("unused")
+}
+
+func (f *fakeSession) ActUIElement(ctx context.Context, request agent.ElementActionRequest) (agent.ActionResult, error) {
+	f.mu.Lock()
+	f.elementActs++
+	f.mu.Unlock()
+	if f.elementActFunc != nil {
+		return f.elementActFunc(ctx, request)
+	}
+	return agent.ActionResult{}, errors.New("unused")
 }
 
 func (f *fakeSession) View(ctx context.Context, request agent.ViewRequest) (*agent.View, error) {
@@ -312,7 +324,7 @@ func TestProtocolInitializesAndListsFocusedTools(t *testing.T) {
 	}
 	slices.Sort(names)
 	want := []string{
-		ToolAct, ToolCapabilities, ToolClose, ToolFind, ToolInspectUI, ToolObserve,
+		ToolAct, ToolCapabilities, ToolClose, ToolElementAct, ToolFind, ToolInspectUI, ToolObserve,
 		ToolReleaseObservation, ToolWait,
 	}
 	slices.Sort(want)
@@ -697,6 +709,35 @@ func TestInspectUIReturnsOnlyPrivacyReducedSemanticContract(t *testing.T) {
 	}
 }
 
+func TestElementActReturnsResultWithoutEchoingSensitiveValue(t *testing.T) {
+	fake := &fakeSession{elementActFunc: func(_ context.Context, request agent.ElementActionRequest) (agent.ActionResult, error) {
+		if request.ObservationID != "observation-9" || request.ElementID != "observation-9-element-1" ||
+			request.Action != agent.UIActionSetValue || request.Value != "private-value" {
+			return agent.ActionResult{}, errors.New("unexpected semantic request")
+		}
+		return agent.ActionResult{
+			ActionID: "action-7", Operation: agent.OperationElementAct,
+			Status: agent.ActionSucceeded, Backend: "fake-accessibility",
+		}, nil
+	}}
+	client := connectProtocol(t, newProtocolServer(t, fake))
+	result := callTool(t, client, ToolElementAct, agent.ElementActionRequest{
+		ObservationID: "observation-9", ElementID: "observation-9-element-1",
+		Action: agent.UIActionSetValue, Value: "private-value", Confirmed: true,
+		Expected: agent.UIElementExpectation{
+			Role: agent.UIRoleTextBox, States: []agent.UIState{agent.UIStateEnabled},
+			Bounds:  &agent.UIBounds{X: 1, Y: 2, Width: 3, Height: 4},
+			Actions: []agent.UIAction{agent.UIActionFocus, agent.UIActionSetValue},
+		},
+	})
+	output := decodeOutput[ElementActOutput](t, result)
+	serialized := serializedResult(t, result)
+	if result.IsError || output.Result == nil || output.Result.Status != agent.ActionSucceeded ||
+		strings.Contains(serialized, "private-value") {
+		t.Fatalf("semantic action output = %+v, %s", output, serialized)
+	}
+}
+
 func TestInspectUIErrorReleasesCompletedObservationBeforeOmittingIt(t *testing.T) {
 	fake := &fakeSession{inspectFunc: func(context.Context, agent.InspectUIRequest) (agent.UIObservation, error) {
 		return agent.UIObservation{ObservationID: "observation-9"}, &agent.ActionError{
@@ -1053,11 +1094,13 @@ func TestCloseIsIdempotentAndLaterCallsFailClosed(t *testing.T) {
 		}
 	}
 
-	for _, tool := range []string{ToolCapabilities, ToolObserve, ToolInspectUI, ToolFind, ToolWait, ToolReleaseObservation, ToolAct} {
+	for _, tool := range []string{ToolCapabilities, ToolObserve, ToolInspectUI, ToolElementAct, ToolFind, ToolWait, ToolReleaseObservation, ToolAct} {
 		arguments := any(map[string]any{})
 		switch tool {
 		case ToolInspectUI:
 			arguments = agent.InspectUIRequest{Target: 1, Kind: agent.WindowTargetProcess}
+		case ToolElementAct:
+			arguments = agent.ElementActionRequest{ObservationID: "observation-1", ElementID: "observation-1-element-1"}
 		case ToolFind:
 			arguments = agent.FindColorRequest{ObservationID: "observation-1"}
 		case ToolWait:
