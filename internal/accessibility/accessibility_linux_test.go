@@ -538,7 +538,7 @@ func TestActATSPIRevalidatesExactObservedElementBeforeDispatch(t *testing.T) {
 		if reference == window && name == atspiPropertyName {
 			windowTitleCalls++
 		}
-		if windowTitleCalls == 2 {
+		if windowTitleCalls == 3 {
 			query.objects[referenceKey(button)].actionNames = []string{"delete", "click"}
 			query.propertyHook = nil
 		}
@@ -550,6 +550,25 @@ func TestActATSPIRevalidatesExactObservedElementBeforeDispatch(t *testing.T) {
 	}
 
 	query.mutationCalls = nil
+	query.objects[referenceKey(button)].actionNames = []string{"click", "delete"}
+	windowTitleCalls = 0
+	query.propertyHook = func(reference atspiReference, name string) {
+		if reference == window && name == atspiPropertyName {
+			windowTitleCalls++
+		}
+		if windowTitleCalls == 3 {
+			query.actionNameHook = func() {
+				query.objects[referenceKey(button)].actionNames = []string{"delete", "click"}
+				query.actionNameHook = nil
+			}
+			query.propertyHook = nil
+		}
+	}
+	result, err = actATSPI(t.Context(), query, request, button)
+	if !errors.Is(err, ErrStaleTarget) || result.Dispatched || len(query.mutationCalls) != 0 {
+		t.Fatalf("hybrid action-name scan = %+v, %v, calls=%v", result, err, query.mutationCalls)
+	}
+
 	query.actionNameHook = func() {
 		query.objects[referenceKey(window)].properties[atspiPropertyName] = "Replacement"
 		query.actionNameHook = nil
@@ -752,6 +771,20 @@ func TestActATSPIRevalidatesSliderSemanticsAfterRangePreparation(t *testing.T) {
 	}
 
 	query.objects[referenceKey(slider)].maximumValue = 10
+	maximumValueCalls := 0
+	query.maximumValueHook = func() {
+		maximumValueCalls++
+		if maximumValueCalls == 2 {
+			query.objects[referenceKey(window)].properties[atspiPropertyName] = "Replacement"
+			query.maximumValueHook = nil
+		}
+	}
+	result, err = actATSPI(t.Context(), query, request, slider)
+	if !errors.Is(err, ErrStaleTarget) || result.Dispatched || len(query.mutationCalls) != 0 {
+		t.Fatalf("late stale slider window after range read = %+v, %v, calls=%v", result, err, query.mutationCalls)
+	}
+
+	query.objects[referenceKey(window)].properties[atspiPropertyName] = "Fixture"
 	request.Action = "increment"
 	request.Value = ""
 	minimumStepCalls = 0

@@ -325,6 +325,9 @@ func dispatchUIAAction(
 			if err := validateExplicitRangeValue(value, minimum, maximum); err != nil {
 				return ActionResult{}, err
 			}
+			if err := validateWindow(); err != nil {
+				return ActionResult{}, err
+			}
 			return ActionResult{Dispatched: true}, setUIARangeValue(ctx, pattern, value)
 		}
 		pattern, err := currentUIAPattern(ctx, element, uiaPatternValue)
@@ -383,6 +386,9 @@ func dispatchUIAAction(
 		next, err := nextBoundedStepValue(current, step, minimum, maximum, request.Action == "decrement")
 		if err != nil {
 			return ActionResult{}, ErrInvalidTree
+		}
+		if err := validateWindow(); err != nil {
+			return ActionResult{}, err
 		}
 		return ActionResult{Dispatched: true}, setUIARangeValue(ctx, pattern, next)
 	default:

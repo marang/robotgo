@@ -410,17 +410,25 @@ func readATSPIActionNames(ctx context.Context, query atspiQuery, reference atspi
 	}
 	result := make([]string, 0, count)
 	for index := int32(0); index < count; index++ {
-		name, err := query.actionName(ctx, reference, index)
+		name, err := readATSPIActionName(ctx, query, reference, index)
 		if err != nil {
-			return nil, normalizeATSPIError(err)
-		}
-		name = strings.ToLower(strings.TrimSpace(name))
-		if name == "" || len(name) > maxATSPIInterfaceBytes || strings.IndexByte(name, 0) >= 0 {
-			return nil, ErrInvalidTree
+			return nil, err
 		}
 		result = append(result, name)
 	}
 	return result, nil
+}
+
+func readATSPIActionName(ctx context.Context, query atspiQuery, reference atspiReference, index int32) (string, error) {
+	name, err := query.actionName(ctx, reference, index)
+	if err != nil {
+		return "", normalizeATSPIError(err)
+	}
+	name = strings.ToLower(strings.TrimSpace(name))
+	if name == "" || len(name) > maxATSPIInterfaceBytes || strings.IndexByte(name, 0) >= 0 {
+		return "", ErrInvalidTree
+	}
+	return name, nil
 }
 
 func liveATSPIBounds(ctx context.Context, query atspiQuery, reference atspiReference, interfaces map[string]bool, required bool) (*Bounds, error) {
@@ -520,6 +528,9 @@ func dispatchATSPIAction(
 		if err := validateExplicitRangeValue(value, minimum, maximum); err != nil {
 			return ActionResult{}, err
 		}
+		if err := validateWindow(); err != nil {
+			return ActionResult{}, err
+		}
 		if err := query.setCurrentValue(ctx, reference, value); err != nil {
 			return dispatched, normalizeATSPIError(err)
 		}
@@ -570,6 +581,9 @@ func dispatchATSPIAction(
 		if err != nil {
 			return ActionResult{}, ErrInvalidTree
 		}
+		if err := validateWindow(); err != nil {
+			return ActionResult{}, err
+		}
 		if err := query.setCurrentValue(ctx, reference, next); err != nil {
 			return dispatched, normalizeATSPIError(err)
 		}
@@ -585,6 +599,14 @@ func dispatchATSPIAction(
 		}
 		index := findATSPIActionIndex(request.Action, finalNames)
 		if index < 0 {
+			return ActionResult{}, ErrStaleTarget
+		}
+		selectedName := finalNames[index]
+		if err := validateWindow(); err != nil {
+			return ActionResult{}, err
+		}
+		liveSelectedName, err := readATSPIActionName(ctx, query, reference, int32(index))
+		if err != nil || liveSelectedName != selectedName || findATSPIActionIndex(request.Action, []string{liveSelectedName}) != 0 {
 			return ActionResult{}, ErrStaleTarget
 		}
 		ok, err := query.doAction(ctx, reference, int32(index))
