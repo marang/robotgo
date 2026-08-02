@@ -141,6 +141,9 @@ func actAccessibilityOnThread(ctx context.Context, request AccessibilityActionRe
 		if titleErr != nil || liveTitle != request.Target.ExpectedTitle {
 			return ErrAccessibilityStaleTarget
 		}
+		if err := validateAXElementWindow(api, element, windowID); err != nil {
+			return err
+		}
 		return nil
 	}
 	return dispatchAXAction(ctx, api, element, structure.Role, request, validateWindow)
@@ -183,6 +186,17 @@ func resolveAXPath(ctx context.Context, query *nativeAXSemanticQuery, root uintp
 
 func equalAccessibilityActionBounds(left, right *AccessibilityBounds) bool {
 	return left == nil && right == nil || left != nil && right != nil && *left == *right
+}
+
+func validateAXElementWindow(api *nativeAPI, element uintptr, windowID uint32) error {
+	var liveWindowID uint32
+	if err := semanticAXResult("revalidate AX element window", api.axUIElementGetWindow(element, &liveWindowID)); err != nil {
+		return err
+	}
+	if liveWindowID != windowID {
+		return ErrAccessibilityStaleTarget
+	}
+	return nil
 }
 
 func dispatchAXAction(ctx context.Context, api *nativeAPI, element uintptr, role string, request AccessibilityActionRequest, validateWindow func() error) (AccessibilityActionResult, error) {
@@ -964,14 +978,8 @@ func semanticActions(api *nativeAPI, element uintptr, role string) ([]string, er
 		return nil, err
 	}
 	_, showMenu := nativeActions[axShowMenuActionName]
-	if hasExpanded && (expandedSettable || showMenu) {
-		if expanded {
-			actions["collapse"] = struct{}{}
-		} else {
-			actions["expand"] = struct{}{}
-		}
-	} else if showMenu {
-		actions["expand"] = struct{}{}
+	if action := expansionAction(expanded, hasExpanded, expandedSettable, showMenu); action != "" {
+		actions[action] = struct{}{}
 	}
 	focusSettable, err := semanticAttributeSettable(api, element, api.axFocusedAttribute)
 	if err != nil {

@@ -295,6 +295,9 @@ func actATSPI(ctx context.Context, query atspiQuery, request ActionRequest, refe
 		return ActionResult{}, ErrStaleTarget
 	}
 	validateWindow := func() error {
+		if err := validateATSPIMembership(ctx, query, root, reference, uint32(request.Target.ProcessID)); err != nil {
+			return err
+		}
 		liveTitle, err := query.stringProperty(ctx, root, atspiPropertyName)
 		if err != nil {
 			return normalizeATSPIError(err)

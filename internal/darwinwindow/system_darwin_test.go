@@ -134,3 +134,15 @@ func TestDispatchAXExpansionRevalidatesAfterPreparation(t *testing.T) {
 		t.Fatalf("stale expansion = %+v, %v, mutated=%v", result, err, mutated)
 	}
 }
+
+func TestValidateAXElementWindowRejectsReparentedElement(t *testing.T) {
+	api := &nativeAPI{
+		axUIElementGetWindow: func(_ uintptr, windowID *uint32) int32 {
+			*windowID = 99
+			return axErrorSuccess
+		},
+	}
+	if err := validateAXElementWindow(api, 42, 77); !errors.Is(err, ErrAccessibilityStaleTarget) {
+		t.Fatalf("validateAXElementWindow() error = %v", err)
+	}
+}

@@ -217,3 +217,27 @@ func TestMapAXRoleUsesOnlyFixedVocabulary(t *testing.T) {
 		t.Fatal("structural AX role classification is inconsistent")
 	}
 }
+
+func TestExpansionActionMatchesExecutableAXPaths(t *testing.T) {
+	tests := []struct {
+		name             string
+		expanded         bool
+		hasExpanded      bool
+		expandedSettable bool
+		showMenu         bool
+		want             string
+	}{
+		{name: "settable expanded", expanded: true, hasExpanded: true, expandedSettable: true, want: "collapse"},
+		{name: "read-only expanded", expanded: true, hasExpanded: true, showMenu: true, want: ""},
+		{name: "settable collapsed", hasExpanded: true, expandedSettable: true, want: "expand"},
+		{name: "menu collapsed", hasExpanded: true, showMenu: true, want: "expand"},
+		{name: "menu without state", showMenu: true, want: "expand"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if got := expansionAction(test.expanded, test.hasExpanded, test.expandedSettable, test.showMenu); got != test.want {
+				t.Fatalf("expansionAction() = %q, want %q", got, test.want)
+			}
+		})
+	}
+}

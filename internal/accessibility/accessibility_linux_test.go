@@ -533,6 +533,51 @@ func TestActATSPIRevalidatesWindowAfterSliderPreparation(t *testing.T) {
 	}
 }
 
+func TestActATSPIRevalidatesMembershipAfterSliderPreparation(t *testing.T) {
+	application := atspiTestReference("application")
+	window := atspiTestReference("window")
+	replacement := atspiTestReference("replacement")
+	slider := atspiTestReference("slider")
+	query := newFakeATSPIQuery(map[atspiReference]*fakeATSPIObject{
+		application: {children: []atspiReference{window, replacement}},
+		window: {
+			parent: application, children: []atspiReference{slider}, role: atspiRoleFrame,
+			properties: map[string]string{atspiPropertyName: "Fixture"},
+		},
+		replacement: {
+			parent: application, children: []atspiReference{slider}, role: atspiRoleFrame,
+			properties: map[string]string{atspiPropertyName: "Other"},
+		},
+		slider: {
+			parent: window, role: atspiRoleSlider,
+			states:           atspiTestStates(atspiStateEnabled, atspiStateShowing, atspiStateVisible),
+			properties:       map[string]string{atspiPropertyName: "Volume"},
+			interfaces:       []string{atspiShortValue},
+			value:            4,
+			minimumIncrement: 1,
+		},
+	})
+	query.apps = []atspiReference{application}
+	query.pids[application.Bus] = 42
+	query.minimumStepHook = func() {
+		query.objects[referenceKey(slider)].parent = replacement
+		query.minimumStepHook = nil
+	}
+	request := ActionRequest{
+		Target:    Target{ProcessID: 42, ExpectedTitle: "Fixture"},
+		Reference: []byte(referenceKey(slider)), Action: "increment",
+		Expected: ElementExpectation{
+			Role: "slider", Name: "Volume", States: []string{"enabled"},
+			Actions: []string{"set-value", "increment", "decrement"},
+		},
+	}
+
+	result, err := actATSPI(t.Context(), query, request, slider)
+	if !errors.Is(err, ErrStaleTarget) || result.Dispatched || len(query.mutationCalls) != 0 {
+		t.Fatalf("late reparented slider = %+v, %v, calls=%v", result, err, query.mutationCalls)
+	}
+}
+
 func TestValidATSPIReferenceAcceptsOnlyUniqueNonNullObjects(t *testing.T) {
 	valid := atspiTestReference("valid")
 	if !validATSPIReference(valid) {

@@ -113,3 +113,22 @@ func clearAccessibilitySnapshot(snapshot *AccessibilitySnapshot) {
 	snapshot.Truncated = false
 	snapshot.IdentityTruncated = false
 }
+
+func expansionAction(expanded, hasExpanded, expandedSettable, showMenu bool) string {
+	if hasExpanded {
+		if expanded {
+			if expandedSettable {
+				return "collapse"
+			}
+			return ""
+		}
+		if expandedSettable || showMenu {
+			return "expand"
+		}
+		return ""
+	}
+	if showMenu {
+		return "expand"
+	}
+	return ""
+}

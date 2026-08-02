@@ -136,6 +136,15 @@ func actWindowsUIA(ctx context.Context, request ActionRequest) (ActionResult, er
 		return ActionResult{}, ErrStaleTarget
 	}
 	validateWindow := func() error {
+		liveRoot, err := client.elementFromHandle(ctx, uintptr(handle))
+		if err != nil {
+			return err
+		}
+		liveElement, err := findUIAElement(ctx, client.query, liveRoot, referencePID, runtimeID)
+		if err != nil {
+			return err
+		}
+		liveElement.Release()
 		livePID, pidErr := windowBackend.PID(handle)
 		liveTitle, titleErr := windowBackend.Title(handle)
 		if pidErr != nil || titleErr != nil || livePID != processID || liveTitle != request.Target.ExpectedTitle {
