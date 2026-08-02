@@ -18,6 +18,8 @@ func buildCatalog(policy Policy, capabilities robotgo.RuntimeCapabilities) Opera
 		Operations: []OperationCapability{
 			observationCapability(policy, capabilities),
 			viewCapability(policy, capabilities),
+			analysisCapability(OperationOCR, policy),
+			analysisCapability(OperationDetectElements, policy),
 			inspectUICapability(policy, capabilities),
 			findColorCapability(policy, capabilities),
 			waitColorCapability(policy, capabilities),
@@ -29,6 +31,39 @@ func buildCatalog(policy Policy, capabilities robotgo.RuntimeCapabilities) Opera
 			keyChordCapability(policy, capabilities),
 			activationCapability(policy, capabilities),
 		},
+	}
+}
+
+func analysisCapability(operation Operation, policy Policy) OperationCapability {
+	_, confirmationRequired := policy.requireConfirmation[operation]
+	_, operationAllowed := policy.allowOperation[operation]
+	available, backend, reason, remediation := true, visualBackendName, "", ""
+	if operation == OperationOCR {
+		available, backend = ocrBackendAvailable, ocrBackendName
+		if !available {
+			reason = robotgo.ErrNotSupported.Error()
+			remediation = "rebuild with the ocr build tag and CGO plus Tesseract/Leptonica development libraries"
+		}
+	}
+	policyAllowed := operationAllowed && policy.MaxAnalysisPixels > 0 && policy.MaxAnalyses > 0 &&
+		policy.MaxConcurrentAnalyses == 1 && policy.MinAnalysisIntervalMillis > 0 &&
+		policy.AnalysisTimeoutMillis > 0 && policy.SessionTimeoutMillis > 0
+	if operation == OperationOCR {
+		policyAllowed = policyAllowed && len(policy.allowOCRLanguage) > 0 &&
+			policy.MaxOCRBoxes > 0 && policy.MaxOCRTextBytes > 0
+	} else {
+		policyAllowed = policyAllowed && policy.MaxVisualElements > 0
+	}
+	code := ErrorCode("")
+	if !available {
+		code = ErrorUnsupported
+	}
+	return OperationCapability{
+		Operation: operation, Available: available, PolicyAllowed: policyAllowed,
+		Backend: backend, Risk: RiskSensitiveRead, ConfirmationRequired: confirmationRequired,
+		Cancellation: CancellationCooperative, ProcessGlobalBackend: true,
+		ExclusiveAgentSession: true, Reason: reason, Remediation: remediation,
+		UnavailableCode: code,
 	}
 }
 

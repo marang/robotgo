@@ -103,6 +103,21 @@ go test -tags "ocr" ./...
 The default and non-CGO suites also lock the versioned runtime-diagnostic
 schema, stable feature ordering, deadline-bounded portal probes, sanitized
 output, negotiated protocol versions, permission states, and remediation.
+
+The LAB-74 image-analysis contract is hermetic in the default suite. Its
+focused engine and MCP checks can be rerun without reading the desktop or
+creating OCR files:
+
+```bash
+go test ./agent ./agent/mcpserver -run 'Analysis|OCR|Visual'
+CGO_ENABLED=0 go test -tags ocr ./agent ./agent/mcpserver
+```
+
+The in-process OCR adapter additionally compiles and runs in the existing
+`linux-cgo-ocr` CI job; a local tagged run requires the Tesseract and Leptonica
+development headers described above. The non-CGO tagged run must stay on the
+explicit unsupported backend and must never fall back to the file-based CLI.
+
 Inspect a live host without opening a consent dialog with:
 
 ```bash

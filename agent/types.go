@@ -10,24 +10,26 @@ import (
 )
 
 // CatalogSchemaVersion identifies the operation catalog JSON contract.
-const CatalogSchemaVersion = "7"
+const CatalogSchemaVersion = "8"
 
 // Operation identifies one strict agent operation.
 type Operation string
 
 const (
-	OperationMove      Operation = "pointer.move"
-	OperationClick     Operation = "pointer.click"
-	OperationScroll    Operation = "pointer.scroll"
-	OperationDrag      Operation = "pointer.drag"
-	OperationTypeText  Operation = "keyboard.type-text"
-	OperationKeyChord  Operation = "keyboard.chord"
-	OperationActivate  Operation = "window.activate"
-	OperationObserve   Operation = "desktop.observe"
-	OperationView      Operation = "desktop.view"
-	OperationInspectUI Operation = "desktop.inspect-ui"
-	OperationFindColor Operation = "desktop.find-color"
-	OperationWaitColor Operation = "desktop.wait-color"
+	OperationMove           Operation = "pointer.move"
+	OperationClick          Operation = "pointer.click"
+	OperationScroll         Operation = "pointer.scroll"
+	OperationDrag           Operation = "pointer.drag"
+	OperationTypeText       Operation = "keyboard.type-text"
+	OperationKeyChord       Operation = "keyboard.chord"
+	OperationActivate       Operation = "window.activate"
+	OperationObserve        Operation = "desktop.observe"
+	OperationView           Operation = "desktop.view"
+	OperationOCR            Operation = "desktop.ocr"
+	OperationDetectElements Operation = "desktop.detect-elements"
+	OperationInspectUI      Operation = "desktop.inspect-ui"
+	OperationFindColor      Operation = "desktop.find-color"
+	OperationWaitColor      Operation = "desktop.wait-color"
 )
 
 // RiskClass describes the policy impact of an operation.

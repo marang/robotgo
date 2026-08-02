@@ -2,6 +2,20 @@
 
 ## Unreleased
 
+- Added the schema-v8, deny-by-default `desktop.ocr` and
+  `desktop.detect-elements` contracts plus their separately image-enabled MCP
+  tools. Both consume only an explicit subregion of a live, already-redacted
+  `desktop.view` observation; full-view analysis has another immutable grant.
+  Pixel, language, box, text-byte, proposal, count, concurrency, rate, timeout,
+  and confidence limits are enforced before any backend result crosses MCP.
+  Results carry observation/region/backend/model provenance, deterministic
+  confidence, truncation/sanitization state, and an unconditional untrusted
+  marker. The in-process Tesseract/Leptonica adapter uses memory bytes and explicitly freed word boxes only in
+  `ocr && cgo` builds; other builds fail explicitly instead of using the
+  temporary-file Tesseract CLI. The deterministic visual fallback returns
+  geometry only, and all private subregion pixels and backend text are cleared
+  across success, failure, cancellation, timeout, release, and close.
+
 - Added the schema-v7, deny-by-default `desktop.view` agent contract and the
   separately enabled `robotgo_view` MCP image tool. Image access now requires
   both an immutable bounded region/full-display policy and the adapter's

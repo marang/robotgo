@@ -1,7 +1,7 @@
 # Ingenious RobotGo Product Features
 
-Status: Product strategy proposal; LAB-72 implementation complete pending
-merge, later slices not yet delivery commitments
+Status: Product strategy proposal; LAB-72 merged and LAB-74 implementation
+complete pending review/merge; later slices are not yet delivery commitments
 
 ## Product thesis
 
@@ -24,6 +24,17 @@ The key promise is not merely that RobotGo can click a control. RobotGo should
 be able to explain why it selected that control, prevent ambiguous or stale
 actions, prove the outcome, and keep sensitive desktop content inside explicit
 trust boundaries.
+
+Implementation checkpoint (LAB-74): RobotGo now defines separate schema-v8
+`desktop.ocr` and `desktop.detect-elements` sensitive-read operations over an
+explicit subregion of a live LAB-72 image observation. OCR uses only the
+in-memory `ocr && cgo` backend; default and Pure-Go builds report it as
+unsupported instead of invoking the temporary-file CLI path. Both operations
+apply immutable pixel/result/text/language/count/concurrency/rate/timeout
+limits, return observation-bound backend/model/confidence provenance, mark
+results untrusted, and zero their private subregion copy on every path. This is
+the visual fallback layer; LAB-73 accessibility remains authoritative for
+semantics.
 
 ## 1. Semantic and visual scene graph
 
@@ -440,8 +451,8 @@ coordinates.
 The current autonomous-GUI work establishes the required safety boundaries.
 The recommended product sequence is:
 
-1. finish policy-gated MCP image observations (`LAB-72`)
-2. add bounded OCR and visual detection (`LAB-74`)
+1. policy-gated MCP image observations (`LAB-72`, complete)
+2. bounded OCR and visual detection (`LAB-74`, implemented pending merge)
 3. add observation-bound semantic element actions with full live revalidation
 4. add semantic preconditions/postconditions and action proof v1
 5. introduce a versioned `TargetSpec` and deterministic explainable resolver

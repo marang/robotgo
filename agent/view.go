@@ -319,7 +319,7 @@ func (s *Session) View(ctx context.Context, request ViewRequest) (*View, error) 
 		_ = view.Close()
 		return s.finishViewFailure(ctx, nil, err)
 	}
-	s.storeViewObservation(view.Metadata.ObservationID, frame)
+	s.storeViewObservation(view.Metadata.ObservationID, frame, redacted)
 	s.trackView(view)
 	retained = true
 	if err := s.emitAudit(ctx, AuditEvent{
@@ -629,11 +629,11 @@ func (buffer *boundedViewBuffer) close() {
 
 var _ io.Writer = (*boundedViewBuffer)(nil)
 
-func (s *Session) storeViewObservation(id string, frame *capturedFrame) {
+func (s *Session) storeViewObservation(id string, frame *capturedFrame, redacted bool) {
 	s.observationMu.Lock()
 	s.observations[id] = observationRecord{
 		capture: frame.buffer, region: frame.metadata.Region,
-		digest: frame.metadata.SHA256, hasCapture: true, source: OperationView,
+		digest: frame.metadata.SHA256, hasCapture: true, source: OperationView, redacted: redacted,
 	}
 	s.observationMu.Unlock()
 }

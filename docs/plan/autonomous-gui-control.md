@@ -1,6 +1,7 @@
 # Autonomous GUI Control Plan
 
-Status: LAB-75 and LAB-73 complete; LAB-72 implementation complete pending merge
+Status: LAB-75, LAB-73, and LAB-72 complete; LAB-74 implementation complete
+pending review/merge
 
 Linear coordination:
 
@@ -110,6 +111,33 @@ Custom MCP session implementations must construct images through
 `agent.NewImageView`, which rejects malformed envelopes, dimension mismatch,
 ancillary PNG chunks, indexed palettes, bad checksums, and invalid encoded
 payloads without taking ownership on failure.
+
+## Bounded OCR and visual detection contract
+
+LAB-74 adds schema-v8 `desktop.ocr` and `desktop.detect-elements` plus the
+separately startup-gated `robotgo_ocr` and `robotgo_detect_elements` MCP tools.
+They consume only an explicit rectangle contained by a still-live LAB-72 view
+observation; exact full-view analysis needs `allow_full_view_analysis` in
+addition to the original view grants. The retained frame has already had every
+configured redaction mask applied, and only the requested subregion is cloned
+for analysis.
+
+Policy independently bounds source pixels, allowed OCR languages, OCR boxes,
+aggregate text bytes, visual proposals, calls, concurrency, rate, duration,
+and session lifetime. Text is valid UTF-8 with controls removed and is
+truncated only on a valid boundary. Every result reports source observation,
+region, confidence, backend/model, truncation and sanitization state, and
+`untrusted: true`; recognized instructions cannot change policy, confirmation,
+or execute mode.
+
+`ocr && cgo` builds use the Tesseract/Leptonica C APIs with an in-memory image
+and explicitly freed word buffers. Other builds report OCR as unsupported and never invoke RobotGo's
+file-based Tesseract CLI. Visual fallback uses the deterministic local
+`contrast-components-v1` proposal model. Scratch pixels and backend text are
+cleared on success, error, timeout, cancellation, release, and close. No
+screenshot, OCR dump, replay file, raw diagnostics, or embedding is created.
+Accessibility remains the preferred semantic source; visual proposals do not
+claim roles, names, or action authority.
 
 ## Action contract
 
