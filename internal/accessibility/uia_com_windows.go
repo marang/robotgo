@@ -238,7 +238,10 @@ func (query *uiaCOMQuery) structure(ctx context.Context, element *ole.IUnknown) 
 	}
 	toggleAvailable := false
 	if controlType == uiaControlButton && !password {
-		toggleAvailable, err = newUIAPropertyReader(ctx, element, 1).bool(uiaPropertyToggleAvailable)
+		// Classify the semantic role from the actual provider capability. This
+		// also keeps structural traversal independent of optional property
+		// VARIANT decoding and matches the pattern used during dispatch.
+		toggleAvailable, err = currentUIAPatternAvailable(ctx, element, uiaPatternToggle)
 		if err != nil {
 			return uiaNodeStructure{}, err
 		}
@@ -662,6 +665,30 @@ func currentUIAPattern(ctx context.Context, element *ole.IUnknown, patternID int
 	return pattern, nil
 }
 
+func currentUIAPatternAvailable(ctx context.Context, element *ole.IUnknown, patternID int32) (bool, error) {
+	var pattern *ole.IUnknown
+	err := callUIAMethodRaw(ctx, element, uiaElementMethodCurrentPattern,
+		uintptr(patternID), uintptr(unsafe.Pointer(&pattern)))
+	if err != nil {
+		if pattern != nil {
+			pattern.Release()
+		}
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return false, ctxErr
+		}
+		var callErr uiaCallError
+		if errors.As(err, &callErr) && uint32(callErr) == hResultUIANotSupported {
+			return false, nil
+		}
+		return false, normalizeUIAError(ctx, err)
+	}
+	if pattern == nil {
+		return false, ErrStaleTarget
+	}
+	pattern.Release()
+	return true, nil
+}
+
 func setUIAFocus(ctx context.Context, element *ole.IUnknown) error {
 	return callUIAMethod(ctx, element, uiaElementMethodSetFocus)
 }
@@ -988,6 +1015,14 @@ func readUIAIntArray(ctx context.Context, array *ole.SafeArray) ([]int32, error)
 }
 
 func callUIAMethod(ctx context.Context, object *ole.IUnknown, index int, arguments ...uintptr) error {
+	err := callUIAMethodRaw(ctx, object, index, arguments...)
+	if err == nil {
+		return nil
+	}
+	return normalizeUIAError(ctx, err)
+}
+
+func callUIAMethodRaw(ctx context.Context, object *ole.IUnknown, index int, arguments ...uintptr) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -1001,7 +1036,7 @@ func callUIAMethod(ctx context.Context, object *ole.IUnknown, index int, argumen
 	hr, _, _ := syscall.SyscallN(method, args...)
 	runtime.KeepAlive(object)
 	if failedHRESULT(hr) {
-		return normalizeUIAError(ctx, uiaCallError(uint32(hr)))
+		return uiaCallError(uint32(hr))
 	}
 	return nil
 }
