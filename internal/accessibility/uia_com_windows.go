@@ -306,9 +306,13 @@ func (query *uiaCOMQuery) detailsWithDisabledActions(
 		if err != nil {
 			return result, err
 		}
-		result.ObservableStates, err = query.observableStates(ctx, element, role, properties)
-		if err != nil {
-			return result, err
+		// Strict provider-presence reads belong only to the condition gate.
+		// Normal inspection keeps optional platform properties optional.
+		if readActionsWhenDisabled {
+			result.ObservableStates, err = query.observableStates(ctx, element, role, properties)
+			if err != nil {
+				return result, err
+			}
 		}
 	}
 	if limits.ReadActions {
@@ -830,8 +834,23 @@ func (reader *uiaPropertyReader) text(property int32) (string, bool, error) {
 }
 
 func (reader *uiaPropertyReader) readOnly(role string) (bool, error) {
-	value, _, err := reader.readOnlyState(role)
-	return value, err
+	if role != "textbox" && role != "combobox" && role != "slider" {
+		return false, nil
+	}
+	if role != "slider" {
+		valueAvailable, err := reader.bool(uiaPropertyValueAvailable)
+		if err != nil {
+			return false, err
+		}
+		if valueAvailable {
+			return reader.bool(uiaPropertyValueReadOnly)
+		}
+	}
+	rangeAvailable, err := reader.bool(uiaPropertyRangeValueAvailable)
+	if err != nil || !rangeAvailable {
+		return false, err
+	}
+	return reader.bool(uiaPropertyRangeValueReadOnly)
 }
 
 func (reader *uiaPropertyReader) readOnlyState(role string) (bool, bool, error) {
