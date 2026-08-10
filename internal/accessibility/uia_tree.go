@@ -195,11 +195,11 @@ func buildUIATree[T comparable](
 
 		processID, err := query.processID(ctx, reference)
 		if err != nil {
-			return err
+			return fmt.Errorf("uia element process: %w", err)
 		}
 		if processID != expectedProcessID {
 			if isRoot {
-				return ErrStaleTarget
+				return fmt.Errorf("uia root process mismatch: %w", ErrStaleTarget)
 			}
 			// UIA may embed surfaces owned by another process. Never cross the
 			// exact process boundary selected by policy.
@@ -271,7 +271,7 @@ func buildUIATree[T comparable](
 		if depth == limits.MaxDepth {
 			child, err := query.firstChild(ctx, reference)
 			if err != nil {
-				return err
+				return fmt.Errorf("uia depth-limit child: %w", err)
 			}
 			if child != zero {
 				query.release(child)
@@ -282,7 +282,7 @@ func buildUIATree[T comparable](
 
 		child, err := query.firstChild(ctx, reference)
 		if err != nil {
-			return err
+			return fmt.Errorf("uia first child: %w", err)
 		}
 		for child != zero {
 			if len(snapshot.Nodes) >= int(limits.MaxElements) {
@@ -293,7 +293,7 @@ func buildUIATree[T comparable](
 			next, err := query.nextSibling(ctx, child)
 			if err != nil {
 				query.release(child)
-				return err
+				return fmt.Errorf("uia next sibling: %w", err)
 			}
 			if err := visit(child, nodeIndex, depth+1, false); err != nil {
 				if next != zero {

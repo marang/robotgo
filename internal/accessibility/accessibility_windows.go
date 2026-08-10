@@ -617,18 +617,18 @@ func inspectWindowsUIA(ctx context.Context, target Target, limits Limits) (Snaps
 	}
 	handle, err := windowBackend.Resolve(windowTarget, isHandle)
 	if err != nil {
-		return Snapshot{}, ErrStaleTarget
+		return Snapshot{}, fmt.Errorf("uia window resolution: %w", ErrStaleTarget)
 	}
 	processID, err := windowBackend.PID(handle)
 	if err != nil || processID <= 0 {
-		return Snapshot{}, ErrStaleTarget
+		return Snapshot{}, fmt.Errorf("uia window process: %w", ErrStaleTarget)
 	}
 	if target.ProcessID > 0 && processID != target.ProcessID {
-		return Snapshot{}, ErrStaleTarget
+		return Snapshot{}, fmt.Errorf("uia target process: %w", ErrStaleTarget)
 	}
 	title, err := windowBackend.Title(handle)
 	if err != nil || title != target.ExpectedTitle {
-		return Snapshot{}, ErrStaleTarget
+		return Snapshot{}, fmt.Errorf("uia window title: %w", ErrStaleTarget)
 	}
 	if err := ctx.Err(); err != nil {
 		return Snapshot{}, err
@@ -636,12 +636,12 @@ func inspectWindowsUIA(ctx context.Context, target Target, limits Limits) (Snaps
 
 	client, err := newUIAClient(ctx)
 	if err != nil {
-		return Snapshot{}, err
+		return Snapshot{}, fmt.Errorf("uia client: %w", err)
 	}
 	defer client.close()
 	root, err := client.elementFromHandle(ctx, uintptr(handle))
 	if err != nil {
-		return Snapshot{}, err
+		return Snapshot{}, fmt.Errorf("uia root element: %w", err)
 	}
 	snapshot, err := buildUIATree(ctx, client.query, root, int32(processID), uint64(uintptr(handle)), limits)
 	if err != nil {
@@ -655,7 +655,7 @@ func inspectWindowsUIA(ctx context.Context, target Target, limits Limits) (Snaps
 	liveTitle, titleErr := windowBackend.Title(handle)
 	if pidErr != nil || titleErr != nil || liveProcessID != processID || liveTitle != target.ExpectedTitle {
 		clearSnapshot(&snapshot)
-		return Snapshot{}, ErrStaleTarget
+		return Snapshot{}, fmt.Errorf("uia window postvalidation: %w", ErrStaleTarget)
 	}
 	return snapshot, nil
 }
@@ -698,7 +698,7 @@ func runOnWindowsUIAThreadValue[T any](ctx context.Context, operation func() (T,
 		defer runtime.UnlockOSThread()
 		if err := initializeUIAThread(); err != nil {
 			var zero T
-			completed <- result{value: zero, err: err}
+			completed <- result{value: zero, err: fmt.Errorf("uia thread initialization: %w", err)}
 			return
 		}
 		defer uninitializeUIAThread()
