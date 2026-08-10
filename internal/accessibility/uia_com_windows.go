@@ -239,12 +239,9 @@ func (query *uiaCOMQuery) structure(ctx context.Context, element *ole.IUnknown) 
 	}
 	toggleAvailable := false
 	if controlType == uiaControlButton && !password {
-		// Classify the semantic role from the actual provider capability. This
-		// also keeps structural traversal independent of optional property
-		// VARIANT decoding and matches the pattern used during dispatch.
-		toggleAvailable, err = currentUIAPatternAvailable(ctx, element, uiaPatternToggle)
+		toggleAvailable, err = newUIAPropertyReader(ctx, element, 1).bool(uiaPropertyToggleAvailable)
 		if err != nil {
-			return uiaNodeStructure{}, fmt.Errorf("toggle pattern: %w", err)
+			return uiaNodeStructure{}, fmt.Errorf("toggle availability: %w", err)
 		}
 	}
 	offscreen, err := elementBool(ctx, element, uiaElementMethodOffscreen)
@@ -664,40 +661,6 @@ func currentUIAPattern(ctx context.Context, element *ole.IUnknown, patternID int
 		return nil, ErrStaleTarget
 	}
 	return pattern, nil
-}
-
-func currentUIAPatternAvailable(ctx context.Context, element *ole.IUnknown, patternID int32) (bool, error) {
-	if err := ctx.Err(); err != nil {
-		return false, err
-	}
-	method := comMethod(element, uiaElementMethodCurrentPattern)
-	if method == 0 {
-		return false, ErrUnavailable
-	}
-	var pattern *ole.IUnknown
-	hr, _, _ := syscall.SyscallN(
-		method,
-		uintptr(unsafe.Pointer(element)), uintptr(patternID), uintptr(unsafe.Pointer(&pattern)),
-	)
-	runtime.KeepAlive(element)
-	if failedHRESULT(hr) {
-		if pattern != nil {
-			pattern.Release()
-		}
-		if ctxErr := ctx.Err(); ctxErr != nil {
-			return false, ctxErr
-		}
-		callErr := uiaCallError(uint32(hr))
-		if uint32(callErr) == hResultUIANotSupported {
-			return false, nil
-		}
-		return false, normalizeUIAError(ctx, callErr)
-	}
-	if pattern == nil {
-		return false, ErrStaleTarget
-	}
-	pattern.Release()
-	return true, nil
 }
 
 func setUIAFocus(ctx context.Context, element *ole.IUnknown) error {

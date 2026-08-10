@@ -174,10 +174,14 @@ func waitForWindowsUIAFixtureSnapshot(t *testing.T, ctx context.Context, handle 
 			ReadStates: true, ReadBounds: true, ReadFocus: true, ReadActions: true,
 		})
 		if err != nil {
-			if !errors.Is(err, ErrStaleTarget) && !errors.Is(err, ErrUnavailable) {
+			waitErr := waitCtx.Err()
+			if waitErr != nil && errors.Is(err, waitErr) {
+				// Preserve the last UIA stage error for the bounded timeout report.
+			} else if !errors.Is(err, ErrStaleTarget) && !errors.Is(err, ErrUnavailable) {
 				t.Fatal(err)
+			} else {
+				lastErr = err
 			}
-			lastErr = err
 		} else {
 			lastErr = nil
 			for _, node := range snapshot.Nodes {
