@@ -63,6 +63,22 @@ func accessibilityRoleValueState(role string) string {
 	}
 }
 
+func accessibilityControlValueState(role string, value int32) (bool, bool) {
+	switch value {
+	case 0:
+		return false, true
+	case 1:
+		return true, true
+	case -1, 2:
+		// AppKit and AX providers expose the regular NSButton mixed state with
+		// either sentinel. Action v1 has no mixed state, so keep it observable
+		// without reporting checked/selected, matching the UIA normalization.
+		return false, role == "checkbox" || role == "radio"
+	default:
+		return false, false
+	}
+}
+
 func appendAccessibilityValueState(
 	states []string,
 	role string,

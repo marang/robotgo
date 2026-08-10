@@ -951,9 +951,12 @@ Checkboxes and switches expose the reversible `toggle` action with the
 canonical `checked` state; radio buttons expose the one-way `press` action with
 the canonical `selected` state. Windows UIA buttons backed by TogglePattern are
 normalized to switches, while radio SelectionItem providers remain one-way
-radio controls. A native backend that cannot observe the required state, focus,
-value, or action fails closed instead of treating a missing property as false
-or empty.
+radio controls. Known native mixed checkbox and radio values remain observable
+but do not emit `checked` or `selected`; the v1 condition model therefore treats
+the corresponding `state-absent` condition as satisfied. Unknown native state
+values and mixed switch values fail closed. A native backend that cannot
+observe the required state, focus, value, or action fails closed instead of
+treating a missing property as false or empty.
 
 Every `ActUIElement` return includes Action Proof v1 with opaque transaction
 lineage, fixed resolution/authorization/execution/verification outcomes,

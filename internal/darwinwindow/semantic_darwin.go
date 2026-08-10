@@ -1194,6 +1194,34 @@ func semanticOptionalBoolAttribute(api *nativeAPI, element, attribute uintptr) (
 	return api.cfBooleanGetValue(value), true, nil
 }
 
+func semanticOptionalControlValueState(
+	api *nativeAPI,
+	element, attribute uintptr,
+	role string,
+) (bool, bool, error) {
+	value, ok, err := semanticOptionalAttribute(api, element, attribute)
+	if err != nil || !ok {
+		return false, ok, err
+	}
+	defer api.cfRelease(value)
+	actualType := api.cfGetTypeID(value)
+	if booleanType := api.cfBooleanGetTypeID(); booleanType != 0 && actualType == booleanType {
+		return api.cfBooleanGetValue(value), true, nil
+	}
+	if numberType := api.cfNumberGetTypeID(); numberType != 0 && actualType == numberType {
+		var number int32
+		if !api.cfNumberGetValue(value, cfNumberSInt32Type, unsafe.Pointer(&number)) {
+			return false, false, ErrAccessibilityInvalidTree
+		}
+		active, valid := accessibilityControlValueState(role, number)
+		if !valid {
+			return false, false, ErrAccessibilityInvalidTree
+		}
+		return active, true, nil
+	}
+	return false, false, ErrAccessibilityInvalidTree
+}
+
 func semanticElementRect(api *nativeAPI, element uintptr) (windowbackend.Rect, error) {
 	position, dimensions, err := semanticElementGeometry(api, element)
 	if err != nil {
@@ -1310,7 +1338,9 @@ func semanticStates(api *nativeAPI, element uintptr, role string) ([]string, []s
 		}
 	}
 	if accessibilityRoleValueState(role) != "" {
-		active, present, stateErr := semanticOptionalBoolAttribute(api, element, api.axValueAttribute)
+		active, present, stateErr := semanticOptionalControlValueState(
+			api, element, api.axValueAttribute, role,
+		)
 		if stateErr != nil {
 			return nil, nil, stateErr
 		}

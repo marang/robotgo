@@ -8,6 +8,7 @@ import (
 	"math"
 	"slices"
 	"testing"
+	"unsafe"
 
 	"github.com/marang/robotgo/internal/windowbackend"
 )
@@ -101,6 +102,174 @@ func TestCopyAttributeRejectsNilSuccessValue(t *testing.T) {
 	}
 	if _, err := copyAttributeLocked(api, 1, 2); err == nil {
 		t.Fatal("copyAttributeLocked accepted a nil value from a successful AX call")
+	}
+}
+
+func TestSemanticOptionalControlValueStateDecodesNativeValues(t *testing.T) {
+	t.Parallel()
+	const (
+		booleanTypeID = uintptr(11)
+		numberTypeID  = uintptr(12)
+		otherTypeID   = uintptr(13)
+		valueRef      = uintptr(21)
+	)
+	tests := []struct {
+		name        string
+		role        string
+		result      int32
+		actualType  uintptr
+		boolean     bool
+		number      int32
+		numberOK    bool
+		wantActive  bool
+		wantPresent bool
+		wantErr     bool
+		wantRelease int
+	}{
+		{
+			name: "CoreFoundation boolean remains supported", role: "switch", actualType: booleanTypeID,
+			boolean: true, wantActive: true, wantPresent: true, wantRelease: 1,
+		},
+		{
+			name: "CoreFoundation boolean false remains supported", role: "checkbox", actualType: booleanTypeID,
+			wantPresent: true, wantRelease: 1,
+		},
+		{
+			name: "CoreFoundation number off", role: "checkbox", actualType: numberTypeID,
+			numberOK: true, wantPresent: true, wantRelease: 1,
+		},
+		{
+			name: "CoreFoundation number on", role: "checkbox", actualType: numberTypeID,
+			number: 1, numberOK: true, wantActive: true, wantPresent: true, wantRelease: 1,
+		},
+		{
+			name: "AppKit checkbox mixed remains observable", role: "checkbox", actualType: numberTypeID,
+			number: -1, numberOK: true, wantPresent: true, wantRelease: 1,
+		},
+		{
+			name: "AX checkbox mixed remains observable", role: "checkbox", actualType: numberTypeID,
+			number: 2, numberOK: true, wantPresent: true, wantRelease: 1,
+		},
+		{
+			name: "switch mixed fails closed", role: "switch", actualType: numberTypeID,
+			number: 2, numberOK: true, wantErr: true, wantRelease: 1,
+		},
+		{
+			name: "lossy number fails closed", role: "checkbox", actualType: numberTypeID,
+			wantErr: true, wantRelease: 1,
+		},
+		{
+			name: "unexpected type fails closed", role: "checkbox", actualType: otherTypeID,
+			wantErr: true, wantRelease: 1,
+		},
+		{name: "missing value remains unobservable", role: "checkbox", result: axErrorNoValue},
+	}
+	for _, test := range tests {
+		test := test
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			releases := 0
+			api := &nativeAPI{
+				axUIElementCopyAttributeValue: func(_ uintptr, _ uintptr, value *uintptr) int32 {
+					if test.result == axErrorSuccess {
+						*value = valueRef
+					}
+					return test.result
+				},
+				cfGetTypeID:        func(uintptr) uintptr { return test.actualType },
+				cfBooleanGetTypeID: func() uintptr { return booleanTypeID },
+				cfBooleanGetValue:  func(uintptr) bool { return test.boolean },
+				cfNumberGetTypeID:  func() uintptr { return numberTypeID },
+				cfNumberGetValue: func(_ uintptr, numberType int64, output unsafe.Pointer) bool {
+					if numberType != cfNumberSInt32Type {
+						t.Errorf("CFNumber type = %d, want %d", numberType, cfNumberSInt32Type)
+					}
+					if !test.numberOK {
+						return false
+					}
+					*(*int32)(output) = test.number
+					return true
+				},
+				cfRelease: func(value uintptr) {
+					if value != valueRef {
+						t.Errorf("released value = %#x, want %#x", value, valueRef)
+					}
+					releases++
+				},
+			}
+			active, present, err := semanticOptionalControlValueState(api, 1, 2, test.role)
+			if active != test.wantActive || present != test.wantPresent ||
+				(err != nil) != test.wantErr ||
+				(test.wantErr && !errors.Is(err, ErrAccessibilityInvalidTree)) {
+				t.Fatalf(
+					"semanticOptionalControlValueState() = %t, %t, %v; want %t, %t, invalid=%t",
+					active, present, err, test.wantActive, test.wantPresent, test.wantErr,
+				)
+			}
+			if releases != test.wantRelease {
+				t.Fatalf("released values = %d, want %d", releases, test.wantRelease)
+			}
+		})
+	}
+}
+
+func TestSemanticStatesKeepMixedCheckboxObservable(t *testing.T) {
+	t.Parallel()
+	const (
+		booleanTypeID  = uintptr(11)
+		numberTypeID   = uintptr(12)
+		valueRef       = uintptr(21)
+		valueAttribute = uintptr(22)
+	)
+	releases := 0
+	api := &nativeAPI{
+		axEnabledAttribute:  23,
+		axValueAttribute:    valueAttribute,
+		axSelectedAttribute: 24,
+		axExpandedAttribute: 25,
+		axUIElementCopyAttributeValue: func(_ uintptr, attribute uintptr, value *uintptr) int32 {
+			if attribute != valueAttribute {
+				return axErrorNoValue
+			}
+			*value = valueRef
+			return axErrorSuccess
+		},
+		cfGetTypeID:        func(uintptr) uintptr { return numberTypeID },
+		cfBooleanGetTypeID: func() uintptr { return booleanTypeID },
+		cfNumberGetTypeID:  func() uintptr { return numberTypeID },
+		cfNumberGetValue: func(_ uintptr, numberType int64, output unsafe.Pointer) bool {
+			if numberType != cfNumberSInt32Type {
+				t.Errorf("CFNumber type = %d, want %d", numberType, cfNumberSInt32Type)
+			}
+			*(*int32)(output) = 2
+			return true
+		},
+		cfRelease: func(value uintptr) {
+			if value != valueRef {
+				t.Errorf("released value = %#x, want %#x", value, valueRef)
+			}
+			releases++
+		},
+	}
+	states, observable, err := semanticStates(api, 1, "checkbox")
+	if err != nil || len(states) != 0 || !slices.Equal(observable, []string{accessibilityStateChecked}) {
+		t.Fatalf("mixed checkbox states = %v, observable=%v, err=%v", states, observable, err)
+	}
+	condition := &AccessibilityElementCondition{
+		Kind:  AccessibilityElementConditionStateAbsent,
+		State: accessibilityStateChecked,
+	}
+	if !accessibilityElementConditionObservable(condition, observable, false, false) {
+		t.Fatal("mixed checkbox checked-state was not observable")
+	}
+	satisfied, err := accessibilityElementConditionSatisfied(
+		condition, states, false, "checkbox", "", nil,
+	)
+	if err != nil || !satisfied {
+		t.Fatalf("mixed checkbox state-absent result = %t, %v", satisfied, err)
+	}
+	if releases != 1 {
+		t.Fatalf("released values = %d, want 1", releases)
 	}
 }
 

@@ -69,6 +69,39 @@ func TestAccessibilityCheckedStateIsLimitedToToggleRoles(t *testing.T) {
 	}
 }
 
+func TestAccessibilityControlValueStateMapsOnlySupportedRoleStates(t *testing.T) {
+	t.Parallel()
+	for _, test := range []struct {
+		name       string
+		role       string
+		value      int32
+		wantActive bool
+		wantValid  bool
+	}{
+		{name: "checkbox off", role: "checkbox", value: 0, wantValid: true},
+		{name: "checkbox on", role: "checkbox", value: 1, wantActive: true, wantValid: true},
+		{name: "AppKit checkbox mixed", role: "checkbox", value: -1, wantValid: true},
+		{name: "AX checkbox mixed", role: "checkbox", value: 2, wantValid: true},
+		{name: "AppKit radio mixed", role: "radio", value: -1, wantValid: true},
+		{name: "AX radio mixed", role: "radio", value: 2, wantValid: true},
+		{name: "AppKit switch mixed", role: "switch", value: -1},
+		{name: "switch mixed", role: "switch", value: 2},
+		{name: "unknown checkbox value", role: "checkbox", value: 42},
+	} {
+		test := test
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			active, valid := accessibilityControlValueState(test.role, test.value)
+			if active != test.wantActive || valid != test.wantValid {
+				t.Fatalf(
+					"accessibilityControlValueState(%q, %d) = %t, %t; want %t, %t",
+					test.role, test.value, active, valid, test.wantActive, test.wantValid,
+				)
+			}
+		})
+	}
+}
+
 func TestAccessibilityElementConditionRequiresObservableProperty(t *testing.T) {
 	t.Parallel()
 	condition := &AccessibilityElementCondition{
