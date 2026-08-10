@@ -10,7 +10,11 @@ import (
 )
 
 // CatalogSchemaVersion identifies the operation catalog JSON contract.
-const CatalogSchemaVersion = "9"
+const CatalogSchemaVersion = "10"
+
+// ActionProofSchemaVersion identifies the privacy-reduced semantic-action
+// proof contract. Proofs deliberately contain no request or desktop payload.
+const ActionProofSchemaVersion = "1"
 
 // Operation identifies one strict agent operation.
 type Operation string
@@ -52,25 +56,30 @@ const (
 
 // OperationCapability is one stable entry in an operation catalog.
 type OperationCapability struct {
-	Operation             Operation           `json:"operation"`
-	Available             bool                `json:"available"`
-	PolicyAllowed         bool                `json:"policy_allowed"`
-	Backend               string              `json:"backend,omitempty"`
-	Fallback              bool                `json:"fallback"`
-	Risk                  RiskClass           `json:"risk"`
-	ConfirmationRequired  bool                `json:"confirmation_required"`
-	Cancellation          CancellationSupport `json:"cancellation"`
-	ProcessGlobalBackend  bool                `json:"process_global_backend"`
-	ExclusiveAgentSession bool                `json:"exclusive_agent_session"`
-	Reason                string              `json:"reason,omitempty"`
-	Remediation           string              `json:"remediation,omitempty"`
-	UnavailableCode       ErrorCode           `json:"unavailable_code,omitempty"`
-	OptionalCapture       bool                `json:"optional_capture,omitempty"`
-	CaptureAvailable      bool                `json:"capture_available,omitempty"`
-	CapturePolicyAllowed  bool                `json:"capture_policy_allowed,omitempty"`
-	CaptureFallback       bool                `json:"capture_fallback,omitempty"`
-	CaptureBackend        string              `json:"capture_backend,omitempty"`
-	ScrollAxes            []ScrollAxis        `json:"scroll_axes,omitempty"`
+	Operation                    Operation                `json:"operation"`
+	Available                    bool                     `json:"available"`
+	PolicyAllowed                bool                     `json:"policy_allowed"`
+	Backend                      string                   `json:"backend,omitempty"`
+	Fallback                     bool                     `json:"fallback"`
+	Risk                         RiskClass                `json:"risk"`
+	ConfirmationRequired         bool                     `json:"confirmation_required"`
+	Cancellation                 CancellationSupport      `json:"cancellation"`
+	ProcessGlobalBackend         bool                     `json:"process_global_backend"`
+	ExclusiveAgentSession        bool                     `json:"exclusive_agent_session"`
+	Reason                       string                   `json:"reason,omitempty"`
+	Remediation                  string                   `json:"remediation,omitempty"`
+	UnavailableCode              ErrorCode                `json:"unavailable_code,omitempty"`
+	OptionalCapture              bool                     `json:"optional_capture,omitempty"`
+	CaptureAvailable             bool                     `json:"capture_available,omitempty"`
+	CapturePolicyAllowed         bool                     `json:"capture_policy_allowed,omitempty"`
+	CaptureFallback              bool                     `json:"capture_fallback,omitempty"`
+	CaptureBackend               string                   `json:"capture_backend,omitempty"`
+	ScrollAxes                   []ScrollAxis             `json:"scroll_axes,omitempty"`
+	ActionProofVersion           string                   `json:"action_proof_version,omitempty"`
+	UIConditionKinds             []UIElementConditionKind `json:"ui_condition_kinds,omitempty"`
+	UIVerificationAttempts       uint32                   `json:"ui_verification_attempts,omitempty"`
+	UIVerificationIntervalMillis int                      `json:"ui_verification_interval_ms,omitempty"`
+	UIVerificationTimeoutMillis  int                      `json:"ui_verification_timeout_ms,omitempty"`
 }
 
 // ScrollAxis identifies an axis accepted by a scroll backend.
@@ -206,6 +215,103 @@ const (
 	ActionUnverified ActionStatus = "unverified"
 )
 
+// ActionProofStatus summarizes the semantic transaction without hiding a
+// post-dispatch execution or cleanup failure behind later matching evidence.
+type ActionProofStatus string
+
+const (
+	ActionProofRejectedBeforeDispatch  ActionProofStatus = "rejected-before-dispatch"
+	ActionProofFailedBeforeDispatch    ActionProofStatus = "failed-before-dispatch"
+	ActionProofVerified                ActionProofStatus = "verified"
+	ActionProofUnverifiedAfterDispatch ActionProofStatus = "unverified-after-dispatch"
+	ActionProofCleanupPending          ActionProofStatus = "cleanup-pending"
+)
+
+// ActionResolutionStrategy is the bounded target-resolution vocabulary used
+// by Action Proof v1. Healing and candidate search are intentionally absent.
+type ActionResolutionStrategy string
+
+const ActionResolutionRetainedReference ActionResolutionStrategy = "retained-reference"
+
+// ActionResolutionProof reports only structural resolution evidence.
+type ActionResolutionProof struct {
+	Strategy       ActionResolutionStrategy `json:"strategy"`
+	CandidateCount uint32                   `json:"candidate_count"`
+	Exact          bool                     `json:"exact"`
+	Healing        bool                     `json:"healing"`
+}
+
+// ActionAuthorizationProof reports the fixed policy and confirmation decision
+// without copying any policy target or request payload.
+type ActionAuthorizationProof struct {
+	PolicyAllowed        bool `json:"policy_allowed"`
+	ConfirmationRequired bool `json:"confirmation_required"`
+	Confirmed            bool `json:"confirmed"`
+}
+
+// ActionExecutionStatus distinguishes a skipped idempotent retry from the one
+// permitted native dispatch.
+type ActionExecutionStatus string
+
+const (
+	ActionExecutionNotDispatched           ActionExecutionStatus = "not-dispatched"
+	ActionExecutionSkippedAlreadySatisfied ActionExecutionStatus = "skipped-already-satisfied"
+	ActionExecutionDispatched              ActionExecutionStatus = "dispatched"
+)
+
+// ActionExecutionProof contains only fixed action/backend metadata.
+type ActionExecutionProof struct {
+	Backend  string                `json:"backend,omitempty"`
+	Action   UIAction              `json:"action,omitempty"`
+	Status   ActionExecutionStatus `json:"status"`
+	Fallback bool                  `json:"fallback"`
+}
+
+// ActionVerificationStatus is the bounded semantic postcondition outcome.
+// NotMatched requires at least one completed probe that returned false;
+// Failed may carry zero attempts when a requested probe could not start.
+type ActionVerificationStatus string
+
+const (
+	ActionVerificationNotRequested ActionVerificationStatus = "not-requested"
+	ActionVerificationMatched      ActionVerificationStatus = "matched"
+	ActionVerificationNotMatched   ActionVerificationStatus = "not-matched"
+	ActionVerificationFailed       ActionVerificationStatus = "failed"
+)
+
+// ActionVerificationProof keeps precheck, final-gate, and post-dispatch reads
+// separate so its counts correspond exactly to quota-bearing backend probes.
+type ActionVerificationProof struct {
+	ConditionKind         UIElementConditionKind   `json:"condition_kind,omitempty"`
+	Status                ActionVerificationStatus `json:"status"`
+	PrecheckAttempts      uint32                   `json:"precheck_attempts"`
+	FinalGateChecked      bool                     `json:"final_gate_checked"`
+	PostconditionAttempts uint32                   `json:"postcondition_attempts"`
+	AlreadySatisfied      bool                     `json:"already_satisfied"`
+}
+
+// ActionCleanupProof attests only that RobotGo retained no operation-owned
+// transient handles, references, or clearable buffers after the call. It does
+// not claim release of the still-live source observation or caller-owned data.
+type ActionCleanupProof struct {
+	TransientResourcesReleased bool `json:"transient_resources_released"`
+}
+
+// ActionProof is the versioned, privacy-reduced proof returned by semantic
+// element actions. Nested stages may be absent when processing stopped before
+// that stage could truthfully be evaluated.
+type ActionProof struct {
+	SchemaVersion string                    `json:"schema_version"`
+	TransactionID string                    `json:"transaction_id"`
+	Status        ActionProofStatus         `json:"status"`
+	Resolution    *ActionResolutionProof    `json:"resolution,omitempty"`
+	Authorization *ActionAuthorizationProof `json:"authorization,omitempty"`
+	Execution     ActionExecutionProof      `json:"execution"`
+	Verification  *ActionVerificationProof  `json:"verification,omitempty"`
+	Cleanup       ActionCleanupProof        `json:"cleanup"`
+	ErrorCode     ErrorCode                 `json:"error_code,omitempty"`
+}
+
 // ErrorCode is a stable machine-readable action failure category.
 type ErrorCode string
 
@@ -250,6 +356,7 @@ type ActionResult struct {
 	PreconditionObservationID string              `json:"precondition_observation_id,omitempty"`
 	PostObservationID         string              `json:"post_observation_id,omitempty"`
 	Verification              *VerificationResult `json:"verification,omitempty"`
+	Proof                     *ActionProof        `json:"proof,omitempty"`
 }
 
 var (

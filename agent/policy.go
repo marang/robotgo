@@ -7,39 +7,42 @@ import (
 )
 
 const (
-	maxAgentCapturePixels          = 16 * 1024 * 1024
-	maxAgentQueries                = 1_000_000
-	maxAgentScrollEvents           = 100
-	maxAgentScrollDistance         = 100_000
-	maxAgentDragDistance           = 100_000
-	maxAgentDragDurationMS         = 60_000
-	maxAgentChordKeys              = 5
-	maxAgentActionIntervalMS       = 60_000
-	maxAgentUIQueryIntervalMS      = 60_000
-	maxAgentSessionTimeoutMS       = 24 * 60 * 60 * 1000
-	maxAgentWindowTitleRunes       = 1024
-	maxAgentUIElements             = 10_000
-	maxAgentUITreeDepth            = 64
-	maxAgentUIStringBytes          = 1 << 20
-	maxAgentUIActionValueBytes     = 1 << 20
-	maxAgentUIActionTimeoutMS      = 300_000
-	maxAgentViewRegions            = 1024
-	maxAgentViewEncodedBytes       = 16 << 20
-	maxAgentViewDimension          = 8192
-	maxAgentViewIntervalMS         = 60_000
-	maxAgentViewTimeoutMS          = 300_000
-	maxAgentAnalysisBoxes          = 10_000
-	maxAgentAnalysisTextBytes      = 1 << 20
-	maxAgentAnalysisLanguages      = 16
-	maxAgentAnalysisLanguageBytes  = 64
-	maxAgentAnalysisIntervalMS     = 60_000
-	maxAgentAnalysisTimeoutMS      = 300_000
-	maxAgentVerificationAttempts   = 100
-	maxAgentVerificationIntervalMS = 60_000
-	maxAgentVerificationTimeoutMS  = 300_000
-	maxAgentWaitAttempts           = 100
-	maxAgentWaitIntervalMS         = 60_000
-	maxAgentWaitTimeoutMS          = 300_000
+	maxAgentCapturePixels            = 16 * 1024 * 1024
+	maxAgentQueries                  = 1_000_000
+	maxAgentScrollEvents             = 100
+	maxAgentScrollDistance           = 100_000
+	maxAgentDragDistance             = 100_000
+	maxAgentDragDurationMS           = 60_000
+	maxAgentChordKeys                = 5
+	maxAgentActionIntervalMS         = 60_000
+	maxAgentUIQueryIntervalMS        = 60_000
+	maxAgentSessionTimeoutMS         = 24 * 60 * 60 * 1000
+	maxAgentWindowTitleRunes         = 1024
+	maxAgentUIElements               = 10_000
+	maxAgentUITreeDepth              = 64
+	maxAgentUIStringBytes            = 1 << 20
+	maxAgentUIActionValueBytes       = 1 << 20
+	maxAgentUIActionTimeoutMS        = 300_000
+	maxAgentUIVerificationAttempts   = 100
+	maxAgentUIVerificationIntervalMS = 60_000
+	maxAgentUIVerificationTimeoutMS  = 300_000
+	maxAgentViewRegions              = 1024
+	maxAgentViewEncodedBytes         = 16 << 20
+	maxAgentViewDimension            = 8192
+	maxAgentViewIntervalMS           = 60_000
+	maxAgentViewTimeoutMS            = 300_000
+	maxAgentAnalysisBoxes            = 10_000
+	maxAgentAnalysisTextBytes        = 1 << 20
+	maxAgentAnalysisLanguages        = 16
+	maxAgentAnalysisLanguageBytes    = 64
+	maxAgentAnalysisIntervalMS       = 60_000
+	maxAgentAnalysisTimeoutMS        = 300_000
+	maxAgentVerificationAttempts     = 100
+	maxAgentVerificationIntervalMS   = 60_000
+	maxAgentVerificationTimeoutMS    = 300_000
+	maxAgentWaitAttempts             = 100
+	maxAgentWaitIntervalMS           = 60_000
+	maxAgentWaitTimeoutMS            = 300_000
 )
 
 // WindowTarget is one immutable activation allow-list entry. ExpectedTitle is
@@ -54,74 +57,77 @@ type WindowTarget struct {
 // Policy constrains every observation, query, and mutation performed by a Session.
 // Empty allow lists deny access; callers must opt in explicitly.
 type Policy struct {
-	AllowedOperations          []Operation     `json:"allowed_operations"`
-	ConfirmOperations          []Operation     `json:"confirm_operations,omitempty"`
-	AllowedDisplayIDs          []int           `json:"allowed_display_ids,omitempty"`
-	AllowedMouseButtons        []MouseButton   `json:"allowed_mouse_buttons,omitempty"`
-	AllowedKeys                []string        `json:"allowed_keys,omitempty"`
-	AllowedModifiers           []KeyModifier   `json:"allowed_modifiers,omitempty"`
-	AllowedWindows             []WindowTarget  `json:"allowed_windows,omitempty"`
-	AllowedUIRoles             []UIRole        `json:"allowed_ui_roles,omitempty"`
-	AllowedUIProperties        []UIProperty    `json:"allowed_ui_properties,omitempty"`
-	AllowedUIActions           []UIAction      `json:"allowed_ui_actions,omitempty"`
-	AllowedViewRegions         []CaptureRegion `json:"allowed_view_regions,omitempty"`
-	ViewRedactionMasks         []CaptureRegion `json:"view_redaction_masks,omitempty"`
-	MaxActions                 uint64          `json:"max_actions"`
-	MaxTextRunes               int             `json:"max_text_runes"`
-	AllowDoubleClick           bool            `json:"allow_double_click,omitempty"`
-	MaxScrollEvents            uint32          `json:"max_scroll_events,omitempty"`
-	MaxScrollDistance          uint64          `json:"max_scroll_distance,omitempty"`
-	MaxDragDistance            uint64          `json:"max_drag_distance,omitempty"`
-	MaxDragDurationMillis      int             `json:"max_drag_duration_ms,omitempty"`
-	MaxChordKeys               uint32          `json:"max_chord_keys,omitempty"`
-	MinActionIntervalMillis    int             `json:"min_action_interval_ms,omitempty"`
-	MinUIQueryIntervalMillis   int             `json:"min_ui_query_interval_ms,omitempty"`
-	SessionTimeoutMillis       int             `json:"session_timeout_ms,omitempty"`
-	MaxObservations            uint64          `json:"max_observations,omitempty"`
-	MaxCapturePixels           uint64          `json:"max_capture_pixels,omitempty"`
-	MaxQueries                 uint64          `json:"max_queries,omitempty"`
-	MaxUIElements              uint32          `json:"max_ui_elements,omitempty"`
-	MaxUITreeDepth             uint32          `json:"max_ui_tree_depth,omitempty"`
-	MaxUIStringBytes           uint32          `json:"max_ui_string_bytes,omitempty"`
-	MaxUIActionValueBytes      uint32          `json:"max_ui_action_value_bytes,omitempty"`
-	UIActionTimeoutMillis      int             `json:"ui_action_timeout_ms,omitempty"`
-	AllowFullDisplayView       bool            `json:"allow_full_display_view,omitempty"`
-	AllowPortalView            bool            `json:"allow_portal_view,omitempty"`
-	MaxViewSourcePixels        uint64          `json:"max_view_source_pixels,omitempty"`
-	MaxViewEncodedBytes        uint64          `json:"max_view_encoded_bytes,omitempty"`
-	MaxViewWidth               int             `json:"max_view_width,omitempty"`
-	MaxViewHeight              int             `json:"max_view_height,omitempty"`
-	MaxViews                   uint64          `json:"max_views,omitempty"`
-	MaxConcurrentViews         uint32          `json:"max_concurrent_views,omitempty"`
-	MinViewIntervalMillis      int             `json:"min_view_interval_ms,omitempty"`
-	ViewTimeoutMillis          int             `json:"view_timeout_ms,omitempty"`
-	AllowedOCRLanguages        []string        `json:"allowed_ocr_languages,omitempty"`
-	AllowFullViewAnalysis      bool            `json:"allow_full_view_analysis,omitempty"`
-	MaxAnalysisPixels          uint64          `json:"max_analysis_pixels,omitempty"`
-	MaxOCRBoxes                uint32          `json:"max_ocr_boxes,omitempty"`
-	MaxOCRTextBytes            uint32          `json:"max_ocr_text_bytes,omitempty"`
-	MaxVisualElements          uint32          `json:"max_visual_elements,omitempty"`
-	MaxAnalyses                uint64          `json:"max_analyses,omitempty"`
-	MaxConcurrentAnalyses      uint32          `json:"max_concurrent_analyses,omitempty"`
-	MinAnalysisIntervalMillis  int             `json:"min_analysis_interval_ms,omitempty"`
-	AnalysisTimeoutMillis      int             `json:"analysis_timeout_ms,omitempty"`
-	WaitAttempts               uint32          `json:"wait_attempts,omitempty"`
-	WaitIntervalMillis         int             `json:"wait_interval_ms,omitempty"`
-	WaitTimeoutMillis          int             `json:"wait_timeout_ms,omitempty"`
-	VerificationAttempts       uint32          `json:"verification_attempts,omitempty"`
-	VerificationIntervalMillis int             `json:"verification_interval_ms,omitempty"`
-	VerificationTimeoutMillis  int             `json:"verification_timeout_ms,omitempty"`
-	allowOperation             map[Operation]struct{}
-	requireConfirmation        map[Operation]struct{}
-	allowDisplay               map[int]struct{}
-	allowButton                map[MouseButton]struct{}
-	allowKey                   map[string]struct{}
-	allowModifier              map[KeyModifier]struct{}
-	allowWindow                map[windowTargetIdentity]WindowTarget
-	allowUIRole                map[UIRole]struct{}
-	allowUIProperty            map[UIProperty]struct{}
-	allowUIAction              map[UIAction]struct{}
-	allowOCRLanguage           map[string]struct{}
+	AllowedOperations            []Operation     `json:"allowed_operations"`
+	ConfirmOperations            []Operation     `json:"confirm_operations,omitempty"`
+	AllowedDisplayIDs            []int           `json:"allowed_display_ids,omitempty"`
+	AllowedMouseButtons          []MouseButton   `json:"allowed_mouse_buttons,omitempty"`
+	AllowedKeys                  []string        `json:"allowed_keys,omitempty"`
+	AllowedModifiers             []KeyModifier   `json:"allowed_modifiers,omitempty"`
+	AllowedWindows               []WindowTarget  `json:"allowed_windows,omitempty"`
+	AllowedUIRoles               []UIRole        `json:"allowed_ui_roles,omitempty"`
+	AllowedUIProperties          []UIProperty    `json:"allowed_ui_properties,omitempty"`
+	AllowedUIActions             []UIAction      `json:"allowed_ui_actions,omitempty"`
+	AllowedViewRegions           []CaptureRegion `json:"allowed_view_regions,omitempty"`
+	ViewRedactionMasks           []CaptureRegion `json:"view_redaction_masks,omitempty"`
+	MaxActions                   uint64          `json:"max_actions"`
+	MaxTextRunes                 int             `json:"max_text_runes"`
+	AllowDoubleClick             bool            `json:"allow_double_click,omitempty"`
+	MaxScrollEvents              uint32          `json:"max_scroll_events,omitempty"`
+	MaxScrollDistance            uint64          `json:"max_scroll_distance,omitempty"`
+	MaxDragDistance              uint64          `json:"max_drag_distance,omitempty"`
+	MaxDragDurationMillis        int             `json:"max_drag_duration_ms,omitempty"`
+	MaxChordKeys                 uint32          `json:"max_chord_keys,omitempty"`
+	MinActionIntervalMillis      int             `json:"min_action_interval_ms,omitempty"`
+	MinUIQueryIntervalMillis     int             `json:"min_ui_query_interval_ms,omitempty"`
+	SessionTimeoutMillis         int             `json:"session_timeout_ms,omitempty"`
+	MaxObservations              uint64          `json:"max_observations,omitempty"`
+	MaxCapturePixels             uint64          `json:"max_capture_pixels,omitempty"`
+	MaxQueries                   uint64          `json:"max_queries,omitempty"`
+	MaxUIElements                uint32          `json:"max_ui_elements,omitempty"`
+	MaxUITreeDepth               uint32          `json:"max_ui_tree_depth,omitempty"`
+	MaxUIStringBytes             uint32          `json:"max_ui_string_bytes,omitempty"`
+	MaxUIActionValueBytes        uint32          `json:"max_ui_action_value_bytes,omitempty"`
+	UIActionTimeoutMillis        int             `json:"ui_action_timeout_ms,omitempty"`
+	UIVerificationAttempts       uint32          `json:"ui_verification_attempts,omitempty"`
+	UIVerificationIntervalMillis int             `json:"ui_verification_interval_ms,omitempty"`
+	UIVerificationTimeoutMillis  int             `json:"ui_verification_timeout_ms,omitempty"`
+	AllowFullDisplayView         bool            `json:"allow_full_display_view,omitempty"`
+	AllowPortalView              bool            `json:"allow_portal_view,omitempty"`
+	MaxViewSourcePixels          uint64          `json:"max_view_source_pixels,omitempty"`
+	MaxViewEncodedBytes          uint64          `json:"max_view_encoded_bytes,omitempty"`
+	MaxViewWidth                 int             `json:"max_view_width,omitempty"`
+	MaxViewHeight                int             `json:"max_view_height,omitempty"`
+	MaxViews                     uint64          `json:"max_views,omitempty"`
+	MaxConcurrentViews           uint32          `json:"max_concurrent_views,omitempty"`
+	MinViewIntervalMillis        int             `json:"min_view_interval_ms,omitempty"`
+	ViewTimeoutMillis            int             `json:"view_timeout_ms,omitempty"`
+	AllowedOCRLanguages          []string        `json:"allowed_ocr_languages,omitempty"`
+	AllowFullViewAnalysis        bool            `json:"allow_full_view_analysis,omitempty"`
+	MaxAnalysisPixels            uint64          `json:"max_analysis_pixels,omitempty"`
+	MaxOCRBoxes                  uint32          `json:"max_ocr_boxes,omitempty"`
+	MaxOCRTextBytes              uint32          `json:"max_ocr_text_bytes,omitempty"`
+	MaxVisualElements            uint32          `json:"max_visual_elements,omitempty"`
+	MaxAnalyses                  uint64          `json:"max_analyses,omitempty"`
+	MaxConcurrentAnalyses        uint32          `json:"max_concurrent_analyses,omitempty"`
+	MinAnalysisIntervalMillis    int             `json:"min_analysis_interval_ms,omitempty"`
+	AnalysisTimeoutMillis        int             `json:"analysis_timeout_ms,omitempty"`
+	WaitAttempts                 uint32          `json:"wait_attempts,omitempty"`
+	WaitIntervalMillis           int             `json:"wait_interval_ms,omitempty"`
+	WaitTimeoutMillis            int             `json:"wait_timeout_ms,omitempty"`
+	VerificationAttempts         uint32          `json:"verification_attempts,omitempty"`
+	VerificationIntervalMillis   int             `json:"verification_interval_ms,omitempty"`
+	VerificationTimeoutMillis    int             `json:"verification_timeout_ms,omitempty"`
+	allowOperation               map[Operation]struct{}
+	requireConfirmation          map[Operation]struct{}
+	allowDisplay                 map[int]struct{}
+	allowButton                  map[MouseButton]struct{}
+	allowKey                     map[string]struct{}
+	allowModifier                map[KeyModifier]struct{}
+	allowWindow                  map[windowTargetIdentity]WindowTarget
+	allowUIRole                  map[UIRole]struct{}
+	allowUIProperty              map[UIProperty]struct{}
+	allowUIAction                map[UIAction]struct{}
+	allowOCRLanguage             map[string]struct{}
 }
 
 type windowTargetIdentity struct {
@@ -162,6 +168,18 @@ func preparePolicy(input Policy) (Policy, error) {
 	}
 	if input.UIActionTimeoutMillis < 0 || input.UIActionTimeoutMillis > maxAgentUIActionTimeoutMS {
 		return Policy{}, fmt.Errorf("agent: semantic action timeout must be between 0 and %dms", maxAgentUIActionTimeoutMS)
+	}
+	if input.UIVerificationAttempts > maxAgentUIVerificationAttempts {
+		return Policy{}, fmt.Errorf("agent: UI verification attempts exceeds hard limit %d", maxAgentUIVerificationAttempts)
+	}
+	if input.UIVerificationIntervalMillis < 0 || input.UIVerificationIntervalMillis > maxAgentUIVerificationIntervalMS {
+		return Policy{}, fmt.Errorf("agent: UI verification interval must be between 0 and %dms", maxAgentUIVerificationIntervalMS)
+	}
+	if input.UIVerificationTimeoutMillis < 0 || input.UIVerificationTimeoutMillis > maxAgentUIVerificationTimeoutMS {
+		return Policy{}, fmt.Errorf("agent: UI verification timeout must be between 0 and %dms", maxAgentUIVerificationTimeoutMS)
+	}
+	if (input.UIVerificationAttempts == 0) != (input.UIVerificationTimeoutMillis == 0) {
+		return Policy{}, fmt.Errorf("agent: UI verification attempts and timeout must both be zero or both be positive")
 	}
 	if len(input.AllowedViewRegions) > maxAgentViewRegions || len(input.ViewRedactionMasks) > maxAgentViewRegions {
 		return Policy{}, fmt.Errorf("agent: view region or redaction mask count exceeds hard limit %d", maxAgentViewRegions)
@@ -277,60 +295,63 @@ func preparePolicy(input Policy) (Policy, error) {
 		AllowedViewRegions:  append([]CaptureRegion(nil), input.AllowedViewRegions...),
 		ViewRedactionMasks:  append([]CaptureRegion(nil), input.ViewRedactionMasks...),
 		MaxActions:          input.MaxActions, MaxTextRunes: input.MaxTextRunes,
-		AllowDoubleClick:           input.AllowDoubleClick,
-		MaxScrollEvents:            input.MaxScrollEvents,
-		MaxScrollDistance:          input.MaxScrollDistance,
-		MaxDragDistance:            input.MaxDragDistance,
-		MaxDragDurationMillis:      input.MaxDragDurationMillis,
-		MaxChordKeys:               input.MaxChordKeys,
-		MinActionIntervalMillis:    input.MinActionIntervalMillis,
-		MinUIQueryIntervalMillis:   input.MinUIQueryIntervalMillis,
-		SessionTimeoutMillis:       input.SessionTimeoutMillis,
-		MaxObservations:            input.MaxObservations,
-		MaxCapturePixels:           input.MaxCapturePixels,
-		MaxQueries:                 input.MaxQueries,
-		MaxUIElements:              input.MaxUIElements,
-		MaxUITreeDepth:             input.MaxUITreeDepth,
-		MaxUIStringBytes:           input.MaxUIStringBytes,
-		MaxUIActionValueBytes:      input.MaxUIActionValueBytes,
-		UIActionTimeoutMillis:      input.UIActionTimeoutMillis,
-		AllowFullDisplayView:       input.AllowFullDisplayView,
-		AllowPortalView:            input.AllowPortalView,
-		MaxViewSourcePixels:        input.MaxViewSourcePixels,
-		MaxViewEncodedBytes:        input.MaxViewEncodedBytes,
-		MaxViewWidth:               input.MaxViewWidth,
-		MaxViewHeight:              input.MaxViewHeight,
-		MaxViews:                   input.MaxViews,
-		MaxConcurrentViews:         input.MaxConcurrentViews,
-		MinViewIntervalMillis:      input.MinViewIntervalMillis,
-		ViewTimeoutMillis:          input.ViewTimeoutMillis,
-		AllowedOCRLanguages:        append([]string(nil), input.AllowedOCRLanguages...),
-		AllowFullViewAnalysis:      input.AllowFullViewAnalysis,
-		MaxAnalysisPixels:          input.MaxAnalysisPixels,
-		MaxOCRBoxes:                input.MaxOCRBoxes,
-		MaxOCRTextBytes:            input.MaxOCRTextBytes,
-		MaxVisualElements:          input.MaxVisualElements,
-		MaxAnalyses:                input.MaxAnalyses,
-		MaxConcurrentAnalyses:      input.MaxConcurrentAnalyses,
-		MinAnalysisIntervalMillis:  input.MinAnalysisIntervalMillis,
-		AnalysisTimeoutMillis:      input.AnalysisTimeoutMillis,
-		WaitAttempts:               input.WaitAttempts,
-		WaitIntervalMillis:         input.WaitIntervalMillis,
-		WaitTimeoutMillis:          input.WaitTimeoutMillis,
-		VerificationAttempts:       input.VerificationAttempts,
-		VerificationIntervalMillis: input.VerificationIntervalMillis,
-		VerificationTimeoutMillis:  input.VerificationTimeoutMillis,
-		allowOperation:             make(map[Operation]struct{}),
-		requireConfirmation:        make(map[Operation]struct{}),
-		allowDisplay:               make(map[int]struct{}),
-		allowButton:                make(map[MouseButton]struct{}),
-		allowKey:                   make(map[string]struct{}),
-		allowModifier:              make(map[KeyModifier]struct{}),
-		allowWindow:                make(map[windowTargetIdentity]WindowTarget),
-		allowUIRole:                make(map[UIRole]struct{}),
-		allowUIProperty:            make(map[UIProperty]struct{}),
-		allowUIAction:              make(map[UIAction]struct{}),
-		allowOCRLanguage:           make(map[string]struct{}),
+		AllowDoubleClick:             input.AllowDoubleClick,
+		MaxScrollEvents:              input.MaxScrollEvents,
+		MaxScrollDistance:            input.MaxScrollDistance,
+		MaxDragDistance:              input.MaxDragDistance,
+		MaxDragDurationMillis:        input.MaxDragDurationMillis,
+		MaxChordKeys:                 input.MaxChordKeys,
+		MinActionIntervalMillis:      input.MinActionIntervalMillis,
+		MinUIQueryIntervalMillis:     input.MinUIQueryIntervalMillis,
+		SessionTimeoutMillis:         input.SessionTimeoutMillis,
+		MaxObservations:              input.MaxObservations,
+		MaxCapturePixels:             input.MaxCapturePixels,
+		MaxQueries:                   input.MaxQueries,
+		MaxUIElements:                input.MaxUIElements,
+		MaxUITreeDepth:               input.MaxUITreeDepth,
+		MaxUIStringBytes:             input.MaxUIStringBytes,
+		MaxUIActionValueBytes:        input.MaxUIActionValueBytes,
+		UIActionTimeoutMillis:        input.UIActionTimeoutMillis,
+		UIVerificationAttempts:       input.UIVerificationAttempts,
+		UIVerificationIntervalMillis: input.UIVerificationIntervalMillis,
+		UIVerificationTimeoutMillis:  input.UIVerificationTimeoutMillis,
+		AllowFullDisplayView:         input.AllowFullDisplayView,
+		AllowPortalView:              input.AllowPortalView,
+		MaxViewSourcePixels:          input.MaxViewSourcePixels,
+		MaxViewEncodedBytes:          input.MaxViewEncodedBytes,
+		MaxViewWidth:                 input.MaxViewWidth,
+		MaxViewHeight:                input.MaxViewHeight,
+		MaxViews:                     input.MaxViews,
+		MaxConcurrentViews:           input.MaxConcurrentViews,
+		MinViewIntervalMillis:        input.MinViewIntervalMillis,
+		ViewTimeoutMillis:            input.ViewTimeoutMillis,
+		AllowedOCRLanguages:          append([]string(nil), input.AllowedOCRLanguages...),
+		AllowFullViewAnalysis:        input.AllowFullViewAnalysis,
+		MaxAnalysisPixels:            input.MaxAnalysisPixels,
+		MaxOCRBoxes:                  input.MaxOCRBoxes,
+		MaxOCRTextBytes:              input.MaxOCRTextBytes,
+		MaxVisualElements:            input.MaxVisualElements,
+		MaxAnalyses:                  input.MaxAnalyses,
+		MaxConcurrentAnalyses:        input.MaxConcurrentAnalyses,
+		MinAnalysisIntervalMillis:    input.MinAnalysisIntervalMillis,
+		AnalysisTimeoutMillis:        input.AnalysisTimeoutMillis,
+		WaitAttempts:                 input.WaitAttempts,
+		WaitIntervalMillis:           input.WaitIntervalMillis,
+		WaitTimeoutMillis:            input.WaitTimeoutMillis,
+		VerificationAttempts:         input.VerificationAttempts,
+		VerificationIntervalMillis:   input.VerificationIntervalMillis,
+		VerificationTimeoutMillis:    input.VerificationTimeoutMillis,
+		allowOperation:               make(map[Operation]struct{}),
+		requireConfirmation:          make(map[Operation]struct{}),
+		allowDisplay:                 make(map[int]struct{}),
+		allowButton:                  make(map[MouseButton]struct{}),
+		allowKey:                     make(map[string]struct{}),
+		allowModifier:                make(map[KeyModifier]struct{}),
+		allowWindow:                  make(map[windowTargetIdentity]WindowTarget),
+		allowUIRole:                  make(map[UIRole]struct{}),
+		allowUIProperty:              make(map[UIProperty]struct{}),
+		allowUIAction:                make(map[UIAction]struct{}),
+		allowOCRLanguage:             make(map[string]struct{}),
 	}
 	for _, operation := range prepared.AllowedOperations {
 		if !knownOperation(operation) {
@@ -507,6 +528,14 @@ func preparePolicy(input Policy) (Policy, error) {
 				return Policy{}, fmt.Errorf("agent: desktop.element-act requires the %s property", property)
 			}
 		}
+		if prepared.UIVerificationAttempts > 0 {
+			minimumReads := minimumUIElementWorkflowReads(prepared.UIVerificationAttempts)
+			if prepared.MaxQueries < minimumReads || prepared.MaxObservations < minimumReads {
+				return Policy{}, fmt.Errorf("agent: semantic verification requires at least %d query and observation slots", minimumReads)
+			}
+		}
+	} else if prepared.UIVerificationAttempts > 0 {
+		return Policy{}, fmt.Errorf("agent: UI verification requires desktop.element-act")
 	}
 	if _, allowed := prepared.allowOperation[OperationView]; allowed {
 		if len(prepared.allowDisplay) == 0 ||

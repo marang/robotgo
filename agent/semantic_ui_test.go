@@ -15,33 +15,103 @@ import (
 
 type semanticFakeDriver struct {
 	*fakeDriver
-	snapshot uiBackendSnapshot
-	err      error
-	calls    int
-	handle   int
-	limits   uiBackendLimits
-	act      uiBackendElementAction
-	actRef   string
-	actCalls int
-	dispatch bool
-	actErr   error
-	actBlock bool
-	actStart func()
+	snapshot         uiBackendSnapshot
+	err              error
+	calls            int
+	handle           int
+	limits           uiBackendLimits
+	act              uiBackendElementAction
+	actRef           string
+	actValue         []byte
+	actCalls         int
+	dispatch         bool
+	alreadySatisfied bool
+	actCleanup       bool
+	actErr           error
+	actBlock         bool
+	actStart         func()
+	finalGateProbes  int
+	finalGateCalls   int
+	checkResults     []uiBackendElementConditionResult
+	checkErrors      []error
+	checkCalls       int
+	checkRefs        []string
+	checkValues      [][]byte
+	checkBlockAt     int
+	checkStart       func()
+	checkFinish      func(int)
+	checkWait        <-chan struct{}
 }
 
-func (driver *semanticFakeDriver) ActUIElement(ctx context.Context, request uiBackendElementAction) (bool, error) {
+func (driver *semanticFakeDriver) ActUIElement(ctx context.Context, request uiBackendElementAction) (uiBackendElementActionResult, error) {
 	driver.actCalls++
 	driver.actRef = string(request.Reference)
+	driver.actValue = request.Value
+	beforeFinalGate := request.BeforeFinalGate
 	request.Reference = nil
+	request.Value = nil
+	request.BeforeFinalGate = nil
 	driver.act = request
 	if driver.actStart != nil {
 		driver.actStart()
 	}
+	if beforeFinalGate != nil {
+		probes := driver.finalGateProbes
+		if probes == 0 {
+			probes = 1
+			if driver.dispatch && !driver.alreadySatisfied {
+				probes = 2
+			}
+		}
+		for range probes {
+			driver.finalGateCalls++
+			if err := beforeFinalGate(ctx); err != nil {
+				return uiBackendElementActionResult{CleanupComplete: true}, err
+			}
+		}
+	}
 	if driver.actBlock {
 		<-ctx.Done()
-		return false, ctx.Err()
+		return uiBackendElementActionResult{CleanupComplete: true}, ctx.Err()
 	}
-	return driver.dispatch, driver.actErr
+	return uiBackendElementActionResult{
+		Dispatched: driver.dispatch, AlreadySatisfied: driver.alreadySatisfied,
+		CleanupComplete: driver.actCleanup,
+	}, driver.actErr
+}
+
+func (driver *semanticFakeDriver) CheckUIElement(ctx context.Context, request uiBackendElementAction) (uiBackendElementConditionResult, error) {
+	driver.checkRefs = append(driver.checkRefs, string(request.Reference))
+	driver.checkValues = append(driver.checkValues, request.Value)
+	index := driver.checkCalls
+	driver.checkCalls++
+	if driver.checkBlockAt == driver.checkCalls {
+		if driver.checkStart != nil {
+			driver.checkStart()
+		}
+		if driver.checkWait != nil {
+			select {
+			case <-ctx.Done():
+				return uiBackendElementConditionResult{CleanupComplete: true}, ctx.Err()
+			case <-driver.checkWait:
+			}
+		} else {
+			<-ctx.Done()
+			return uiBackendElementConditionResult{CleanupComplete: true}, ctx.Err()
+		}
+	}
+	result := uiBackendElementConditionResult{CleanupComplete: true}
+	if index < len(driver.checkResults) {
+		result = driver.checkResults[index]
+	}
+	var err error
+	if index < len(driver.checkErrors) {
+		err = driver.checkErrors[index]
+	}
+	if driver.checkFinish != nil {
+		driver.checkFinish(driver.checkCalls)
+	}
+	return result, err
 }
 
 type blockingSemanticDriver struct {
@@ -163,7 +233,9 @@ func newSemanticSession(t *testing.T, input Policy, snapshot uiBackendSnapshot) 
 		t.Fatal(err)
 	}
 	base := &fakeDriver{resolvedHandle: 9001, windowTitle: "fixture"}
-	driver := &semanticFakeDriver{fakeDriver: base, snapshot: snapshot}
+	driver := &semanticFakeDriver{
+		fakeDriver: base, snapshot: snapshot, dispatch: true, actCleanup: true,
+	}
 	capabilities := availableCapabilities()
 	capabilities.Accessibility = robotgo.FeatureCapability{
 		Available: true, Backend: "fake-accessibility", Reason: "self-owned fixture",

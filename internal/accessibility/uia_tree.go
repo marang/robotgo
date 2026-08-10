@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/binary"
+	"fmt"
 	"math"
 	"strconv"
 	"unicode/utf8"
@@ -12,6 +13,10 @@ import (
 const (
 	uiaReferenceVersion = byte(2)
 	maxUIARuntimeIDInts = 256
+
+	uiaToggleStateOff           int32 = 0
+	uiaToggleStateOn            int32 = 1
+	uiaToggleStateIndeterminate int32 = 2
 )
 
 func uiaRangeValueActions(readOnly, available, stepSupported bool, step float64) []string {
@@ -23,6 +28,76 @@ func uiaRangeValueActions(readOnly, available, stepSupported bool, step float64)
 		actions = append(actions, "increment", "decrement")
 	}
 	return actions
+}
+
+// uiaToggleChecked accepts only the three ToggleState values defined by UIA.
+// Mixed checkboxes remain observable without claiming checked, while mixed
+// switches and unreadable states fail closed.
+func uiaToggleChecked(role string, state int32, supported bool) (bool, error) {
+	if !supported {
+		return false, fmt.Errorf("uia toggle state is missing: %w", ErrInvalidTree)
+	}
+	switch state {
+	case uiaToggleStateOff:
+		return false, nil
+	case uiaToggleStateOn:
+		return true, nil
+	case uiaToggleStateIndeterminate:
+		if role == "checkbox" {
+			return false, nil
+		}
+		return false, fmt.Errorf("uia toggle state is indeterminate for role %q: %w", role, ErrInvalidTree)
+	default:
+		return false, fmt.Errorf("uia toggle state is invalid: %w", ErrInvalidTree)
+	}
+}
+
+func uiaRoleUsesToggle(role string) bool {
+	return role == "checkbox" || role == "switch"
+}
+
+func uiaRoleUsesSelectionItem(role string) bool {
+	switch role {
+	case "radio", "tab", "list-item", "menu-item":
+		return true
+	default:
+		return false
+	}
+}
+
+func uiaInteractiveRole(role string) bool {
+	switch role {
+	case "button", "checkbox", "combobox", "radio", "switch", "textbox", "link", "list-item", "menu-item", "tab", "slider":
+		return true
+	default:
+		return false
+	}
+}
+
+// uiaPatternAction maps only reversible TogglePattern controls to toggle.
+// SelectionItem.Select is a one-way selection operation, so radio buttons and
+// other selection items expose it as press instead. In particular, a
+// non-conforming SelectionItem-only checkbox/switch must not appear
+// toggle-capable.
+func uiaPatternAction(role string, toggleAvailable, selectionAvailable bool) string {
+	if uiaRoleUsesToggle(role) && toggleAvailable {
+		return "toggle"
+	}
+	if uiaRoleUsesSelectionItem(role) && selectionAvailable {
+		return "press"
+	}
+	return ""
+}
+
+// uiaSelectionItemState intentionally preserves one canonical state for the
+// native SelectionItem property. "selected" matches the UIA pattern, avoids a
+// schema-visible radio-state remap, and prevents one native transition from
+// appearing as simultaneous checked and selected changes.
+func uiaSelectionItemState(role string, selected bool) string {
+	if selected && uiaRoleUsesSelectionItem(role) {
+		return "selected"
+	}
+	return ""
 }
 
 // UI Automation control type identifiers are stable Windows API constants.
@@ -61,21 +136,26 @@ const (
 )
 
 type uiaNodeStructure struct {
-	RuntimeID   []int32
-	ControlType int32
-	Password    bool
-	Offscreen   bool
+	RuntimeID       []int32
+	ControlType     int32
+	Password        bool
+	Offscreen       bool
+	ToggleAvailable bool
 }
 
 type uiaNodeDetails struct {
-	Name          string
-	NameTruncated bool
-	Description   string
-	Value         string
-	States        []string
-	Bounds        *Bounds
-	Focused       bool
-	Actions       []string
+	Name             string
+	NameTruncated    bool
+	Description      string
+	Value            string
+	States           []string
+	ObservableStates []string
+	Bounds           *Bounds
+	Focused          bool
+	FocusObservable  bool
+	ValueObservable  bool
+	ValueTruncated   bool
+	Actions          []string
 }
 
 // uiaTreeQuery keeps native object ownership behind a small interface so the
@@ -101,7 +181,7 @@ func buildUIATree[T comparable](
 	snapshot := Snapshot{Backend: BackendWindowsAutomation, Nodes: make([]Node, 0, limits.MaxElements)}
 	if expectedProcessID <= 0 || expectedWindowHandle == 0 || !validUIALimits(limits) {
 		query.release(root)
-		return Snapshot{}, ErrInvalidTree
+		return Snapshot{}, fmt.Errorf("uia tree input: %w", ErrInvalidTree)
 	}
 	budget := &uiaStringBudget{remaining: int(limits.MaxStringBytes)}
 	seen := make(map[[sha256.Size]byte]struct{}, limits.MaxElements)
@@ -121,11 +201,11 @@ func buildUIATree[T comparable](
 
 		processID, err := query.processID(ctx, reference)
 		if err != nil {
-			return err
+			return fmt.Errorf("uia element process: %w", err)
 		}
 		if processID != expectedProcessID {
 			if isRoot {
-				return ErrStaleTarget
+				return fmt.Errorf("uia root process mismatch: %w", ErrStaleTarget)
 			}
 			// UIA may embed surfaces owned by another process. Never cross the
 			// exact process boundary selected by policy.
@@ -134,21 +214,24 @@ func buildUIATree[T comparable](
 		}
 		structure, err := query.structure(ctx, reference)
 		if err != nil {
-			return err
+			return fmt.Errorf("uia structure: %w", err)
 		}
 		referenceData, err := encodeUIAReference(processID, expectedWindowHandle, structure.RuntimeID)
-		if err != nil || len(referenceData) > int(limits.MaxReferenceBytes) ||
+		if err != nil {
+			return fmt.Errorf("uia reference encoding: %w", err)
+		}
+		if len(referenceData) > int(limits.MaxReferenceBytes) ||
 			len(referenceData) > int(limits.MaxTotalReferenceBytes)-referenceBytes {
-			return ErrInvalidTree
+			return fmt.Errorf("uia reference budget: %w", ErrInvalidTree)
 		}
 		digest := sha256.Sum256(referenceData)
 		if _, duplicate := seen[digest]; duplicate {
-			return ErrInvalidTree
+			return fmt.Errorf("uia duplicate reference: %w", ErrInvalidTree)
 		}
 		seen[digest] = struct{}{}
 		referenceBytes += len(referenceData)
 
-		role := mapUIAControlType(structure.ControlType, structure.Password)
+		role := mapUIAControlType(structure.ControlType, structure.Password, structure.ToggleAvailable)
 		node := Node{
 			Reference: referenceData, Parent: parent, Depth: depth, Role: role,
 			Sensitive: structure.Password, Offscreen: structure.Offscreen,
@@ -160,7 +243,7 @@ func buildUIATree[T comparable](
 		if roleAllowed && !structure.Password && !structure.Offscreen {
 			details, err := query.details(ctx, reference, role, limits)
 			if err != nil {
-				return err
+				return fmt.Errorf("uia details for role %q: %w", role, err)
 			}
 			if limits.ReadName {
 				node.Name = budget.take(details.Name)
@@ -171,6 +254,7 @@ func buildUIATree[T comparable](
 			}
 			if limits.ReadValue {
 				node.Value = budget.take(details.Value)
+				snapshot.Truncated = snapshot.Truncated || details.ValueTruncated || node.Value != details.Value
 			}
 			if limits.ReadStates {
 				node.States = append([]string(nil), details.States...)
@@ -194,7 +278,7 @@ func buildUIATree[T comparable](
 		if depth == limits.MaxDepth {
 			child, err := query.firstChild(ctx, reference)
 			if err != nil {
-				return err
+				return fmt.Errorf("uia depth-limit child: %w", err)
 			}
 			if child != zero {
 				query.release(child)
@@ -205,7 +289,7 @@ func buildUIATree[T comparable](
 
 		child, err := query.firstChild(ctx, reference)
 		if err != nil {
-			return err
+			return fmt.Errorf("uia first child: %w", err)
 		}
 		for child != zero {
 			if len(snapshot.Nodes) >= int(limits.MaxElements) {
@@ -216,7 +300,7 @@ func buildUIATree[T comparable](
 			next, err := query.nextSibling(ctx, child)
 			if err != nil {
 				query.release(child)
-				return err
+				return fmt.Errorf("uia next sibling: %w", err)
 			}
 			if err := visit(child, nodeIndex, depth+1, false); err != nil {
 				if next != zero {
@@ -300,12 +384,15 @@ func (budget *uiaStringBudget) take(value string) string {
 	return value
 }
 
-func mapUIAControlType(controlType int32, password bool) string {
+func mapUIAControlType(controlType int32, password, toggleAvailable bool) string {
 	if password {
 		return "password"
 	}
 	switch controlType {
 	case uiaControlButton, uiaControlSplitButton:
+		if controlType == uiaControlButton && toggleAvailable {
+			return "switch"
+		}
 		return "button"
 	case uiaControlCheckBox:
 		return "checkbox"

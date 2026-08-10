@@ -106,16 +106,52 @@ type ElementExpectation struct {
 // ActionRequest binds one retained opaque reference to its exact top-level
 // target and expected live semantic identity.
 type ActionRequest struct {
-	Target    Target
-	Reference []byte
-	Expected  ElementExpectation
-	Action    string
-	Value     string
+	Target          Target
+	Reference       []byte
+	Expected        ElementExpectation
+	Action          string
+	Value           []byte
+	Postcondition   *ElementCondition
+	BeforeFinalGate func(context.Context) error
 }
 
-// ActionResult identifies the irreversible native dispatch boundary.
+type finalGateCallbackError struct{ cause error }
+
+func (err *finalGateCallbackError) Error() string {
+	return "accessibility: final gate accounting failed"
+}
+func (err *finalGateCallbackError) Unwrap() error { return err.cause }
+
+func runFinalGateCallback(ctx context.Context, callback func(context.Context) error) error {
+	if callback == nil {
+		return nil
+	}
+	if err := callback(ctx); err != nil {
+		return &finalGateCallbackError{cause: err}
+	}
+	return nil
+}
+
+func finalGateCallbackCause(err error) (error, bool) {
+	var callbackErr *finalGateCallbackError
+	if !errors.As(err, &callbackErr) {
+		return nil, false
+	}
+	return callbackErr.cause, true
+}
+
+// ActionResult identifies the irreversible native dispatch boundary and
+// whether an idempotent final gate proved that dispatch was unnecessary.
 type ActionResult struct {
-	Dispatched bool
+	Dispatched       bool
+	AlreadySatisfied bool
+	CleanupComplete  bool
+}
+
+// ConditionResult is one read-only check of an observation-bound element.
+type ConditionResult struct {
+	Satisfied       bool
+	CleanupComplete bool
 }
 
 // Probe checks native availability without opening an OS consent dialog.
@@ -129,7 +165,17 @@ func Inspect(ctx context.Context, target Target, limits Limits) (Snapshot, error
 // Act re-resolves and revalidates one retained element before performing one
 // native semantic action. It never uses pointer or keyboard fallback.
 func Act(ctx context.Context, request ActionRequest) (ActionResult, error) {
+	request.Value = append([]byte(nil), request.Value...)
+	defer clear(request.Value)
 	return act(ctx, request)
+}
+
+// Check re-resolves one retained element and evaluates its postcondition
+// without performing an action or using a fallback backend.
+func Check(ctx context.Context, request ActionRequest) (ConditionResult, error) {
+	request.Value = append([]byte(nil), request.Value...)
+	defer clear(request.Value)
+	return check(ctx, request)
 }
 
 func clearSnapshot(snapshot *Snapshot) {

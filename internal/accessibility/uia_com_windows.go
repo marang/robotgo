@@ -5,6 +5,7 @@ package accessibility
 import (
 	"context"
 	"errors"
+	"fmt"
 	"math"
 	"runtime"
 	"syscall"
@@ -58,6 +59,15 @@ const (
 	uiaRangeMethodMinimum     = 7
 	uiaRangeMethodSmallChange = 9
 )
+
+func uiaRoleUsesInvoke(role string) bool {
+	switch role {
+	case "button", "link", "menu-item", "tab":
+		return true
+	default:
+		return false
+	}
+}
 
 const (
 	uiaPropertyExpandCollapseAvailable int32 = 30028
@@ -217,23 +227,30 @@ func createUIAutomation2(ctx context.Context) (*ole.IUnknown, error) {
 func (query *uiaCOMQuery) structure(ctx context.Context, element *ole.IUnknown) (uiaNodeStructure, error) {
 	runtimeID, err := query.runtimeID(ctx, element)
 	if err != nil {
-		return uiaNodeStructure{}, err
+		return uiaNodeStructure{}, fmt.Errorf("runtime ID: %w", err)
 	}
 	controlType, err := elementInt32(ctx, element, uiaElementMethodControlType)
 	if err != nil {
-		return uiaNodeStructure{}, err
+		return uiaNodeStructure{}, fmt.Errorf("control type: %w", err)
 	}
 	password, err := elementBool(ctx, element, uiaElementMethodPassword)
 	if err != nil {
-		return uiaNodeStructure{}, err
+		return uiaNodeStructure{}, fmt.Errorf("password state: %w", err)
+	}
+	toggleAvailable := false
+	if controlType == uiaControlButton && !password {
+		toggleAvailable, err = newUIAPropertyReader(ctx, element, 1).bool(uiaPropertyToggleAvailable)
+		if err != nil {
+			return uiaNodeStructure{}, fmt.Errorf("toggle availability: %w", err)
+		}
 	}
 	offscreen, err := elementBool(ctx, element, uiaElementMethodOffscreen)
 	if err != nil {
-		return uiaNodeStructure{}, err
+		return uiaNodeStructure{}, fmt.Errorf("offscreen state: %w", err)
 	}
 	return uiaNodeStructure{
 		RuntimeID: runtimeID, ControlType: controlType,
-		Password: password, Offscreen: offscreen,
+		Password: password, Offscreen: offscreen, ToggleAvailable: toggleAvailable,
 	}, nil
 }
 
@@ -247,49 +264,68 @@ func (query *uiaCOMQuery) details(
 	role string,
 	limits Limits,
 ) (uiaNodeDetails, error) {
+	return query.detailsWithDisabledActions(ctx, element, role, limits, false)
+}
+
+func (query *uiaCOMQuery) detailsWithDisabledActions(
+	ctx context.Context,
+	element *ole.IUnknown,
+	role string,
+	limits Limits,
+	readActionsWhenDisabled bool,
+) (uiaNodeDetails, error) {
 	result := uiaNodeDetails{}
 	var err error
 	if limits.ReadName {
 		result.Name, result.NameTruncated, err = elementBSTRWithTruncation(ctx, element, uiaElementMethodName, limits.MaxStringBytes)
 		if err != nil {
-			return result, err
+			return result, fmt.Errorf("name: %w", err)
 		}
 	}
 	if limits.ReadDescription {
 		result.Description, err = elementBSTR(ctx, element, uiaElementMethodHelpText, limits.MaxStringBytes)
 		if err != nil {
-			return result, err
+			return result, fmt.Errorf("description: %w", err)
 		}
 	}
 	if limits.ReadFocus {
 		result.Focused, err = elementBool(ctx, element, uiaElementMethodKeyboardFocus)
 		if err != nil {
-			return result, err
+			return result, fmt.Errorf("focus: %w", err)
 		}
+		result.FocusObservable = true
 	}
 	if limits.ReadBounds {
 		result.Bounds, err = elementBounds(ctx, element)
 		if err != nil {
-			return result, err
+			return result, fmt.Errorf("bounds: %w", err)
 		}
 	}
 	properties := newUIAPropertyReader(ctx, element, limits.MaxStringBytes)
 	if limits.ReadStates {
 		result.States, err = query.states(ctx, element, role, properties)
 		if err != nil {
-			return result, err
+			return result, fmt.Errorf("states: %w", err)
+		}
+		// Strict provider-presence reads belong only to the condition gate.
+		// Normal inspection keeps optional platform properties optional.
+		if readActionsWhenDisabled {
+			result.ObservableStates, err = query.observableStates(ctx, element, role, properties)
+			if err != nil {
+				return result, fmt.Errorf("observable states: %w", err)
+			}
 		}
 	}
 	if limits.ReadActions {
-		result.Actions, err = query.actions(ctx, element, role, properties)
+		result.Actions, err = query.actions(ctx, element, role, properties, readActionsWhenDisabled)
 		if err != nil {
-			return result, err
+			return result, fmt.Errorf("actions: %w", err)
 		}
 	}
 	if limits.ReadValue {
-		result.Value, err = query.value(role, properties)
+		result.Value, result.ValueObservable, result.ValueTruncated, err = query.value(role, properties)
 		if err != nil {
-			return result, err
+			return result, fmt.Errorf("value: %w", err)
 		}
 	}
 	return result, nil
@@ -318,7 +354,7 @@ func (query *uiaCOMQuery) states(
 	if required {
 		states = append(states, "required")
 	}
-	if role == "checkbox" || role == "radio" || role == "switch" {
+	if uiaRoleUsesToggle(role) {
 		if available, err := properties.bool(uiaPropertyToggleAvailable); err != nil {
 			return nil, err
 		} else if available {
@@ -326,12 +362,16 @@ func (query *uiaCOMQuery) states(
 			if err != nil {
 				return nil, err
 			}
-			if supported && state == 1 {
+			checked, err := uiaToggleChecked(role, state, supported)
+			if err != nil {
+				return nil, err
+			}
+			if checked {
 				states = append(states, "checked")
 			}
 		}
 	}
-	if role == "radio" || role == "list-item" || role == "menu-item" || role == "tab" {
+	if uiaRoleUsesSelectionItem(role) {
 		if available, err := properties.bool(uiaPropertySelectionItemAvailable); err != nil {
 			return nil, err
 		} else if available {
@@ -339,8 +379,8 @@ func (query *uiaCOMQuery) states(
 			if err != nil {
 				return nil, err
 			}
-			if selected {
-				states = append(states, "selected")
+			if state := uiaSelectionItemState(role, selected); state != "" {
+				states = append(states, state)
 			}
 		}
 	}
@@ -369,16 +409,83 @@ func (query *uiaCOMQuery) states(
 	return uniqueUIAStrings(states), nil
 }
 
-func (query *uiaCOMQuery) actions(
+func (query *uiaCOMQuery) observableStates(
 	ctx context.Context,
 	element *ole.IUnknown,
 	role string,
 	properties *uiaPropertyReader,
 ) ([]string, error) {
-	enabled, err := elementBool(ctx, element, uiaElementMethodEnabled)
-	if err != nil || !enabled {
+	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
+	states := []string{elementStateEnabled, elementStateDisabled, elementStateRequired}
+	if uiaRoleUsesToggle(role) {
+		available, err := properties.bool(uiaPropertyToggleAvailable)
+		if err != nil {
+			return nil, err
+		}
+		if available {
+			state, supported, err := properties.integer(uiaPropertyToggleState)
+			if err != nil {
+				return nil, err
+			}
+			if _, err := uiaToggleChecked(role, state, supported); err != nil {
+				return nil, err
+			}
+			states = append(states, elementStateChecked)
+		}
+	}
+	if uiaRoleUsesSelectionItem(role) {
+		available, err := properties.bool(uiaPropertySelectionItemAvailable)
+		if err != nil {
+			return nil, err
+		}
+		if available {
+			if _, err := properties.requiredBool(uiaPropertySelectionItemSelected); err != nil {
+				return nil, err
+			}
+			states = append(states, elementStateSelected)
+		}
+	}
+	if role == "combobox" || role == "list-item" || role == "menu-item" {
+		available, err := properties.bool(uiaPropertyExpandCollapseAvailable)
+		if err != nil {
+			return nil, err
+		}
+		if available {
+			state, supported, err := properties.integer(uiaPropertyExpandCollapseState)
+			if err != nil {
+				return nil, err
+			}
+			if supported && (state == 0 || state == 1) {
+				states = append(states, elementStateExpanded, elementStateCollapsed)
+			}
+		}
+	}
+	_, readOnlyObservable, err := properties.readOnlyState(role)
+	if err != nil {
+		return nil, err
+	}
+	if readOnlyObservable {
+		states = append(states, elementStateReadOnly)
+	}
+	return uniqueUIAStrings(states), nil
+}
+
+func (query *uiaCOMQuery) actions(
+	ctx context.Context,
+	element *ole.IUnknown,
+	role string,
+	properties *uiaPropertyReader,
+	readWhenDisabled bool,
+) ([]string, error) {
+	enabled, err := elementBool(ctx, element, uiaElementMethodEnabled)
+	if err != nil || !enabled && !readWhenDisabled {
+		return nil, err
+	}
+	// Condition reads retain provider capabilities while disabled so action
+	// identity remains stable across an enabled -> disabled transition. Normal
+	// inspection still publishes only currently offered actions.
 	actions := make([]string, 0, 6)
 	focusable, err := elementBool(ctx, element, uiaElementMethodKeyboardFocusable)
 	if err != nil {
@@ -387,7 +494,7 @@ func (query *uiaCOMQuery) actions(
 	if focusable {
 		actions = append(actions, "focus")
 	}
-	if role == "button" || role == "link" || role == "menu-item" || role == "tab" {
+	if uiaRoleUsesInvoke(role) {
 		invoke, err := properties.bool(uiaPropertyInvokeAvailable)
 		if err != nil {
 			return nil, err
@@ -397,24 +504,30 @@ func (query *uiaCOMQuery) actions(
 		}
 	}
 	toggle := false
-	if role == "checkbox" || role == "radio" || role == "switch" {
+	if uiaRoleUsesToggle(role) {
 		toggle, err = properties.bool(uiaPropertyToggleAvailable)
 		if err != nil {
 			return nil, err
 		}
+		if toggle {
+			state, supported, err := properties.integer(uiaPropertyToggleState)
+			if err != nil {
+				return nil, err
+			}
+			if _, err := uiaToggleChecked(role, state, supported); err != nil {
+				return nil, err
+			}
+		}
 	}
 	selection := false
-	if role == "checkbox" || role == "radio" || role == "switch" ||
-		role == "tab" || role == "list-item" || role == "menu-item" {
+	if uiaRoleUsesSelectionItem(role) {
 		selection, err = properties.bool(uiaPropertySelectionItemAvailable)
 		if err != nil {
 			return nil, err
 		}
 	}
-	if toggle || selection && (role == "checkbox" || role == "radio" || role == "switch") {
-		actions = append(actions, "toggle")
-	} else if selection && (role == "tab" || role == "list-item" || role == "menu-item") {
-		actions = append(actions, "press")
+	if action := uiaPatternAction(role, toggle, selection); action != "" {
+		actions = append(actions, action)
 	}
 	if role == "combobox" || role == "list-item" || role == "menu-item" {
 		expandable, err := properties.bool(uiaPropertyExpandCollapseAvailable)
@@ -464,27 +577,28 @@ func (query *uiaCOMQuery) actions(
 	return uniqueUIAStrings(actions), nil
 }
 
-func (query *uiaCOMQuery) value(role string, properties *uiaPropertyReader) (string, error) {
+func (query *uiaCOMQuery) value(role string, properties *uiaPropertyReader) (string, bool, bool, error) {
 	valueAvailable, err := properties.bool(uiaPropertyValueAvailable)
 	if err != nil {
-		return "", err
+		return "", false, false, err
 	}
 	if valueAvailable && (role == "textbox" || role == "combobox") {
-		value, _, err := properties.text(uiaPropertyValueValue)
-		return value, err
+		value, supported, truncated, err := properties.text(uiaPropertyValueValue)
+		return value, supported && !truncated, truncated, err
 	}
 	rangeAvailable, err := properties.bool(uiaPropertyRangeValueAvailable)
 	if err != nil {
-		return "", err
+		return "", false, false, err
 	}
 	if rangeAvailable && (role == "slider" || role == "progress") {
 		value, supported, err := properties.number(uiaPropertyRangeValueValue)
 		if err != nil || !supported {
-			return "", err
+			return "", false, false, err
 		}
-		return uiaNumericValue(value)
+		formatted, err := uiaNumericValue(value)
+		return formatted, err == nil, false, err
 	}
-	return "", nil
+	return "", false, false, nil
 }
 
 func (query *uiaCOMQuery) firstChild(ctx context.Context, element *ole.IUnknown) (*ole.IUnknown, error) {
@@ -609,11 +723,12 @@ const (
 )
 
 type uiaPropertyValue struct {
-	kind    uiaPropertyKind
-	boolean bool
-	integer int32
-	number  float64
-	text    string
+	kind      uiaPropertyKind
+	boolean   bool
+	integer   int32
+	number    float64
+	text      string
+	truncated bool
 }
 
 func (reader *uiaPropertyReader) read(property int32) (uiaPropertyValue, error) {
@@ -642,9 +757,13 @@ func (reader *uiaPropertyReader) read(property int32) (uiaPropertyValue, error) 
 		result.number = math.Float64frombits(uint64(value.Val))
 	case ole.VT_BSTR:
 		result.kind = uiaPropertyText
-		result.text = boundedBSTR(*(**uint16)(unsafe.Pointer(&value.Val)), reader.maxBytes)
+		result.text, result.truncated = boundedBSTRWithTruncation(
+			*(**uint16)(unsafe.Pointer(&value.Val)), reader.maxBytes,
+		)
 	default:
-		return uiaPropertyValue{}, ErrInvalidTree
+		return uiaPropertyValue{}, fmt.Errorf(
+			"uia property %d has unsupported VARIANT type %d: %w", property, value.VT, ErrInvalidTree,
+		)
 	}
 	reader.cache[property] = result
 	return result, nil
@@ -661,8 +780,19 @@ func (reader *uiaPropertyReader) bool(property int32) (bool, error) {
 	case uiaPropertyBoolean:
 		return value.boolean, nil
 	default:
-		return false, ErrInvalidTree
+		return false, invalidUIAPropertyKind(property, "boolean", value.kind)
 	}
+}
+
+func (reader *uiaPropertyReader) requiredBool(property int32) (bool, error) {
+	value, err := reader.read(property)
+	if err != nil {
+		return false, err
+	}
+	if value.kind != uiaPropertyBoolean {
+		return false, invalidUIAPropertyKind(property, "boolean", value.kind)
+	}
+	return value.boolean, nil
 }
 
 func (reader *uiaPropertyReader) integer(property int32) (int32, bool, error) {
@@ -676,7 +806,7 @@ func (reader *uiaPropertyReader) integer(property int32) (int32, bool, error) {
 	case uiaPropertyInteger:
 		return value.integer, true, nil
 	default:
-		return 0, false, ErrInvalidTree
+		return 0, false, invalidUIAPropertyKind(property, "integer", value.kind)
 	}
 }
 
@@ -691,23 +821,29 @@ func (reader *uiaPropertyReader) number(property int32) (float64, bool, error) {
 	case uiaPropertyNumber:
 		return value.number, true, nil
 	default:
-		return 0, false, ErrInvalidTree
+		return 0, false, invalidUIAPropertyKind(property, "number", value.kind)
 	}
 }
 
-func (reader *uiaPropertyReader) text(property int32) (string, bool, error) {
+func (reader *uiaPropertyReader) text(property int32) (string, bool, bool, error) {
 	value, err := reader.read(property)
 	if err != nil {
-		return "", false, err
+		return "", false, false, err
 	}
 	switch value.kind {
 	case uiaPropertyMissing:
-		return "", false, nil
+		return "", false, false, nil
 	case uiaPropertyText:
-		return value.text, true, nil
+		return value.text, true, value.truncated, nil
 	default:
-		return "", false, ErrInvalidTree
+		return "", false, false, invalidUIAPropertyKind(property, "text", value.kind)
 	}
+}
+
+func invalidUIAPropertyKind(property int32, expected string, actual uiaPropertyKind) error {
+	return fmt.Errorf(
+		"uia property %d expected %s kind, got %d: %w", property, expected, actual, ErrInvalidTree,
+	)
 }
 
 func (reader *uiaPropertyReader) readOnly(role string) (bool, error) {
@@ -728,6 +864,28 @@ func (reader *uiaPropertyReader) readOnly(role string) (bool, error) {
 		return false, err
 	}
 	return reader.bool(uiaPropertyRangeValueReadOnly)
+}
+
+func (reader *uiaPropertyReader) readOnlyState(role string) (bool, bool, error) {
+	if role != "textbox" && role != "combobox" && role != "slider" {
+		return false, false, nil
+	}
+	if role != "slider" {
+		valueAvailable, err := reader.bool(uiaPropertyValueAvailable)
+		if err != nil {
+			return false, false, err
+		}
+		if valueAvailable {
+			value, err := reader.requiredBool(uiaPropertyValueReadOnly)
+			return value, true, err
+		}
+	}
+	rangeAvailable, err := reader.bool(uiaPropertyRangeValueAvailable)
+	if err != nil || !rangeAvailable {
+		return false, false, err
+	}
+	value, err := reader.requiredBool(uiaPropertyRangeValueReadOnly)
+	return value, true, err
 }
 
 func elementInt32(ctx context.Context, element *ole.IUnknown, method int) (int32, error) {
@@ -760,32 +918,30 @@ func elementBSTRWithTruncation(ctx context.Context, element *ole.IUnknown, metho
 		return "", false, nil
 	}
 	defer func() { _ = ole.SysFreeString((*int16)(unsafe.Pointer(value))) }()
-	result := boundedBSTR(value, maxBytes)
-	units := int(ole.SysStringLen((*int16)(unsafe.Pointer(value))))
-	truncated := units > int(maxBytes)
-	if !truncated {
-		truncated = len(string(utf16.Decode(unsafe.Slice(value, units)))) > int(maxBytes)
-	}
+	result, truncated := boundedBSTRWithTruncation(value, maxBytes)
 	return result, truncated, nil
 }
 
-func boundedBSTR(value *uint16, maxBytes uint32) string {
-	if value == nil || maxBytes == 0 {
-		return ""
+func boundedBSTRWithTruncation(value *uint16, maxBytes uint32) (string, bool) {
+	if value == nil {
+		return "", false
 	}
-	units := int(ole.SysStringLen((*int16)(unsafe.Pointer(value))))
-	if units > int(maxBytes) {
-		units = int(maxBytes)
+	units := ole.SysStringLen((*int16)(unsafe.Pointer(value)))
+	truncated := false
+	if units > maxBytes {
+		units = maxBytes
+		truncated = true
 	}
 	decoded := string(utf16.Decode(unsafe.Slice(value, units)))
-	if len(decoded) <= int(maxBytes) {
-		return decoded
+	if uint64(len(decoded)) <= uint64(maxBytes) {
+		return decoded, truncated
 	}
-	decoded = decoded[:maxBytes]
+	truncated = true
+	decoded = decoded[:int(maxBytes)]
 	for len(decoded) > 0 && !utf8.ValidString(decoded) {
 		decoded = decoded[:len(decoded)-1]
 	}
-	return decoded
+	return decoded, truncated
 }
 
 func elementBounds(ctx context.Context, element *ole.IUnknown) (*Bounds, error) {
@@ -842,6 +998,7 @@ func readUIAIntArray(ctx context.Context, array *ole.SafeArray) ([]int32, error)
 	return result, nil
 }
 
+//go:uintptrescapes
 func callUIAMethod(ctx context.Context, object *ole.IUnknown, index int, arguments ...uintptr) error {
 	if err := ctx.Err(); err != nil {
 		return err
@@ -911,13 +1068,4 @@ func uniqueUIAStrings(values []string) []string {
 		result = append(result, value)
 	}
 	return result
-}
-
-func uiaInteractiveRole(role string) bool {
-	switch role {
-	case "button", "checkbox", "combobox", "radio", "switch", "textbox", "link", "menu-item", "tab", "slider":
-		return true
-	default:
-		return false
-	}
 }

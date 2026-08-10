@@ -310,6 +310,17 @@ func TestProtocolInitializesAndListsFocusedTools(t *testing.T) {
 				}
 			}
 		}
+		if tool.Name == ToolElementAct {
+			schema, marshalErr := json.Marshal(tool.InputSchema)
+			if marshalErr != nil {
+				t.Fatalf("marshal element-act schema: %v", marshalErr)
+			}
+			for _, field := range []string{"postcondition", "kind", "state"} {
+				if !strings.Contains(string(schema), `"`+field+`"`) {
+					t.Errorf("robotgo_element_act schema omitted %q: %s", field, schema)
+				}
+			}
+		}
 		switch tool.Name {
 		case ToolFind, ToolWait, ToolInspectUI, ToolView, ToolOCR, ToolDetectElements:
 			if tool.Annotations == nil || !tool.Annotations.ReadOnlyHint {
@@ -712,12 +723,35 @@ func TestInspectUIReturnsOnlyPrivacyReducedSemanticContract(t *testing.T) {
 func TestElementActReturnsResultWithoutEchoingSensitiveValue(t *testing.T) {
 	fake := &fakeSession{elementActFunc: func(_ context.Context, request agent.ElementActionRequest) (agent.ActionResult, error) {
 		if request.ObservationID != "observation-9" || request.ElementID != "observation-9-element-1" ||
-			request.Action != agent.UIActionSetValue || request.Value != "private-value" {
+			request.Action != agent.UIActionSetValue || request.Value != "private-value" ||
+			request.Postcondition == nil ||
+			request.Postcondition.Kind != agent.UIElementConditionValueEqualsActionValue {
 			return agent.ActionResult{}, errors.New("unexpected semantic request")
 		}
 		return agent.ActionResult{
 			ActionID: "action-7", Operation: agent.OperationElementAct,
 			Status: agent.ActionSucceeded, Backend: "fake-accessibility",
+			Proof: &agent.ActionProof{
+				SchemaVersion: agent.ActionProofSchemaVersion,
+				TransactionID: "action-7", Status: agent.ActionProofVerified,
+				Resolution: &agent.ActionResolutionProof{
+					Strategy:       agent.ActionResolutionRetainedReference,
+					CandidateCount: 1, Exact: true,
+				},
+				Authorization: &agent.ActionAuthorizationProof{
+					PolicyAllowed: true, ConfirmationRequired: true, Confirmed: true,
+				},
+				Execution: agent.ActionExecutionProof{
+					Backend: "fake-accessibility", Action: agent.UIActionSetValue,
+					Status: agent.ActionExecutionDispatched,
+				},
+				Verification: &agent.ActionVerificationProof{
+					ConditionKind: agent.UIElementConditionValueEqualsActionValue,
+					Status:        agent.ActionVerificationMatched, PrecheckAttempts: 1,
+					FinalGateChecked: true, PostconditionAttempts: 1,
+				},
+				Cleanup: agent.ActionCleanupProof{TransientResourcesReleased: true},
+			},
 		}, nil
 	}}
 	client := connectProtocol(t, newProtocolServer(t, fake))
@@ -729,10 +763,15 @@ func TestElementActReturnsResultWithoutEchoingSensitiveValue(t *testing.T) {
 			Bounds:  &agent.UIBounds{X: 1, Y: 2, Width: 3, Height: 4},
 			Actions: []agent.UIAction{agent.UIActionFocus, agent.UIActionSetValue},
 		},
+		Postcondition: &agent.UIElementCondition{
+			Kind: agent.UIElementConditionValueEqualsActionValue,
+		},
 	})
 	output := decodeOutput[ElementActOutput](t, result)
 	serialized := serializedResult(t, result)
 	if result.IsError || output.Result == nil || output.Result.Status != agent.ActionSucceeded ||
+		output.Result.Proof == nil || output.Result.Proof.Status != agent.ActionProofVerified ||
+		output.Result.Proof.TransactionID != output.Result.ActionID ||
 		strings.Contains(serialized, "private-value") {
 		t.Fatalf("semantic action output = %+v, %s", output, serialized)
 	}
@@ -890,7 +929,8 @@ func TestSafeToolErrorPrioritizesInputCleanupOverCancellation(t *testing.T) {
 		},
 		agent.ErrInputCleanup,
 	))
-	if toolErr == nil || toolErr.Code != agent.ErrorCleanupFailed {
+	if toolErr == nil || toolErr.Code != agent.ErrorCleanupFailed ||
+		toolErr.Message != "RobotGo could not release operation-owned resources; do not retry the action" {
 		t.Fatalf("joined cleanup error = %+v", toolErr)
 	}
 }

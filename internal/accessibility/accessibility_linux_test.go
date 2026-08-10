@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"slices"
 	"strings"
 	"testing"
 
@@ -39,12 +40,15 @@ type fakeATSPIQuery struct {
 	childCalls       map[string]int
 	interfaceCalls   map[string]int
 	textCalls        map[string]int
+	textLimits       map[string][]int32
 	mutationCalls    []string
 	setTextValue     string
 	setNumericValue  float64
 	mutationErr      error
 	minimumStepErr   error
 	actionNameErr    error
+	statesErr        error
+	statesHook       func(atspiReference)
 	actionNameHook   func()
 	minimumStepHook  func()
 	maximumValueHook func()
@@ -92,9 +96,15 @@ func (query *fakeATSPIQuery) role(_ context.Context, reference atspiReference) (
 }
 
 func (query *fakeATSPIQuery) states(_ context.Context, reference atspiReference) ([]uint32, error) {
+	if query.statesErr != nil {
+		return nil, query.statesErr
+	}
 	object, err := query.object(reference)
 	if err != nil {
 		return nil, err
+	}
+	if query.statesHook != nil {
+		query.statesHook(reference)
 	}
 	return append([]uint32(nil), object.states...), nil
 }
@@ -128,13 +138,18 @@ func (query *fakeATSPIQuery) extents(_ context.Context, reference atspiReference
 	return object.rect, nil
 }
 
-func (query *fakeATSPIQuery) text(_ context.Context, reference atspiReference, _ int32) (string, error) {
+func (query *fakeATSPIQuery) text(_ context.Context, reference atspiReference, limit int32) (string, error) {
 	object, err := query.object(reference)
 	if err != nil {
 		return "", err
 	}
 	query.textCalls[referenceKey(reference)]++
-	return object.text, nil
+	query.textLimits[referenceKey(reference)] = append(query.textLimits[referenceKey(reference)], limit)
+	characters := []rune(object.text)
+	if limit >= 0 && len(characters) > int(limit) {
+		characters = characters[:limit]
+	}
+	return string(characters), nil
 }
 
 func (query *fakeATSPIQuery) currentValue(_ context.Context, reference atspiReference) (float64, error) {
@@ -261,6 +276,7 @@ func newFakeATSPIQuery(objects map[atspiReference]*fakeATSPIObject) *fakeATSPIQu
 		objects:       make(map[string]*fakeATSPIObject),
 		propertyCalls: make(map[string]int), childCalls: make(map[string]int),
 		interfaceCalls: make(map[string]int), textCalls: make(map[string]int),
+		textLimits: make(map[string][]int32),
 	}
 	for reference, object := range objects {
 		query.objects[referenceKey(reference)] = object
@@ -411,6 +427,76 @@ func TestBuildATSPITreeEnforcesElementDepthAndReferenceLimits(t *testing.T) {
 	}
 }
 
+func TestBuildATSPITreeScopesMixedValidationAndProjectsReadOnly(t *testing.T) {
+	root := atspiTestReference("mixed_root")
+	control := atspiTestReference("mixed_control")
+	query := newFakeATSPIQuery(map[atspiReference]*fakeATSPIObject{
+		root: {
+			children: []atspiReference{control}, role: atspiRoleFrame,
+			states:     atspiTestStates(atspiStateShowing, atspiStateVisible),
+			properties: map[string]string{atspiPropertyName: "Fixture"},
+		},
+		control: {
+			role: atspiRoleSwitch,
+			states: atspiTestStates(
+				atspiStateEnabled, atspiStateFocusable, atspiStateIndeterminate,
+				atspiStateShowing, atspiStateVisible,
+			),
+			properties:  map[string]string{atspiPropertyName: "Mode"},
+			interfaces:  []string{atspiShortAction, atspiShortComponent},
+			actionCount: 1, actionNames: []string{"toggle"},
+		},
+	})
+	limits := atspiTestLimits()
+
+	// A disallowed control remains structural and must not trigger private
+	// property or interface reads merely because its native state is mixed.
+	if snapshot, err := buildATSPITree(t.Context(), query, root, limits); err != nil || len(snapshot.Nodes) != 2 {
+		t.Fatalf("disallowed mixed switch snapshot = %+v, %v", snapshot, err)
+	}
+	controlKey := referenceKey(control)
+	if query.propertyCalls[controlKey+":"+atspiPropertyName] != 0 || query.interfaceCalls[controlKey] != 0 {
+		t.Fatalf("disallowed mixed switch reads = properties %v, interfaces %v",
+			query.propertyCalls, query.interfaceCalls)
+	}
+
+	limits.AllowedRoles["switch"] = true
+	if _, err := buildATSPITree(t.Context(), query, root, limits); !errors.Is(err, ErrInvalidTree) {
+		t.Fatalf("allowed mixed switch error = %v", err)
+	}
+
+	query.objects[controlKey].role = atspiRoleSlider
+	query.objects[controlKey].states = atspiTestStates(
+		atspiStateEnabled, atspiStateFocusable, atspiStateReadOnly,
+		atspiStateShowing, atspiStateVisible,
+	)
+	query.objects[controlKey].interfaces = []string{atspiShortComponent, atspiShortValue}
+	query.objects[controlKey].actionCount = 0
+	query.objects[controlKey].actionNames = nil
+	query.minimumStepErr = ErrUnavailable
+	delete(limits.AllowedRoles, "switch")
+	limits.AllowedRoles["slider"] = true
+	snapshot, err := buildATSPITree(t.Context(), query, root, limits)
+	if err != nil || len(snapshot.Nodes) != 2 ||
+		fmt.Sprint(snapshot.Nodes[1].States) != "[enabled read-only]" ||
+		fmt.Sprint(snapshot.Nodes[1].Actions) != "[focus]" {
+		t.Fatalf("read-only slider snapshot = %+v, %v", snapshot, err)
+	}
+	request := ActionRequest{
+		Reference: []byte(referenceKey(control)), Action: "focus",
+		Expected: ElementExpectation{
+			Role: "slider", Name: "Mode", States: []string{elementStateEnabled, elementStateReadOnly},
+			Actions: []string{"focus"},
+		},
+		Postcondition: &ElementCondition{
+			Kind: ElementConditionStateAbsent, State: elementStateReadOnly,
+		},
+	}
+	if satisfied, err := checkATSPIElementCondition(t.Context(), query, control, request); err != nil || satisfied {
+		t.Fatalf("read-only slider condition = %t, %v", satisfied, err)
+	}
+}
+
 func TestATSPIFixedRoleStateAndActionMappings(t *testing.T) {
 	words := atspiTestStates(4, 5, 8, 11, 23, 33, 36)
 	if got := mapATSPIRole(79); got != "textbox" {
@@ -422,10 +508,55 @@ func TestATSPIFixedRoleStateAndActionMappings(t *testing.T) {
 	if got := fmt.Sprint(mapATSPIStates("checkbox", words)); got != "[enabled checked collapsed selected required invalid]" {
 		t.Fatalf("states = %s", got)
 	}
+	if got := fmt.Sprint(mapATSPIStates("radio", words)); got != "[enabled collapsed selected required invalid]" {
+		t.Fatalf("radio states = %s", got)
+	}
+	mixed := atspiTestStates(atspiStateEnabled, atspiStateIndeterminate)
+	for _, role := range []string{"checkbox", "radio"} {
+		if err := validateATSPINativeStates(role, mixed); err != nil {
+			t.Fatalf("mixed %s state = %v", role, err)
+		}
+		if got := fmt.Sprint(mapATSPIStates(role, mixed)); got != "[enabled]" {
+			t.Fatalf("mixed %s states = %s", role, got)
+		}
+	}
+	for _, test := range []struct {
+		name string
+		role string
+		bits []uint32
+	}{
+		{name: "mixed switch", role: "switch", bits: []uint32{atspiStateIndeterminate}},
+		{name: "mixed checked checkbox", role: "checkbox", bits: []uint32{atspiStateIndeterminate, atspiStateChecked}},
+		{name: "mixed selected radio", role: "radio", bits: []uint32{atspiStateIndeterminate, atspiStateSelected}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			if err := validateATSPINativeStates(test.role, atspiTestStates(test.bits...)); !errors.Is(err, ErrInvalidTree) {
+				t.Fatalf("invalid mixed state = %v", err)
+			}
+		})
+	}
+	mixedSelectedCheckbox := atspiTestStates(
+		atspiStateEnabled, atspiStateIndeterminate, atspiStateSelected,
+	)
+	if err := validateATSPINativeStates("checkbox", mixedSelectedCheckbox); err != nil {
+		t.Fatalf("mixed selected checkbox state = %v", err)
+	}
+	if got := fmt.Sprint(mapATSPIStates("checkbox", mixedSelectedCheckbox)); got != "[enabled selected]" {
+		t.Fatalf("mixed selected checkbox states = %s", got)
+	}
+	readOnly := atspiTestStates(atspiStateEnabled, atspiStateFocusable, atspiStateReadOnly)
+	if got := fmt.Sprint(mapATSPIStates("slider", readOnly)); got != "[enabled read-only]" {
+		t.Fatalf("read-only slider states = %s", got)
+	}
 	if got := fmt.Sprint(inferATSPIActions("checkbox", words, map[string]bool{
 		"Action": true, "Component": true,
 	}, []string{"toggle"}, false)); got != "[toggle focus expand]" {
 		t.Fatalf("actions = %s", got)
+	}
+	if got := fmt.Sprint(inferATSPIActions("radio", words, map[string]bool{
+		"Action": true, "Component": true,
+	}, []string{"press"}, false)); got != "[press focus]" {
+		t.Fatalf("radio actions = %s", got)
 	}
 	if got := fmt.Sprint(inferATSPIActions("checkbox", words, map[string]bool{
 		"Action": true,
@@ -451,6 +582,26 @@ func TestATSPIFixedRoleStateAndActionMappings(t *testing.T) {
 		atspiShortEditableText: true,
 	}, nil, false)); got != "[set-value]" {
 		t.Fatalf("editable textbox actions = %s", got)
+	}
+	if got := fmt.Sprint(inferATSPIActions("switch", readOnly, map[string]bool{
+		atspiShortAction: true, atspiShortComponent: true,
+	}, []string{"toggle"}, false)); got != "[focus]" {
+		t.Fatalf("read-only switch actions = %s", got)
+	}
+	if got := fmt.Sprint(inferATSPIActions("textbox", atspiTestStates(
+		atspiStateEditable, atspiStateEnabled, atspiStateReadOnly,
+	), map[string]bool{atspiShortEditableText: true}, nil, false)); got != "[]" {
+		t.Fatalf("explicitly read-only textbox actions = %s", got)
+	}
+	if got := fmt.Sprint(inferATSPIActions("slider", readOnly, map[string]bool{
+		atspiShortValue: true, atspiShortComponent: true,
+	}, nil, true)); got != "[focus]" {
+		t.Fatalf("read-only slider actions = %s", got)
+	}
+	if got := fmt.Sprint(inferATSPIActions("combobox", atspiTestStates(
+		atspiStateCollapsed, atspiStateEnabled, atspiStateFocusable, atspiStateReadOnly,
+	), map[string]bool{atspiShortAction: true, atspiShortComponent: true}, []string{"expand"}, false)); got != "[focus expand]" {
+		t.Fatalf("read-only combobox disclosure actions = %s", got)
 	}
 }
 
@@ -600,6 +751,300 @@ func TestActATSPIRevalidatesExactObservedElementBeforeDispatch(t *testing.T) {
 	}
 }
 
+func TestATSPIConditionGateIsIdempotentAndFailsClosed(t *testing.T) {
+	application := atspiTestReference("application")
+	window := atspiTestReference("window")
+	checkbox := atspiTestReference("checkbox")
+	query := newFakeATSPIQuery(map[atspiReference]*fakeATSPIObject{
+		application: {children: []atspiReference{window}},
+		window: {
+			parent: application, children: []atspiReference{checkbox}, role: atspiRoleFrame,
+			properties: map[string]string{atspiPropertyName: "Fixture"},
+		},
+		checkbox: {
+			parent: window, role: atspiRoleCheckBox,
+			states: atspiTestStates(
+				atspiStateChecked, atspiStateEnabled, atspiStateFocusable,
+				atspiStateShowing, atspiStateVisible,
+			),
+			properties:  map[string]string{atspiPropertyName: "Remember"},
+			interfaces:  []string{atspiShortAction, atspiShortComponent},
+			actionCount: 1, actionNames: []string{"click"},
+		},
+	})
+	query.apps = []atspiReference{application}
+	query.pids[application.Bus] = 42
+	request := ActionRequest{
+		Target:    Target{ProcessID: 42, ExpectedTitle: "Fixture"},
+		Reference: []byte(referenceKey(checkbox)), Action: "toggle",
+		Expected: ElementExpectation{
+			Role: "checkbox", Name: "Remember", States: []string{elementStateEnabled},
+			Actions: []string{"toggle", "focus"},
+		},
+		Postcondition: &ElementCondition{
+			Kind: ElementConditionStatePresent, State: elementStateChecked,
+		},
+	}
+
+	result, err := actATSPI(t.Context(), query, request, checkbox)
+	if err != nil || !result.AlreadySatisfied || result.Dispatched || len(query.mutationCalls) != 0 {
+		t.Fatalf("already-satisfied toggle = %+v, %v, calls=%v", result, err, query.mutationCalls)
+	}
+	checked, err := checkATSPI(t.Context(), query, request, checkbox)
+	if err != nil || !checked.Satisfied || len(query.mutationCalls) != 0 {
+		t.Fatalf("read-only checked probe = %+v, %v, calls=%v", checked, err, query.mutationCalls)
+	}
+
+	query.objects[referenceKey(checkbox)].states = atspiTestStates(
+		atspiStateEnabled, atspiStateFocusable, atspiStateShowing, atspiStateVisible,
+	)
+	result, err = actATSPI(t.Context(), query, request, checkbox)
+	if err != nil || !result.Dispatched || result.AlreadySatisfied || len(query.mutationCalls) != 1 {
+		t.Fatalf("unsatisfied toggle = %+v, %v, calls=%v", result, err, query.mutationCalls)
+	}
+
+	query.mutationCalls = nil
+	query.objects[referenceKey(checkbox)].states = atspiTestStates(
+		atspiStateChecked, atspiStateEnabled, atspiStateFocusable,
+		atspiStateSelected, atspiStateShowing, atspiStateVisible,
+	)
+	result, err = actATSPI(t.Context(), query, request, checkbox)
+	if !errors.Is(err, ErrStaleTarget) || result.AlreadySatisfied || result.Dispatched || len(query.mutationCalls) != 0 {
+		t.Fatalf("unrelated state drift = %+v, %v, calls=%v", result, err, query.mutationCalls)
+	}
+
+	query.statesErr = context.DeadlineExceeded
+	result, err = actATSPI(t.Context(), query, request, checkbox)
+	if !errors.Is(err, context.DeadlineExceeded) || result.AlreadySatisfied || result.Dispatched || len(query.mutationCalls) != 0 {
+		t.Fatalf("failed condition read = %+v, %v, calls=%v", result, err, query.mutationCalls)
+	}
+}
+
+func TestATSPIConditionRejectsMixedSwitchWithoutDispatch(t *testing.T) {
+	application := atspiTestReference("mixed_application")
+	window := atspiTestReference("mixed_window")
+	control := atspiTestReference("mixed_switch")
+	query := newFakeATSPIQuery(map[atspiReference]*fakeATSPIObject{
+		application: {children: []atspiReference{window}},
+		window: {
+			parent: application, children: []atspiReference{control}, role: atspiRoleFrame,
+			properties: map[string]string{atspiPropertyName: "Fixture"},
+		},
+		control: {
+			parent: window, role: atspiRoleSwitch,
+			states: atspiTestStates(
+				atspiStateEnabled, atspiStateFocusable, atspiStateIndeterminate,
+				atspiStateShowing, atspiStateVisible,
+			),
+			properties:  map[string]string{atspiPropertyName: "Remember"},
+			interfaces:  []string{atspiShortAction, atspiShortComponent},
+			actionCount: 1, actionNames: []string{"toggle"},
+		},
+	})
+	query.apps = []atspiReference{application}
+	query.pids[application.Bus] = 42
+	request := ActionRequest{
+		Target:    Target{ProcessID: 42, ExpectedTitle: "Fixture"},
+		Reference: []byte(referenceKey(control)), Action: "toggle",
+		Expected: ElementExpectation{
+			Role: "switch", Name: "Remember", States: []string{elementStateEnabled},
+			Actions: []string{"toggle", "focus"},
+		},
+		Postcondition: &ElementCondition{
+			Kind: ElementConditionStateAbsent, State: elementStateChecked,
+		},
+	}
+
+	result, err := actATSPI(t.Context(), query, request, control)
+	if !errors.Is(err, ErrInvalidTree) || result.AlreadySatisfied || result.Dispatched || len(query.mutationCalls) != 0 {
+		t.Fatalf("mixed switch action = %+v, %v, calls=%v", result, err, query.mutationCalls)
+	}
+
+	// Mixed checkboxes remain intentionally observable without claiming the
+	// canonical checked state, so v1 state-absent may be satisfied read-only.
+	query.objects[referenceKey(control)].role = atspiRoleCheckBox
+	request.Expected.Role = "checkbox"
+	result, err = actATSPI(t.Context(), query, request, control)
+	if err != nil || !result.AlreadySatisfied || result.Dispatched || len(query.mutationCalls) != 0 {
+		t.Fatalf("mixed checkbox action = %+v, %v, calls=%v", result, err, query.mutationCalls)
+	}
+}
+
+func TestATSPIReadOnlyDriftSuppressesValueMutation(t *testing.T) {
+	application := atspiTestReference("readonly_application")
+	window := atspiTestReference("readonly_window")
+	slider := atspiTestReference("readonly_slider")
+	query := newFakeATSPIQuery(map[atspiReference]*fakeATSPIObject{
+		application: {children: []atspiReference{window}},
+		window: {
+			parent: application, children: []atspiReference{slider}, role: atspiRoleFrame,
+			properties: map[string]string{atspiPropertyName: "Fixture"},
+		},
+		slider: {
+			parent: window, role: atspiRoleSlider,
+			states: atspiTestStates(
+				atspiStateEnabled, atspiStateFocusable, atspiStateShowing, atspiStateVisible,
+			),
+			properties: map[string]string{atspiPropertyName: "Volume"},
+			interfaces: []string{atspiShortComponent, atspiShortValue},
+			value:      0, minimumIncrement: 1,
+		},
+	})
+	query.apps = []atspiReference{application}
+	query.pids[application.Bus] = 42
+	request := ActionRequest{
+		Target:    Target{ProcessID: 42, ExpectedTitle: "Fixture"},
+		Reference: []byte(referenceKey(slider)), Action: "set-value", Value: []byte("1"),
+		Expected: ElementExpectation{
+			Role: "slider", Name: "Volume", States: []string{elementStateEnabled},
+			Actions: []string{"focus", "set-value", "increment", "decrement"},
+		},
+		Postcondition: &ElementCondition{Kind: ElementConditionValueEqualsActionValue},
+	}
+
+	windowTitleCalls := 0
+	query.propertyHook = func(reference atspiReference, name string) {
+		if reference != window || name != atspiPropertyName {
+			return
+		}
+		windowTitleCalls++
+		if windowTitleCalls == 2 {
+			query.objects[referenceKey(slider)].states = atspiTestStates(
+				atspiStateEnabled, atspiStateFocusable, atspiStateReadOnly,
+				atspiStateShowing, atspiStateVisible,
+			)
+			query.propertyHook = nil
+		}
+	}
+
+	result, err := actATSPI(t.Context(), query, request, slider)
+	if !errors.Is(err, ErrStaleTarget) || result.AlreadySatisfied || result.Dispatched || len(query.mutationCalls) != 0 {
+		t.Fatalf("read-only slider drift = %+v, %v, calls=%v", result, err, query.mutationCalls)
+	}
+}
+
+func TestATSPIConditionAcceptsExpansionActionInversion(t *testing.T) {
+	combobox := atspiTestReference("combobox")
+	query := newFakeATSPIQuery(map[atspiReference]*fakeATSPIObject{
+		combobox: {
+			role: atspiRoleComboBox,
+			states: atspiTestStates(
+				atspiStateEnabled, atspiStateExpanded, atspiStateShowing, atspiStateVisible,
+			),
+			properties:  map[string]string{atspiPropertyName: "Options"},
+			interfaces:  []string{atspiShortAction},
+			actionCount: 1,
+			actionNames: []string{"collapse"},
+		},
+	})
+	request := ActionRequest{
+		Reference: []byte(referenceKey(combobox)),
+		Action:    "expand",
+		Expected: ElementExpectation{
+			Role: "combobox", Name: "Options",
+			States:  []string{elementStateEnabled, elementStateCollapsed},
+			Actions: []string{"expand"},
+		},
+		Postcondition: &ElementCondition{
+			Kind: ElementConditionStatePresent, State: elementStateExpanded,
+		},
+	}
+
+	satisfied, err := checkATSPIElementCondition(t.Context(), query, combobox, request)
+	if err != nil || !satisfied || len(query.mutationCalls) != 0 {
+		t.Fatalf("expanded condition = %t, %v, calls=%v", satisfied, err, query.mutationCalls)
+	}
+}
+
+func TestAccessibilityEarlyErrorsReportCompleteCleanup(t *testing.T) {
+	t.Parallel()
+	action, err := Act(t.Context(), ActionRequest{})
+	if !errors.Is(err, ErrStaleTarget) || action.Dispatched || action.AlreadySatisfied || !action.CleanupComplete {
+		t.Fatalf("early action error = %+v, %v", action, err)
+	}
+	condition, err := Check(t.Context(), ActionRequest{})
+	if !errors.Is(err, ErrStaleTarget) || condition.Satisfied || !condition.CleanupComplete {
+		t.Fatalf("early condition error = %+v, %v", condition, err)
+	}
+}
+
+func TestCheckATSPIValueConditionDoesNotMutateOrConsumeActionValue(t *testing.T) {
+	application := atspiTestReference("application")
+	window := atspiTestReference("window")
+	textbox := atspiTestReference("textbox")
+	query := newFakeATSPIQuery(map[atspiReference]*fakeATSPIObject{
+		application: {children: []atspiReference{window}},
+		window: {
+			parent: application, children: []atspiReference{textbox}, role: atspiRoleFrame,
+			properties: map[string]string{atspiPropertyName: "Fixture"},
+		},
+		textbox: {
+			parent: window, role: atspiRoleEntry,
+			states: atspiTestStates(
+				atspiStateEditable, atspiStateEnabled, atspiStateShowing, atspiStateVisible,
+			),
+			properties: map[string]string{atspiPropertyName: "Notes"},
+			interfaces: []string{atspiShortEditableText, atspiShortText},
+			text:       "private value",
+		},
+	})
+	query.apps = []atspiReference{application}
+	query.pids[application.Bus] = 42
+	value := []byte("private value")
+	request := ActionRequest{
+		Target:    Target{ProcessID: 42, ExpectedTitle: "Fixture"},
+		Reference: []byte(referenceKey(textbox)), Action: "set-value", Value: value,
+		Expected: ElementExpectation{
+			Role: "textbox", Name: "Notes", States: []string{elementStateEnabled},
+			Actions: []string{"set-value"},
+		},
+		Postcondition: &ElementCondition{Kind: ElementConditionValueEqualsActionValue},
+	}
+
+	result, err := checkATSPI(t.Context(), query, request, textbox)
+	if err != nil || !result.Satisfied || len(query.mutationCalls) != 0 ||
+		!slices.Equal(value, []byte("private value")) {
+		t.Fatalf("value condition = %+v, %v, calls=%v, value=%q", result, err, query.mutationCalls, value)
+	}
+
+	boundary := strings.Repeat("x", maxElementConditionValueBytes)
+	request.Value = []byte(boundary)
+	query.objects[referenceKey(textbox)].text = boundary
+	result, err = checkATSPI(t.Context(), query, request, textbox)
+	if err != nil || !result.Satisfied {
+		t.Fatalf("exact boundary value condition = %+v, %v", result, err)
+	}
+	query.objects[referenceKey(textbox)].text = boundary + "x"
+	result, err = checkATSPI(t.Context(), query, request, textbox)
+	if err != nil || result.Satisfied {
+		t.Fatalf("truncated-prefix value condition = %+v, %v", result, err)
+	}
+	limits := query.textLimits[referenceKey(textbox)]
+	if len(limits) == 0 || limits[len(limits)-1] != maxElementConditionValueBytes+1 {
+		t.Fatalf("value condition text limits = %v, want final limit %d", limits, maxElementConditionValueBytes+1)
+	}
+
+	request.Value = []byte(strings.Repeat("x", maxElementConditionValueBytes+1))
+	textCalls := query.textCalls[referenceKey(textbox)]
+	result, err = checkATSPI(t.Context(), query, request, textbox)
+	if !errors.Is(err, ErrInvalidTree) || result.Satisfied ||
+		query.textCalls[referenceKey(textbox)] != textCalls {
+		t.Fatalf("oversized condition = %+v, %v, text calls=%d, want %d",
+			result, err, query.textCalls[referenceKey(textbox)], textCalls)
+	}
+}
+
+func TestFakeATSPITextLimitUsesCharacterOffsets(t *testing.T) {
+	textbox := atspiTestReference("textbox")
+	query := newFakeATSPIQuery(map[atspiReference]*fakeATSPIObject{
+		textbox: {text: "éx"},
+	})
+	got, err := query.text(t.Context(), textbox, 1)
+	if err != nil || got != "é" {
+		t.Fatalf("one-character AT-SPI text = %q, %v; want é", got, err)
+	}
+}
+
 func TestActATSPIPreservesPostDispatchBoundaryAndSupportsEmptyText(t *testing.T) {
 	application := atspiTestReference("application")
 	window := atspiTestReference("window")
@@ -621,7 +1066,7 @@ func TestActATSPIPreservesPostDispatchBoundaryAndSupportsEmptyText(t *testing.T)
 	query.pids[application.Bus] = 42
 	request := ActionRequest{
 		Target:    Target{ProcessID: 42, ExpectedTitle: "Fixture"},
-		Reference: []byte(referenceKey(textbox)), Action: "set-value", Value: "",
+		Reference: []byte(referenceKey(textbox)), Action: "set-value",
 		Expected: ElementExpectation{
 			Role: "textbox", Name: "Notes", States: []string{"enabled"},
 			Actions: []string{"set-value"},
@@ -771,13 +1216,13 @@ func TestActATSPIRevalidatesSliderSemanticsAfterRangePreparation(t *testing.T) {
 
 	query.objects[referenceKey(slider)].properties[atspiPropertyName] = "Volume"
 	request.Action = "set-value"
-	request.Value = "11"
+	request.Value = []byte("11")
 	result, err = actATSPI(t.Context(), query, request, slider)
 	if !errors.Is(err, ErrInvalidTree) || result.Dispatched || len(query.mutationCalls) != 0 {
 		t.Fatalf("out-of-range slider value = %+v, %v, calls=%v", result, err, query.mutationCalls)
 	}
 
-	request.Value = "8"
+	request.Value = []byte("8")
 	minimumStepCalls := 0
 	query.minimumStepHook = func() {
 		minimumStepCalls++
@@ -821,7 +1266,7 @@ func TestActATSPIRevalidatesSliderSemanticsAfterRangePreparation(t *testing.T) {
 
 	query.objects[referenceKey(slider)].properties[atspiPropertyName] = "Volume"
 	request.Action = "increment"
-	request.Value = ""
+	request.Value = nil
 	minimumStepCalls = 0
 	query.minimumStepHook = func() {
 		minimumStepCalls++

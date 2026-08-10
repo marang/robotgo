@@ -74,6 +74,29 @@ func fullAccessibilityLimits() AccessibilityLimits {
 	}
 }
 
+func TestResolveAXPathUsesCurrentStructuralOccupantAndReleasesSiblings(t *testing.T) {
+	t.Parallel()
+	query := newFakeAXSemanticQuery(map[int]fakeAXSemanticNode{
+		1: {pid: 42, children: []int{2, 3}},
+		2: {pid: 42},
+		3: {pid: 42},
+	})
+	element, err := resolveAXPath(t.Context(), query, 1, []uint32{1}, 42)
+	if err != nil || element != 3 || query.releases[1] != 1 || query.releases[2] != 1 || query.releases[3] != 0 {
+		t.Fatalf("initial path = %d, %v releases=%v", element, err, query.releases)
+	}
+	query.release(element)
+
+	root := query.nodes[1]
+	root.children = []int{3, 2}
+	query.nodes[1] = root
+	element, err = resolveAXPath(t.Context(), query, 1, []uint32{1}, 42)
+	if err != nil || element != 2 || query.releases[1] != 2 || query.releases[3] != 2 || query.releases[2] != 1 {
+		t.Fatalf("reordered path = %d, %v releases=%v", element, err, query.releases)
+	}
+	query.release(element)
+}
+
 func TestBuildAXSemanticTreePreservesPrivacyAndOwnership(t *testing.T) {
 	t.Parallel()
 	nodes := map[int]fakeAXSemanticNode{
@@ -131,6 +154,21 @@ func TestBuildAXSemanticTreePreservesPrivacyAndOwnership(t *testing.T) {
 	}
 	if len(snapshot.Nodes[0].Reference) != 11 || len(snapshot.Nodes[1].Reference) != 15 {
 		t.Fatalf("observation references have unexpected lengths: %d, %d", len(snapshot.Nodes[0].Reference), len(snapshot.Nodes[1].Reference))
+	}
+}
+
+func TestBuildAXSemanticTreePropagatesTruncatedValue(t *testing.T) {
+	t.Parallel()
+	query := newFakeAXSemanticQuery(map[int]fakeAXSemanticNode{
+		1: {
+			pid: 42, structure: axSemanticStructure{Role: "window"},
+			details: axSemanticDetails{Value: "bounded", ValueTruncated: true},
+		},
+	})
+	snapshot, err := buildAXSemanticTree(t.Context(), query, 1, 42, 77, fullAccessibilityLimits())
+	if err != nil || len(snapshot.Nodes) != 1 || !snapshot.Truncated ||
+		snapshot.Nodes[0].Value != "bounded" || query.releases[1] != 1 {
+		t.Fatalf("truncated value snapshot = %+v, %v, releases=%v", snapshot, err, query.releases)
 	}
 }
 
@@ -206,6 +244,7 @@ func TestMapAXRoleUsesOnlyFixedVocabulary(t *testing.T) {
 		{role: "AXWindow", subrole: "AXDialog", want: "dialog"},
 		{role: "AXTextField", want: "textbox"},
 		{role: "AXTextField", subrole: "AXSecureTextField", sensitive: true, want: "password"},
+		{role: "AXCheckBox", subrole: "AXSwitch", want: "switch"},
 		{role: "AXUnknownPrivateRole", want: "generic"},
 	}
 	for _, test := range tests {

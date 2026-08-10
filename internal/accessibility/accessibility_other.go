@@ -16,5 +16,9 @@ func inspect(context.Context, Target, Limits) (Snapshot, error) {
 }
 
 func act(context.Context, ActionRequest) (ActionResult, error) {
-	return ActionResult{}, ErrUnsupported
+	return ActionResult{CleanupComplete: true}, ErrUnsupported
+}
+
+func check(context.Context, ActionRequest) (ConditionResult, error) {
+	return ConditionResult{CleanupComplete: true}, ErrUnsupported
 }

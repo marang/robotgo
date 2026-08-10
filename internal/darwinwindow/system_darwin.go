@@ -81,6 +81,11 @@ type size struct {
 	Height float64
 }
 
+type cfRange struct {
+	Location int64
+	Length   int64
+}
+
 type nativeSystem struct {
 	mu  sync.Mutex
 	api *nativeAPI
@@ -377,7 +382,7 @@ func (system *nativeSystem) Close() error {
 
 func (system *nativeSystem) readyLocked() (*nativeAPI, error) {
 	if system.api == nil {
-		api, err := openNativeAPI()
+		api, _, err := openNativeAPI()
 		if err != nil {
 			return nil, err
 		}

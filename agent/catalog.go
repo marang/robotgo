@@ -54,7 +54,12 @@ func elementActCapability(policy Policy, capabilities robotgo.RuntimeCapabilitie
 		Risk: RiskElevatedMutation, ConfirmationRequired: confirmationRequired,
 		Cancellation: CancellationCooperative, ProcessGlobalBackend: true,
 		ExclusiveAgentSession: true, Reason: feature.Reason, Remediation: remediation,
-		UnavailableCode: featureUnavailableCode(feature),
+		UnavailableCode:              featureUnavailableCode(feature),
+		ActionProofVersion:           ActionProofSchemaVersion,
+		UIConditionKinds:             append([]UIElementConditionKind(nil), allUIElementConditionKinds...),
+		UIVerificationAttempts:       policy.UIVerificationAttempts,
+		UIVerificationIntervalMillis: policy.UIVerificationIntervalMillis,
+		UIVerificationTimeoutMillis:  policy.UIVerificationTimeoutMillis,
 	}
 }
 
@@ -387,6 +392,10 @@ func cloneCatalog(source OperationCatalog) OperationCatalog {
 		cloned.Operations[index].ScrollAxes = append(
 			[]ScrollAxis(nil),
 			cloned.Operations[index].ScrollAxes...,
+		)
+		cloned.Operations[index].UIConditionKinds = append(
+			[]UIElementConditionKind(nil),
+			cloned.Operations[index].UIConditionKinds...,
 		)
 	}
 	return cloned

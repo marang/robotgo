@@ -108,16 +108,22 @@ func TestWindowsUIAInspectsAndActsOnlyOnSelfOwnedBoundedFixture(t *testing.T) {
 	if inputNode == nil || inputNode.Bounds == nil {
 		t.Fatal("editable fixture node lacks an actionable semantic identity")
 	}
-	action, err := Act(ctx, ActionRequest{
+	actionRequest := ActionRequest{
 		Target:    Target{NativeWindowHandle: int(fixture.handle), ExpectedTitle: windowsFixtureTitle},
-		Reference: inputNode.Reference, Action: "set-value", Value: windowsFixtureUpdated,
+		Reference: inputNode.Reference, Action: "set-value", Value: []byte(windowsFixtureUpdated),
 		Expected: ElementExpectation{
 			Role: inputNode.Role, Name: inputNode.Name, Sensitive: inputNode.Sensitive,
 			States: inputNode.States, Bounds: inputNode.Bounds, Actions: inputNode.Actions,
 		},
-	})
-	if err != nil || !action.Dispatched {
+		Postcondition: &ElementCondition{Kind: ElementConditionValueEqualsActionValue},
+	}
+	action, err := Act(ctx, actionRequest)
+	if err != nil || !action.Dispatched || action.AlreadySatisfied || !action.CleanupComplete {
 		t.Fatalf("self-owned UIA set-value = %+v, %v", action, err)
+	}
+	idempotent, err := Act(ctx, actionRequest)
+	if err != nil || idempotent.Dispatched || !idempotent.AlreadySatisfied || !idempotent.CleanupComplete {
+		t.Fatalf("already-satisfied self-owned UIA set-value = %+v, %v", idempotent, err)
 	}
 	updated, err := Inspect(ctx, Target{
 		NativeWindowHandle: int(fixture.handle), ExpectedTitle: windowsFixtureTitle,
@@ -141,9 +147,20 @@ func TestWindowsUIAInspectsAndActsOnlyOnSelfOwnedBoundedFixture(t *testing.T) {
 
 func waitForWindowsUIAFixtureSnapshot(t *testing.T, ctx context.Context, handle uintptr) Snapshot {
 	t.Helper()
-	deadline := time.Now().Add(5 * time.Second)
+	waitCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	var lastErr error
 	for {
-		snapshot, err := Inspect(ctx, Target{
+		if err := waitCtx.Err(); err != nil {
+			if ctxErr := ctx.Err(); ctxErr != nil {
+				t.Fatal(ctxErr)
+			}
+			if lastErr != nil {
+				t.Fatalf("fixture did not become inspectable before the bounded deadline: %v", lastErr)
+			}
+			t.Fatal("editable fixture did not become actionable before the bounded deadline")
+		}
+		snapshot, err := Inspect(waitCtx, Target{
 			NativeWindowHandle: int(handle),
 			ExpectedTitle:      windowsFixtureTitle,
 		}, Limits{
@@ -157,21 +174,26 @@ func waitForWindowsUIAFixtureSnapshot(t *testing.T, ctx context.Context, handle 
 			ReadStates: true, ReadBounds: true, ReadFocus: true, ReadActions: true,
 		})
 		if err != nil {
-			t.Fatal(err)
-		}
-		for _, node := range snapshot.Nodes {
-			if node.Role == "textbox" && node.Value == windowsFixtureVisible && node.Bounds != nil &&
-				slices.Contains(node.States, "enabled") && slices.Contains(node.Actions, "set-value") {
-				return snapshot
+			waitErr := waitCtx.Err()
+			if waitErr != nil && errors.Is(err, waitErr) {
+				// Preserve the last UIA stage error for the bounded timeout report.
+			} else if !errors.Is(err, ErrStaleTarget) && !errors.Is(err, ErrUnavailable) {
+				t.Fatal(err)
+			} else {
+				lastErr = err
+			}
+		} else {
+			lastErr = nil
+			for _, node := range snapshot.Nodes {
+				if node.Role == "textbox" && node.Value == windowsFixtureVisible && node.Bounds != nil &&
+					slices.Contains(node.States, "enabled") && slices.Contains(node.Actions, "set-value") {
+					return snapshot
+				}
 			}
 		}
 		clearSnapshot(&snapshot)
-		if time.Now().After(deadline) {
-			t.Fatal("editable fixture did not become actionable before the bounded deadline")
-		}
 		select {
-		case <-ctx.Done():
-			t.Fatal(ctx.Err())
+		case <-waitCtx.Done():
 		case <-time.After(50 * time.Millisecond):
 		}
 	}
