@@ -427,6 +427,76 @@ func TestBuildATSPITreeEnforcesElementDepthAndReferenceLimits(t *testing.T) {
 	}
 }
 
+func TestBuildATSPITreeScopesMixedValidationAndProjectsReadOnly(t *testing.T) {
+	root := atspiTestReference("mixed_root")
+	control := atspiTestReference("mixed_control")
+	query := newFakeATSPIQuery(map[atspiReference]*fakeATSPIObject{
+		root: {
+			children: []atspiReference{control}, role: atspiRoleFrame,
+			states:     atspiTestStates(atspiStateShowing, atspiStateVisible),
+			properties: map[string]string{atspiPropertyName: "Fixture"},
+		},
+		control: {
+			role: atspiRoleSwitch,
+			states: atspiTestStates(
+				atspiStateEnabled, atspiStateFocusable, atspiStateIndeterminate,
+				atspiStateShowing, atspiStateVisible,
+			),
+			properties:  map[string]string{atspiPropertyName: "Mode"},
+			interfaces:  []string{atspiShortAction, atspiShortComponent},
+			actionCount: 1, actionNames: []string{"toggle"},
+		},
+	})
+	limits := atspiTestLimits()
+
+	// A disallowed control remains structural and must not trigger private
+	// property or interface reads merely because its native state is mixed.
+	if snapshot, err := buildATSPITree(t.Context(), query, root, limits); err != nil || len(snapshot.Nodes) != 2 {
+		t.Fatalf("disallowed mixed switch snapshot = %+v, %v", snapshot, err)
+	}
+	controlKey := referenceKey(control)
+	if query.propertyCalls[controlKey+":"+atspiPropertyName] != 0 || query.interfaceCalls[controlKey] != 0 {
+		t.Fatalf("disallowed mixed switch reads = properties %v, interfaces %v",
+			query.propertyCalls, query.interfaceCalls)
+	}
+
+	limits.AllowedRoles["switch"] = true
+	if _, err := buildATSPITree(t.Context(), query, root, limits); !errors.Is(err, ErrInvalidTree) {
+		t.Fatalf("allowed mixed switch error = %v", err)
+	}
+
+	query.objects[controlKey].role = atspiRoleSlider
+	query.objects[controlKey].states = atspiTestStates(
+		atspiStateEnabled, atspiStateFocusable, atspiStateReadOnly,
+		atspiStateShowing, atspiStateVisible,
+	)
+	query.objects[controlKey].interfaces = []string{atspiShortComponent, atspiShortValue}
+	query.objects[controlKey].actionCount = 0
+	query.objects[controlKey].actionNames = nil
+	query.minimumStepErr = ErrUnavailable
+	delete(limits.AllowedRoles, "switch")
+	limits.AllowedRoles["slider"] = true
+	snapshot, err := buildATSPITree(t.Context(), query, root, limits)
+	if err != nil || len(snapshot.Nodes) != 2 ||
+		fmt.Sprint(snapshot.Nodes[1].States) != "[enabled read-only]" ||
+		fmt.Sprint(snapshot.Nodes[1].Actions) != "[focus]" {
+		t.Fatalf("read-only slider snapshot = %+v, %v", snapshot, err)
+	}
+	request := ActionRequest{
+		Reference: []byte(referenceKey(control)), Action: "focus",
+		Expected: ElementExpectation{
+			Role: "slider", Name: "Mode", States: []string{elementStateEnabled, elementStateReadOnly},
+			Actions: []string{"focus"},
+		},
+		Postcondition: &ElementCondition{
+			Kind: ElementConditionStateAbsent, State: elementStateReadOnly,
+		},
+	}
+	if satisfied, err := checkATSPIElementCondition(t.Context(), query, control, request); err != nil || satisfied {
+		t.Fatalf("read-only slider condition = %t, %v", satisfied, err)
+	}
+}
+
 func TestATSPIFixedRoleStateAndActionMappings(t *testing.T) {
 	words := atspiTestStates(4, 5, 8, 11, 23, 33, 36)
 	if got := mapATSPIRole(79); got != "textbox" {
@@ -440,6 +510,43 @@ func TestATSPIFixedRoleStateAndActionMappings(t *testing.T) {
 	}
 	if got := fmt.Sprint(mapATSPIStates("radio", words)); got != "[enabled collapsed selected required invalid]" {
 		t.Fatalf("radio states = %s", got)
+	}
+	mixed := atspiTestStates(atspiStateEnabled, atspiStateIndeterminate)
+	for _, role := range []string{"checkbox", "radio"} {
+		if err := validateATSPINativeStates(role, mixed); err != nil {
+			t.Fatalf("mixed %s state = %v", role, err)
+		}
+		if got := fmt.Sprint(mapATSPIStates(role, mixed)); got != "[enabled]" {
+			t.Fatalf("mixed %s states = %s", role, got)
+		}
+	}
+	for _, test := range []struct {
+		name string
+		role string
+		bits []uint32
+	}{
+		{name: "mixed switch", role: "switch", bits: []uint32{atspiStateIndeterminate}},
+		{name: "mixed checked checkbox", role: "checkbox", bits: []uint32{atspiStateIndeterminate, atspiStateChecked}},
+		{name: "mixed selected radio", role: "radio", bits: []uint32{atspiStateIndeterminate, atspiStateSelected}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			if err := validateATSPINativeStates(test.role, atspiTestStates(test.bits...)); !errors.Is(err, ErrInvalidTree) {
+				t.Fatalf("invalid mixed state = %v", err)
+			}
+		})
+	}
+	mixedSelectedCheckbox := atspiTestStates(
+		atspiStateEnabled, atspiStateIndeterminate, atspiStateSelected,
+	)
+	if err := validateATSPINativeStates("checkbox", mixedSelectedCheckbox); err != nil {
+		t.Fatalf("mixed selected checkbox state = %v", err)
+	}
+	if got := fmt.Sprint(mapATSPIStates("checkbox", mixedSelectedCheckbox)); got != "[enabled selected]" {
+		t.Fatalf("mixed selected checkbox states = %s", got)
+	}
+	readOnly := atspiTestStates(atspiStateEnabled, atspiStateFocusable, atspiStateReadOnly)
+	if got := fmt.Sprint(mapATSPIStates("slider", readOnly)); got != "[enabled read-only]" {
+		t.Fatalf("read-only slider states = %s", got)
 	}
 	if got := fmt.Sprint(inferATSPIActions("checkbox", words, map[string]bool{
 		"Action": true, "Component": true,
@@ -475,6 +582,26 @@ func TestATSPIFixedRoleStateAndActionMappings(t *testing.T) {
 		atspiShortEditableText: true,
 	}, nil, false)); got != "[set-value]" {
 		t.Fatalf("editable textbox actions = %s", got)
+	}
+	if got := fmt.Sprint(inferATSPIActions("switch", readOnly, map[string]bool{
+		atspiShortAction: true, atspiShortComponent: true,
+	}, []string{"toggle"}, false)); got != "[focus]" {
+		t.Fatalf("read-only switch actions = %s", got)
+	}
+	if got := fmt.Sprint(inferATSPIActions("textbox", atspiTestStates(
+		atspiStateEditable, atspiStateEnabled, atspiStateReadOnly,
+	), map[string]bool{atspiShortEditableText: true}, nil, false)); got != "[]" {
+		t.Fatalf("explicitly read-only textbox actions = %s", got)
+	}
+	if got := fmt.Sprint(inferATSPIActions("slider", readOnly, map[string]bool{
+		atspiShortValue: true, atspiShortComponent: true,
+	}, nil, true)); got != "[focus]" {
+		t.Fatalf("read-only slider actions = %s", got)
+	}
+	if got := fmt.Sprint(inferATSPIActions("combobox", atspiTestStates(
+		atspiStateCollapsed, atspiStateEnabled, atspiStateFocusable, atspiStateReadOnly,
+	), map[string]bool{atspiShortAction: true, atspiShortComponent: true}, []string{"expand"}, false)); got != "[focus expand]" {
+		t.Fatalf("read-only combobox disclosure actions = %s", got)
 	}
 }
 
@@ -690,6 +817,109 @@ func TestATSPIConditionGateIsIdempotentAndFailsClosed(t *testing.T) {
 	result, err = actATSPI(t.Context(), query, request, checkbox)
 	if !errors.Is(err, context.DeadlineExceeded) || result.AlreadySatisfied || result.Dispatched || len(query.mutationCalls) != 0 {
 		t.Fatalf("failed condition read = %+v, %v, calls=%v", result, err, query.mutationCalls)
+	}
+}
+
+func TestATSPIConditionRejectsMixedSwitchWithoutDispatch(t *testing.T) {
+	application := atspiTestReference("mixed_application")
+	window := atspiTestReference("mixed_window")
+	control := atspiTestReference("mixed_switch")
+	query := newFakeATSPIQuery(map[atspiReference]*fakeATSPIObject{
+		application: {children: []atspiReference{window}},
+		window: {
+			parent: application, children: []atspiReference{control}, role: atspiRoleFrame,
+			properties: map[string]string{atspiPropertyName: "Fixture"},
+		},
+		control: {
+			parent: window, role: atspiRoleSwitch,
+			states: atspiTestStates(
+				atspiStateEnabled, atspiStateFocusable, atspiStateIndeterminate,
+				atspiStateShowing, atspiStateVisible,
+			),
+			properties:  map[string]string{atspiPropertyName: "Remember"},
+			interfaces:  []string{atspiShortAction, atspiShortComponent},
+			actionCount: 1, actionNames: []string{"toggle"},
+		},
+	})
+	query.apps = []atspiReference{application}
+	query.pids[application.Bus] = 42
+	request := ActionRequest{
+		Target:    Target{ProcessID: 42, ExpectedTitle: "Fixture"},
+		Reference: []byte(referenceKey(control)), Action: "toggle",
+		Expected: ElementExpectation{
+			Role: "switch", Name: "Remember", States: []string{elementStateEnabled},
+			Actions: []string{"toggle", "focus"},
+		},
+		Postcondition: &ElementCondition{
+			Kind: ElementConditionStateAbsent, State: elementStateChecked,
+		},
+	}
+
+	result, err := actATSPI(t.Context(), query, request, control)
+	if !errors.Is(err, ErrInvalidTree) || result.AlreadySatisfied || result.Dispatched || len(query.mutationCalls) != 0 {
+		t.Fatalf("mixed switch action = %+v, %v, calls=%v", result, err, query.mutationCalls)
+	}
+
+	// Mixed checkboxes remain intentionally observable without claiming the
+	// canonical checked state, so v1 state-absent may be satisfied read-only.
+	query.objects[referenceKey(control)].role = atspiRoleCheckBox
+	request.Expected.Role = "checkbox"
+	result, err = actATSPI(t.Context(), query, request, control)
+	if err != nil || !result.AlreadySatisfied || result.Dispatched || len(query.mutationCalls) != 0 {
+		t.Fatalf("mixed checkbox action = %+v, %v, calls=%v", result, err, query.mutationCalls)
+	}
+}
+
+func TestATSPIReadOnlyDriftSuppressesValueMutation(t *testing.T) {
+	application := atspiTestReference("readonly_application")
+	window := atspiTestReference("readonly_window")
+	slider := atspiTestReference("readonly_slider")
+	query := newFakeATSPIQuery(map[atspiReference]*fakeATSPIObject{
+		application: {children: []atspiReference{window}},
+		window: {
+			parent: application, children: []atspiReference{slider}, role: atspiRoleFrame,
+			properties: map[string]string{atspiPropertyName: "Fixture"},
+		},
+		slider: {
+			parent: window, role: atspiRoleSlider,
+			states: atspiTestStates(
+				atspiStateEnabled, atspiStateFocusable, atspiStateShowing, atspiStateVisible,
+			),
+			properties: map[string]string{atspiPropertyName: "Volume"},
+			interfaces: []string{atspiShortComponent, atspiShortValue},
+			value:      0, minimumIncrement: 1,
+		},
+	})
+	query.apps = []atspiReference{application}
+	query.pids[application.Bus] = 42
+	request := ActionRequest{
+		Target:    Target{ProcessID: 42, ExpectedTitle: "Fixture"},
+		Reference: []byte(referenceKey(slider)), Action: "set-value", Value: []byte("1"),
+		Expected: ElementExpectation{
+			Role: "slider", Name: "Volume", States: []string{elementStateEnabled},
+			Actions: []string{"focus", "set-value", "increment", "decrement"},
+		},
+		Postcondition: &ElementCondition{Kind: ElementConditionValueEqualsActionValue},
+	}
+
+	windowTitleCalls := 0
+	query.propertyHook = func(reference atspiReference, name string) {
+		if reference != window || name != atspiPropertyName {
+			return
+		}
+		windowTitleCalls++
+		if windowTitleCalls == 2 {
+			query.objects[referenceKey(slider)].states = atspiTestStates(
+				atspiStateEnabled, atspiStateFocusable, atspiStateReadOnly,
+				atspiStateShowing, atspiStateVisible,
+			)
+			query.propertyHook = nil
+		}
+	}
+
+	result, err := actATSPI(t.Context(), query, request, slider)
+	if !errors.Is(err, ErrStaleTarget) || result.AlreadySatisfied || result.Dispatched || len(query.mutationCalls) != 0 {
+		t.Fatalf("read-only slider drift = %+v, %v, calls=%v", result, err, query.mutationCalls)
 	}
 }
 

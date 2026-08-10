@@ -6,6 +6,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"errors"
+	"fmt"
 	"math"
 	"strconv"
 	"strings"
@@ -67,18 +68,20 @@ const (
 )
 
 const (
-	atspiStateChecked   uint32 = 4
-	atspiStateCollapsed uint32 = 5
-	atspiStateEditable  uint32 = 7
-	atspiStateEnabled   uint32 = 8
-	atspiStateExpanded  uint32 = 10
-	atspiStateFocusable uint32 = 11
-	atspiStateFocused   uint32 = 12
-	atspiStateSelected  uint32 = 23
-	atspiStateShowing   uint32 = 25
-	atspiStateVisible   uint32 = 30
-	atspiStateRequired  uint32 = 33
-	atspiStateInvalid   uint32 = 36
+	atspiStateChecked       uint32 = 4
+	atspiStateCollapsed     uint32 = 5
+	atspiStateEditable      uint32 = 7
+	atspiStateEnabled       uint32 = 8
+	atspiStateExpanded      uint32 = 10
+	atspiStateFocusable     uint32 = 11
+	atspiStateFocused       uint32 = 12
+	atspiStateSelected      uint32 = 23
+	atspiStateShowing       uint32 = 25
+	atspiStateVisible       uint32 = 30
+	atspiStateIndeterminate uint32 = 32
+	atspiStateRequired      uint32 = 33
+	atspiStateInvalid       uint32 = 36
+	atspiStateReadOnly      uint32 = 43
 )
 
 type atspiStringBudget struct {
@@ -151,6 +154,13 @@ func buildATSPITree(ctx context.Context, query atspiQuery, root atspiReference, 
 		hidden := !atspiStateSet(stateWords, atspiStateVisible)
 		offscreen := !atspiStateSet(stateWords, atspiStateShowing)
 		sensitive := roleID == atspiRolePasswordText
+		roleAllowed := limits.AllowedRoles[role]
+		if roleAllowed && !hidden && !offscreen && !sensitive &&
+			(limits.ReadStates || limits.ReadActions) {
+			if err := validateATSPINativeStates(role, stateWords); err != nil {
+				return err
+			}
+		}
 		if sensitive || hidden || offscreen {
 			snapshot.Truncated = true
 		}
@@ -159,7 +169,6 @@ func buildATSPITree(ctx context.Context, query atspiQuery, root atspiReference, 
 			Parent:    parent, Depth: depth, Role: role,
 			Sensitive: sensitive, Hidden: hidden, Offscreen: offscreen,
 		}
-		roleAllowed := limits.AllowedRoles[role]
 		if roleAllowed && !hidden && !offscreen && !sensitive {
 			if limits.ReadName {
 				value, err := query.stringProperty(ctx, reference, atspiPropertyName)
@@ -214,9 +223,12 @@ func buildATSPITree(ctx context.Context, query atspiQuery, root atspiReference, 
 			if err != nil {
 				return err
 			}
-			stepActions, err := usableATSPIStepActions(ctx, query, reference, role, interfaces)
-			if err != nil {
-				return err
+			stepActions := false
+			if !atspiStateSet(stateWords, atspiStateReadOnly) {
+				stepActions, err = usableATSPIStepActions(ctx, query, reference, role, interfaces)
+				if err != nil {
+					return err
+				}
 			}
 			node.Actions = inferATSPIActions(role, stateWords, interfaces, actionNames, stepActions)
 		}
@@ -384,8 +396,33 @@ func mapATSPIRole(role uint32) string {
 	}
 }
 
+// validateATSPINativeStates preserves known mixed checkbox/radio values but
+// rejects contradictory active states and indeterminate switches. A mixed
+// switch must never be projected as unchecked.
+func validateATSPINativeStates(role string, words []uint32) error {
+	if !atspiStateSet(words, atspiStateIndeterminate) {
+		return nil
+	}
+	switch role {
+	case "checkbox":
+		if !atspiStateSet(words, atspiStateChecked) {
+			return nil
+		}
+	case "radio":
+		if !atspiStateSet(words, atspiStateChecked) && !atspiStateSet(words, atspiStateSelected) {
+			return nil
+		}
+	case "switch":
+		// Switches have no mixed state in the normalized v1 contract.
+	default:
+		return nil
+	}
+	return fmt.Errorf("atspi indeterminate state is unsupported for role %q: %w", role, ErrInvalidTree)
+}
+
 func mapATSPIStates(role string, words []uint32) []string {
 	states := make([]string, 0, 5)
+	mixed := atspiStateSet(words, atspiStateIndeterminate)
 	if atspiStateSet(words, atspiStateEnabled) {
 		states = append(states, "enabled")
 	} else if interactiveRole(role) {
@@ -398,6 +435,13 @@ func mapATSPIStates(role string, words []uint32) []string {
 		{atspiStateChecked, "checked"}, {atspiStateCollapsed, "collapsed"}, {atspiStateExpanded, "expanded"},
 		{atspiStateSelected, "selected"}, {atspiStateRequired, "required"}, {atspiStateInvalid, "invalid"},
 	} {
+		if mixed && role == "checkbox" && candidate.state == "checked" {
+			continue
+		}
+		if mixed && role == "radio" &&
+			(candidate.state == "checked" || candidate.state == "selected") {
+			continue
+		}
 		if role == "radio" && candidate.state == "checked" {
 			continue
 		}
@@ -411,7 +455,8 @@ func mapATSPIStates(role string, words []uint32) []string {
 			states = append(states, candidate.state)
 		}
 	}
-	if role == "textbox" && !atspiStateSet(words, atspiStateEditable) {
+	if atspiStateSet(words, atspiStateReadOnly) ||
+		role == "textbox" && !atspiStateSet(words, atspiStateEditable) {
 		states = append(states, "read-only")
 	}
 	return states
@@ -425,13 +470,14 @@ func inferATSPIActions(
 	stepActions bool,
 ) []string {
 	actions := make([]string, 0, 4)
-	if action := defaultATSPIAction(role); findATSPIActionIndex(action, actionNames) >= 0 {
+	readOnly := atspiStateSet(words, atspiStateReadOnly)
+	if action := defaultATSPIAction(role); !readOnly && findATSPIActionIndex(action, actionNames) >= 0 {
 		actions = append(actions, action)
 	}
 	if interfaces[atspiShortComponent] && atspiStateSet(words, atspiStateFocusable) {
 		actions = append(actions, "focus")
 	}
-	if role == "textbox" && interfaces[atspiShortEditableText] && atspiStateSet(words, atspiStateEditable) {
+	if !readOnly && role == "textbox" && interfaces[atspiShortEditableText] && atspiStateSet(words, atspiStateEditable) {
 		actions = append(actions, "set-value")
 	}
 	if atspiStateSet(words, atspiStateCollapsed) && findATSPIActionIndex("expand", actionNames) >= 0 {
@@ -440,7 +486,7 @@ func inferATSPIActions(
 	if atspiStateSet(words, atspiStateExpanded) && findATSPIActionIndex("collapse", actionNames) >= 0 {
 		actions = append(actions, "collapse")
 	}
-	if interfaces[atspiShortValue] && role == "slider" {
+	if !readOnly && interfaces[atspiShortValue] && role == "slider" {
 		actions = append(actions, "set-value")
 		if stepActions {
 			actions = append(actions, "increment", "decrement")

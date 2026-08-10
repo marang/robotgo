@@ -31,17 +31,22 @@ func uiaRangeValueActions(readOnly, available, stepSupported bool, step float64)
 }
 
 // uiaToggleChecked accepts only the three ToggleState values defined by UIA.
-// An advertised Toggle pattern without a readable state cannot safely support
-// observation-bound checked-state postconditions, so it fails closed.
-func uiaToggleChecked(state int32, supported bool) (bool, error) {
+// Mixed checkboxes remain observable without claiming checked, while mixed
+// switches and unreadable states fail closed.
+func uiaToggleChecked(role string, state int32, supported bool) (bool, error) {
 	if !supported {
 		return false, fmt.Errorf("uia toggle state is missing: %w", ErrInvalidTree)
 	}
 	switch state {
-	case uiaToggleStateOff, uiaToggleStateIndeterminate:
+	case uiaToggleStateOff:
 		return false, nil
 	case uiaToggleStateOn:
 		return true, nil
+	case uiaToggleStateIndeterminate:
+		if role == "checkbox" {
+			return false, nil
+		}
+		return false, fmt.Errorf("uia toggle state is indeterminate for role %q: %w", role, ErrInvalidTree)
 	default:
 		return false, fmt.Errorf("uia toggle state is invalid: %w", ErrInvalidTree)
 	}

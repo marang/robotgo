@@ -959,6 +959,9 @@ values and mixed switch values fail closed. A native backend that cannot
 observe the required state, focus, value, or action fails closed instead of
 treating a missing property as false or empty. Exact value checks never treat a
 backend-bounded prefix as proof of equality with the private action value.
+An explicit AT-SPI read-only state is projected as canonical `read-only` and
+suppresses mutating press, toggle, and value actions; focus and pure disclosure
+remain available.
 
 Every `ActUIElement` return includes Action Proof v1 with opaque transaction
 lineage, fixed resolution/authorization/execution/verification outcomes,

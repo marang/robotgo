@@ -362,7 +362,7 @@ func (query *uiaCOMQuery) states(
 			if err != nil {
 				return nil, err
 			}
-			checked, err := uiaToggleChecked(state, supported)
+			checked, err := uiaToggleChecked(role, state, supported)
 			if err != nil {
 				return nil, err
 			}
@@ -429,7 +429,7 @@ func (query *uiaCOMQuery) observableStates(
 			if err != nil {
 				return nil, err
 			}
-			if _, err := uiaToggleChecked(state, supported); err != nil {
+			if _, err := uiaToggleChecked(role, state, supported); err != nil {
 				return nil, err
 			}
 			states = append(states, elementStateChecked)
@@ -514,7 +514,7 @@ func (query *uiaCOMQuery) actions(
 			if err != nil {
 				return nil, err
 			}
-			if _, err := uiaToggleChecked(state, supported); err != nil {
+			if _, err := uiaToggleChecked(role, state, supported); err != nil {
 				return nil, err
 			}
 		}

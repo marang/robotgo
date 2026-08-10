@@ -471,6 +471,10 @@ func readATSPIActionElement(
 		!atspiStateSet(states, atspiStateVisible) || !atspiStateSet(states, atspiStateShowing) {
 		return atspiActionElement{}, ErrStaleTarget
 	}
+	role := mapATSPIRole(roleID)
+	if err := validateATSPINativeStates(role, states); err != nil {
+		return atspiActionElement{}, err
+	}
 	name, err := query.stringProperty(ctx, reference, atspiPropertyName)
 	if err != nil {
 		return atspiActionElement{}, normalizeATSPIError(err)
@@ -483,7 +487,6 @@ func readATSPIActionElement(
 	if err != nil {
 		return atspiActionElement{}, err
 	}
-	role := mapATSPIRole(roleID)
 	live := atspiActionElement{
 		roleID: roleID, role: role, name: name, states: mapATSPIStates(role, states),
 		bounds: bounds, focused: atspiStateSet(states, atspiStateFocused),
@@ -494,9 +497,12 @@ func readATSPIActionElement(
 		if err != nil {
 			return atspiActionElement{}, err
 		}
-		stepActions, err := usableATSPIStepActions(ctx, query, reference, role, interfaces)
-		if err != nil {
-			return atspiActionElement{}, err
+		stepActions := false
+		if !atspiStateSet(states, atspiStateReadOnly) {
+			stepActions, err = usableATSPIStepActions(ctx, query, reference, role, interfaces)
+			if err != nil {
+				return atspiActionElement{}, err
+			}
 		}
 		live.actions = inferATSPIActions(role, states, interfaces, actionNames, stepActions)
 		if resolveDispatchAction && nativeATSPIAction(request.Action) {

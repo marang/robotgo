@@ -67,24 +67,29 @@ func TestUIARangeValueActionsRequireUsableSmallChange(t *testing.T) {
 func TestUIAToggleStateFailsClosedWithoutReadableValidState(t *testing.T) {
 	tests := []struct {
 		name      string
+		role      string
 		state     int32
 		supported bool
 		checked   bool
 		wantErr   bool
 	}{
-		{name: "off", state: uiaToggleStateOff, supported: true},
-		{name: "on", state: uiaToggleStateOn, supported: true, checked: true},
-		{name: "indeterminate", state: uiaToggleStateIndeterminate, supported: true},
-		{name: "missing state", state: uiaToggleStateOff, wantErr: true},
-		{name: "invalid state", state: 3, supported: true, wantErr: true},
-		{name: "negative state", state: -1, supported: true, wantErr: true},
+		{name: "checkbox off", role: "checkbox", state: uiaToggleStateOff, supported: true},
+		{name: "checkbox on", role: "checkbox", state: uiaToggleStateOn, supported: true, checked: true},
+		{name: "checkbox indeterminate", role: "checkbox", state: uiaToggleStateIndeterminate, supported: true},
+		{name: "switch off", role: "switch", state: uiaToggleStateOff, supported: true},
+		{name: "switch on", role: "switch", state: uiaToggleStateOn, supported: true, checked: true},
+		{name: "switch indeterminate", role: "switch", state: uiaToggleStateIndeterminate, supported: true, wantErr: true},
+		{name: "missing state", role: "checkbox", state: uiaToggleStateOff, wantErr: true},
+		{name: "invalid state", role: "checkbox", state: 3, supported: true, wantErr: true},
+		{name: "negative state", role: "checkbox", state: -1, supported: true, wantErr: true},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			checked, err := uiaToggleChecked(test.state, test.supported)
-			if checked != test.checked || (err != nil) != test.wantErr {
-				t.Fatalf("uiaToggleChecked(%d, %t) = %t, %v, want %t, error=%t",
-					test.state, test.supported, checked, err, test.checked, test.wantErr)
+			checked, err := uiaToggleChecked(test.role, test.state, test.supported)
+			if checked != test.checked || (err != nil) != test.wantErr ||
+				test.wantErr && !errors.Is(err, ErrInvalidTree) {
+				t.Fatalf("uiaToggleChecked(%q, %d, %t) = %t, %v, want %t, error=%t",
+					test.role, test.state, test.supported, checked, err, test.checked, test.wantErr)
 			}
 		})
 	}
