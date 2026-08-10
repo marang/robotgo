@@ -12,6 +12,10 @@ import (
 const (
 	uiaReferenceVersion = byte(2)
 	maxUIARuntimeIDInts = 256
+
+	uiaToggleStateOff           int32 = 0
+	uiaToggleStateOn            int32 = 1
+	uiaToggleStateIndeterminate int32 = 2
 )
 
 func uiaRangeValueActions(readOnly, available, stepSupported bool, step float64) []string {
@@ -23,6 +27,71 @@ func uiaRangeValueActions(readOnly, available, stepSupported bool, step float64)
 		actions = append(actions, "increment", "decrement")
 	}
 	return actions
+}
+
+// uiaToggleChecked accepts only the three ToggleState values defined by UIA.
+// An advertised Toggle pattern without a readable state cannot safely support
+// observation-bound checked-state postconditions, so it fails closed.
+func uiaToggleChecked(state int32, supported bool) (bool, error) {
+	if !supported {
+		return false, ErrInvalidTree
+	}
+	switch state {
+	case uiaToggleStateOff, uiaToggleStateIndeterminate:
+		return false, nil
+	case uiaToggleStateOn:
+		return true, nil
+	default:
+		return false, ErrInvalidTree
+	}
+}
+
+func uiaRoleUsesToggle(role string) bool {
+	return role == "checkbox" || role == "switch"
+}
+
+func uiaRoleUsesSelectionItem(role string) bool {
+	switch role {
+	case "radio", "tab", "list-item", "menu-item":
+		return true
+	default:
+		return false
+	}
+}
+
+func uiaInteractiveRole(role string) bool {
+	switch role {
+	case "button", "checkbox", "combobox", "radio", "switch", "textbox", "link", "list-item", "menu-item", "tab", "slider":
+		return true
+	default:
+		return false
+	}
+}
+
+// uiaPatternAction maps only reversible TogglePattern controls to toggle.
+// SelectionItem.Select is a one-way selection operation, so radio buttons and
+// other selection items expose it as press instead. In particular, a
+// non-conforming SelectionItem-only checkbox/switch must not appear
+// toggle-capable.
+func uiaPatternAction(role string, toggleAvailable, selectionAvailable bool) string {
+	if uiaRoleUsesToggle(role) && toggleAvailable {
+		return "toggle"
+	}
+	if uiaRoleUsesSelectionItem(role) && selectionAvailable {
+		return "press"
+	}
+	return ""
+}
+
+// uiaSelectionItemState intentionally preserves one canonical state for the
+// native SelectionItem property. "selected" matches the UIA pattern, avoids a
+// schema-visible radio-state remap, and prevents one native transition from
+// appearing as simultaneous checked and selected changes.
+func uiaSelectionItemState(role string, selected bool) string {
+	if selected && uiaRoleUsesSelectionItem(role) {
+		return "selected"
+	}
+	return ""
 }
 
 // UI Automation control type identifiers are stable Windows API constants.
@@ -61,21 +130,25 @@ const (
 )
 
 type uiaNodeStructure struct {
-	RuntimeID   []int32
-	ControlType int32
-	Password    bool
-	Offscreen   bool
+	RuntimeID       []int32
+	ControlType     int32
+	Password        bool
+	Offscreen       bool
+	ToggleAvailable bool
 }
 
 type uiaNodeDetails struct {
-	Name          string
-	NameTruncated bool
-	Description   string
-	Value         string
-	States        []string
-	Bounds        *Bounds
-	Focused       bool
-	Actions       []string
+	Name             string
+	NameTruncated    bool
+	Description      string
+	Value            string
+	States           []string
+	ObservableStates []string
+	Bounds           *Bounds
+	Focused          bool
+	FocusObservable  bool
+	ValueObservable  bool
+	Actions          []string
 }
 
 // uiaTreeQuery keeps native object ownership behind a small interface so the
@@ -148,7 +221,7 @@ func buildUIATree[T comparable](
 		seen[digest] = struct{}{}
 		referenceBytes += len(referenceData)
 
-		role := mapUIAControlType(structure.ControlType, structure.Password)
+		role := mapUIAControlType(structure.ControlType, structure.Password, structure.ToggleAvailable)
 		node := Node{
 			Reference: referenceData, Parent: parent, Depth: depth, Role: role,
 			Sensitive: structure.Password, Offscreen: structure.Offscreen,
@@ -300,12 +373,15 @@ func (budget *uiaStringBudget) take(value string) string {
 	return value
 }
 
-func mapUIAControlType(controlType int32, password bool) string {
+func mapUIAControlType(controlType int32, password, toggleAvailable bool) string {
 	if password {
 		return "password"
 	}
 	switch controlType {
 	case uiaControlButton, uiaControlSplitButton:
+		if controlType == uiaControlButton && toggleAvailable {
+			return "switch"
+		}
 		return "button"
 	case uiaControlCheckBox:
 		return "checkbox"

@@ -101,17 +101,67 @@ func act(ctx context.Context, request ActionRequest) (ActionResult, error) {
 			Width: request.Expected.Bounds.Width, Height: request.Expected.Bounds.Height,
 		}
 	}
-	result, err := darwinwindow.ActAccessibility(ctx, darwinwindow.AccessibilityActionRequest{
+	nativeRequest := darwinwindow.AccessibilityActionRequest{
 		Target: darwinwindow.AccessibilityTarget{
 			ProcessID: request.Target.ProcessID, CGWindowID: request.Target.NativeWindowHandle,
 			ExpectedTitle: request.Target.ExpectedTitle,
 		},
 		Reference: request.Reference, Expected: expected, Action: request.Action, Value: request.Value,
-	})
-	if err != nil {
-		return ActionResult{Dispatched: result.Dispatched}, normalizeDarwinAccessibilityError(err)
 	}
-	return ActionResult{Dispatched: result.Dispatched}, nil
+	if request.Postcondition != nil {
+		nativeRequest.Postcondition = &darwinwindow.AccessibilityElementCondition{
+			Kind:  darwinwindow.AccessibilityElementConditionKind(request.Postcondition.Kind),
+			State: request.Postcondition.State,
+		}
+	}
+	result, err := darwinwindow.ActAccessibility(ctx, nativeRequest)
+	if err != nil {
+		return ActionResult{
+			Dispatched: result.Dispatched, AlreadySatisfied: result.AlreadySatisfied,
+			CleanupComplete: result.CleanupComplete,
+		}, normalizeDarwinAccessibilityError(err)
+	}
+	return ActionResult{
+		Dispatched: result.Dispatched, AlreadySatisfied: result.AlreadySatisfied,
+		CleanupComplete: result.CleanupComplete,
+	}, nil
+}
+
+func check(ctx context.Context, request ActionRequest) (ConditionResult, error) {
+	expected := darwinwindow.AccessibilityElementExpectation{
+		Role: request.Expected.Role, Name: request.Expected.Name,
+		Sensitive: request.Expected.Sensitive,
+		States:    append([]string(nil), request.Expected.States...),
+		Actions:   append([]string(nil), request.Expected.Actions...),
+	}
+	if request.Expected.Bounds != nil {
+		expected.Bounds = &darwinwindow.AccessibilityBounds{
+			X: request.Expected.Bounds.X, Y: request.Expected.Bounds.Y,
+			Width: request.Expected.Bounds.Width, Height: request.Expected.Bounds.Height,
+		}
+	}
+	nativeRequest := darwinwindow.AccessibilityActionRequest{
+		Target: darwinwindow.AccessibilityTarget{
+			ProcessID: request.Target.ProcessID, CGWindowID: request.Target.NativeWindowHandle,
+			ExpectedTitle: request.Target.ExpectedTitle,
+		},
+		Reference: request.Reference, Expected: expected, Action: request.Action, Value: request.Value,
+	}
+	if request.Postcondition != nil {
+		nativeRequest.Postcondition = &darwinwindow.AccessibilityElementCondition{
+			Kind:  darwinwindow.AccessibilityElementConditionKind(request.Postcondition.Kind),
+			State: request.Postcondition.State,
+		}
+	}
+	result, err := darwinwindow.CheckAccessibility(ctx, nativeRequest)
+	if err != nil {
+		return ConditionResult{
+			Satisfied: result.Satisfied, CleanupComplete: result.CleanupComplete,
+		}, normalizeDarwinAccessibilityError(err)
+	}
+	return ConditionResult{
+		Satisfied: result.Satisfied, CleanupComplete: result.CleanupComplete,
+	}, nil
 }
 func darwinAccessibilityCapabilityError(err error) Capability {
 	if errors.Is(err, darwinwindow.ErrPermission) {

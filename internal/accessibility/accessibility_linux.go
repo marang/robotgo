@@ -102,7 +102,7 @@ func probe(ctx context.Context) Capability {
 	}
 	probeCtx, cancel := boundedATSPIContext(ctx, atspiProbeTimeout)
 	defer cancel()
-	session, err := connectSessionBusWithoutAutostart(probeCtx)
+	session, _, err := connectSessionBusWithoutAutostart(probeCtx)
 	if err != nil {
 		return unavailableATSPICapability("the desktop session bus is unavailable")
 	}
@@ -149,7 +149,7 @@ func inspect(ctx context.Context, target Target, limits Limits) (Snapshot, error
 		target.ExpectedTitle == "" || !validATSPILimits(limits) {
 		return Snapshot{}, ErrInvalidTree
 	}
-	session, err := connectSessionBusWithoutAutostart(ctx)
+	session, _, err := connectSessionBusWithoutAutostart(ctx)
 	if err != nil {
 		return Snapshot{}, normalizeATSPIError(err)
 	}
@@ -205,7 +205,9 @@ func inspect(ctx context.Context, target Target, limits Limits) (Snapshot, error
 	return snapshot, nil
 }
 
-func act(ctx context.Context, request ActionRequest) (ActionResult, error) {
+func act(ctx context.Context, request ActionRequest) (result ActionResult, resultErr error) {
+	cleanupComplete := true
+	defer func() { result.CleanupComplete = cleanupComplete }()
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -217,11 +219,16 @@ func act(ctx context.Context, request ActionRequest) (ActionResult, error) {
 	if err != nil {
 		return ActionResult{}, err
 	}
-	session, err := connectSessionBusWithoutAutostart(ctx)
+	session, setupCleanupComplete, err := connectSessionBusWithoutAutostart(ctx)
+	cleanupComplete = cleanupComplete && setupCleanupComplete
 	if err != nil {
 		return ActionResult{}, normalizeATSPIError(err)
 	}
-	defer func() { _ = session.Close() }()
+	defer func() {
+		if err := session.Close(); err != nil {
+			cleanupComplete = false
+		}
+	}()
 	owned, err := nameHasOwner(ctx, session, atspiBusDestination)
 	if err != nil || !owned {
 		if err == nil {
@@ -237,7 +244,11 @@ func act(ctx context.Context, request ActionRequest) (ActionResult, error) {
 	if err != nil {
 		return ActionResult{}, normalizeATSPIError(err)
 	}
-	defer func() { _ = accessibilityBus.Close() }()
+	defer func() {
+		if err := accessibilityBus.Close(); err != nil {
+			cleanupComplete = false
+		}
+	}()
 	owned, err = nameHasOwner(ctx, accessibilityBus, atspiRegistryDestination)
 	if err != nil || !owned {
 		if err == nil {
@@ -246,6 +257,99 @@ func act(ctx context.Context, request ActionRequest) (ActionResult, error) {
 		return ActionResult{}, normalizeATSPIError(err)
 	}
 	return actATSPI(ctx, &dbusATSPIQuery{conn: accessibilityBus}, request, reference)
+}
+
+func check(ctx context.Context, request ActionRequest) (result ConditionResult, resultErr error) {
+	cleanupComplete := true
+	defer func() { result.CleanupComplete = cleanupComplete }()
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if request.Target.ProcessID <= 0 || request.Target.NativeWindowHandle != 0 ||
+		request.Target.ExpectedTitle == "" || request.Expected.Sensitive {
+		return ConditionResult{}, ErrStaleTarget
+	}
+	if err := validateElementCondition(request); err != nil {
+		return ConditionResult{}, err
+	}
+	reference, err := decodeATSPIReference(request.Reference)
+	if err != nil {
+		return ConditionResult{}, err
+	}
+	session, setupCleanupComplete, err := connectSessionBusWithoutAutostart(ctx)
+	cleanupComplete = cleanupComplete && setupCleanupComplete
+	if err != nil {
+		return ConditionResult{}, normalizeATSPIError(err)
+	}
+	defer func() {
+		if err := session.Close(); err != nil {
+			cleanupComplete = false
+		}
+	}()
+	owned, err := nameHasOwner(ctx, session, atspiBusDestination)
+	if err != nil || !owned {
+		if err == nil {
+			err = ErrUnavailable
+		}
+		return ConditionResult{}, normalizeATSPIError(err)
+	}
+	address, err := accessibilityBusAddress(ctx, session)
+	if err != nil {
+		return ConditionResult{}, normalizeATSPIError(err)
+	}
+	accessibilityBus, err := dbus.Connect(address, dbus.WithContext(ctx))
+	if err != nil {
+		return ConditionResult{}, normalizeATSPIError(err)
+	}
+	defer func() {
+		if err := accessibilityBus.Close(); err != nil {
+			cleanupComplete = false
+		}
+	}()
+	owned, err = nameHasOwner(ctx, accessibilityBus, atspiRegistryDestination)
+	if err != nil || !owned {
+		if err == nil {
+			err = ErrUnavailable
+		}
+		return ConditionResult{}, normalizeATSPIError(err)
+	}
+	return checkATSPI(ctx, &dbusATSPIQuery{conn: accessibilityBus}, request, reference)
+}
+
+func checkATSPI(
+	ctx context.Context,
+	query atspiQuery,
+	request ActionRequest,
+	reference atspiReference,
+) (ConditionResult, error) {
+	root, err := findATSPITarget(ctx, query, request.Target)
+	if err != nil {
+		return ConditionResult{}, err
+	}
+	validateWindow := func() error {
+		if err := validateATSPIMembership(ctx, query, root, reference, uint32(request.Target.ProcessID)); err != nil {
+			return err
+		}
+		liveTitle, err := query.stringProperty(ctx, root, atspiPropertyName)
+		if err != nil {
+			return normalizeATSPIError(err)
+		}
+		if liveTitle != request.Target.ExpectedTitle {
+			return ErrStaleTarget
+		}
+		return nil
+	}
+	if err := validateWindow(); err != nil {
+		return ConditionResult{}, err
+	}
+	satisfied, err := checkATSPIElementCondition(ctx, query, reference, request)
+	if err != nil {
+		return ConditionResult{}, err
+	}
+	if err := validateWindow(); err != nil {
+		return ConditionResult{}, err
+	}
+	return ConditionResult{Satisfied: satisfied}, nil
 }
 
 func actATSPI(ctx context.Context, query atspiQuery, request ActionRequest, reference atspiReference) (ActionResult, error) {
@@ -263,10 +367,6 @@ func actATSPI(ctx context.Context, query atspiQuery, request ActionRequest, refe
 	if liveTitle != request.Target.ExpectedTitle {
 		return ActionResult{}, ErrStaleTarget
 	}
-	target, err := validateATSPIElement(ctx, query, reference, request)
-	if err != nil {
-		return ActionResult{}, err
-	}
 	validateElement := func() (atspiActionTarget, error) {
 		return validateATSPIElement(ctx, query, reference, request)
 	}
@@ -283,57 +383,186 @@ func actATSPI(ctx context.Context, query atspiQuery, request ActionRequest, refe
 		}
 		return nil
 	}
+	var target atspiActionTarget
+	alreadySatisfied, err := finalActionGate(
+		request.Postcondition,
+		func() (bool, error) {
+			satisfied, err := checkATSPIElementCondition(ctx, query, reference, request)
+			if err != nil {
+				return false, err
+			}
+			if err := validateWindow(); err != nil {
+				return false, err
+			}
+			return satisfied, nil
+		},
+		func() error {
+			var err error
+			target, err = validateElement()
+			if err != nil {
+				return err
+			}
+			return validateWindow()
+		},
+	)
+	if err != nil {
+		return ActionResult{}, err
+	}
+	if alreadySatisfied {
+		return ActionResult{AlreadySatisfied: true}, nil
+	}
 	return dispatchATSPIAction(ctx, query, reference, target.roleID, target.interfaces, request, validateElement, validateWindow)
 }
 
 type atspiActionTarget struct {
-	roleID     uint32
-	interfaces map[string]bool
+	roleID      uint32
+	interfaces  map[string]bool
+	actionIndex int32
 }
 
 func validateATSPIElement(ctx context.Context, query atspiQuery, reference atspiReference, request ActionRequest) (atspiActionTarget, error) {
+	live, err := readATSPIActionElement(ctx, query, reference, request, true, true)
+	if err != nil {
+		return atspiActionTarget{}, err
+	}
+	if live.role != request.Expected.Role || live.name != request.Expected.Name ||
+		!slices.Equal(live.states, request.Expected.States) ||
+		!equalAccessibilityBounds(live.bounds, request.Expected.Bounds) ||
+		!slices.Equal(live.actions, request.Expected.Actions) ||
+		!slices.Contains(live.actions, request.Action) || slices.Contains(live.states, elementStateDisabled) {
+		return atspiActionTarget{}, ErrStaleTarget
+	}
+	return atspiActionTarget{
+		roleID: live.roleID, interfaces: live.interfaces, actionIndex: live.actionIndex,
+	}, nil
+}
+
+type atspiActionElement struct {
+	roleID      uint32
+	role        string
+	name        string
+	states      []string
+	bounds      *Bounds
+	actions     []string
+	focused     bool
+	value       string
+	interfaces  map[string]bool
+	actionIndex int32
+}
+
+func readATSPIActionElement(
+	ctx context.Context,
+	query atspiQuery,
+	reference atspiReference,
+	request ActionRequest,
+	readExactActions bool,
+	resolveDispatchAction bool,
+) (atspiActionElement, error) {
 	roleID, err := query.role(ctx, reference)
 	if err != nil {
-		return atspiActionTarget{}, normalizeATSPIError(err)
+		return atspiActionElement{}, normalizeATSPIError(err)
 	}
 	states, err := query.states(ctx, reference)
 	if err != nil {
-		return atspiActionTarget{}, normalizeATSPIError(err)
+		return atspiActionElement{}, normalizeATSPIError(err)
 	}
-	if len(states) != 2 || roleID == atspiRolePasswordText {
-		return atspiActionTarget{}, ErrStaleTarget
+	if len(states) != 2 || roleID == atspiRolePasswordText ||
+		!atspiStateSet(states, atspiStateVisible) || !atspiStateSet(states, atspiStateShowing) {
+		return atspiActionElement{}, ErrStaleTarget
 	}
 	name, err := query.stringProperty(ctx, reference, atspiPropertyName)
 	if err != nil {
-		return atspiActionTarget{}, normalizeATSPIError(err)
+		return atspiActionElement{}, normalizeATSPIError(err)
 	}
 	interfaces, err := readATSPIInterfaces(ctx, query, reference)
 	if err != nil {
-		return atspiActionTarget{}, err
+		return atspiActionElement{}, err
 	}
 	bounds, err := liveATSPIBounds(ctx, query, reference, interfaces, request.Expected.Bounds != nil)
 	if err != nil {
-		return atspiActionTarget{}, err
-	}
-	actionNames, err := readATSPIActionNames(ctx, query, reference, interfaces)
-	if err != nil {
-		return atspiActionTarget{}, err
+		return atspiActionElement{}, err
 	}
 	role := mapATSPIRole(roleID)
-	stepActions, err := usableATSPIStepActions(ctx, query, reference, role, interfaces)
+	live := atspiActionElement{
+		roleID: roleID, role: role, name: name, states: mapATSPIStates(role, states),
+		bounds: bounds, focused: atspiStateSet(states, atspiStateFocused),
+		interfaces: interfaces, actionIndex: -1,
+	}
+	if readExactActions {
+		actionNames, err := readATSPIActionNames(ctx, query, reference, interfaces)
+		if err != nil {
+			return atspiActionElement{}, err
+		}
+		stepActions, err := usableATSPIStepActions(ctx, query, reference, role, interfaces)
+		if err != nil {
+			return atspiActionElement{}, err
+		}
+		live.actions = inferATSPIActions(role, states, interfaces, actionNames, stepActions)
+		if resolveDispatchAction && nativeATSPIAction(request.Action) {
+			index := findATSPIActionIndex(request.Action, actionNames)
+			if index < 0 {
+				return atspiActionElement{}, ErrStaleTarget
+			}
+			selected := actionNames[index]
+			liveSelected, err := readATSPIActionName(ctx, query, reference, int32(index))
+			if err != nil {
+				return atspiActionElement{}, err
+			}
+			if liveSelected != selected || findATSPIActionIndex(request.Action, []string{liveSelected}) != 0 {
+				return atspiActionElement{}, ErrStaleTarget
+			}
+			live.actionIndex = int32(index)
+		}
+	}
+	return live, nil
+}
+
+func checkATSPIElementCondition(
+	ctx context.Context,
+	query atspiQuery,
+	reference atspiReference,
+	request ActionRequest,
+) (bool, error) {
+	if err := validateElementCondition(request); err != nil {
+		return false, err
+	}
+	condition := request.Postcondition
+	live, err := readATSPIActionElement(ctx, query, reference, request, true, false)
 	if err != nil {
-		return atspiActionTarget{}, err
+		return false, err
 	}
-	actions := inferATSPIActions(role, states, interfaces, actionNames, stepActions)
-	mappedStates := mapATSPIStates(role, states)
-	if role != request.Expected.Role || name != request.Expected.Name ||
-		!slices.Equal(mappedStates, request.Expected.States) ||
-		!equalAccessibilityBounds(bounds, request.Expected.Bounds) ||
-		!slices.Equal(actions, request.Expected.Actions) || !slices.Contains(actions, request.Action) ||
-		slices.Contains(mappedStates, "disabled") {
-		return atspiActionTarget{}, ErrStaleTarget
+	if live.role != request.Expected.Role || live.name != request.Expected.Name ||
+		!equalAccessibilityBounds(live.bounds, request.Expected.Bounds) ||
+		!conditionIdentityMatches(
+			condition, request.Action, request.Expected.States, live.states,
+			request.Expected.Actions, live.actions,
+		) {
+		return false, ErrStaleTarget
 	}
-	return atspiActionTarget{roleID: roleID, interfaces: interfaces}, nil
+	if condition.Kind == ElementConditionValueEqualsActionValue {
+		switch {
+		case live.role == "textbox" && !live.interfaces[atspiShortText]:
+			return false, ErrUnsupported
+		case live.role == "slider" && !live.interfaces[atspiShortValue]:
+			return false, ErrUnsupported
+		}
+		live.value, err = readATSPIValue(ctx, query, reference, live.role, live.interfaces, 1<<20)
+		if err != nil {
+			return false, normalizeATSPIError(err)
+		}
+	}
+	return elementConditionSatisfied(
+		condition, live.states, live.focused, live.role, live.value, request.Value,
+	)
+}
+
+func nativeATSPIAction(action string) bool {
+	switch action {
+	case "press", "toggle", "expand", "collapse":
+		return true
+	default:
+		return false
+	}
 }
 
 func decodeATSPIReference(data []byte) (atspiReference, error) {
@@ -456,23 +685,63 @@ func dispatchATSPIAction(
 	validateWindow func() error,
 ) (ActionResult, error) {
 	dispatched := ActionResult{Dispatched: true}
-	validateDispatch := func() (atspiActionTarget, error) {
-		target, err := validateElement()
+	finalDispatch := func(validatePrepared func() error) (atspiActionTarget, bool, error) {
+		var target atspiActionTarget
+		alreadySatisfied, err := finalActionGate(
+			request.Postcondition,
+			func() (bool, error) {
+				satisfied, err := checkATSPIElementCondition(ctx, query, reference, request)
+				if err != nil {
+					return false, err
+				}
+				if err := validateWindow(); err != nil {
+					return false, err
+				}
+				return satisfied, nil
+			},
+			func() error {
+				var err error
+				target, err = validateElement()
+				if err != nil {
+					return err
+				}
+				if validatePrepared != nil {
+					if err := validatePrepared(); err != nil {
+						return err
+					}
+					// Preparation reads mutable range data. Revalidate the full
+					// observed identity once more so preparation cannot create a
+					// stale-target gap before the native mutation.
+					target, err = validateElement()
+					if err != nil {
+						return err
+					}
+				}
+				return validateWindow()
+			},
+		)
+		return target, alreadySatisfied, err
+	}
+	gate := func(validatePrepared func() error) (atspiActionTarget, *ActionResult, error) {
+		target, alreadySatisfied, err := finalDispatch(validatePrepared)
 		if err != nil {
-			return atspiActionTarget{}, err
+			return atspiActionTarget{}, nil, err
 		}
-		if err := validateWindow(); err != nil {
-			return atspiActionTarget{}, err
+		if alreadySatisfied {
+			result := ActionResult{AlreadySatisfied: true}
+			return atspiActionTarget{}, &result, nil
 		}
-		return target, nil
+		return target, nil, nil
 	}
 	switch request.Action {
 	case "focus":
 		if !interfaces[atspiShortComponent] {
 			return ActionResult{}, ErrStaleTarget
 		}
-		if _, err := validateDispatch(); err != nil {
+		if _, result, err := gate(nil); err != nil {
 			return ActionResult{}, err
+		} else if result != nil {
+			return *result, nil
 		}
 		ok, err := query.grabFocus(ctx, reference)
 		if err != nil {
@@ -484,10 +753,12 @@ func dispatchATSPIAction(
 		return dispatched, nil
 	case "set-value":
 		if mapATSPIRole(roleID) == "textbox" && interfaces[atspiShortEditableText] {
-			if _, err := validateDispatch(); err != nil {
+			if _, result, err := gate(nil); err != nil {
 				return ActionResult{}, err
+			} else if result != nil {
+				return *result, nil
 			}
-			ok, err := query.setTextContents(ctx, reference, request.Value)
+			ok, err := query.setTextContents(ctx, reference, string(request.Value))
 			if err != nil {
 				return dispatched, normalizeATSPIError(err)
 			}
@@ -499,7 +770,7 @@ func dispatchATSPIAction(
 		if mapATSPIRole(roleID) != "slider" || !interfaces[atspiShortValue] {
 			return ActionResult{}, ErrStaleTarget
 		}
-		value, err := strconv.ParseFloat(request.Value, 64)
+		value, err := strconv.ParseFloat(string(request.Value), 64)
 		if err != nil || math.IsNaN(value) || math.IsInf(value, 0) {
 			return ActionResult{}, ErrInvalidTree
 		}
@@ -514,22 +785,21 @@ func dispatchATSPIAction(
 		if err := validateExplicitRangeValue(value, minimum, maximum); err != nil {
 			return ActionResult{}, err
 		}
-		if _, err := validateDispatch(); err != nil {
+		validateRange := func() error {
+			minimum, err = query.minimumValue(ctx, reference)
+			if err != nil {
+				return normalizeATSPIError(err)
+			}
+			maximum, err = query.maximumValue(ctx, reference)
+			if err != nil {
+				return normalizeATSPIError(err)
+			}
+			return validateExplicitRangeValue(value, minimum, maximum)
+		}
+		if _, result, err := gate(validateRange); err != nil {
 			return ActionResult{}, err
-		}
-		minimum, err = query.minimumValue(ctx, reference)
-		if err != nil {
-			return ActionResult{}, normalizeATSPIError(err)
-		}
-		maximum, err = query.maximumValue(ctx, reference)
-		if err != nil {
-			return ActionResult{}, normalizeATSPIError(err)
-		}
-		if err := validateExplicitRangeValue(value, minimum, maximum); err != nil {
-			return ActionResult{}, err
-		}
-		if _, err := validateDispatch(); err != nil {
-			return ActionResult{}, err
+		} else if result != nil {
+			return *result, nil
 		}
 		if err := query.setCurrentValue(ctx, reference, value); err != nil {
 			return dispatched, normalizeATSPIError(err)
@@ -558,61 +828,61 @@ func dispatchATSPIAction(
 		if _, err := nextBoundedStepValue(current, step, minimum, maximum, request.Action == "decrement"); err != nil {
 			return ActionResult{}, ErrInvalidTree
 		}
-		if _, err := validateDispatch(); err != nil {
+		var next float64
+		recomputeStep := func() error {
+			current, err = query.currentValue(ctx, reference)
+			if err != nil {
+				return normalizeATSPIError(err)
+			}
+			step, err = query.minimumIncrement(ctx, reference)
+			if err != nil {
+				return normalizeATSPIError(err)
+			}
+			minimum, err = query.minimumValue(ctx, reference)
+			if err != nil {
+				return normalizeATSPIError(err)
+			}
+			maximum, err = query.maximumValue(ctx, reference)
+			if err != nil {
+				return normalizeATSPIError(err)
+			}
+			next, err = nextBoundedStepValue(current, step, minimum, maximum, request.Action == "decrement")
+			if err != nil {
+				return ErrInvalidTree
+			}
+			return nil
+		}
+		if _, result, err := gate(recomputeStep); err != nil {
 			return ActionResult{}, err
-		}
-		current, err = query.currentValue(ctx, reference)
-		if err != nil {
-			return ActionResult{}, normalizeATSPIError(err)
-		}
-		step, err = query.minimumIncrement(ctx, reference)
-		if err != nil {
-			return ActionResult{}, normalizeATSPIError(err)
-		}
-		minimum, err = query.minimumValue(ctx, reference)
-		if err != nil {
-			return ActionResult{}, normalizeATSPIError(err)
-		}
-		maximum, err = query.maximumValue(ctx, reference)
-		if err != nil {
-			return ActionResult{}, normalizeATSPIError(err)
-		}
-		next, err := nextBoundedStepValue(current, step, minimum, maximum, request.Action == "decrement")
-		if err != nil {
-			return ActionResult{}, ErrInvalidTree
-		}
-		if _, err := validateDispatch(); err != nil {
-			return ActionResult{}, err
+		} else if result != nil {
+			return *result, nil
 		}
 		if err := query.setCurrentValue(ctx, reference, next); err != nil {
 			return dispatched, normalizeATSPIError(err)
 		}
 		return dispatched, nil
 	default:
-		target, err := validateDispatch()
+		target, result, err := gate(nil)
 		if err != nil {
 			return ActionResult{}, err
 		}
-		finalNames, err := readATSPIActionNames(ctx, query, reference, target.interfaces)
-		if err != nil {
-			return ActionResult{}, err
+		if result != nil {
+			return *result, nil
 		}
-		index := findATSPIActionIndex(request.Action, finalNames)
-		if index < 0 {
+		if target.actionIndex < 0 {
 			return ActionResult{}, ErrStaleTarget
 		}
-		selectedName := finalNames[index]
+		liveSelectedName, err := readATSPIActionName(ctx, query, reference, target.actionIndex)
+		if err != nil {
+			return ActionResult{}, err
+		}
+		if findATSPIActionIndex(request.Action, []string{liveSelectedName}) != 0 {
+			return ActionResult{}, ErrStaleTarget
+		}
 		if err := validateWindow(); err != nil {
 			return ActionResult{}, err
 		}
-		liveSelectedName, err := readATSPIActionName(ctx, query, reference, int32(index))
-		if err != nil {
-			return ActionResult{}, err
-		}
-		if liveSelectedName != selectedName || findATSPIActionIndex(request.Action, []string{liveSelectedName}) != 0 {
-			return ActionResult{}, ErrStaleTarget
-		}
-		ok, err := query.doAction(ctx, reference, int32(index))
+		ok, err := query.doAction(ctx, reference, target.actionIndex)
 		if err != nil {
 			return dispatched, normalizeATSPIError(err)
 		}
@@ -638,20 +908,23 @@ func findATSPIActionIndex(action string, names []string) int {
 	return -1
 }
 
-func connectSessionBusWithoutAutostart(ctx context.Context) (*dbus.Conn, error) {
+// connectSessionBusWithoutAutostart reports whether a connection acquired by
+// a failed Auth/Hello setup was closed successfully. Successful setup returns
+// cleanupComplete=true because ownership transfers to the caller.
+func connectSessionBusWithoutAutostart(ctx context.Context) (*dbus.Conn, bool, error) {
 	conn, err := dbus.SessionBusPrivateNoAutoStartup(dbus.WithContext(ctx))
 	if err != nil {
-		return nil, err
+		return nil, true, err
 	}
 	if err := conn.Auth(nil); err != nil {
-		_ = conn.Close()
-		return nil, err
+		closeErr := conn.Close()
+		return nil, closeErr == nil, errors.Join(err, closeErr)
 	}
 	if err := conn.Hello(); err != nil {
-		_ = conn.Close()
-		return nil, err
+		closeErr := conn.Close()
+		return nil, closeErr == nil, errors.Join(err, closeErr)
 	}
-	return conn, nil
+	return conn, true, nil
 }
 
 func validATSPILimits(limits Limits) bool {

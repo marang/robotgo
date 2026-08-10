@@ -87,7 +87,10 @@ type nativeAPI struct {
 	cgWindowOwnerPID         uintptr
 }
 
-func openNativeAPI() (*nativeAPI, error) {
+// openNativeAPI reports whether every resource acquired during a failed setup
+// was released. Successful setup returns cleanupComplete=true because ownership
+// transfers to the returned nativeAPI and its caller then attests close().
+func openNativeAPI() (*nativeAPI, bool, error) {
 	api := &nativeAPI{}
 	var err error
 	api.applicationServicesHandle, err = purego.Dlopen(
@@ -95,27 +98,21 @@ func openNativeAPI() (*nativeAPI, error) {
 		purego.RTLD_NOW|purego.RTLD_LOCAL,
 	)
 	if err != nil {
-		return nil, fmt.Errorf("%w: load ApplicationServices: %w", ErrUnsupported, err)
+		return nil, true, fmt.Errorf("%w: load ApplicationServices: %w", ErrUnsupported, err)
 	}
 	api.coreGraphicsHandle, err = purego.Dlopen(
 		coreGraphicsFramework,
 		purego.RTLD_NOW|purego.RTLD_LOCAL,
 	)
 	if err != nil {
-		return nil, errors.Join(
-			fmt.Errorf("%w: load CoreGraphics: %w", ErrUnsupported, err),
-			api.close(),
-		)
+		return failedNativeAPIOpen(api, fmt.Errorf("%w: load CoreGraphics: %w", ErrUnsupported, err))
 	}
 	api.coreFoundationHandle, err = purego.Dlopen(
 		coreFoundationFramework,
 		purego.RTLD_NOW|purego.RTLD_LOCAL,
 	)
 	if err != nil {
-		return nil, errors.Join(
-			fmt.Errorf("%w: load CoreFoundation: %w", ErrUnsupported, err),
-			api.close(),
-		)
+		return failedNativeAPIOpen(api, fmt.Errorf("%w: load CoreFoundation: %w", ErrUnsupported, err))
 	}
 	functions := []struct {
 		handle uintptr
@@ -164,7 +161,7 @@ func openNativeAPI() (*nativeAPI, error) {
 	}
 	for _, function := range functions {
 		if err := bindNativeFunction(function.handle, function.target, function.name); err != nil {
-			return nil, errors.Join(err, api.close())
+			return failedNativeAPIOpen(api, err)
 		}
 	}
 	values := []struct {
@@ -178,7 +175,7 @@ func openNativeAPI() (*nativeAPI, error) {
 	}
 	for _, value := range values {
 		if err := bindNativeValue(value.handle, value.target, value.name); err != nil {
-			return nil, errors.Join(err, api.close())
+			return failedNativeAPIOpen(api, err)
 		}
 	}
 	strings := []struct {
@@ -214,11 +211,16 @@ func openNativeAPI() (*nativeAPI, error) {
 	for _, value := range strings {
 		ref, stringErr := api.createString(value.value)
 		if stringErr != nil {
-			return nil, errors.Join(stringErr, api.close())
+			return failedNativeAPIOpen(api, stringErr)
 		}
 		*value.target = ref
 	}
-	return api, nil
+	return api, true, nil
+}
+
+func failedNativeAPIOpen(api *nativeAPI, cause error) (*nativeAPI, bool, error) {
+	closeErr := api.close()
+	return nil, closeErr == nil, errors.Join(cause, closeErr)
 }
 
 func (api *nativeAPI) createString(value string) (uintptr, error) {
@@ -240,8 +242,10 @@ func (api *nativeAPI) createString(value string) (uintptr, error) {
 	return ref, nil
 }
 
-func (api *nativeAPI) createTransientString(value string) (uintptr, error) {
-	bytes := append([]byte(value), 0)
+func (api *nativeAPI) createTransientString(value []byte) (uintptr, error) {
+	bytes := make([]byte, len(value)+1)
+	copy(bytes, value)
+	defer clear(bytes)
 	ref := api.cfStringCreateWithCString(0, &bytes[0], cfStringEncodingUTF8)
 	runtime.KeepAlive(bytes)
 	if ref == 0 {

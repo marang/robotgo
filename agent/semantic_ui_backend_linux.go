@@ -19,11 +19,22 @@ func inspectPlatformUI(ctx context.Context, target uiBackendTarget, limits uiBac
 	}, limits)
 }
 
-func actPlatformUIElement(ctx context.Context, request uiBackendElementAction) (bool, error) {
+func actPlatformUIElement(ctx context.Context, request uiBackendElementAction) (uiBackendElementActionResult, error) {
 	if request.Target.Kind != WindowTargetProcess {
-		return false, fmt.Errorf("%w: AT-SPI actions require a process target", robotgo.ErrNotSupported)
+		return uiBackendElementActionResult{CleanupComplete: true},
+			fmt.Errorf("%w: AT-SPI actions require a process target", robotgo.ErrNotSupported)
 	}
 	return actAccessibilityUI(ctx, request, accessibility.Target{
+		ProcessID: request.Target.Target, ExpectedTitle: request.Target.ExpectedTitle,
+	})
+}
+
+func checkPlatformUIElement(ctx context.Context, request uiBackendElementAction) (uiBackendElementConditionResult, error) {
+	if request.Target.Kind != WindowTargetProcess {
+		return uiBackendElementConditionResult{CleanupComplete: true},
+			fmt.Errorf("%w: AT-SPI checks require a process target", robotgo.ErrNotSupported)
+	}
+	return checkAccessibilityUI(ctx, request, accessibility.Target{
 		ProcessID: request.Target.Target, ExpectedTitle: request.Target.ExpectedTitle,
 	})
 }

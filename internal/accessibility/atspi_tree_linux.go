@@ -373,6 +373,15 @@ func mapATSPIStates(role string, words []uint32) []string {
 		{atspiStateChecked, "checked"}, {atspiStateCollapsed, "collapsed"}, {atspiStateExpanded, "expanded"},
 		{atspiStateSelected, "selected"}, {atspiStateRequired, "required"}, {atspiStateInvalid, "invalid"},
 	} {
+		if role == "radio" && candidate.state == "checked" {
+			continue
+		}
+		if role == "radio" && candidate.state == "selected" {
+			if atspiStateSet(words, atspiStateChecked) || atspiStateSet(words, atspiStateSelected) {
+				states = append(states, "selected")
+			}
+			continue
+		}
 		if atspiStateSet(words, candidate.bit) {
 			states = append(states, candidate.state)
 		}
@@ -432,9 +441,9 @@ func usableATSPIStepActions(ctx context.Context, query atspiQuery, reference ats
 
 func defaultATSPIAction(role string) string {
 	switch role {
-	case "button", "link", "menu-item", "tab":
+	case "button", "link", "menu-item", "tab", "radio":
 		return "press"
-	case "checkbox", "radio", "switch":
+	case "checkbox", "switch":
 		return "toggle"
 	default:
 		return ""

@@ -17,13 +17,16 @@ type axSemanticStructure struct {
 }
 
 type axSemanticDetails struct {
-	Name        string
-	Description string
-	Value       string
-	States      []string
-	Bounds      *AccessibilityBounds
-	Focused     bool
-	Actions     []string
+	Name             string
+	Description      string
+	Value            string
+	States           []string
+	ObservableStates []string
+	Bounds           *AccessibilityBounds
+	Focused          bool
+	FocusObservable  bool
+	ValueObservable  bool
+	Actions          []string
 }
 
 type axSemanticQuery[T comparable] interface {
@@ -32,6 +35,50 @@ type axSemanticQuery[T comparable] interface {
 	details(context.Context, T, string, AccessibilityLimits) (axSemanticDetails, error)
 	children(context.Context, T) ([]T, bool, error)
 	release(T)
+}
+
+// resolveAXPath takes ownership of root and every child reference returned by
+// query. The returned element is the caller's only remaining owned reference.
+func resolveAXPath[T comparable](
+	ctx context.Context,
+	query axSemanticQuery[T],
+	root T,
+	path []uint32,
+	processID int32,
+) (T, error) {
+	var zero T
+	current := root
+	for _, childIndex := range path {
+		if err := ctx.Err(); err != nil {
+			query.release(current)
+			return zero, err
+		}
+		owner, err := query.processID(ctx, current)
+		if err != nil || owner != processID {
+			query.release(current)
+			return zero, ErrAccessibilityStaleTarget
+		}
+		children, truncated, err := query.children(ctx, current)
+		query.release(current)
+		if err != nil || truncated || uint64(childIndex) >= uint64(len(children)) {
+			for _, child := range children {
+				query.release(child)
+			}
+			return zero, ErrAccessibilityStaleTarget
+		}
+		current = children[childIndex]
+		for index, child := range children {
+			if uint32(index) != childIndex {
+				query.release(child)
+			}
+		}
+	}
+	owner, err := query.processID(ctx, current)
+	if err != nil || owner != processID {
+		query.release(current)
+		return zero, ErrAccessibilityStaleTarget
+	}
+	return current, nil
 }
 
 // buildAXSemanticTree takes ownership of root and every reference returned by
@@ -247,6 +294,9 @@ func (budget *axStringBudget) take(value string) string {
 func mapAXRole(role, subrole string, sensitive bool) string {
 	if sensitive {
 		return "password"
+	}
+	if subrole == "AXSwitch" {
+		return "switch"
 	}
 	switch role {
 	case "AXApplication":

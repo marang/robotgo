@@ -377,7 +377,7 @@ func (system *nativeSystem) Close() error {
 
 func (system *nativeSystem) readyLocked() (*nativeAPI, error) {
 	if system.api == nil {
-		api, err := openNativeAPI()
+		api, _, err := openNativeAPI()
 		if err != nil {
 			return nil, err
 		}

@@ -372,7 +372,7 @@ func (s *Server) registerTools() {
 		mcp.AddTool(s.protocol, &mcp.Tool{
 			Name:        ToolElementAct,
 			Title:       "Act on observed semantic element",
-			Description: "Revalidate and execute exactly one policy-approved native semantic action against a live observation-bound element. Pointer and keyboard fallback are never used.",
+			Description: "Revalidate and execute at most one policy-approved native semantic action against a live observation-bound element, optionally verify one target-relative postcondition, and return Action Proof v1. Pointer and keyboard fallback are never used.",
 			Annotations: &mcp.ToolAnnotations{DestructiveHint: &destructive, OpenWorldHint: &openWorld},
 		}, s.elementAct)
 	}
@@ -729,7 +729,7 @@ func safeToolError(err error) *ToolError {
 	if errors.Is(err, agent.ErrInputCleanup) {
 		return &ToolError{
 			Code:    agent.ErrorCleanupFailed,
-			Message: "RobotGo could not release owned input; do not retry the action",
+			Message: "RobotGo could not release operation-owned resources; do not retry the action",
 		}
 	}
 	var actionErr *agent.ActionError

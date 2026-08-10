@@ -108,16 +108,22 @@ func TestWindowsUIAInspectsAndActsOnlyOnSelfOwnedBoundedFixture(t *testing.T) {
 	if inputNode == nil || inputNode.Bounds == nil {
 		t.Fatal("editable fixture node lacks an actionable semantic identity")
 	}
-	action, err := Act(ctx, ActionRequest{
+	actionRequest := ActionRequest{
 		Target:    Target{NativeWindowHandle: int(fixture.handle), ExpectedTitle: windowsFixtureTitle},
-		Reference: inputNode.Reference, Action: "set-value", Value: windowsFixtureUpdated,
+		Reference: inputNode.Reference, Action: "set-value", Value: []byte(windowsFixtureUpdated),
 		Expected: ElementExpectation{
 			Role: inputNode.Role, Name: inputNode.Name, Sensitive: inputNode.Sensitive,
 			States: inputNode.States, Bounds: inputNode.Bounds, Actions: inputNode.Actions,
 		},
-	})
-	if err != nil || !action.Dispatched {
+		Postcondition: &ElementCondition{Kind: ElementConditionValueEqualsActionValue},
+	}
+	action, err := Act(ctx, actionRequest)
+	if err != nil || !action.Dispatched || action.AlreadySatisfied || !action.CleanupComplete {
 		t.Fatalf("self-owned UIA set-value = %+v, %v", action, err)
+	}
+	idempotent, err := Act(ctx, actionRequest)
+	if err != nil || idempotent.Dispatched || !idempotent.AlreadySatisfied || !idempotent.CleanupComplete {
+		t.Fatalf("already-satisfied self-owned UIA set-value = %+v, %v", idempotent, err)
 	}
 	updated, err := Inspect(ctx, Target{
 		NativeWindowHandle: int(fixture.handle), ExpectedTitle: windowsFixtureTitle,

@@ -84,7 +84,10 @@ func agentAccessibilityError(err error) error {
 	}
 }
 
-func actAccessibilityUI(ctx context.Context, request uiBackendElementAction, target accessibility.Target) (bool, error) {
+func accessibilityElementActionRequest(
+	request uiBackendElementAction,
+	target accessibility.Target,
+) accessibility.ActionRequest {
 	expected := accessibility.ElementExpectation{
 		Role: string(request.Expected.Role), Name: request.Expected.Name,
 		Sensitive: request.Expected.Sensitive,
@@ -103,12 +106,46 @@ func actAccessibilityUI(ctx context.Context, request uiBackendElementAction, tar
 			Width: request.Expected.Bounds.Width, Height: request.Expected.Bounds.Height,
 		}
 	}
-	result, err := accessibility.Act(ctx, accessibility.ActionRequest{
+	nativeRequest := accessibility.ActionRequest{
 		Target: target, Reference: request.Reference, Expected: expected,
 		Action: string(request.Action), Value: request.Value,
-	})
-	if err != nil {
-		return result.Dispatched, agentAccessibilityError(err)
 	}
-	return result.Dispatched, nil
+	if request.Postcondition != nil {
+		nativeRequest.Postcondition = &accessibility.ElementCondition{
+			Kind:  accessibility.ElementConditionKind(request.Postcondition.Kind),
+			State: string(request.Postcondition.State),
+		}
+	}
+	return nativeRequest
+}
+
+func actAccessibilityUI(
+	ctx context.Context,
+	request uiBackendElementAction,
+	target accessibility.Target,
+) (uiBackendElementActionResult, error) {
+	result, err := accessibility.Act(ctx, accessibilityElementActionRequest(request, target))
+	converted := uiBackendElementActionResult{
+		Dispatched: result.Dispatched, AlreadySatisfied: result.AlreadySatisfied,
+		CleanupComplete: result.CleanupComplete,
+	}
+	if err != nil {
+		return converted, agentAccessibilityError(err)
+	}
+	return converted, nil
+}
+
+func checkAccessibilityUI(
+	ctx context.Context,
+	request uiBackendElementAction,
+	target accessibility.Target,
+) (uiBackendElementConditionResult, error) {
+	result, err := accessibility.Check(ctx, accessibilityElementActionRequest(request, target))
+	converted := uiBackendElementConditionResult{
+		Satisfied: result.Satisfied, CleanupComplete: result.CleanupComplete,
+	}
+	if err != nil {
+		return converted, agentAccessibilityError(err)
+	}
+	return converted, nil
 }

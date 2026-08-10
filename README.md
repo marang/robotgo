@@ -902,11 +902,11 @@ capture one explicit in-memory region. `MaxObservations`, `MaxCapturePixels`,
 and `AllowedDisplayIDs` bound those reads. Pixels are excluded from JSON and
 audit events; `Observation.Image` returns a defensive copy, while
 `Observation.Close` and `Session.Close` zero RobotGo-owned capture buffers.
-The implementation also enforces hard ceilings of 16,777,216 pixels per frame,
-100 verification attempts, 60 seconds between attempts, and five minutes per
-verification, plus 1,000,000 visual queries, 100 wait attempts, 60 seconds
-between wait attempts, and five minutes per wait, even when a caller requests
-larger policy values.
+The implementation also enforces hard ceilings of 16,777,216 pixels per frame;
+100 attempts, 60 seconds between attempts, and five minutes independently for
+capture and semantic verification; plus 1,000,000 visual queries, 100 wait
+attempts, 60 seconds between wait attempts, and five minutes per wait, even
+when a caller requests larger policy values.
 On Wayland, agent capture uses an already-active ScreenCast stream when
 available. It never opens a portal consent dialog implicitly; callers must
 start consent-aware ScreenCast themselves or explicitly select native-only
@@ -936,7 +936,38 @@ references. Inspection alone grants no element mutation. `Session.ActUIElement`
 and the `desktop.element-act` operation require a separate deny-by-default
 policy grant, then re-resolve the retained native identity and revalidate role,
 state, bounds, action, target process/window, and title before native semantic
-dispatch. On Linux, an already-active AT-SPI2 bus provides the first native
+dispatch. An optional target-relative postcondition can require one state to be
+present or absent, require focus or lack of focus, or require a `set-value`
+action's live value to equal its private action value. RobotGo checks that
+condition before consuming action quota, checks it again in the native final
+gate, dispatches at most once, and polls only after dispatch. An already
+satisfied condition succeeds without dispatch or action-rate consumption,
+including when the action quota is exhausted. Every external semantic probe
+consumes query and observation quota and respects the semantic query rate;
+verification attempts, interval, and timeout have separate deny-by-default
+policy bounds. State, focus, and value conditions require their corresponding
+semantic property grants. No condition path adds fallback or retry.
+Checkboxes and switches expose the reversible `toggle` action with the
+canonical `checked` state; radio buttons expose the one-way `press` action with
+the canonical `selected` state. Windows UIA buttons backed by TogglePattern are
+normalized to switches, while radio SelectionItem providers remain one-way
+radio controls. A native backend that cannot observe the required state, focus,
+value, or action fails closed instead of treating a missing property as false
+or empty.
+
+Every `ActUIElement` return includes Action Proof v1 with opaque transaction
+lineage, fixed resolution/authorization/execution/verification outcomes,
+separate precheck and postcondition counts, final-gate status, and transient
+cleanup state. It excludes target text, entered values, native references,
+policy payloads, and raw backend errors. A backend error after native dispatch
+remains `unverified-after-dispatch` even if a later probe happens to match, so
+callers are never invited to retry an uncertain mutation.
+Catalog schema v10 advertises the proof version, supported condition kinds, and
+fixed semantic-verification bounds. Audit schema v3 records only proof and
+execution status, condition kind/phase, final-gate status, and separate attempt
+counts.
+
+On Linux, an already-active AT-SPI2 bus provides the first native
 adapter for exact process-and-title targets on GNOME, KDE, and other accessible
 desktops. Its capability probe never starts the accessibility service; enable
 desktop accessibility before RobotGo when the catalog reports it unavailable.
@@ -952,7 +983,9 @@ is released before return. The availability probe creates no window, reads no
 element, and opens no consent dialog. On macOS, the adapter accepts an exact
 process or CGWindowID plus title, applies a fixed native AX messaging timeout,
 and binds every opaque observation reference to the PID, CGWindowID, and
-bounded child-index path rather than an AX pointer. It queries process identity
+bounded child-index path rather than an AX pointer. The path is resolved again
+for every condition and exact final gate, so a reordered child cannot inherit
+the former occupant's authorization. It queries process identity
 before node metadata, prunes foreign-process, hidden, offscreen, secure-text,
 and disallowed-role content before reads, and releases every retained
 CoreFoundation/AX object before return. Its capability probe uses the
@@ -1103,8 +1136,11 @@ Accessibility reference inside the same process/window/title and re-reads all
 of those facts. Changed, sensitive, disabled, foreign, or unsupported elements
 fail stale. Pointer, keyboard, clipboard, shell, and visual fallback are never
 used. An observation with truncated or sanitized identity text remains readable
-but cannot authorize mutation. Policy must additionally declare allowed semantic actions, action quota,
-rate, per-action timeout, and value-byte limit when `set-value` is allowed:
+but cannot authorize mutation. Policy must additionally declare allowed
+semantic actions, action quota, rate, per-action timeout, and value-byte limit
+when `set-value` is allowed. Enabling postconditions also requires independent
+verification bounds and enough query/observation capacity for the source
+inspection, one precheck, and all configured post-dispatch attempts:
 
 ```json
 {
@@ -1113,28 +1149,30 @@ rate, per-action timeout, and value-byte limit when `set-value` is allowed:
   "allowed_windows": [
     {"target": 1234, "kind": "process", "expected_title": "Self-owned fixture"}
   ],
-  "allowed_ui_roles": ["window", "button", "textbox"],
+  "allowed_ui_roles": ["window", "dialog", "group", "checkbox", "switch"],
   "allowed_ui_properties": ["role", "name", "state", "bounds", "actions", "hierarchy"],
-  "allowed_ui_actions": ["press", "focus", "set-value"],
-  "max_actions": 2,
-  "max_ui_action_value_bytes": 4096,
+  "allowed_ui_actions": ["toggle"],
+  "max_actions": 1,
   "ui_action_timeout_ms": 5000,
-  "min_action_interval_ms": 100,
-  "max_observations": 4,
-  "max_queries": 4,
+  "ui_verification_attempts": 3,
+  "ui_verification_interval_ms": 50,
+  "ui_verification_timeout_ms": 3000,
+  "min_action_interval_ms": 50,
+  "max_observations": 5,
+  "max_queries": 5,
   "max_ui_elements": 200,
   "max_ui_tree_depth": 8,
   "max_ui_string_bytes": 16384,
-  "min_ui_query_interval_ms": 250,
+  "min_ui_query_interval_ms": 50,
   "session_timeout_ms": 300000
 }
 ```
 
-Run the self-owned native-button example with:
+Run the self-owned checkbox/switch example with:
 
 ```bash
 go run ./examples/semantic_element_action \
-  -pid 1234 -title 'Self-owned fixture' -button Save -confirm
+  -pid 1234 -title 'Self-owned fixture' -toggle 'Enable sync' -confirm
 ```
 
 Image observation is a separate, explicit sensitive-read boundary for GUIs

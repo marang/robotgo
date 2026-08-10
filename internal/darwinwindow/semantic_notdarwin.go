@@ -13,5 +13,9 @@ func inspectAccessibility(
 }
 
 func actAccessibility(context.Context, AccessibilityActionRequest) (AccessibilityActionResult, error) {
-	return AccessibilityActionResult{}, ErrUnsupported
+	return AccessibilityActionResult{CleanupComplete: true}, ErrUnsupported
+}
+
+func checkAccessibility(context.Context, AccessibilityActionRequest) (AccessibilityConditionResult, error) {
+	return AccessibilityConditionResult{CleanupComplete: true}, ErrUnsupported
 }

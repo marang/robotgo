@@ -60,7 +60,8 @@ func inspect(ctx context.Context, target Target, limits Limits) (Snapshot, error
 	})
 }
 
-func act(ctx context.Context, request ActionRequest) (ActionResult, error) {
+func act(ctx context.Context, request ActionRequest) (result ActionResult, resultErr error) {
+	defer func() { result.CleanupComplete = true }()
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -70,6 +71,23 @@ func act(ctx context.Context, request ActionRequest) (ActionResult, error) {
 	}
 	return runOnWindowsUIAThreadValue(ctx, func() (ActionResult, error) {
 		return actWindowsUIA(ctx, request)
+	})
+}
+
+func check(ctx context.Context, request ActionRequest) (result ConditionResult, resultErr error) {
+	defer func() { result.CleanupComplete = true }()
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if request.Target.ExpectedTitle == "" || request.Expected.Sensitive ||
+		(request.Target.ProcessID > 0) == (request.Target.NativeWindowHandle > 0) {
+		return ConditionResult{}, ErrStaleTarget
+	}
+	if err := validateElementCondition(request); err != nil {
+		return ConditionResult{}, err
+	}
+	return runOnWindowsUIAThreadValue(ctx, func() (ConditionResult, error) {
+		return checkWindowsUIA(ctx, request)
 	})
 }
 
@@ -114,12 +132,10 @@ func actWindowsUIA(ctx context.Context, request ActionRequest) (ActionResult, er
 		return ActionResult{}, err
 	}
 	defer element.Release()
-	role, err := validateUIAElement(ctx, client.query, element, request)
-	if err != nil {
-		return ActionResult{}, err
-	}
+	var role string
 	validateElement := func() error {
-		_, err := validateUIAElement(ctx, client.query, element, request)
+		var err error
+		role, err = validateUIAElement(ctx, client.query, element, request)
 		return err
 	}
 	validateWindow := func() error {
@@ -139,7 +155,94 @@ func actWindowsUIA(ctx context.Context, request ActionRequest) (ActionResult, er
 		}
 		return nil
 	}
-	return dispatchUIAAction(ctx, element, role, request, validateElement, validateWindow)
+	checkCondition := func() (bool, error) {
+		return checkUIAElementCondition(ctx, client.query, element, request)
+	}
+	alreadySatisfied, err := finalActionGate(
+		request.Postcondition,
+		func() (bool, error) {
+			satisfied, err := checkCondition()
+			if err != nil {
+				return false, err
+			}
+			if err := validateWindow(); err != nil {
+				return false, err
+			}
+			return satisfied, nil
+		},
+		func() error {
+			if err := validateElement(); err != nil {
+				return err
+			}
+			return validateWindow()
+		},
+	)
+	if err != nil {
+		return ActionResult{}, err
+	}
+	if alreadySatisfied {
+		return ActionResult{AlreadySatisfied: true}, nil
+	}
+	return dispatchUIAAction(ctx, element, role, request, validateElement, checkCondition, validateWindow)
+}
+
+func checkWindowsUIA(ctx context.Context, request ActionRequest) (ConditionResult, error) {
+	referencePID, referenceHandle, runtimeID, err := decodeUIAReference(request.Reference)
+	if err != nil {
+		return ConditionResult{}, err
+	}
+	windowBackend := windowswindow.NewNative()
+	isHandle := request.Target.NativeWindowHandle > 0
+	windowTarget := request.Target.ProcessID
+	if isHandle {
+		windowTarget = request.Target.NativeWindowHandle
+	}
+	handle, err := windowBackend.Resolve(windowTarget, isHandle)
+	if err != nil || uint64(uintptr(handle)) != referenceHandle {
+		return ConditionResult{}, ErrStaleTarget
+	}
+	processID, err := windowBackend.PID(handle)
+	if err != nil || processID <= 0 || int32(processID) != referencePID ||
+		request.Target.ProcessID > 0 && processID != request.Target.ProcessID {
+		return ConditionResult{}, ErrStaleTarget
+	}
+	title, err := windowBackend.Title(handle)
+	if err != nil || title != request.Target.ExpectedTitle {
+		return ConditionResult{}, ErrStaleTarget
+	}
+	client, err := newUIAClient(ctx)
+	if err != nil {
+		return ConditionResult{}, err
+	}
+	defer client.close()
+	root, err := client.elementFromHandle(ctx, uintptr(handle))
+	if err != nil {
+		return ConditionResult{}, err
+	}
+	element, err := findUIAElement(ctx, client.query, root, referencePID, runtimeID)
+	if err != nil {
+		return ConditionResult{}, err
+	}
+	defer element.Release()
+	satisfied, err := checkUIAElementCondition(ctx, client.query, element, request)
+	if err != nil {
+		return ConditionResult{}, err
+	}
+	liveRoot, err := client.elementFromHandle(ctx, uintptr(handle))
+	if err != nil {
+		return ConditionResult{}, err
+	}
+	liveElement, err := findUIAElement(ctx, client.query, liveRoot, referencePID, runtimeID)
+	if err != nil {
+		return ConditionResult{}, err
+	}
+	liveElement.Release()
+	livePID, pidErr := windowBackend.PID(handle)
+	liveTitle, titleErr := windowBackend.Title(handle)
+	if pidErr != nil || titleErr != nil || livePID != processID || liveTitle != request.Target.ExpectedTitle {
+		return ConditionResult{}, ErrStaleTarget
+	}
+	return ConditionResult{Satisfied: satisfied}, nil
 }
 
 func validateUIAElement(ctx context.Context, query *uiaCOMQuery, element *ole.IUnknown, request ActionRequest) (string, error) {
@@ -147,7 +250,7 @@ func validateUIAElement(ctx context.Context, query *uiaCOMQuery, element *ole.IU
 	if err != nil {
 		return "", err
 	}
-	role := mapUIAControlType(structure.ControlType, structure.Password)
+	role := mapUIAControlType(structure.ControlType, structure.Password, structure.ToggleAvailable)
 	if structure.Password || structure.Offscreen || role != request.Expected.Role {
 		return "", ErrStaleTarget
 	}
@@ -165,6 +268,51 @@ func validateUIAElement(ctx context.Context, query *uiaCOMQuery, element *ole.IU
 		return "", ErrStaleTarget
 	}
 	return role, nil
+}
+
+func checkUIAElementCondition(
+	ctx context.Context,
+	query *uiaCOMQuery,
+	element *ole.IUnknown,
+	request ActionRequest,
+) (bool, error) {
+	if err := validateElementCondition(request); err != nil {
+		return false, err
+	}
+	structure, err := query.structure(ctx, element)
+	if err != nil {
+		return false, err
+	}
+	role := mapUIAControlType(structure.ControlType, structure.Password, structure.ToggleAvailable)
+	if structure.Password || structure.Offscreen || role != request.Expected.Role {
+		return false, ErrStaleTarget
+	}
+	condition := request.Postcondition
+	details, err := query.detailsWithDisabledActions(ctx, element, role, Limits{
+		MaxStringBytes: 1 << 20, ReadName: true, ReadStates: true,
+		ReadBounds: true, ReadActions: true,
+		ReadFocus: condition.Kind == ElementConditionFocused || condition.Kind == ElementConditionNotFocused,
+		ReadValue: condition.Kind == ElementConditionValueEqualsActionValue,
+	}, true)
+	if err != nil {
+		return false, err
+	}
+	if !elementConditionObservable(
+		condition, details.ObservableStates, details.FocusObservable, details.ValueObservable,
+	) {
+		return false, ErrUnsupported
+	}
+	if details.Name != request.Expected.Name ||
+		!equalAccessibilityBounds(details.Bounds, request.Expected.Bounds) ||
+		!conditionIdentityMatches(
+			condition, request.Action, request.Expected.States, details.States,
+			request.Expected.Actions, details.Actions,
+		) {
+		return false, ErrStaleTarget
+	}
+	return elementConditionSatisfied(
+		condition, details.States, details.Focused, role, details.Value, request.Value,
+	)
 }
 
 func findUIAElement(ctx context.Context, query *uiaCOMQuery, root *ole.IUnknown, processID int32, runtimeID []int32) (*ole.IUnknown, error) {
@@ -247,17 +395,46 @@ func dispatchUIAAction(
 	role string,
 	request ActionRequest,
 	validateElement func() error,
+	checkCondition func() (bool, error),
 	validateWindow func() error,
 ) (ActionResult, error) {
-	validateDispatch := func() error {
-		if err := validateElement(); err != nil {
-			return err
+	validateDispatch := func() (bool, error) {
+		return finalActionGate(
+			request.Postcondition,
+			func() (bool, error) {
+				satisfied, err := checkCondition()
+				if err != nil {
+					return false, err
+				}
+				if err := validateWindow(); err != nil {
+					return false, err
+				}
+				return satisfied, nil
+			},
+			func() error {
+				if err := validateElement(); err != nil {
+					return err
+				}
+				return validateWindow()
+			},
+		)
+	}
+	gate := func() (*ActionResult, error) {
+		alreadySatisfied, err := validateDispatch()
+		if err != nil {
+			return nil, err
 		}
-		return validateWindow()
+		if alreadySatisfied {
+			result := ActionResult{AlreadySatisfied: true}
+			return &result, nil
+		}
+		return nil, nil
 	}
 	if request.Action == "focus" {
-		if err := validateDispatch(); err != nil {
+		if result, err := gate(); err != nil {
 			return ActionResult{}, err
+		} else if result != nil {
+			return *result, nil
 		}
 		return ActionResult{Dispatched: true}, setUIAFocus(ctx, element)
 	}
@@ -265,33 +442,46 @@ func dispatchUIAAction(
 	switch request.Action {
 	case "press":
 		properties := newUIAPropertyReader(ctx, element, 1)
-		invoke, err := properties.bool(uiaPropertyInvokeAvailable)
-		if err != nil {
-			return ActionResult{}, err
+		invoke := false
+		if uiaRoleUsesInvoke(role) {
+			var err error
+			invoke, err = properties.bool(uiaPropertyInvokeAvailable)
+			if err != nil {
+				return ActionResult{}, err
+			}
 		}
 		if invoke {
 			patternID = uiaPatternInvoke
 		} else {
+			selection, err := properties.bool(uiaPropertySelectionItemAvailable)
+			if err != nil {
+				return ActionResult{}, err
+			}
+			if uiaPatternAction(role, false, selection) != "press" {
+				return ActionResult{}, ErrStaleTarget
+			}
 			patternID = uiaPatternSelectionItem
 		}
 	case "toggle":
+		if !uiaRoleUsesToggle(role) {
+			return ActionResult{}, ErrStaleTarget
+		}
 		properties := newUIAPropertyReader(ctx, element, 1)
 		toggle, err := properties.bool(uiaPropertyToggleAvailable)
 		if err != nil {
 			return ActionResult{}, err
 		}
-		if toggle {
-			patternID = uiaPatternToggle
-		} else {
-			patternID = uiaPatternSelectionItem
+		if !toggle {
+			return ActionResult{}, ErrStaleTarget
 		}
+		patternID = uiaPatternToggle
 	case "expand":
 		patternID = uiaPatternExpandCollapse
 	case "collapse":
 		patternID, method = uiaPatternExpandCollapse, uiaPatternMethodSecondary
 	case "set-value":
 		if role == "slider" {
-			value, err := strconv.ParseFloat(request.Value, 64)
+			value, err := strconv.ParseFloat(string(request.Value), 64)
 			if err != nil || math.IsNaN(value) || math.IsInf(value, 0) {
 				return ActionResult{}, ErrInvalidTree
 			}
@@ -311,8 +501,10 @@ func dispatchUIAAction(
 			if err := validateExplicitRangeValue(value, minimum, maximum); err != nil {
 				return ActionResult{}, err
 			}
-			if err := validateDispatch(); err != nil {
+			if result, err := gate(); err != nil {
 				return ActionResult{}, err
+			} else if result != nil {
+				return *result, nil
 			}
 			minimum, err = uiaPatternNumber(ctx, pattern, uiaRangeMethodMinimum)
 			if err != nil {
@@ -325,8 +517,10 @@ func dispatchUIAAction(
 			if err := validateExplicitRangeValue(value, minimum, maximum); err != nil {
 				return ActionResult{}, err
 			}
-			if err := validateDispatch(); err != nil {
+			if result, err := gate(); err != nil {
 				return ActionResult{}, err
+			} else if result != nil {
+				return *result, nil
 			}
 			return ActionResult{Dispatched: true}, setUIARangeValue(ctx, pattern, value)
 		}
@@ -335,10 +529,12 @@ func dispatchUIAAction(
 			return ActionResult{}, ErrStaleTarget
 		}
 		defer pattern.Release()
-		if err := validateDispatch(); err != nil {
+		if result, err := gate(); err != nil {
 			return ActionResult{}, err
+		} else if result != nil {
+			return *result, nil
 		}
-		return ActionResult{Dispatched: true}, setUIAStringValue(ctx, pattern, request.Value)
+		return ActionResult{Dispatched: true}, setUIAStringValue(ctx, pattern, string(request.Value))
 	case "increment", "decrement":
 		pattern, err := currentUIAPattern(ctx, element, uiaPatternRangeValue)
 		if err != nil {
@@ -364,8 +560,10 @@ func dispatchUIAAction(
 		if _, err := nextBoundedStepValue(current, step, minimum, maximum, request.Action == "decrement"); err != nil {
 			return ActionResult{}, ErrInvalidTree
 		}
-		if err := validateDispatch(); err != nil {
+		if result, err := gate(); err != nil {
 			return ActionResult{}, err
+		} else if result != nil {
+			return *result, nil
 		}
 		current, err = uiaPatternNumber(ctx, pattern, uiaRangeMethodCurrent)
 		if err != nil {
@@ -387,8 +585,10 @@ func dispatchUIAAction(
 		if err != nil {
 			return ActionResult{}, ErrInvalidTree
 		}
-		if err := validateDispatch(); err != nil {
+		if result, err := gate(); err != nil {
 			return ActionResult{}, err
+		} else if result != nil {
+			return *result, nil
 		}
 		return ActionResult{Dispatched: true}, setUIARangeValue(ctx, pattern, next)
 	default:
@@ -399,8 +599,10 @@ func dispatchUIAAction(
 		return ActionResult{}, ErrStaleTarget
 	}
 	defer pattern.Release()
-	if err := validateDispatch(); err != nil {
+	if result, err := gate(); err != nil {
 		return ActionResult{}, err
+	} else if result != nil {
+		return *result, nil
 	}
 	return ActionResult{Dispatched: true}, callUIAPattern(ctx, pattern, method)
 }

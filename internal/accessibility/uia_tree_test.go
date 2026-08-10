@@ -64,6 +64,93 @@ func TestUIARangeValueActionsRequireUsableSmallChange(t *testing.T) {
 	}
 }
 
+func TestUIAToggleStateFailsClosedWithoutReadableValidState(t *testing.T) {
+	tests := []struct {
+		name      string
+		state     int32
+		supported bool
+		checked   bool
+		wantErr   bool
+	}{
+		{name: "off", state: uiaToggleStateOff, supported: true},
+		{name: "on", state: uiaToggleStateOn, supported: true, checked: true},
+		{name: "indeterminate", state: uiaToggleStateIndeterminate, supported: true},
+		{name: "missing state", state: uiaToggleStateOff, wantErr: true},
+		{name: "invalid state", state: 3, supported: true, wantErr: true},
+		{name: "negative state", state: -1, supported: true, wantErr: true},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			checked, err := uiaToggleChecked(test.state, test.supported)
+			if checked != test.checked || (err != nil) != test.wantErr {
+				t.Fatalf("uiaToggleChecked(%d, %t) = %t, %v, want %t, error=%t",
+					test.state, test.supported, checked, err, test.checked, test.wantErr)
+			}
+		})
+	}
+}
+
+func TestUIAPatternActionsKeepToggleAndSelectionSemanticsSeparate(t *testing.T) {
+	tests := []struct {
+		name                       string
+		role                       string
+		toggle, selectionAvailable bool
+		want                       string
+	}{
+		{name: "toggle checkbox", role: "checkbox", toggle: true, want: "toggle"},
+		{name: "checkbox prefers toggle", role: "checkbox", toggle: true, selectionAvailable: true, want: "toggle"},
+		{name: "selection-only checkbox", role: "checkbox", selectionAvailable: true},
+		{name: "toggle switch", role: "switch", toggle: true, want: "toggle"},
+		{name: "selection-only switch", role: "switch", selectionAvailable: true},
+		{name: "selection radio", role: "radio", selectionAvailable: true, want: "press"},
+		{name: "radio ignores nonstandard toggle", role: "radio", toggle: true, selectionAvailable: true, want: "press"},
+		{name: "nonstandard toggle-only radio", role: "radio", toggle: true},
+		{name: "selection tab", role: "tab", selectionAvailable: true, want: "press"},
+		{name: "selection list item", role: "list-item", selectionAvailable: true, want: "press"},
+		{name: "selection menu item", role: "menu-item", selectionAvailable: true, want: "press"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if got := uiaPatternAction(test.role, test.toggle, test.selectionAvailable); got != test.want {
+				t.Fatalf("uiaPatternAction(%q, %t, %t) = %q, want %q",
+					test.role, test.toggle, test.selectionAvailable, got, test.want)
+			}
+		})
+	}
+}
+
+func TestUIASelectionItemStateRemainsCanonical(t *testing.T) {
+	for _, role := range []string{"radio", "tab", "list-item", "menu-item"} {
+		if got := uiaSelectionItemState(role, true); got != "selected" {
+			t.Fatalf("selected %s state = %q, want selected", role, got)
+		}
+		if got := uiaSelectionItemState(role, false); got != "" {
+			t.Fatalf("unselected %s state = %q, want empty", role, got)
+		}
+	}
+	for _, role := range []string{"checkbox", "switch", "button"} {
+		if got := uiaSelectionItemState(role, true); got != "" {
+			t.Fatalf("selection-only %s state = %q, want empty", role, got)
+		}
+	}
+}
+
+func TestUIAInteractiveRolesIncludeEveryActionTarget(t *testing.T) {
+	for _, role := range []string{
+		"button", "checkbox", "combobox", "radio", "switch", "textbox",
+		"link", "list-item", "menu-item", "tab", "slider",
+	} {
+		if !uiaInteractiveRole(role) {
+			t.Fatalf("action-capable role %q is not interactive", role)
+		}
+	}
+	for _, role := range []string{"generic", "group", "label", "window"} {
+		if uiaInteractiveRole(role) {
+			t.Fatalf("structural role %q is interactive", role)
+		}
+	}
+}
+
 func TestNextBoundedStepValueClampsBeforeDispatch(t *testing.T) {
 	tests := []struct {
 		name      string
@@ -335,7 +422,7 @@ func TestBuildUIATreeBoundsNodesAndReferences(t *testing.T) {
 }
 
 func TestUIARoleReferenceAndNumericContracts(t *testing.T) {
-	if got := mapUIAControlType(uiaControlEdit, true); got != "password" {
+	if got := mapUIAControlType(uiaControlEdit, true, false); got != "password" {
 		t.Fatalf("password role = %q", got)
 	}
 	for control, want := range map[int32]string{
@@ -343,9 +430,15 @@ func TestUIARoleReferenceAndNumericContracts(t *testing.T) {
 		uiaControlDataGrid: "table", uiaControlDataItem: "row",
 		uiaControlWindow: "window", 99999: "generic",
 	} {
-		if got := mapUIAControlType(control, false); got != want {
+		if got := mapUIAControlType(control, false, false); got != want {
 			t.Fatalf("role(%d) = %q, want %q", control, got, want)
 		}
+	}
+	if got := mapUIAControlType(uiaControlButton, false, true); got != "switch" {
+		t.Fatalf("toggle-pattern button role = %q, want switch", got)
+	}
+	if got := mapUIAControlType(uiaControlRadioButton, false, true); got != "radio" {
+		t.Fatalf("radio with nonstandard toggle pattern role = %q, want radio", got)
 	}
 	reference, err := encodeUIAReference(42, 77, []int32{1, -2, 3})
 	if err != nil || len(reference) != 27 || reference[0] != uiaReferenceVersion {

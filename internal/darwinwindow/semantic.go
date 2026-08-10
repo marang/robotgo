@@ -76,15 +76,23 @@ type AccessibilityElementExpectation struct {
 }
 
 type AccessibilityActionRequest struct {
-	Target    AccessibilityTarget
-	Reference []byte
-	Expected  AccessibilityElementExpectation
-	Action    string
-	Value     string
+	Target        AccessibilityTarget
+	Reference     []byte
+	Expected      AccessibilityElementExpectation
+	Action        string
+	Value         []byte
+	Postcondition *AccessibilityElementCondition
 }
 
 type AccessibilityActionResult struct {
-	Dispatched bool
+	Dispatched       bool
+	AlreadySatisfied bool
+	CleanupComplete  bool
+}
+
+type AccessibilityConditionResult struct {
+	Satisfied       bool
+	CleanupComplete bool
 }
 
 func InspectAccessibility(
@@ -96,7 +104,15 @@ func InspectAccessibility(
 }
 
 func ActAccessibility(ctx context.Context, request AccessibilityActionRequest) (AccessibilityActionResult, error) {
+	request.Value = append([]byte(nil), request.Value...)
+	defer clear(request.Value)
 	return actAccessibility(ctx, request)
+}
+
+func CheckAccessibility(ctx context.Context, request AccessibilityActionRequest) (AccessibilityConditionResult, error) {
+	request.Value = append([]byte(nil), request.Value...)
+	defer clear(request.Value)
+	return checkAccessibility(ctx, request)
 }
 
 func clearAccessibilitySnapshot(snapshot *AccessibilitySnapshot) {

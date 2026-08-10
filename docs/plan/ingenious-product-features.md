@@ -1,7 +1,7 @@
 # Ingenious RobotGo Product Features
 
-Status: Product strategy proposal; P010 complete and P011/LAB-77 semantic
-element-action slice complete
+Status: Product strategy proposal; P010 complete and P011/LAB-79 semantic
+conditions and Action Proof v1 slice complete
 
 ## Product thesis
 
@@ -46,6 +46,16 @@ disabled, changed, or no-longer-supported targets fail stale; coordinate,
 keyboard, clipboard, shell, and visual fallbacks are absent. A native-call
 error after dispatch remains explicitly unverified, and set values never enter
 results, audits, observations, files, or errors.
+
+Implementation checkpoint (LAB-79): catalog schema v10 adds one optional fixed,
+target-relative state/focus/value postcondition, a quota-bearing precheck,
+condition-aware native final gate, bounded post-dispatch polling, and Action
+Proof v1 on every `desktop.element-act` return; the semantic observation schema
+remains v1. An already-satisfied request
+skips dispatch without action accounting. A dispatched backend error remains
+unverified even if a later check matches. The proof and audit schema expose only
+fixed outcomes and counts; values, target text, native references, policy
+payloads, and raw errors remain private.
 
 ## 1. Semantic and visual scene graph
 
@@ -395,41 +405,48 @@ authorized solely by visual healing.
 
 ### Semantic conditions and action proof v1
 
-Preconditions and postconditions should expand from capture equality to typed
-facts such as element/window appearance or disappearance, state and value
-changes, focus movement, selection, row count, and bounded progress. Checking
-that a postcondition is already satisfied before dispatch makes retryable
-workflows safer and more idempotent.
+LAB-79 introduces the narrow first condition contract: state present/absent,
+focused/not-focused, and value-equals-action-value for `set-value`, all on the
+same retained target. Checking that a postcondition is already satisfied before
+dispatch makes retryable workflows safer and more idempotent. Element/window
+appearance or disappearance, cross-element conditions, selection counts, row
+counts, and bounded progress remain later slices rather than implied support.
 
-Every attempted mutation should yield a versioned, machine-readable action
-proof containing only privacy-reduced metadata:
+Every attempted semantic element mutation yields a versioned, machine-readable
+action proof containing only privacy-reduced metadata:
 
 ```json
 {
-  "transaction_id": "transaction-7821",
+  "schema_version": "1",
+  "transaction_id": "action-7821",
   "status": "verified",
   "resolution": {
-    "method": "semantic-exact",
+    "strategy": "retained-reference",
     "candidate_count": 1,
-    "healing_used": false
+    "exact": true,
+    "healing": false
   },
   "authorization": {
-    "policy_rule": "invoice-export",
-    "lease_consumed": true
+    "policy_allowed": true,
+    "confirmation_required": true,
+    "confirmed": true
   },
   "execution": {
     "backend": "windows-uia",
-    "action": "press",
-    "pointer_fallback": false
+    "action": "toggle",
+    "status": "dispatched",
+    "fallback": false
   },
   "verification": {
-    "condition": "window[name='Save As'] appears",
-    "passed": true
+    "condition_kind": "state-present",
+    "status": "matched",
+    "precheck_attempts": 1,
+    "final_gate_checked": true,
+    "postcondition_attempts": 2,
+    "already_satisfied": false
   },
   "cleanup": {
-    "owned_keys": 0,
-    "owned_buttons": 0,
-    "retained_sensitive_buffers": 0
+    "transient_resources_released": true
   }
 }
 ```
@@ -467,7 +484,8 @@ The recommended product sequence is:
 2. bounded OCR and visual detection (`LAB-74`, complete)
 3. observation-bound semantic element actions with full live revalidation
    (`LAB-77`, complete)
-4. add semantic preconditions/postconditions and action proof v1
+4. add target-relative semantic postconditions and Action Proof v1
+   (`LAB-79`, complete)
 5. introduce a versioned `TargetSpec` and deterministic explainable resolver
 6. add single-use capability leases plus strict, adaptive, and review healing
 7. integrate image/OCR evidence into the same resolver and authorization

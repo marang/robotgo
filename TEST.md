@@ -202,12 +202,16 @@ zeroing, stale-target rejection, changed/unchanged verification, timeout and
 attempt bounds, explicit-observation color search, bounded region waits, query
 and observation quotas, bounded semantic UI-tree projection, sensitive-text
 redaction, observation-bound element-action validation, offered-action and
-value/timeout policy, native-reference zeroing, no-match/timeout cleanup, payload-free
-audit events, and the documented input and capture cancellation boundaries.
+value/timeout policy, target-relative state/focus/value conditions,
+already-satisfied no-dispatch behavior, separate semantic-verification quotas,
+Action Proof v1 outcomes and counts, native-reference/value zeroing,
+no-match/timeout cleanup, payload-free terminal audit events, and the documented
+input and capture cancellation boundaries.
 The Linux AT-SPI unit suite uses an in-memory query fixture to verify exact
 process/title/object-ancestry matching, role/property minimization,
 hidden-subtree pruning, fixed role/state/action mapping, pre-dispatch semantic
-revalidation, post-dispatch status, and hard identity/tree limits. The shared
+revalidation, condition probes, condition-aware final-gate behavior,
+post-dispatch status, and hard identity/tree limits. The shared
 Windows UI Automation tree fixture additionally proves that password,
 offscreen, disallowed-role, and foreign-process elements receive no content
 read, all acquired native references are released on errors and limits, and
@@ -228,8 +232,9 @@ CGO_ENABLED=0 go test ./agent
 The protected Windows job creates only one in-process Win32 window with fixed
 button, input, and password fixture text. It verifies the real UI Automation
 adapter, password redaction, process scope, observation-bound native
-`set-value`, post-action semantic observation, and cleanup without screenshots,
-files, clipboard access, or foreign-window discovery:
+`set-value`, native value postcondition checks, post-action semantic observation,
+and cleanup without screenshots, files, clipboard access, or foreign-window
+discovery:
 
 ```powershell
 $env:ROBOTGO_REQUIRE_WINDOWS_ACCESSIBILITY_INTEGRATION = "1"
@@ -248,11 +253,13 @@ screenshot:
 ```bash
 go run ./examples/semantic_ui -pid 1234 -title 'Self-owned fixture' -confirm
 go run ./examples/semantic_element_action \
-  -pid 1234 -title 'Self-owned fixture' -button Save -confirm
+  -pid 1234 -title 'Self-owned fixture' -toggle 'Enable sync' -confirm
 ```
 
 macOS unit and cross-build checks are blocking, including fixed role/action
-mapping, bounded reference paths, native framework symbol resolution, and the
+mapping (`toggle`/`checked` for checkbox and switch, `press`/`selected` for
+radio), bounded reference-path re-resolution, native framework symbol
+resolution, and the
 non-prompting permission contract. A permission-granted real semantic fixture
 is evidence-pending with the other LAB-69 macOS GUI checks; hosted CI must not
 turn missing Accessibility consent into a passing runtime claim.
