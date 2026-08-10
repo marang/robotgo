@@ -108,21 +108,42 @@ func TestElementConditionRequiresObservableProperty(t *testing.T) {
 	}
 }
 
+func TestValueConditionRejectsOversizedActionValue(t *testing.T) {
+	t.Parallel()
+	request := ActionRequest{
+		Action: "set-value", Value: make([]byte, maxElementConditionValueBytes),
+		Postcondition: &ElementCondition{Kind: ElementConditionValueEqualsActionValue},
+	}
+	if err := validateElementCondition(request); err != nil {
+		t.Fatalf("boundary value condition: %v", err)
+	}
+	request.Value = append(request.Value, 0)
+	if err := validateElementCondition(request); !errors.Is(err, ErrInvalidTree) {
+		t.Fatalf("oversized value condition error = %v, want invalid tree", err)
+	}
+}
+
 func TestElementConditionSatisfiedKeepsActionValuePrivate(t *testing.T) {
 	t.Parallel()
 	value := []byte("8.0")
 	satisfied, err := elementConditionSatisfied(
 		&ElementCondition{Kind: ElementConditionValueEqualsActionValue},
-		nil, false, "slider", "8", value,
+		nil, false, "slider", "8", false, value,
 	)
 	if err != nil || !satisfied || !slices.Equal(value, []byte("8.0")) {
 		t.Fatalf("numeric condition = %t, %v, value=%q", satisfied, err, value)
 	}
 	if satisfied, err = elementConditionSatisfied(
 		&ElementCondition{Kind: ElementConditionValueEqualsActionValue},
-		nil, false, "slider", "not-a-number", value,
+		nil, false, "slider", "not-a-number", false, value,
 	); !errors.Is(err, ErrInvalidTree) || satisfied {
 		t.Fatalf("invalid numeric condition = %t, %v", satisfied, err)
+	}
+	if satisfied, err = elementConditionSatisfied(
+		&ElementCondition{Kind: ElementConditionValueEqualsActionValue},
+		nil, false, "textbox", "private value", true, []byte("private value"),
+	); err != nil || satisfied {
+		t.Fatalf("truncated value condition = %t, %v; want unsatisfied without error", satisfied, err)
 	}
 }
 

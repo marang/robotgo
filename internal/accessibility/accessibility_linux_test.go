@@ -40,6 +40,7 @@ type fakeATSPIQuery struct {
 	childCalls       map[string]int
 	interfaceCalls   map[string]int
 	textCalls        map[string]int
+	textLimits       map[string][]int32
 	mutationCalls    []string
 	setTextValue     string
 	setNumericValue  float64
@@ -137,13 +138,18 @@ func (query *fakeATSPIQuery) extents(_ context.Context, reference atspiReference
 	return object.rect, nil
 }
 
-func (query *fakeATSPIQuery) text(_ context.Context, reference atspiReference, _ int32) (string, error) {
+func (query *fakeATSPIQuery) text(_ context.Context, reference atspiReference, limit int32) (string, error) {
 	object, err := query.object(reference)
 	if err != nil {
 		return "", err
 	}
 	query.textCalls[referenceKey(reference)]++
-	return object.text, nil
+	query.textLimits[referenceKey(reference)] = append(query.textLimits[referenceKey(reference)], limit)
+	characters := []rune(object.text)
+	if limit >= 0 && len(characters) > int(limit) {
+		characters = characters[:limit]
+	}
+	return string(characters), nil
 }
 
 func (query *fakeATSPIQuery) currentValue(_ context.Context, reference atspiReference) (float64, error) {
@@ -270,6 +276,7 @@ func newFakeATSPIQuery(objects map[atspiReference]*fakeATSPIObject) *fakeATSPIQu
 		objects:       make(map[string]*fakeATSPIObject),
 		propertyCalls: make(map[string]int), childCalls: make(map[string]int),
 		interfaceCalls: make(map[string]int), textCalls: make(map[string]int),
+		textLimits: make(map[string][]int32),
 	}
 	for reference, object := range objects {
 		query.objects[referenceKey(reference)] = object
@@ -768,6 +775,43 @@ func TestCheckATSPIValueConditionDoesNotMutateOrConsumeActionValue(t *testing.T)
 	if err != nil || !result.Satisfied || len(query.mutationCalls) != 0 ||
 		!slices.Equal(value, []byte("private value")) {
 		t.Fatalf("value condition = %+v, %v, calls=%v, value=%q", result, err, query.mutationCalls, value)
+	}
+
+	boundary := strings.Repeat("x", maxElementConditionValueBytes)
+	request.Value = []byte(boundary)
+	query.objects[referenceKey(textbox)].text = boundary
+	result, err = checkATSPI(t.Context(), query, request, textbox)
+	if err != nil || !result.Satisfied {
+		t.Fatalf("exact boundary value condition = %+v, %v", result, err)
+	}
+	query.objects[referenceKey(textbox)].text = boundary + "x"
+	result, err = checkATSPI(t.Context(), query, request, textbox)
+	if err != nil || result.Satisfied {
+		t.Fatalf("truncated-prefix value condition = %+v, %v", result, err)
+	}
+	limits := query.textLimits[referenceKey(textbox)]
+	if len(limits) == 0 || limits[len(limits)-1] != maxElementConditionValueBytes+1 {
+		t.Fatalf("value condition text limits = %v, want final limit %d", limits, maxElementConditionValueBytes+1)
+	}
+
+	request.Value = []byte(strings.Repeat("x", maxElementConditionValueBytes+1))
+	textCalls := query.textCalls[referenceKey(textbox)]
+	result, err = checkATSPI(t.Context(), query, request, textbox)
+	if !errors.Is(err, ErrInvalidTree) || result.Satisfied ||
+		query.textCalls[referenceKey(textbox)] != textCalls {
+		t.Fatalf("oversized condition = %+v, %v, text calls=%d, want %d",
+			result, err, query.textCalls[referenceKey(textbox)], textCalls)
+	}
+}
+
+func TestFakeATSPITextLimitUsesCharacterOffsets(t *testing.T) {
+	textbox := atspiTestReference("textbox")
+	query := newFakeATSPIQuery(map[atspiReference]*fakeATSPIObject{
+		textbox: {text: "éx"},
+	})
+	got, err := query.text(t.Context(), textbox, 1)
+	if err != nil || got != "é" {
+		t.Fatalf("one-character AT-SPI text = %q, %v; want é", got, err)
 	}
 }
 

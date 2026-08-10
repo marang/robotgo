@@ -290,7 +290,7 @@ func checkUIAElementCondition(
 	}
 	condition := request.Postcondition
 	details, err := query.detailsWithDisabledActions(ctx, element, role, Limits{
-		MaxStringBytes: 1 << 20, ReadName: true, ReadStates: true,
+		MaxStringBytes: maxElementConditionValueBytes, ReadName: true, ReadStates: true,
 		ReadBounds: true, ReadActions: true,
 		ReadFocus: condition.Kind == ElementConditionFocused || condition.Kind == ElementConditionNotFocused,
 		ReadValue: condition.Kind == ElementConditionValueEqualsActionValue,
@@ -298,8 +298,11 @@ func checkUIAElementCondition(
 	if err != nil {
 		return false, err
 	}
+	// The native prefix is not export-observable, but a value beyond the
+	// action-value hard cap is sufficient to prove this condition false.
+	valueConditionObservable := details.ValueObservable || details.ValueTruncated
 	if !elementConditionObservable(
-		condition, details.ObservableStates, details.FocusObservable, details.ValueObservable,
+		condition, details.ObservableStates, details.FocusObservable, valueConditionObservable,
 	) {
 		return false, ErrUnsupported
 	}
@@ -312,7 +315,7 @@ func checkUIAElementCondition(
 		return false, ErrStaleTarget
 	}
 	return elementConditionSatisfied(
-		condition, details.States, details.Focused, role, details.Value, request.Value,
+		condition, details.States, details.Focused, role, details.Value, details.ValueTruncated, request.Value,
 	)
 }
 

@@ -20,6 +20,8 @@ const (
 	ElementConditionValueEqualsActionValue ElementConditionKind = "value-equals-action-value"
 )
 
+const maxElementConditionValueBytes = 1 << 20
+
 const (
 	elementStateEnabled   = "enabled"
 	elementStateDisabled  = "disabled"
@@ -53,7 +55,8 @@ func validateElementCondition(request ActionRequest) error {
 			return ErrInvalidTree
 		}
 	case ElementConditionValueEqualsActionValue:
-		if condition.State != "" || request.Action != "set-value" {
+		if condition.State != "" || request.Action != "set-value" ||
+			len(request.Value) > maxElementConditionValueBytes {
 			return ErrInvalidTree
 		}
 	default:
@@ -239,6 +242,7 @@ func elementConditionSatisfied(
 	liveStates []string,
 	focused bool,
 	role, liveValue string,
+	valueTruncated bool,
 	actionValue []byte,
 ) (bool, error) {
 	if condition == nil {
@@ -254,6 +258,9 @@ func elementConditionSatisfied(
 	case ElementConditionNotFocused:
 		return !focused, nil
 	case ElementConditionValueEqualsActionValue:
+		if valueTruncated {
+			return false, nil
+		}
 		if role == "slider" {
 			live, liveErr := strconv.ParseFloat(liveValue, 64)
 			want, wantErr := strconv.ParseFloat(string(actionValue), 64)

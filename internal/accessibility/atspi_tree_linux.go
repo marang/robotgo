@@ -298,6 +298,31 @@ func readATSPIValue(
 	return "", nil
 }
 
+func readATSPIConditionValue(
+	ctx context.Context,
+	query atspiQuery,
+	reference atspiReference,
+	role string,
+	interfaces map[string]bool,
+	maxBytes int,
+) (string, bool, error) {
+	if maxBytes < 0 || maxBytes >= math.MaxInt32 {
+		return "", false, ErrInvalidTree
+	}
+	if role != "textbox" || !interfaces[atspiShortText] {
+		value, err := readATSPIValue(ctx, query, reference, role, interfaces, uint32(maxBytes))
+		return value, false, err
+	}
+	value, err := query.text(ctx, reference, int32(maxBytes)+1)
+	if err != nil {
+		return "", false, err
+	}
+	if len(value) > maxBytes {
+		return "", true, nil
+	}
+	return value, false, nil
+}
+
 func atspiTopLevelRole(role uint32) bool {
 	return role == atspiRoleDialog || role == atspiRoleFrame || role == atspiRoleWindow
 }

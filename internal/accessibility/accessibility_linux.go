@@ -546,13 +546,19 @@ func checkATSPIElementCondition(
 		case live.role == "slider" && !live.interfaces[atspiShortValue]:
 			return false, ErrUnsupported
 		}
-		live.value, err = readATSPIValue(ctx, query, reference, live.role, live.interfaces, 1<<20)
+		var valueTruncated bool
+		live.value, valueTruncated, err = readATSPIConditionValue(
+			ctx, query, reference, live.role, live.interfaces, maxElementConditionValueBytes,
+		)
 		if err != nil {
 			return false, normalizeATSPIError(err)
 		}
+		return elementConditionSatisfied(
+			condition, live.states, live.focused, live.role, live.value, valueTruncated, request.Value,
+		)
 	}
 	return elementConditionSatisfied(
-		condition, live.states, live.focused, live.role, live.value, request.Value,
+		condition, live.states, live.focused, live.role, live.value, false, request.Value,
 	)
 }
 

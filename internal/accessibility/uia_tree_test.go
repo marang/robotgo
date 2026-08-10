@@ -421,6 +421,24 @@ func TestBuildUIATreeBoundsNodesAndReferences(t *testing.T) {
 	}
 }
 
+func TestBuildUIATreeMarksNativeValueTruncation(t *testing.T) {
+	nodes := map[int]fakeUIANode{
+		1: {
+			structure: fakeUIAStructure(1, 42, uiaControlEdit),
+			details: uiaNodeDetails{
+				Name: "Field", Value: "prefix", ValueObservable: true, ValueTruncated: true,
+			},
+		},
+	}
+	limits := uiaTestLimits()
+	limits.AllowedRoles["textbox"] = true
+	query := newFakeUIAQuery(nodes)
+	snapshot, err := buildUIATree(t.Context(), query, 1, 42, 77, limits)
+	if err != nil || len(snapshot.Nodes) != 1 || snapshot.Nodes[0].Value != "prefix" || !snapshot.Truncated {
+		t.Fatalf("value-truncated snapshot = %+v, %v", snapshot, err)
+	}
+}
+
 func TestUIARoleReferenceAndNumericContracts(t *testing.T) {
 	if got := mapUIAControlType(uiaControlEdit, true, false); got != "password" {
 		t.Fatalf("password role = %q", got)

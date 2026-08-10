@@ -323,7 +323,7 @@ func (query *uiaCOMQuery) detailsWithDisabledActions(
 		}
 	}
 	if limits.ReadValue {
-		result.Value, result.ValueObservable, err = query.value(role, properties)
+		result.Value, result.ValueObservable, result.ValueTruncated, err = query.value(role, properties)
 		if err != nil {
 			return result, fmt.Errorf("value: %w", err)
 		}
@@ -577,27 +577,28 @@ func (query *uiaCOMQuery) actions(
 	return uniqueUIAStrings(actions), nil
 }
 
-func (query *uiaCOMQuery) value(role string, properties *uiaPropertyReader) (string, bool, error) {
+func (query *uiaCOMQuery) value(role string, properties *uiaPropertyReader) (string, bool, bool, error) {
 	valueAvailable, err := properties.bool(uiaPropertyValueAvailable)
 	if err != nil {
-		return "", false, err
+		return "", false, false, err
 	}
 	if valueAvailable && (role == "textbox" || role == "combobox") {
-		return properties.text(uiaPropertyValueValue)
+		value, supported, truncated, err := properties.text(uiaPropertyValueValue)
+		return value, supported && !truncated, truncated, err
 	}
 	rangeAvailable, err := properties.bool(uiaPropertyRangeValueAvailable)
 	if err != nil {
-		return "", false, err
+		return "", false, false, err
 	}
 	if rangeAvailable && (role == "slider" || role == "progress") {
 		value, supported, err := properties.number(uiaPropertyRangeValueValue)
 		if err != nil || !supported {
-			return "", false, err
+			return "", false, false, err
 		}
 		formatted, err := uiaNumericValue(value)
-		return formatted, err == nil, err
+		return formatted, err == nil, false, err
 	}
-	return "", false, nil
+	return "", false, false, nil
 }
 
 func (query *uiaCOMQuery) firstChild(ctx context.Context, element *ole.IUnknown) (*ole.IUnknown, error) {
@@ -722,11 +723,12 @@ const (
 )
 
 type uiaPropertyValue struct {
-	kind    uiaPropertyKind
-	boolean bool
-	integer int32
-	number  float64
-	text    string
+	kind      uiaPropertyKind
+	boolean   bool
+	integer   int32
+	number    float64
+	text      string
+	truncated bool
 }
 
 func (reader *uiaPropertyReader) read(property int32) (uiaPropertyValue, error) {
@@ -755,7 +757,9 @@ func (reader *uiaPropertyReader) read(property int32) (uiaPropertyValue, error) 
 		result.number = math.Float64frombits(uint64(value.Val))
 	case ole.VT_BSTR:
 		result.kind = uiaPropertyText
-		result.text = boundedBSTR(*(**uint16)(unsafe.Pointer(&value.Val)), reader.maxBytes)
+		result.text, result.truncated = boundedBSTRWithTruncation(
+			*(**uint16)(unsafe.Pointer(&value.Val)), reader.maxBytes,
+		)
 	default:
 		return uiaPropertyValue{}, fmt.Errorf(
 			"uia property %d has unsupported VARIANT type %d: %w", property, value.VT, ErrInvalidTree,
@@ -821,18 +825,18 @@ func (reader *uiaPropertyReader) number(property int32) (float64, bool, error) {
 	}
 }
 
-func (reader *uiaPropertyReader) text(property int32) (string, bool, error) {
+func (reader *uiaPropertyReader) text(property int32) (string, bool, bool, error) {
 	value, err := reader.read(property)
 	if err != nil {
-		return "", false, err
+		return "", false, false, err
 	}
 	switch value.kind {
 	case uiaPropertyMissing:
-		return "", false, nil
+		return "", false, false, nil
 	case uiaPropertyText:
-		return value.text, true, nil
+		return value.text, true, value.truncated, nil
 	default:
-		return "", false, invalidUIAPropertyKind(property, "text", value.kind)
+		return "", false, false, invalidUIAPropertyKind(property, "text", value.kind)
 	}
 }
 
@@ -914,32 +918,30 @@ func elementBSTRWithTruncation(ctx context.Context, element *ole.IUnknown, metho
 		return "", false, nil
 	}
 	defer func() { _ = ole.SysFreeString((*int16)(unsafe.Pointer(value))) }()
-	result := boundedBSTR(value, maxBytes)
-	units := int(ole.SysStringLen((*int16)(unsafe.Pointer(value))))
-	truncated := units > int(maxBytes)
-	if !truncated {
-		truncated = len(string(utf16.Decode(unsafe.Slice(value, units)))) > int(maxBytes)
-	}
+	result, truncated := boundedBSTRWithTruncation(value, maxBytes)
 	return result, truncated, nil
 }
 
-func boundedBSTR(value *uint16, maxBytes uint32) string {
-	if value == nil || maxBytes == 0 {
-		return ""
+func boundedBSTRWithTruncation(value *uint16, maxBytes uint32) (string, bool) {
+	if value == nil {
+		return "", false
 	}
-	units := int(ole.SysStringLen((*int16)(unsafe.Pointer(value))))
-	if units > int(maxBytes) {
-		units = int(maxBytes)
+	units := ole.SysStringLen((*int16)(unsafe.Pointer(value)))
+	truncated := false
+	if units > maxBytes {
+		units = maxBytes
+		truncated = true
 	}
 	decoded := string(utf16.Decode(unsafe.Slice(value, units)))
-	if len(decoded) <= int(maxBytes) {
-		return decoded
+	if uint64(len(decoded)) <= uint64(maxBytes) {
+		return decoded, truncated
 	}
-	decoded = decoded[:maxBytes]
+	truncated = true
+	decoded = decoded[:int(maxBytes)]
 	for len(decoded) > 0 && !utf8.ValidString(decoded) {
 		decoded = decoded[:len(decoded)-1]
 	}
-	return decoded
+	return decoded, truncated
 }
 
 func elementBounds(ctx context.Context, element *ole.IUnknown) (*Bounds, error) {
