@@ -3,9 +3,11 @@
 ## Unreleased
 
 - Made published release-evidence assets fail closed on filename collisions.
-  The write-authorized release job still checksum-verifies and uploads a new
-  exact-tag bundle, but it can no longer delete or replace an existing archive
-  or checksum during a rerun.
+  The write-authorized release job serializes same-tag publishers, rejects
+  either existing exact-tag filename before upload, and still checksum-verifies
+  new bundles, so a rerun can no longer mix assets from different runs, delete,
+  or replace an archive/checksum pair. A transport failure can still leave an
+  incomplete same-run pair, which later reruns preserve and reject.
 
 - Added the schema-v8, deny-by-default `desktop.ocr` and
   `desktop.detect-elements` contracts plus their separately image-enabled MCP

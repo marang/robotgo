@@ -63,14 +63,19 @@ robotgo-release-evidence-<tag>-<commit>.tar.gz.sha256
 
 For a GitHub `release.published` event these files are attached to the existing
 release. The write-authorized publish job does not check out or execute
-repository code; it only verifies the already packaged SHA-256 and uploads the
-two assets. Manual runs retain the bundle as a GitHub Actions artifact for 90
-days and do not modify a release.
+repository code; it only queries existing release-asset names, verifies the
+already packaged SHA-256, and uploads the two new assets. Manual runs retain the
+bundle as a GitHub Actions artifact for 90 days and do not modify a release.
 
-The upload deliberately has no overwrite or delete path. If either exact
-commit-bound asset name already exists, the publish job fails and leaves the
-existing release assets untouched. A rerun therefore cannot replace historical
-evidence, even when repository-level immutable releases are unavailable.
+Same-tag publish jobs are serialized. Each job enumerates the release's
+existing asset names before it uploads either file, and the upload deliberately
+has no overwrite or delete path. If either exact commit-bound asset name already
+exists, the job fails and leaves the existing release assets untouched. A rerun
+therefore cannot replace historical evidence or combine assets from different
+same-tag runs, even when repository-level immutable releases are unavailable.
+The two uploads are not transactional: an upload or network failure can still
+leave an incomplete pair from one run. A later rerun fails closed on that
+collision instead of silently filling or replacing the partial publication.
 
 The published post-API-freeze RC contract passes in
 [`v1.0.0-rc.1` Release Evidence run 30442843617](https://github.com/marang/robotgo/actions/runs/30442843617)

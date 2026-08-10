@@ -106,6 +106,8 @@ func TestPublishedReleaseEvidenceCannotReplaceExistingAssets(t *testing.T) {
 	publish := text[publishStart:]
 	for _, required := range []string{
 		"if: github.event_name == 'release'",
+		"group: release-evidence-publish-${{ github.ref }}",
+		"cancel-in-progress: false",
 		"contents: write",
 	} {
 		if !strings.Contains(publish, required) {
@@ -128,10 +130,22 @@ func TestPublishedReleaseEvidenceCannotReplaceExistingAssets(t *testing.T) {
         run: |
           set -euo pipefail
           cd bundle
-          sha256sum -c "${{ needs.package.outputs.checksum }}"
+          archive="${{ needs.package.outputs.archive }}"
+          checksum="${{ needs.package.outputs.checksum }}"
+          published_assets="$(
+            gh release view "$GITHUB_REF_NAME" \
+              --repo "$GITHUB_REPOSITORY" \
+              --json assets \
+              --jq '.assets[].name'
+          )"
+          if grep -Fqx -e "$archive" -e "$checksum" <<<"$published_assets"; then
+            echo "release evidence asset already exists; refusing to publish" >&2
+            exit 1
+          fi
+          sha256sum -c "$checksum"
           gh release upload "$GITHUB_REF_NAME" \
-            "${{ needs.package.outputs.archive }}" \
-            "${{ needs.package.outputs.checksum }}" \
+            "$archive" \
+            "$checksum" \
             --repo "$GITHUB_REPOSITORY"`
 	if got := strings.TrimSpace(publish[stepsStart:]); got != strings.TrimSpace(allowedSteps) {
 		t.Errorf(

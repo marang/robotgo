@@ -410,6 +410,9 @@ jobs:
   publish:
     if: github.event_name == 'release'
     needs: package
+    concurrency:
+      group: release-evidence-publish-${{ github.ref }}
+      cancel-in-progress: false
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -426,8 +429,20 @@ jobs:
         run: |
           set -euo pipefail
           cd bundle
-          sha256sum -c "${{ needs.package.outputs.checksum }}"
+          archive="${{ needs.package.outputs.archive }}"
+          checksum="${{ needs.package.outputs.checksum }}"
+          published_assets="$(
+            gh release view "$GITHUB_REF_NAME" \
+              --repo "$GITHUB_REPOSITORY" \
+              --json assets \
+              --jq '.assets[].name'
+          )"
+          if grep -Fqx -e "$archive" -e "$checksum" <<<"$published_assets"; then
+            echo "release evidence asset already exists; refusing to publish" >&2
+            exit 1
+          fi
+          sha256sum -c "$checksum"
           gh release upload "$GITHUB_REF_NAME" \
-            "${{ needs.package.outputs.archive }}" \
-            "${{ needs.package.outputs.checksum }}" \
+            "$archive" \
+            "$checksum" \
             --repo "$GITHUB_REPOSITORY"
