@@ -5,6 +5,7 @@ package accessibility
 import (
 	"context"
 	"errors"
+	"fmt"
 	"math"
 	"runtime"
 	"slices"
@@ -53,7 +54,7 @@ func inspect(ctx context.Context, target Target, limits Limits) (Snapshot, error
 	}
 	if target.ExpectedTitle == "" || !validUIALimits(limits) ||
 		(target.ProcessID > 0) == (target.NativeWindowHandle > 0) {
-		return Snapshot{}, ErrInvalidTree
+		return Snapshot{}, fmt.Errorf("uia inspect input: %w", ErrInvalidTree)
 	}
 	return runOnWindowsUIAThreadValue(ctx, func() (Snapshot, error) {
 		return inspectWindowsUIA(ctx, target, limits)

@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/binary"
+	"fmt"
 	"math"
 	"strconv"
 	"unicode/utf8"
@@ -34,7 +35,7 @@ func uiaRangeValueActions(readOnly, available, stepSupported bool, step float64)
 // observation-bound checked-state postconditions, so it fails closed.
 func uiaToggleChecked(state int32, supported bool) (bool, error) {
 	if !supported {
-		return false, ErrInvalidTree
+		return false, fmt.Errorf("uia toggle state is missing: %w", ErrInvalidTree)
 	}
 	switch state {
 	case uiaToggleStateOff, uiaToggleStateIndeterminate:
@@ -42,7 +43,7 @@ func uiaToggleChecked(state int32, supported bool) (bool, error) {
 	case uiaToggleStateOn:
 		return true, nil
 	default:
-		return false, ErrInvalidTree
+		return false, fmt.Errorf("uia toggle state is invalid: %w", ErrInvalidTree)
 	}
 }
 
@@ -174,7 +175,7 @@ func buildUIATree[T comparable](
 	snapshot := Snapshot{Backend: BackendWindowsAutomation, Nodes: make([]Node, 0, limits.MaxElements)}
 	if expectedProcessID <= 0 || expectedWindowHandle == 0 || !validUIALimits(limits) {
 		query.release(root)
-		return Snapshot{}, ErrInvalidTree
+		return Snapshot{}, fmt.Errorf("uia tree input: %w", ErrInvalidTree)
 	}
 	budget := &uiaStringBudget{remaining: int(limits.MaxStringBytes)}
 	seen := make(map[[sha256.Size]byte]struct{}, limits.MaxElements)
@@ -207,16 +208,19 @@ func buildUIATree[T comparable](
 		}
 		structure, err := query.structure(ctx, reference)
 		if err != nil {
-			return err
+			return fmt.Errorf("uia structure: %w", err)
 		}
 		referenceData, err := encodeUIAReference(processID, expectedWindowHandle, structure.RuntimeID)
-		if err != nil || len(referenceData) > int(limits.MaxReferenceBytes) ||
+		if err != nil {
+			return fmt.Errorf("uia reference encoding: %w", err)
+		}
+		if len(referenceData) > int(limits.MaxReferenceBytes) ||
 			len(referenceData) > int(limits.MaxTotalReferenceBytes)-referenceBytes {
-			return ErrInvalidTree
+			return fmt.Errorf("uia reference budget: %w", ErrInvalidTree)
 		}
 		digest := sha256.Sum256(referenceData)
 		if _, duplicate := seen[digest]; duplicate {
-			return ErrInvalidTree
+			return fmt.Errorf("uia duplicate reference: %w", ErrInvalidTree)
 		}
 		seen[digest] = struct{}{}
 		referenceBytes += len(referenceData)
@@ -233,7 +237,7 @@ func buildUIATree[T comparable](
 		if roleAllowed && !structure.Password && !structure.Offscreen {
 			details, err := query.details(ctx, reference, role, limits)
 			if err != nil {
-				return err
+				return fmt.Errorf("uia details for role %q: %w", role, err)
 			}
 			if limits.ReadName {
 				node.Name = budget.take(details.Name)

@@ -5,6 +5,7 @@ package accessibility
 import (
 	"context"
 	"errors"
+	"fmt"
 	"math"
 	"runtime"
 	"syscall"
@@ -226,15 +227,15 @@ func createUIAutomation2(ctx context.Context) (*ole.IUnknown, error) {
 func (query *uiaCOMQuery) structure(ctx context.Context, element *ole.IUnknown) (uiaNodeStructure, error) {
 	runtimeID, err := query.runtimeID(ctx, element)
 	if err != nil {
-		return uiaNodeStructure{}, err
+		return uiaNodeStructure{}, fmt.Errorf("runtime ID: %w", err)
 	}
 	controlType, err := elementInt32(ctx, element, uiaElementMethodControlType)
 	if err != nil {
-		return uiaNodeStructure{}, err
+		return uiaNodeStructure{}, fmt.Errorf("control type: %w", err)
 	}
 	password, err := elementBool(ctx, element, uiaElementMethodPassword)
 	if err != nil {
-		return uiaNodeStructure{}, err
+		return uiaNodeStructure{}, fmt.Errorf("password state: %w", err)
 	}
 	toggleAvailable := false
 	if controlType == uiaControlButton && !password {
@@ -243,12 +244,12 @@ func (query *uiaCOMQuery) structure(ctx context.Context, element *ole.IUnknown) 
 		// VARIANT decoding and matches the pattern used during dispatch.
 		toggleAvailable, err = currentUIAPatternAvailable(ctx, element, uiaPatternToggle)
 		if err != nil {
-			return uiaNodeStructure{}, err
+			return uiaNodeStructure{}, fmt.Errorf("toggle pattern: %w", err)
 		}
 	}
 	offscreen, err := elementBool(ctx, element, uiaElementMethodOffscreen)
 	if err != nil {
-		return uiaNodeStructure{}, err
+		return uiaNodeStructure{}, fmt.Errorf("offscreen state: %w", err)
 	}
 	return uiaNodeStructure{
 		RuntimeID: runtimeID, ControlType: controlType,
@@ -281,53 +282,53 @@ func (query *uiaCOMQuery) detailsWithDisabledActions(
 	if limits.ReadName {
 		result.Name, result.NameTruncated, err = elementBSTRWithTruncation(ctx, element, uiaElementMethodName, limits.MaxStringBytes)
 		if err != nil {
-			return result, err
+			return result, fmt.Errorf("name: %w", err)
 		}
 	}
 	if limits.ReadDescription {
 		result.Description, err = elementBSTR(ctx, element, uiaElementMethodHelpText, limits.MaxStringBytes)
 		if err != nil {
-			return result, err
+			return result, fmt.Errorf("description: %w", err)
 		}
 	}
 	if limits.ReadFocus {
 		result.Focused, err = elementBool(ctx, element, uiaElementMethodKeyboardFocus)
 		if err != nil {
-			return result, err
+			return result, fmt.Errorf("focus: %w", err)
 		}
 		result.FocusObservable = true
 	}
 	if limits.ReadBounds {
 		result.Bounds, err = elementBounds(ctx, element)
 		if err != nil {
-			return result, err
+			return result, fmt.Errorf("bounds: %w", err)
 		}
 	}
 	properties := newUIAPropertyReader(ctx, element, limits.MaxStringBytes)
 	if limits.ReadStates {
 		result.States, err = query.states(ctx, element, role, properties)
 		if err != nil {
-			return result, err
+			return result, fmt.Errorf("states: %w", err)
 		}
 		// Strict provider-presence reads belong only to the condition gate.
 		// Normal inspection keeps optional platform properties optional.
 		if readActionsWhenDisabled {
 			result.ObservableStates, err = query.observableStates(ctx, element, role, properties)
 			if err != nil {
-				return result, err
+				return result, fmt.Errorf("observable states: %w", err)
 			}
 		}
 	}
 	if limits.ReadActions {
 		result.Actions, err = query.actions(ctx, element, role, properties, readActionsWhenDisabled)
 		if err != nil {
-			return result, err
+			return result, fmt.Errorf("actions: %w", err)
 		}
 	}
 	if limits.ReadValue {
 		result.Value, result.ValueObservable, err = query.value(role, properties)
 		if err != nil {
-			return result, err
+			return result, fmt.Errorf("value: %w", err)
 		}
 	}
 	return result, nil
@@ -783,7 +784,9 @@ func (reader *uiaPropertyReader) read(property int32) (uiaPropertyValue, error) 
 		result.kind = uiaPropertyText
 		result.text = boundedBSTR(*(**uint16)(unsafe.Pointer(&value.Val)), reader.maxBytes)
 	default:
-		return uiaPropertyValue{}, ErrInvalidTree
+		return uiaPropertyValue{}, fmt.Errorf(
+			"uia property %d has unsupported VARIANT type %d: %w", property, value.VT, ErrInvalidTree,
+		)
 	}
 	reader.cache[property] = result
 	return result, nil
@@ -800,7 +803,7 @@ func (reader *uiaPropertyReader) bool(property int32) (bool, error) {
 	case uiaPropertyBoolean:
 		return value.boolean, nil
 	default:
-		return false, ErrInvalidTree
+		return false, invalidUIAPropertyKind(property, "boolean", value.kind)
 	}
 }
 
@@ -810,7 +813,7 @@ func (reader *uiaPropertyReader) requiredBool(property int32) (bool, error) {
 		return false, err
 	}
 	if value.kind != uiaPropertyBoolean {
-		return false, ErrInvalidTree
+		return false, invalidUIAPropertyKind(property, "boolean", value.kind)
 	}
 	return value.boolean, nil
 }
@@ -826,7 +829,7 @@ func (reader *uiaPropertyReader) integer(property int32) (int32, bool, error) {
 	case uiaPropertyInteger:
 		return value.integer, true, nil
 	default:
-		return 0, false, ErrInvalidTree
+		return 0, false, invalidUIAPropertyKind(property, "integer", value.kind)
 	}
 }
 
@@ -841,7 +844,7 @@ func (reader *uiaPropertyReader) number(property int32) (float64, bool, error) {
 	case uiaPropertyNumber:
 		return value.number, true, nil
 	default:
-		return 0, false, ErrInvalidTree
+		return 0, false, invalidUIAPropertyKind(property, "number", value.kind)
 	}
 }
 
@@ -856,8 +859,14 @@ func (reader *uiaPropertyReader) text(property int32) (string, bool, error) {
 	case uiaPropertyText:
 		return value.text, true, nil
 	default:
-		return "", false, ErrInvalidTree
+		return "", false, invalidUIAPropertyKind(property, "text", value.kind)
 	}
+}
+
+func invalidUIAPropertyKind(property int32, expected string, actual uiaPropertyKind) error {
+	return fmt.Errorf(
+		"uia property %d expected %s kind, got %d: %w", property, expected, actual, ErrInvalidTree,
+	)
 }
 
 func (reader *uiaPropertyReader) readOnly(role string) (bool, error) {
