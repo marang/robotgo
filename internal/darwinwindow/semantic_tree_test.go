@@ -157,6 +157,21 @@ func TestBuildAXSemanticTreePreservesPrivacyAndOwnership(t *testing.T) {
 	}
 }
 
+func TestBuildAXSemanticTreePropagatesTruncatedValue(t *testing.T) {
+	t.Parallel()
+	query := newFakeAXSemanticQuery(map[int]fakeAXSemanticNode{
+		1: {
+			pid: 42, structure: axSemanticStructure{Role: "window"},
+			details: axSemanticDetails{Value: "bounded", ValueTruncated: true},
+		},
+	})
+	snapshot, err := buildAXSemanticTree(t.Context(), query, 1, 42, 77, fullAccessibilityLimits())
+	if err != nil || len(snapshot.Nodes) != 1 || !snapshot.Truncated ||
+		snapshot.Nodes[0].Value != "bounded" || query.releases[1] != 1 {
+		t.Fatalf("truncated value snapshot = %+v, %v, releases=%v", snapshot, err, query.releases)
+	}
+}
+
 func TestBuildAXSemanticTreeRejectsDuplicateAndReleasesPendingSiblings(t *testing.T) {
 	t.Parallel()
 	query := newFakeAXSemanticQuery(map[int]fakeAXSemanticNode{

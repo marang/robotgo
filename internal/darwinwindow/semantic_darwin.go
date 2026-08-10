@@ -40,7 +40,8 @@ func validateAccessibilityElementCondition(request AccessibilityActionRequest) e
 			return ErrAccessibilityInvalidTree
 		}
 	case AccessibilityElementConditionValueEqualsActionValue:
-		if condition.State != "" || request.Action != "set-value" {
+		if condition.State != "" || request.Action != "set-value" ||
+			len(request.Value) > maximumAXStringBytes {
 			return ErrAccessibilityInvalidTree
 		}
 	default:
@@ -65,6 +66,7 @@ func accessibilityElementConditionSatisfied(
 	liveStates []string,
 	focused bool,
 	role, liveValue string,
+	valueTruncated bool,
 	actionValue []byte,
 ) (bool, error) {
 	if condition == nil {
@@ -80,6 +82,9 @@ func accessibilityElementConditionSatisfied(
 	case AccessibilityElementConditionNotFocused:
 		return !focused, nil
 	case AccessibilityElementConditionValueEqualsActionValue:
+		if valueTruncated {
+			return false, nil
+		}
 		if role == "slider" {
 			live, liveErr := strconv.ParseFloat(liveValue, 64)
 			want, wantErr := strconv.ParseFloat(string(actionValue), 64)
@@ -461,7 +466,8 @@ func checkAXElementCondition(
 		return false, err
 	}
 	if !accessibilityElementConditionObservable(
-		condition, details.ObservableStates, details.FocusObservable, details.ValueObservable,
+		condition, details.ObservableStates, details.FocusObservable,
+		details.ValueObservable || details.ValueTruncated,
 	) {
 		return false, ErrUnsupported
 	}
@@ -475,7 +481,7 @@ func checkAXElementCondition(
 	}
 	return accessibilityElementConditionSatisfied(
 		condition, details.States, details.Focused,
-		structure.Role, details.Value, request.Value,
+		structure.Role, details.Value, details.ValueTruncated, request.Value,
 	)
 }
 
@@ -1028,7 +1034,12 @@ func (query *nativeAXSemanticQuery) details(
 		}
 	}
 	if limits.ReadValue {
-		details.Value, details.ValueObservable, err = semanticValueAttribute(query.api, element, role)
+		valueLimit := int64(limits.MaxStringBytes)
+		if valueLimit > maximumAXStringBytes {
+			valueLimit = maximumAXStringBytes
+		}
+		details.Value, details.ValueObservable, details.ValueTruncated, err =
+			semanticValueAttribute(query.api, element, role, valueLimit)
 		if err != nil {
 			return axSemanticDetails{}, err
 		}
@@ -1309,28 +1320,33 @@ func accessibilityRectsIntersect(left, right AccessibilityBounds) bool {
 		left.Y < right.Y+right.Height && right.Y < left.Y+left.Height
 }
 
-func semanticValueAttribute(api *nativeAPI, element uintptr, role string) (string, bool, error) {
+func semanticValueAttribute(
+	api *nativeAPI,
+	element uintptr,
+	role string,
+	maxBytes int64,
+) (string, bool, bool, error) {
 	value, ok, err := semanticOptionalAttribute(api, element, api.axValueAttribute)
 	if err != nil || !ok {
-		return "", false, err
+		return "", false, false, err
 	}
 	defer api.cfRelease(value)
 	switch api.cfGetTypeID(value) {
 	case api.cfStringGetTypeID():
-		text, err := cfStringLocked(api, value)
-		return text, err == nil, err
+		text, truncated, err := cfStringBytesLocked(api, value, maxBytes)
+		return text, err == nil && !truncated, truncated, err
 	case api.cfNumberGetTypeID():
 		if role != "slider" && role != "progress" {
-			return "", false, nil
+			return "", false, false, nil
 		}
 		var number float64
 		if !api.cfNumberGetValue(value, cfNumberFloat64Type, unsafe.Pointer(&number)) ||
 			math.IsNaN(number) || math.IsInf(number, 0) {
-			return "", false, ErrAccessibilityInvalidTree
+			return "", false, false, ErrAccessibilityInvalidTree
 		}
-		return strconv.FormatFloat(number, 'g', -1, 64), true, nil
+		return strconv.FormatFloat(number, 'g', -1, 64), true, false, nil
 	default:
-		return "", false, nil
+		return "", false, false, nil
 	}
 }
 

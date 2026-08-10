@@ -81,6 +81,11 @@ type size struct {
 	Height float64
 }
 
+type cfRange struct {
+	Location int64
+	Length   int64
+}
+
 type nativeSystem struct {
 	mu  sync.Mutex
 	api *nativeAPI

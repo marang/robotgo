@@ -51,10 +51,9 @@ type nativeAPI struct {
 	cfNumberGetTypeID                      func() uintptr
 	cfRelease                              func(uintptr)
 	cfRetain                               func(uintptr) uintptr
-	cfStringGetCString                     func(uintptr, *byte, int64, uint32) bool
+	cfStringGetBytes                       func(uintptr, cfRange, uint32, byte, bool, *byte, int64, *int64) int64
 	cfStringCreateWithCString              func(uintptr, *byte, uint32) uintptr
 	cfStringGetLength                      func(uintptr) int64
-	cfStringGetMaximumSizeForEncoding      func(int64, uint32) int64
 	cfStringGetTypeID                      func() uintptr
 
 	axCloseButtonAttribute   uintptr
@@ -154,9 +153,8 @@ func openNativeAPI() (*nativeAPI, bool, error) {
 		{api.coreFoundationHandle, &api.cfRelease, "CFRelease"},
 		{api.coreFoundationHandle, &api.cfRetain, "CFRetain"},
 		{api.coreFoundationHandle, &api.cfStringCreateWithCString, "CFStringCreateWithCString"},
-		{api.coreFoundationHandle, &api.cfStringGetCString, "CFStringGetCString"},
+		{api.coreFoundationHandle, &api.cfStringGetBytes, "CFStringGetBytes"},
 		{api.coreFoundationHandle, &api.cfStringGetLength, "CFStringGetLength"},
-		{api.coreFoundationHandle, &api.cfStringGetMaximumSizeForEncoding, "CFStringGetMaximumSizeForEncoding"},
 		{api.coreFoundationHandle, &api.cfStringGetTypeID, "CFStringGetTypeID"},
 	}
 	for _, function := range functions {

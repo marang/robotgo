@@ -26,6 +26,7 @@ type axSemanticDetails struct {
 	Focused          bool
 	FocusObservable  bool
 	ValueObservable  bool
+	ValueTruncated   bool
 	Actions          []string
 }
 
@@ -167,6 +168,7 @@ func buildAXSemanticTree[T comparable](
 			}
 			if limits.ReadValue {
 				node.Value = budget.take(details.Value)
+				snapshot.Truncated = snapshot.Truncated || details.ValueTruncated
 			}
 			if limits.ReadStates {
 				node.States = append([]string(nil), details.States...)

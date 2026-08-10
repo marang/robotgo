@@ -7,7 +7,10 @@ import (
 	"errors"
 	"math"
 	"slices"
+	"strings"
 	"testing"
+	"unicode/utf16"
+	"unicode/utf8"
 	"unsafe"
 
 	"github.com/marang/robotgo/internal/windowbackend"
@@ -263,13 +266,170 @@ func TestSemanticStatesKeepMixedCheckboxObservable(t *testing.T) {
 		t.Fatal("mixed checkbox checked-state was not observable")
 	}
 	satisfied, err := accessibilityElementConditionSatisfied(
-		condition, states, false, "checkbox", "", nil,
+		condition, states, false, "checkbox", "", false, nil,
 	)
 	if err != nil || !satisfied {
 		t.Fatalf("mixed checkbox state-absent result = %t, %v", satisfied, err)
 	}
 	if releases != 1 {
 		t.Fatalf("released values = %d, want 1", releases)
+	}
+}
+
+func TestSemanticValueUsesActualUTF8SizeAndReportsTruncation(t *testing.T) {
+	t.Parallel()
+	const (
+		stringTypeID = uintptr(11)
+		valueRef     = uintptr(21)
+	)
+	for _, test := range []struct {
+		name          string
+		value         string
+		limit         int64
+		want          string
+		wantTruncated bool
+		wantSizing    int
+	}{
+		{
+			name:  "large ASCII below actual-byte limit",
+			value: strings.Repeat("a", 400<<10), limit: maximumAXStringBytes,
+			want: strings.Repeat("a", 400<<10), wantSizing: 1,
+		},
+		{name: "bounded prefix", value: "abcdefgh", limit: 5, want: "abcde", wantTruncated: true},
+		{name: "multibyte actual size", value: "ééx", limit: 4, want: "éé", wantTruncated: true, wantSizing: 1},
+		{name: "surrogate pair fits boundary", value: "A😀B", limit: 5, want: "A😀", wantTruncated: true, wantSizing: 1},
+		{name: "surrogate pair does not split", value: "A😀B", limit: 4, want: "A", wantTruncated: true, wantSizing: 2},
+		{name: "multibyte exact boundary", value: "A😀", limit: 5, want: "A😀", wantSizing: 1},
+	} {
+		test := test
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			sizingCalls := 0
+			releases := 0
+			units := utf16.Encode([]rune(test.value))
+			api := &nativeAPI{
+				axValueAttribute: 1,
+				axUIElementCopyAttributeValue: func(_ uintptr, attribute uintptr, result *uintptr) int32 {
+					if attribute != 1 {
+						t.Errorf("AX attribute = %#x", attribute)
+					}
+					*result = valueRef
+					return axErrorSuccess
+				},
+				cfGetTypeID:       func(uintptr) uintptr { return stringTypeID },
+				cfStringGetTypeID: func() uintptr { return stringTypeID },
+				cfStringGetLength: func(uintptr) int64 { return int64(len(units)) },
+				cfStringGetBytes: func(
+					_ uintptr, valueRange cfRange, _ uint32, _ byte, _ bool,
+					buffer *byte, maxBytes int64, used *int64,
+				) int64 {
+					if valueRange.Location < 0 || valueRange.Length < 0 ||
+						valueRange.Location+valueRange.Length > int64(len(units)) {
+						t.Errorf("CFRange = %+v", valueRange)
+						return 0
+					}
+					if buffer == nil {
+						sizingCalls++
+					}
+					var output []byte
+					if buffer != nil {
+						output = unsafe.Slice(buffer, int(maxBytes))
+					}
+					start := int(valueRange.Location)
+					end := start + int(valueRange.Length)
+					converted := 0
+					for index := start; index < end; {
+						unit := units[index]
+						character := rune(unit)
+						unitCount := 1
+						if 0xD800 <= unit && unit <= 0xDBFF {
+							if index+1 >= end || units[index+1] < 0xDC00 || units[index+1] > 0xDFFF {
+								break
+							}
+							character = utf16.DecodeRune(rune(unit), rune(units[index+1]))
+							unitCount = 2
+						} else if 0xDC00 <= unit && unit <= 0xDFFF {
+							break
+						}
+						encoded := make([]byte, utf8.UTFMax)
+						encodedBytes := utf8.EncodeRune(encoded, character)
+						if buffer != nil && *used+int64(encodedBytes) > maxBytes {
+							break
+						}
+						if buffer != nil {
+							copy(output[int(*used):], encoded[:encodedBytes])
+						}
+						*used += int64(encodedBytes)
+						converted += unitCount
+						index += unitCount
+					}
+					return int64(converted)
+				},
+				cfRelease: func(value uintptr) {
+					if value != valueRef {
+						t.Errorf("released value = %#x", value)
+					}
+					releases++
+				},
+			}
+			got, observable, truncated, err := semanticValueAttribute(api, 42, "textbox", test.limit)
+			if err != nil || got != test.want || observable != !test.wantTruncated ||
+				truncated != test.wantTruncated || sizingCalls != test.wantSizing || releases != 1 {
+				t.Fatalf("semanticValueAttribute() = %d bytes, observable=%t, truncated=%t, %v; want %d bytes, observable=%t, truncated=%t; sizing=%d, releases=%d",
+					len(got), observable, truncated, err, len(test.want), !test.wantTruncated,
+					test.wantTruncated, sizingCalls, releases)
+			}
+		})
+	}
+}
+
+func TestAccessibilityValueConditionRejectsOversizedActionValue(t *testing.T) {
+	t.Parallel()
+	err := validateAccessibilityElementCondition(AccessibilityActionRequest{
+		Action: "set-value", Value: make([]byte, maximumAXStringBytes+1),
+		Postcondition: &AccessibilityElementCondition{
+			Kind: AccessibilityElementConditionValueEqualsActionValue,
+		},
+	})
+	if !errors.Is(err, ErrAccessibilityInvalidTree) {
+		t.Fatalf("oversized value condition error = %v", err)
+	}
+}
+
+func TestCFStringPrefixRejectsEarlyConversionFailure(t *testing.T) {
+	t.Parallel()
+	const stringTypeID = uintptr(11)
+	api := &nativeAPI{
+		cfGetTypeID:       func(uintptr) uintptr { return stringTypeID },
+		cfStringGetTypeID: func() uintptr { return stringTypeID },
+		cfStringGetLength: func(uintptr) int64 { return 8 },
+		cfStringGetBytes: func(
+			_ uintptr, _ cfRange, _ uint32, _ byte, _ bool,
+			_ *byte, _ int64, used *int64,
+		) int64 {
+			*used = 0
+			return 0
+		},
+	}
+	if _, _, err := cfStringBytesLocked(api, 21, 5); err == nil {
+		t.Fatal("early UTF-8 conversion failure was accepted as truncation")
+	}
+}
+
+func TestAccessibilityValueConditionRejectsBoundedPrefix(t *testing.T) {
+	t.Parallel()
+	condition := &AccessibilityElementCondition{Kind: AccessibilityElementConditionValueEqualsActionValue}
+	details := axSemanticDetails{ValueTruncated: true}
+	if !accessibilityElementConditionObservable(
+		condition, nil, false, details.ValueObservable || details.ValueTruncated,
+	) {
+		t.Fatal("truncated AX value was treated as unobservable")
+	}
+	satisfied, err := accessibilityElementConditionSatisfied(
+		condition, nil, false, "textbox", "prefix", true, []byte("prefix"),
+	)
+	if err != nil || satisfied {
+		t.Fatalf("truncated value condition = %t, %v", satisfied, err)
 	}
 }
 

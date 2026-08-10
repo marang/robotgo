@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"math"
 	"runtime"
+	"unicode/utf8"
 	"unsafe"
 
 	"github.com/marang/robotgo/internal/windowbackend"
@@ -202,28 +203,93 @@ func classifyWindowLookupError(context string, err error) error {
 }
 
 func cfStringLocked(api *nativeAPI, value uintptr) (string, error) {
-	if err := requireCFType(api, value, api.cfStringGetTypeID(), "AX title"); err != nil {
+	text, truncated, err := cfStringBytesLocked(api, value, maximumAXStringBytes)
+	if err != nil {
 		return "", err
 	}
+	if truncated {
+		return "", errors.New("CoreFoundation string exceeds the UTF-8 byte limit")
+	}
+	return text, nil
+}
+
+// cfStringBytesLocked reads at most maxBytes of a CFString's actual UTF-8
+// representation. It sizes only source strings whose UTF-16 length is already
+// bounded; larger strings go straight through the bounded prefix conversion.
+func cfStringBytesLocked(api *nativeAPI, value uintptr, maxBytes int64) (string, bool, error) {
+	if maxBytes <= 0 || maxBytes > maximumAXStringBytes {
+		return "", false, fmt.Errorf("invalid CoreFoundation string byte limit %d", maxBytes)
+	}
+	if err := requireCFType(api, value, api.cfStringGetTypeID(), "CoreFoundation string"); err != nil {
+		return "", false, err
+	}
 	length := api.cfStringGetLength(value)
-	if length < 0 || length >= maximumAXStringBytes {
-		return "", fmt.Errorf("CoreFoundation returned invalid string length %d", length)
+	if length < 0 {
+		return "", false, fmt.Errorf("CoreFoundation returned invalid string length %d", length)
 	}
-	maximum := api.cfStringGetMaximumSizeForEncoding(length, cfStringEncodingUTF8)
-	if maximum < 0 || maximum >= maximumAXStringBytes {
-		return "", fmt.Errorf("CoreFoundation UTF-8 string size %d is invalid", maximum)
+	if length == 0 {
+		return "", false, nil
 	}
-	buffer := make([]byte, maximum+1)
-	if !api.cfStringGetCString(value, &buffer[0], int64(len(buffer)), cfStringEncodingUTF8) {
-		return "", errors.New("CFStringGetCString could not encode AX title as UTF-8")
+	rangeValue := cfRange{Length: length}
+	if length > maxBytes {
+		text, err := cfStringPrefixLocked(api, value, rangeValue, maxBytes)
+		return text, true, err
+	}
+	var required int64
+	converted := api.cfStringGetBytes(
+		value, rangeValue, cfStringEncodingUTF8, 0, false, nil, 0, &required,
+	)
+	if converted != length || required <= 0 {
+		return "", false, errors.New("CoreFoundation could not size AX value as UTF-8")
+	}
+	truncated := required > maxBytes
+	if truncated {
+		text, err := cfStringPrefixLocked(api, value, rangeValue, maxBytes)
+		return text, true, err
+	}
+	buffer := make([]byte, required)
+	var used int64
+	converted = api.cfStringGetBytes(
+		value, rangeValue, cfStringEncodingUTF8, 0, false,
+		&buffer[0], int64(len(buffer)), &used,
+	)
+	if converted != length || used != required || !utf8.Valid(buffer[:used]) {
+		return "", false, errors.New("CoreFoundation returned an invalid AX value")
 	}
 	runtime.KeepAlive(buffer)
-	for index, value := range buffer {
-		if value == 0 {
-			return string(buffer[:index]), nil
+	return string(buffer[:used]), false, nil
+}
+
+func cfStringPrefixLocked(
+	api *nativeAPI,
+	value uintptr,
+	valueRange cfRange,
+	maxBytes int64,
+) (string, error) {
+	buffer := make([]byte, maxBytes)
+	var used int64
+	converted := api.cfStringGetBytes(
+		value, valueRange, cfStringEncodingUTF8, 0, false,
+		&buffer[0], int64(len(buffer)), &used,
+	)
+	if converted < 0 || converted >= valueRange.Length || used < 0 || used > int64(len(buffer)) ||
+		!utf8.Valid(buffer[:used]) {
+		return "", errors.New("CoreFoundation returned an invalid truncated AX value")
+	}
+	if used < maxBytes {
+		probeLength := min(int64(2), valueRange.Length-converted)
+		var required int64
+		probeConverted := api.cfStringGetBytes(
+			value,
+			cfRange{Location: converted, Length: probeLength},
+			cfStringEncodingUTF8, 0, false, nil, 0, &required,
+		)
+		if probeConverted <= 0 || required <= maxBytes-used {
+			return "", errors.New("CoreFoundation stopped before the AX value byte limit")
 		}
 	}
-	return "", errors.New("CFStringGetCString did not terminate AX title")
+	runtime.KeepAlive(buffer)
+	return string(buffer[:used]), nil
 }
 
 func requireCFType(api *nativeAPI, value, expected uintptr, name string) error {
