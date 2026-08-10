@@ -667,21 +667,31 @@ func currentUIAPattern(ctx context.Context, element *ole.IUnknown, patternID int
 }
 
 func currentUIAPatternAvailable(ctx context.Context, element *ole.IUnknown, patternID int32) (bool, error) {
+	if err := ctx.Err(); err != nil {
+		return false, err
+	}
+	method := comMethod(element, uiaElementMethodCurrentPattern)
+	if method == 0 {
+		return false, ErrUnavailable
+	}
 	var pattern *ole.IUnknown
-	err := callUIAMethodRaw(ctx, element, uiaElementMethodCurrentPattern,
-		uintptr(patternID), uintptr(unsafe.Pointer(&pattern)))
-	if err != nil {
+	hr, _, _ := syscall.SyscallN(
+		method,
+		uintptr(unsafe.Pointer(element)), uintptr(patternID), uintptr(unsafe.Pointer(&pattern)),
+	)
+	runtime.KeepAlive(element)
+	if failedHRESULT(hr) {
 		if pattern != nil {
 			pattern.Release()
 		}
 		if ctxErr := ctx.Err(); ctxErr != nil {
 			return false, ctxErr
 		}
-		var callErr uiaCallError
-		if errors.As(err, &callErr) && uint32(callErr) == hResultUIANotSupported {
+		callErr := uiaCallError(uint32(hr))
+		if uint32(callErr) == hResultUIANotSupported {
 			return false, nil
 		}
-		return false, normalizeUIAError(ctx, err)
+		return false, normalizeUIAError(ctx, callErr)
 	}
 	if pattern == nil {
 		return false, ErrStaleTarget
@@ -1024,14 +1034,6 @@ func readUIAIntArray(ctx context.Context, array *ole.SafeArray) ([]int32, error)
 }
 
 func callUIAMethod(ctx context.Context, object *ole.IUnknown, index int, arguments ...uintptr) error {
-	err := callUIAMethodRaw(ctx, object, index, arguments...)
-	if err == nil {
-		return nil
-	}
-	return normalizeUIAError(ctx, err)
-}
-
-func callUIAMethodRaw(ctx context.Context, object *ole.IUnknown, index int, arguments ...uintptr) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -1045,7 +1047,7 @@ func callUIAMethodRaw(ctx context.Context, object *ole.IUnknown, index int, argu
 	hr, _, _ := syscall.SyscallN(method, args...)
 	runtime.KeepAlive(object)
 	if failedHRESULT(hr) {
-		return uiaCallError(uint32(hr))
+		return normalizeUIAError(ctx, uiaCallError(uint32(hr)))
 	}
 	return nil
 }
