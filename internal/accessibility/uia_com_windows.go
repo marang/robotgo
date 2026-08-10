@@ -1033,6 +1033,7 @@ func readUIAIntArray(ctx context.Context, array *ole.SafeArray) ([]int32, error)
 	return result, nil
 }
 
+//go:uintptrescapes
 func callUIAMethod(ctx context.Context, object *ole.IUnknown, index int, arguments ...uintptr) error {
 	if err := ctx.Err(); err != nil {
 		return err
