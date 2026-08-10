@@ -157,28 +157,48 @@ func TestFinalAccessibilityActionGateFailsClosedAndOrdersExactValidation(t *test
 	t.Parallel()
 	condition := &AccessibilityElementCondition{Kind: AccessibilityElementConditionFocused}
 	var calls []string
-	already, err := finalAccessibilityActionGate(condition, func() (bool, error) {
+	beforeCondition := func() error {
+		calls = append(calls, "quota")
+		return nil
+	}
+	already, err := finalAccessibilityActionGate(condition, beforeCondition, func() (bool, error) {
 		calls = append(calls, "condition")
 		return false, nil
 	}, func() error {
 		calls = append(calls, "exact")
 		return nil
 	})
-	if err != nil || already || !slices.Equal(calls, []string{"condition", "exact"}) {
+	if err != nil || already || !slices.Equal(calls, []string{"quota", "condition", "exact"}) {
 		t.Fatalf("AX final gate = %t, %v, calls=%v", already, err, calls)
 	}
 
 	backendErr := errors.New("AX condition read failed")
 	calls = nil
-	already, err = finalAccessibilityActionGate(condition, func() (bool, error) {
+	already, err = finalAccessibilityActionGate(condition, beforeCondition, func() (bool, error) {
 		calls = append(calls, "condition")
 		return false, backendErr
 	}, func() error {
 		calls = append(calls, "exact")
 		return nil
 	})
-	if !errors.Is(err, backendErr) || already || !slices.Equal(calls, []string{"condition"}) {
+	if !errors.Is(err, backendErr) || already || !slices.Equal(calls, []string{"quota", "condition"}) {
 		t.Fatalf("failed AX final gate = %t, %v, calls=%v", already, err, calls)
+	}
+
+	quotaErr := errors.New("quota exhausted")
+	calls = nil
+	already, err = finalAccessibilityActionGate(condition, func() error {
+		calls = append(calls, "quota")
+		return quotaErr
+	}, func() (bool, error) {
+		calls = append(calls, "condition")
+		return true, nil
+	}, func() error {
+		calls = append(calls, "exact")
+		return nil
+	})
+	if !errors.Is(err, quotaErr) || already || !slices.Equal(calls, []string{"quota"}) {
+		t.Fatalf("quota-rejected AX gate = %t, %v, calls=%v", already, err, calls)
 	}
 }
 

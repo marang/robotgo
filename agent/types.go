@@ -268,6 +268,8 @@ type ActionExecutionProof struct {
 }
 
 // ActionVerificationStatus is the bounded semantic postcondition outcome.
+// NotMatched requires at least one completed probe that returned false;
+// Failed may carry zero attempts when a requested probe could not start.
 type ActionVerificationStatus string
 
 const (

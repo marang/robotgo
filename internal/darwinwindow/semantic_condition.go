@@ -236,10 +236,16 @@ func inverseAccessibilityState(state string) string {
 
 func finalAccessibilityActionGate(
 	condition *AccessibilityElementCondition,
+	beforeCondition func() error,
 	checkCondition func() (bool, error),
 	validateExact func() error,
 ) (bool, error) {
 	if condition != nil {
+		if beforeCondition != nil {
+			if err := beforeCondition(); err != nil {
+				return false, err
+			}
+		}
 		satisfied, err := checkCondition()
 		if err != nil {
 			return false, err

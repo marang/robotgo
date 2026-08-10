@@ -31,6 +31,18 @@ var allUIElementConditionKinds = []UIElementConditionKind{
 	UIElementConditionValueEqualsActionValue,
 }
 
+// Windows range controls use one condition gate before mutable preparation
+// and two more around re-read preparation. Other native backends use fewer.
+const maxUIElementFinalGateProbes uint64 = 3
+
+func maximumUIElementActionReads(postDispatchAttempts uint32) uint64 {
+	return 1 + maxUIElementFinalGateProbes + uint64(postDispatchAttempts)
+}
+
+func minimumUIElementWorkflowReads(postDispatchAttempts uint32) uint64 {
+	return 1 + maximumUIElementActionReads(postDispatchAttempts)
+}
+
 // UIElementCondition is one optional desired state on the same retained
 // observation element. Values are never accepted as condition operands;
 // value-equals-action-value compares privately with ElementActionRequest.Value.
@@ -63,13 +75,14 @@ type ElementActionRequest struct {
 }
 
 type uiBackendElementAction struct {
-	Target        uiBackendTarget
-	Reference     []byte
-	Expected      UIElementExpectation
-	Action        UIAction
-	Postcondition *UIElementCondition
-	Value         []byte
-	Backend       string
+	Target          uiBackendTarget
+	Reference       []byte
+	Expected        UIElementExpectation
+	Action          UIAction
+	Postcondition   *UIElementCondition
+	Value           []byte
+	Backend         string
+	BeforeFinalGate func(context.Context) error
 }
 
 type uiBackendElementConditionResult struct {
@@ -209,12 +222,23 @@ func (s *Session) ActUIElement(ctx context.Context, request ElementActionRequest
 		Value:         append([]byte(nil), request.Value...), Backend: retained.backend,
 	}
 	if request.Postcondition != nil {
+		var finalGateProbes uint64
+		backendRequest.BeforeFinalGate = func(ctx context.Context) error {
+			if finalGateProbes >= maxUIElementFinalGateProbes {
+				return ErrPolicyDenied
+			}
+			if err := s.consumeUIElementRead(ctx); err != nil {
+				return err
+			}
+			finalGateProbes++
+			return nil
+		}
 		proof.Verification = &ActionVerificationProof{
 			ConditionKind: request.Postcondition.Kind,
-			Status:        ActionVerificationNotMatched,
+			Status:        ActionVerificationFailed,
 		}
 		terminalPhase = UIConditionPhasePrecheck
-		if !s.hasUIElementReadCapacity(uint64(s.policy.UIVerificationAttempts) + 1) {
+		if !s.hasUIElementReadCapacity(maximumUIElementActionReads(s.policy.UIVerificationAttempts)) {
 			returnErr = setElementActionFailure(&result,
 				newActionError(ErrorPolicyDenied, OperationElementAct, "agent policy semantic verification quota reached", ErrPolicyDenied),
 				ActionProofRejectedBeforeDispatch, false)
@@ -289,6 +313,7 @@ func (s *Session) ActUIElement(ctx context.Context, request ElementActionRequest
 			result.Status = ActionSucceeded
 			return result, nil
 		}
+		proof.Verification.Status = ActionVerificationNotMatched
 
 		if s.used >= s.policy.MaxActions {
 			returnErr = setElementActionFailure(&result,

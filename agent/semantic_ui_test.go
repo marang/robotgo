@@ -30,6 +30,8 @@ type semanticFakeDriver struct {
 	actErr           error
 	actBlock         bool
 	actStart         func()
+	finalGateProbes  int
+	finalGateCalls   int
 	checkResults     []uiBackendElementConditionResult
 	checkErrors      []error
 	checkCalls       int
@@ -45,11 +47,28 @@ func (driver *semanticFakeDriver) ActUIElement(ctx context.Context, request uiBa
 	driver.actCalls++
 	driver.actRef = string(request.Reference)
 	driver.actValue = request.Value
+	beforeFinalGate := request.BeforeFinalGate
 	request.Reference = nil
 	request.Value = nil
+	request.BeforeFinalGate = nil
 	driver.act = request
 	if driver.actStart != nil {
 		driver.actStart()
+	}
+	if beforeFinalGate != nil {
+		probes := driver.finalGateProbes
+		if probes == 0 {
+			probes = 1
+			if driver.dispatch && !driver.alreadySatisfied {
+				probes = 2
+			}
+		}
+		for range probes {
+			driver.finalGateCalls++
+			if err := beforeFinalGate(ctx); err != nil {
+				return uiBackendElementActionResult{CleanupComplete: true}, err
+			}
+		}
 	}
 	if driver.actBlock {
 		<-ctx.Done()

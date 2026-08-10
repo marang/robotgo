@@ -76,12 +76,13 @@ type AccessibilityElementExpectation struct {
 }
 
 type AccessibilityActionRequest struct {
-	Target        AccessibilityTarget
-	Reference     []byte
-	Expected      AccessibilityElementExpectation
-	Action        string
-	Value         []byte
-	Postcondition *AccessibilityElementCondition
+	Target          AccessibilityTarget
+	Reference       []byte
+	Expected        AccessibilityElementExpectation
+	Action          string
+	Value           []byte
+	Postcondition   *AccessibilityElementCondition
+	BeforeFinalGate func(context.Context) error
 }
 
 type AccessibilityActionResult struct {

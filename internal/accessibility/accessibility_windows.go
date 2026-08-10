@@ -161,6 +161,7 @@ func actWindowsUIA(ctx context.Context, request ActionRequest) (ActionResult, er
 	}
 	alreadySatisfied, err := finalActionGate(
 		request.Postcondition,
+		func() error { return runFinalGateCallback(ctx, request.BeforeFinalGate) },
 		func() (bool, error) {
 			satisfied, err := checkCondition()
 			if err != nil {
@@ -405,6 +406,7 @@ func dispatchUIAAction(
 	validateDispatch := func() (bool, error) {
 		return finalActionGate(
 			request.Postcondition,
+			func() error { return runFinalGateCallback(ctx, request.BeforeFinalGate) },
 			func() (bool, error) {
 				satisfied, err := checkCondition()
 				if err != nil {

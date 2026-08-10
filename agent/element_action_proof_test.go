@@ -16,6 +16,32 @@ type cancelOnElementActionIntentSink struct {
 	cancel context.CancelFunc
 }
 
+type semanticInspectOnlyDriver struct {
+	*fakeDriver
+	snapshot uiBackendSnapshot
+}
+
+func (driver *semanticInspectOnlyDriver) InspectUI(
+	context.Context,
+	uiBackendTarget,
+	uiBackendLimits,
+) (uiBackendSnapshot, error) {
+	return driver.snapshot, nil
+}
+
+type semanticActOnlyDriver struct {
+	*semanticInspectOnlyDriver
+	actCalls int
+}
+
+func (driver *semanticActOnlyDriver) ActUIElement(
+	context.Context,
+	uiBackendElementAction,
+) (uiBackendElementActionResult, error) {
+	driver.actCalls++
+	return uiBackendElementActionResult{CleanupComplete: true}, nil
+}
+
 func (sink *cancelOnElementActionIntentSink) Record(_ context.Context, event AuditEvent) error {
 	sink.events = append(sink.events, event)
 	if event.Kind == AuditActionStarted && event.Operation == OperationElementAct && sink.cancel != nil {
@@ -60,6 +86,26 @@ func inspectSemanticConditionFixture(t *testing.T, policy Policy) (*Session, *se
 	return session, driver, semanticConditionRequest(observation)
 }
 
+func inspectSemanticConditionWithDriver(t *testing.T, driver inputDriver) (*Session, ElementActionRequest) {
+	t.Helper()
+	policy, err := preparePolicy(semanticVerificationPolicy())
+	if err != nil {
+		t.Fatal(err)
+	}
+	capabilities := availableCapabilities()
+	capabilities.Accessibility = robotgo.FeatureCapability{Available: true, Backend: "fake-accessibility"}
+	session, err := newSession(policy, driver, capabilities)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = session.Close() })
+	observation, err := session.InspectUI(t.Context(), InspectUIRequest{Target: 42, Kind: WindowTargetProcess})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return session, semanticConditionRequest(observation)
+}
+
 func TestElementActionProofOutcomeMatrix(t *testing.T) {
 	tests := []struct {
 		name             string
@@ -71,6 +117,7 @@ func TestElementActionProofOutcomeMatrix(t *testing.T) {
 		wantCode         ErrorCode
 		wantActCalls     int
 		wantCheckCalls   int
+		wantFinalReads   int
 		wantPostAttempts uint32
 		wantFinalGate    bool
 	}{
@@ -93,7 +140,7 @@ func TestElementActionProofOutcomeMatrix(t *testing.T) {
 			wantStatus: ActionSucceeded, wantProof: ActionProofVerified,
 			wantExecution:    ActionExecutionSkippedAlreadySatisfied,
 			wantVerification: ActionVerificationMatched, wantActCalls: 1, wantCheckCalls: 1,
-			wantFinalGate: true,
+			wantFinalReads: 1, wantFinalGate: true,
 		},
 		{
 			name: "dispatch and first poll matches",
@@ -106,7 +153,7 @@ func TestElementActionProofOutcomeMatrix(t *testing.T) {
 			wantStatus: ActionSucceeded, wantProof: ActionProofVerified,
 			wantExecution:    ActionExecutionDispatched,
 			wantVerification: ActionVerificationMatched, wantActCalls: 1, wantCheckCalls: 2,
-			wantPostAttempts: 1, wantFinalGate: true,
+			wantFinalReads: 2, wantPostAttempts: 1, wantFinalGate: true,
 		},
 		{
 			name: "dispatch exhausts exact poll bound",
@@ -120,7 +167,7 @@ func TestElementActionProofOutcomeMatrix(t *testing.T) {
 			wantExecution:    ActionExecutionDispatched,
 			wantVerification: ActionVerificationNotMatched, wantCode: ErrorVerification,
 			wantActCalls: 1, wantCheckCalls: 4, wantPostAttempts: 3,
-			wantFinalGate: true,
+			wantFinalReads: 2, wantFinalGate: true,
 		},
 		{
 			name: "precheck backend failure",
@@ -143,7 +190,7 @@ func TestElementActionProofOutcomeMatrix(t *testing.T) {
 			wantStatus: ActionFailed, wantProof: ActionProofFailedBeforeDispatch,
 			wantExecution:    ActionExecutionNotDispatched,
 			wantVerification: ActionVerificationNotMatched, wantCode: ErrorBackendFailure,
-			wantActCalls: 1, wantCheckCalls: 1,
+			wantActCalls: 1, wantCheckCalls: 1, wantFinalReads: 1,
 		},
 		{
 			name: "post-dispatch error cannot be upgraded by matching poll",
@@ -157,7 +204,7 @@ func TestElementActionProofOutcomeMatrix(t *testing.T) {
 			wantStatus: ActionUnverified, wantProof: ActionProofUnverifiedAfterDispatch,
 			wantExecution:    ActionExecutionDispatched,
 			wantVerification: ActionVerificationMatched, wantCode: ErrorBackendFailure,
-			wantActCalls: 1, wantCheckCalls: 2, wantPostAttempts: 1, wantFinalGate: true,
+			wantActCalls: 1, wantCheckCalls: 2, wantFinalReads: 2, wantPostAttempts: 1, wantFinalGate: true,
 		},
 		{
 			name: "backend cleanup uncertainty dominates",
@@ -169,7 +216,7 @@ func TestElementActionProofOutcomeMatrix(t *testing.T) {
 			wantStatus: ActionUnverified, wantProof: ActionProofCleanupPending,
 			wantExecution:    ActionExecutionDispatched,
 			wantVerification: ActionVerificationFailed, wantCode: ErrorCleanupFailed,
-			wantActCalls: 1, wantCheckCalls: 1, wantFinalGate: true,
+			wantActCalls: 1, wantCheckCalls: 1, wantFinalReads: 2, wantFinalGate: true,
 		},
 	}
 
@@ -185,8 +232,9 @@ func TestElementActionProofOutcomeMatrix(t *testing.T) {
 				result.Proof.Verification.Status != test.wantVerification ||
 				result.Proof.Verification.PostconditionAttempts != test.wantPostAttempts ||
 				result.Proof.Verification.FinalGateChecked != test.wantFinalGate ||
-				driver.actCalls != test.wantActCalls || driver.checkCalls != test.wantCheckCalls {
-				t.Fatalf("result = %+v, err=%v, act=%d check=%d", result, err, driver.actCalls, driver.checkCalls)
+				driver.actCalls != test.wantActCalls || driver.checkCalls != test.wantCheckCalls ||
+				driver.finalGateCalls != test.wantFinalReads {
+				t.Fatalf("result = %+v, err=%v, act=%d check=%d final=%d", result, err, driver.actCalls, driver.checkCalls, driver.finalGateCalls)
 			}
 			if test.wantCode == "" {
 				if err != nil || result.Error != nil {
@@ -206,10 +254,11 @@ func TestElementActionProofOutcomeMatrix(t *testing.T) {
 			if session.used != wantUsed {
 				t.Fatalf("used actions = %d, want %d", session.used, wantUsed)
 			}
-			if session.usedQueries != queriesBefore+uint64(test.wantCheckCalls) ||
-				session.usedObservations != observationsBefore+uint64(test.wantCheckCalls) {
+			wantReads := uint64(test.wantCheckCalls + test.wantFinalReads)
+			if session.usedQueries != queriesBefore+wantReads ||
+				session.usedObservations != observationsBefore+wantReads {
 				t.Fatalf("semantic reads = queries %d observations %d, want +%d",
-					session.usedQueries, session.usedObservations, test.wantCheckCalls)
+					session.usedQueries, session.usedObservations, wantReads)
 			}
 		})
 	}
@@ -293,13 +342,57 @@ func TestElementActionAlreadySatisfiedIgnoresMutationBudgetButNotAuthorization(t
 
 func TestElementActionPostconditionRejectsInsufficientWorstCaseReadCapacity(t *testing.T) {
 	session, driver, request := inspectSemanticConditionFixture(t, semanticVerificationPolicy())
-	required := uint64(session.policy.UIVerificationAttempts) + 1
+	required := maximumUIElementActionReads(session.policy.UIVerificationAttempts)
 	session.usedQueries = session.policy.MaxQueries - required + 1
 	session.usedObservations = session.policy.MaxObservations - required + 1
 	result, err := session.ActUIElement(t.Context(), request)
 	if !hasErrorCode(err, ErrorPolicyDenied) || result.Proof.Status != ActionProofRejectedBeforeDispatch ||
-		driver.checkCalls != 0 || driver.actCalls != 0 {
+		result.Proof.Verification == nil || result.Proof.Verification.Status != ActionVerificationFailed ||
+		result.Proof.Verification.PrecheckAttempts != 0 || result.Proof.Verification.FinalGateChecked ||
+		result.Proof.Verification.PostconditionAttempts != 0 ||
+		driver.checkCalls != 0 || driver.actCalls != 0 || driver.finalGateCalls != 0 {
 		t.Fatalf("read-capacity rejection = %+v, %v calls=%d/%d", result, err, driver.checkCalls, driver.actCalls)
+	}
+}
+
+func TestElementActionPostconditionAccountsExactWorstCaseReadCapacity(t *testing.T) {
+	session, driver, request := inspectSemanticConditionFixture(t, semanticVerificationPolicy())
+	driver.finalGateProbes = int(maxUIElementFinalGateProbes)
+	driver.checkResults = []uiBackendElementConditionResult{
+		{CleanupComplete: true},
+		{CleanupComplete: true},
+		{CleanupComplete: true},
+		{CleanupComplete: true},
+	}
+	result, err := session.ActUIElement(t.Context(), request)
+	if !hasErrorCode(err, ErrorVerification) || result.Proof.Status != ActionProofUnverifiedAfterDispatch ||
+		result.Proof.Verification == nil || result.Proof.Verification.Status != ActionVerificationNotMatched ||
+		result.Proof.Verification.PrecheckAttempts != 1 ||
+		result.Proof.Verification.PostconditionAttempts != session.policy.UIVerificationAttempts ||
+		driver.checkCalls != 4 || driver.finalGateCalls != int(maxUIElementFinalGateProbes) ||
+		session.usedQueries != session.policy.MaxQueries || session.usedObservations != session.policy.MaxObservations {
+		t.Fatalf("exact-capacity verification = %+v, %v calls=%d/%d reads=%d/%d",
+			result, err, driver.checkCalls, driver.finalGateCalls, session.usedQueries, session.usedObservations)
+	}
+}
+
+func TestElementActionPostconditionRejectsUnexpectedFourthFinalGateProbe(t *testing.T) {
+	session, driver, request := inspectSemanticConditionFixture(t, semanticVerificationPolicy())
+	driver.finalGateProbes = int(maxUIElementFinalGateProbes) + 1
+	driver.checkResults = []uiBackendElementConditionResult{{CleanupComplete: true}}
+	queriesBefore, observationsBefore := session.usedQueries, session.usedObservations
+	result, err := session.ActUIElement(t.Context(), request)
+	if !hasErrorCode(err, ErrorPolicyDenied) || result.Proof.Status != ActionProofFailedBeforeDispatch ||
+		result.Proof.Execution.Status != ActionExecutionNotDispatched || result.Proof.Verification == nil ||
+		result.Proof.Verification.Status != ActionVerificationNotMatched ||
+		result.Proof.Verification.PrecheckAttempts != 1 || result.Proof.Verification.FinalGateChecked ||
+		driver.actCalls != 1 || driver.checkCalls != 1 ||
+		driver.finalGateCalls != int(maxUIElementFinalGateProbes)+1 || session.used != 0 ||
+		session.usedQueries != queriesBefore+1+maxUIElementFinalGateProbes ||
+		session.usedObservations != observationsBefore+1+maxUIElementFinalGateProbes {
+		t.Fatalf("fourth final-gate probe = %+v, %v calls=%d/%d/%d reads=%d/%d",
+			result, err, driver.actCalls, driver.checkCalls, driver.finalGateCalls,
+			session.usedQueries-queriesBefore, session.usedObservations-observationsBefore)
 	}
 }
 
@@ -308,9 +401,60 @@ func TestElementActionPostconditionEnforcesSemanticReadRate(t *testing.T) {
 	session.lastUIQuery = session.now().Add(time.Second)
 	result, err := session.ActUIElement(t.Context(), request)
 	if !hasErrorCode(err, ErrorPolicyDenied) || result.Proof.Status != ActionProofFailedBeforeDispatch ||
+		result.Proof.Verification == nil || result.Proof.Verification.Status != ActionVerificationFailed ||
 		result.Proof.Verification.PrecheckAttempts != 0 || driver.checkCalls != 0 || driver.actCalls != 0 {
 		t.Fatalf("read-rate rejection = %+v, %v calls=%d/%d", result, err, driver.checkCalls, driver.actCalls)
 	}
+}
+
+func TestElementActionNativeFinalGateEnforcesSemanticReadRateBeforeDispatch(t *testing.T) {
+	session, driver, request := inspectSemanticConditionFixture(t, semanticVerificationPolicy())
+	driver.checkResults = []uiBackendElementConditionResult{{CleanupComplete: true}}
+	driver.actStart = func() { session.lastUIQuery = session.now().Add(time.Second) }
+	queriesBefore, observationsBefore := session.usedQueries, session.usedObservations
+	result, err := session.ActUIElement(t.Context(), request)
+	if !hasErrorCode(err, ErrorPolicyDenied) || result.Proof.Status != ActionProofFailedBeforeDispatch ||
+		result.Proof.Execution.Status != ActionExecutionNotDispatched || result.Proof.Verification == nil ||
+		result.Proof.Verification.Status != ActionVerificationNotMatched ||
+		result.Proof.Verification.PrecheckAttempts != 1 || result.Proof.Verification.FinalGateChecked ||
+		driver.actCalls != 1 || driver.checkCalls != 1 || driver.finalGateCalls != 1 || session.used != 0 ||
+		session.usedQueries != queriesBefore+1 || session.usedObservations != observationsBefore+1 {
+		t.Fatalf("final-gate rate rejection = %+v, %v calls=%d/%d/%d reads=%d/%d",
+			result, err, driver.actCalls, driver.checkCalls, driver.finalGateCalls,
+			session.usedQueries-queriesBefore, session.usedObservations-observationsBefore)
+	}
+}
+
+func TestElementActionRequestedVerificationFailsWithoutAProbeDriver(t *testing.T) {
+	t.Run("action driver unavailable", func(t *testing.T) {
+		driver := &semanticInspectOnlyDriver{
+			fakeDriver: &fakeDriver{resolvedHandle: 9001, windowTitle: "fixture"},
+			snapshot:   semanticSnapshot(),
+		}
+		session, request := inspectSemanticConditionWithDriver(t, driver)
+		result, err := session.ActUIElement(t.Context(), request)
+		if !hasErrorCode(err, ErrorUnsupported) || result.Proof.Status != ActionProofFailedBeforeDispatch ||
+			result.Proof.Verification == nil || result.Proof.Verification.Status != ActionVerificationFailed ||
+			result.Proof.Verification.PrecheckAttempts != 0 || result.Proof.Verification.FinalGateChecked ||
+			result.Proof.Verification.PostconditionAttempts != 0 {
+			t.Fatalf("missing action driver = %+v, %v", result, err)
+		}
+	})
+
+	t.Run("condition driver unavailable", func(t *testing.T) {
+		driver := &semanticActOnlyDriver{semanticInspectOnlyDriver: &semanticInspectOnlyDriver{
+			fakeDriver: &fakeDriver{resolvedHandle: 9001, windowTitle: "fixture"},
+			snapshot:   semanticSnapshot(),
+		}}
+		session, request := inspectSemanticConditionWithDriver(t, driver)
+		result, err := session.ActUIElement(t.Context(), request)
+		if !hasErrorCode(err, ErrorUnsupported) || result.Proof.Status != ActionProofFailedBeforeDispatch ||
+			result.Proof.Verification == nil || result.Proof.Verification.Status != ActionVerificationFailed ||
+			result.Proof.Verification.PrecheckAttempts != 0 || result.Proof.Verification.FinalGateChecked ||
+			result.Proof.Verification.PostconditionAttempts != 0 || driver.actCalls != 0 {
+			t.Fatalf("missing condition driver = %+v, %v calls=%d", result, err, driver.actCalls)
+		}
+	})
 }
 
 func TestElementActionConditionValidationAndPropertyPolicyRejectBeforeDesktopIO(t *testing.T) {
@@ -437,6 +581,9 @@ func TestElementActionIntentAuditFailurePreventsSemanticReadAndMutation(t *testi
 	}
 	result, err := session.ActUIElement(t.Context(), semanticConditionRequest(observation))
 	if !hasErrorCode(err, ErrorAuditDelivery) || result.Proof.Status != ActionProofRejectedBeforeDispatch ||
+		result.Proof.Verification == nil || result.Proof.Verification.Status != ActionVerificationFailed ||
+		result.Proof.Verification.PrecheckAttempts != 0 || result.Proof.Verification.FinalGateChecked ||
+		result.Proof.Verification.PostconditionAttempts != 0 ||
 		driver.checkCalls != 0 || driver.actCalls != 0 || len(sink.events) != 3 {
 		t.Fatalf("intent audit rejection = %+v, %v events=%+v calls=%d/%d", result, err, sink.events, driver.checkCalls, driver.actCalls)
 	}
@@ -542,8 +689,8 @@ func TestElementActionCancellationBetweenZeroIntervalPollsPreventsExtraProbe(t *
 	if !hasErrorCode(err, ErrorCanceled) || result.Status != ActionUnverified ||
 		result.Proof.Status != ActionProofUnverifiedAfterDispatch ||
 		result.Proof.Verification.PostconditionAttempts != 1 ||
-		driver.actCalls != 1 || driver.checkCalls != 2 ||
-		session.usedQueries != queriesBefore+2 || session.usedObservations != observationsBefore+2 {
+		driver.actCalls != 1 || driver.checkCalls != 2 || driver.finalGateCalls != 2 ||
+		session.usedQueries != queriesBefore+4 || session.usedObservations != observationsBefore+4 {
 		t.Fatalf("between-poll cancellation = %+v, %v calls=%d/%d reads=%d/%d", result, err, driver.actCalls, driver.checkCalls, session.usedQueries-queriesBefore, session.usedObservations-observationsBefore)
 	}
 }

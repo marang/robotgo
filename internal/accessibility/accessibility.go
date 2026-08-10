@@ -106,12 +106,38 @@ type ElementExpectation struct {
 // ActionRequest binds one retained opaque reference to its exact top-level
 // target and expected live semantic identity.
 type ActionRequest struct {
-	Target        Target
-	Reference     []byte
-	Expected      ElementExpectation
-	Action        string
-	Value         []byte
-	Postcondition *ElementCondition
+	Target          Target
+	Reference       []byte
+	Expected        ElementExpectation
+	Action          string
+	Value           []byte
+	Postcondition   *ElementCondition
+	BeforeFinalGate func(context.Context) error
+}
+
+type finalGateCallbackError struct{ cause error }
+
+func (err *finalGateCallbackError) Error() string {
+	return "accessibility: final gate accounting failed"
+}
+func (err *finalGateCallbackError) Unwrap() error { return err.cause }
+
+func runFinalGateCallback(ctx context.Context, callback func(context.Context) error) error {
+	if callback == nil {
+		return nil
+	}
+	if err := callback(ctx); err != nil {
+		return &finalGateCallbackError{cause: err}
+	}
+	return nil
+}
+
+func finalGateCallbackCause(err error) (error, bool) {
+	var callbackErr *finalGateCallbackError
+	if !errors.As(err, &callbackErr) {
+		return nil, false
+	}
+	return callbackErr.cause, true
 }
 
 // ActionResult identifies the irreversible native dispatch boundary and

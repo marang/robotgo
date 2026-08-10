@@ -943,10 +943,11 @@ condition before consuming action quota, checks it again in the native final
 gate, dispatches at most once, and polls only after dispatch. An already
 satisfied condition succeeds without dispatch or action-rate consumption,
 including when the action quota is exhausted. Every external semantic probe
-consumes query and observation quota and respects the semantic query rate;
-verification attempts, interval, and timeout have separate deny-by-default
-policy bounds. State, focus, and value conditions require their corresponding
-semantic property grants. No condition path adds fallback or retry.
+in the precheck, native final gates, and post-dispatch polling consumes query
+and observation quota and respects the semantic query rate; verification
+attempts, interval, and timeout have separate deny-by-default policy bounds.
+State, focus, and value conditions require their corresponding semantic
+property grants. No condition path adds fallback or retry.
 Checkboxes and switches expose the reversible `toggle` action with the
 canonical `checked` state; radio buttons expose the one-way `press` action with
 the canonical `selected` state. Windows UIA buttons backed by TogglePattern are
@@ -965,7 +966,9 @@ separate precheck and postcondition counts, final-gate status, and transient
 cleanup state. It excludes target text, entered values, native references,
 policy payloads, and raw backend errors. A backend error after native dispatch
 remains `unverified-after-dispatch` even if a later probe happens to match, so
-callers are never invited to retry an uncertain mutation.
+callers are never invited to retry an uncertain mutation. Verification status
+`not-matched` requires a completed false probe; `failed` may have zero attempts
+when a requested probe could not start.
 Catalog schema v10 advertises the proof version, supported condition kinds, and
 fixed semantic-verification bounds. Audit schema v3 records only proof and
 execution status, condition kind/phase, final-gate status, and separate attempt
@@ -1144,7 +1147,8 @@ but cannot authorize mutation. Policy must additionally declare allowed
 semantic actions, action quota, rate, per-action timeout, and value-byte limit
 when `set-value` is allowed. Enabling postconditions also requires independent
 verification bounds and enough query/observation capacity for the source
-inspection, one precheck, and all configured post-dispatch attempts:
+inspection, one precheck, up to three native final-gate probes, and all
+configured post-dispatch attempts:
 
 ```json
 {
@@ -1162,8 +1166,8 @@ inspection, one precheck, and all configured post-dispatch attempts:
   "ui_verification_interval_ms": 50,
   "ui_verification_timeout_ms": 3000,
   "min_action_interval_ms": 50,
-  "max_observations": 5,
-  "max_queries": 5,
+  "max_observations": 8,
+  "max_queries": 8,
   "max_ui_elements": 200,
   "max_ui_tree_depth": 8,
   "max_ui_string_bytes": 16384,

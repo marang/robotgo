@@ -67,6 +67,8 @@ func inspectAccessibilityUI(
 
 func agentAccessibilityError(err error) error {
 	switch {
+	case errors.Is(err, ErrPolicyDenied):
+		return err
 	case errors.Is(err, accessibility.ErrStaleTarget):
 		return ErrStaleTarget
 	case errors.Is(err, accessibility.ErrPermissionDenied):
@@ -109,6 +111,7 @@ func accessibilityElementActionRequest(
 	nativeRequest := accessibility.ActionRequest{
 		Target: target, Reference: request.Reference, Expected: expected,
 		Action: string(request.Action), Value: request.Value,
+		BeforeFinalGate: request.BeforeFinalGate,
 	}
 	if request.Postcondition != nil {
 		nativeRequest.Postcondition = &accessibility.ElementCondition{

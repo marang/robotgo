@@ -386,6 +386,7 @@ func actATSPI(ctx context.Context, query atspiQuery, request ActionRequest, refe
 	var target atspiActionTarget
 	alreadySatisfied, err := finalActionGate(
 		request.Postcondition,
+		func() error { return runFinalGateCallback(ctx, request.BeforeFinalGate) },
 		func() (bool, error) {
 			satisfied, err := checkATSPIElementCondition(ctx, query, reference, request)
 			if err != nil {
@@ -695,6 +696,7 @@ func dispatchATSPIAction(
 		var target atspiActionTarget
 		alreadySatisfied, err := finalActionGate(
 			request.Postcondition,
+			func() error { return runFinalGateCallback(ctx, request.BeforeFinalGate) },
 			func() (bool, error) {
 				satisfied, err := checkATSPIElementCondition(ctx, query, reference, request)
 				if err != nil {

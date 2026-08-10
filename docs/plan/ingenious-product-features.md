@@ -49,13 +49,14 @@ results, audits, observations, files, or errors.
 
 Implementation checkpoint (LAB-79): catalog schema v10 adds one optional fixed,
 target-relative state/focus/value postcondition, a quota-bearing precheck,
-condition-aware native final gate, bounded post-dispatch polling, and Action
-Proof v1 on every `desktop.element-act` return; the semantic observation schema
-remains v1. An already-satisfied request
-skips dispatch without action accounting. A dispatched backend error remains
-unverified even if a later check matches. The proof and audit schema expose only
-fixed outcomes and counts; values, target text, native references, policy
-payloads, and raw errors remain private.
+quota- and rate-bearing native final gates, bounded post-dispatch polling, and
+Action Proof v1 on every `desktop.element-act` return; policy capacity reserves
+the source inspection, one precheck, up to three native gate probes, and every
+configured poll. The semantic observation schema remains v1. An
+already-satisfied request skips dispatch without action accounting. A
+dispatched backend error remains unverified even if a later check matches. The
+proof and audit schema expose only fixed outcomes and counts; values, target
+text, native references, policy payloads, and raw errors remain private.
 
 ## 1. Semantic and visual scene graph
 

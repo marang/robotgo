@@ -1,8 +1,11 @@
 package accessibility
 
 import (
+	"context"
 	"errors"
+	"fmt"
 	"slices"
+	"strings"
 	"testing"
 )
 
@@ -151,39 +154,75 @@ func TestFinalActionGateOrdersConditionBeforeExactValidation(t *testing.T) {
 	t.Parallel()
 	condition := &ElementCondition{Kind: ElementConditionFocused}
 	var calls []string
-	already, err := finalActionGate(condition, func() (bool, error) {
+	beforeCondition := func() error {
+		calls = append(calls, "quota")
+		return nil
+	}
+	already, err := finalActionGate(condition, beforeCondition, func() (bool, error) {
 		calls = append(calls, "condition")
 		return false, nil
 	}, func() error {
 		calls = append(calls, "exact")
 		return nil
 	})
-	if err != nil || already || !slices.Equal(calls, []string{"condition", "exact"}) {
+	if err != nil || already || !slices.Equal(calls, []string{"quota", "condition", "exact"}) {
 		t.Fatalf("unsatisfied gate = %t, %v, calls=%v", already, err, calls)
 	}
 
 	calls = nil
-	already, err = finalActionGate(condition, func() (bool, error) {
+	already, err = finalActionGate(condition, beforeCondition, func() (bool, error) {
 		calls = append(calls, "condition")
 		return true, nil
 	}, func() error {
 		calls = append(calls, "exact")
 		return nil
 	})
-	if err != nil || !already || !slices.Equal(calls, []string{"condition"}) {
+	if err != nil || !already || !slices.Equal(calls, []string{"quota", "condition"}) {
 		t.Fatalf("satisfied gate = %t, %v, calls=%v", already, err, calls)
 	}
 
 	backendErr := errors.New("transient backend failure")
 	calls = nil
-	already, err = finalActionGate(condition, func() (bool, error) {
+	already, err = finalActionGate(condition, beforeCondition, func() (bool, error) {
 		calls = append(calls, "condition")
 		return false, backendErr
 	}, func() error {
 		calls = append(calls, "exact")
 		return nil
 	})
-	if !errors.Is(err, backendErr) || already || !slices.Equal(calls, []string{"condition"}) {
+	if !errors.Is(err, backendErr) || already || !slices.Equal(calls, []string{"quota", "condition"}) {
 		t.Fatalf("failed gate = %t, %v, calls=%v", already, err, calls)
+	}
+
+	quotaErr := errors.New("quota exhausted")
+	calls = nil
+	already, err = finalActionGate(condition, func() error {
+		calls = append(calls, "quota")
+		return quotaErr
+	}, func() (bool, error) {
+		calls = append(calls, "condition")
+		return true, nil
+	}, func() error {
+		calls = append(calls, "exact")
+		return nil
+	})
+	if !errors.Is(err, quotaErr) || already || !slices.Equal(calls, []string{"quota"}) {
+		t.Fatalf("quota-rejected gate = %t, %v, calls=%v", already, err, calls)
+	}
+}
+
+func TestFinalGateCallbackErrorPreservesCauseWithoutExposingItsMessage(t *testing.T) {
+	t.Parallel()
+	cause := errors.New("private policy detail")
+	err := runFinalGateCallback(t.Context(), func(context.Context) error { return cause })
+	if err == nil || !errors.Is(err, cause) || strings.Contains(err.Error(), cause.Error()) {
+		t.Fatalf("wrapped callback error = %v", err)
+	}
+	got, ok := finalGateCallbackCause(fmt.Errorf("native wrapper: %w", err))
+	if !ok || got != cause {
+		t.Fatalf("callback cause = %v, %t", got, ok)
+	}
+	if err := runFinalGateCallback(t.Context(), nil); err != nil {
+		t.Fatalf("nil callback = %v", err)
 	}
 }

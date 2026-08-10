@@ -71,11 +71,13 @@ The semantic observation schema remains v1.
 RobotGo performs one quota-bearing semantic precheck before action accounting.
 If the condition already matches, the request succeeds without consuming action
 count or rate. Otherwise the native backend performs the final condition and
-exact-identity gate immediately before at most one dispatch. Only a dispatched
-action is charged. Post-dispatch checks use separate immutable attempt,
-interval, and timeout bounds, while every external check also consumes the
-existing query, observation, and semantic query-rate budgets. State, focus, and
-value checks require the corresponding semantic property grant.
+exact-identity gates immediately before at most one dispatch. Every native
+condition probe is quota- and rate-bearing; policy capacity reserves one source
+inspection, one precheck, up to three native final-gate probes, and every
+configured post-dispatch attempt. Only a dispatched action is charged.
+Post-dispatch checks use separate immutable attempt, interval, and timeout
+bounds. State, focus, and value checks require the corresponding semantic
+property grant.
 The normalized binary-control contract keeps reversible checkbox/switch
 `toggle` + `checked` separate from one-way radio `press` + `selected`; missing
 native state/action providers and arbitrary action-list drift fail closed.

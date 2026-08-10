@@ -529,7 +529,7 @@ func preparePolicy(input Policy) (Policy, error) {
 			}
 		}
 		if prepared.UIVerificationAttempts > 0 {
-			minimumReads := uint64(prepared.UIVerificationAttempts) + 2
+			minimumReads := minimumUIElementWorkflowReads(prepared.UIVerificationAttempts)
 			if prepared.MaxQueries < minimumReads || prepared.MaxObservations < minimumReads {
 				return Policy{}, fmt.Errorf("agent: semantic verification requires at least %d query and observation slots", minimumReads)
 			}

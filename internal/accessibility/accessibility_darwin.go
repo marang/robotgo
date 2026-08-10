@@ -108,6 +108,11 @@ func act(ctx context.Context, request ActionRequest) (ActionResult, error) {
 		},
 		Reference: request.Reference, Expected: expected, Action: request.Action, Value: request.Value,
 	}
+	if request.BeforeFinalGate != nil {
+		nativeRequest.BeforeFinalGate = func(ctx context.Context) error {
+			return runFinalGateCallback(ctx, request.BeforeFinalGate)
+		}
+	}
 	if request.Postcondition != nil {
 		nativeRequest.Postcondition = &darwinwindow.AccessibilityElementCondition{
 			Kind:  darwinwindow.AccessibilityElementConditionKind(request.Postcondition.Kind),
@@ -184,6 +189,9 @@ func darwinAccessibilityCapabilityError(err error) Capability {
 }
 
 func normalizeDarwinAccessibilityError(err error) error {
+	if _, ok := finalGateCallbackCause(err); ok {
+		return err
+	}
 	switch {
 	case errors.Is(err, darwinwindow.ErrPermission):
 		return ErrPermissionDenied

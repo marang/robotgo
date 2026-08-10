@@ -331,6 +331,12 @@ func actAccessibilityOnThread(ctx context.Context, request AccessibilityActionRe
 	}
 	alreadySatisfied, err := finalAccessibilityActionGate(
 		request.Postcondition,
+		func() error {
+			if request.BeforeFinalGate == nil {
+				return nil
+			}
+			return request.BeforeFinalGate(ctx)
+		},
 		func() (bool, error) {
 			satisfied, err := checkCondition()
 			if err != nil {
@@ -520,6 +526,12 @@ func dispatchAXAction(
 	gate := func() (*AccessibilityActionResult, error) {
 		alreadySatisfied, err := finalAccessibilityActionGate(
 			request.Postcondition,
+			func() error {
+				if request.BeforeFinalGate == nil {
+					return nil
+				}
+				return request.BeforeFinalGate(ctx)
+			},
 			func() (bool, error) {
 				satisfied, err := checkCondition()
 				if err != nil {
