@@ -52,6 +52,11 @@ than `2026-08-05T10:13:46Z`.
   GNOME/KDE portal/bounds lanes and Hyprland. Its two public assets have the
   independently verified archive SHA-256
   `7761b673a8f6a8de8e36e74232149a24491fe8ef87dabd8023a665f313f31738`.
+- [LAB-78](https://linear.app/riotbox/issue/LAB-78/make-published-release-evidence-assets-fail-closed-on-collisions)
+  makes the release write boundary fail closed on an existing asset name. The
+  workflow no longer permits `gh release upload --clobber`, so a rerun cannot
+  delete or replace published evidence when repository-level immutable
+  releases are unavailable.
 - P005 is complete with all five milestones at 100%.
 - `go doc` currently exposes 259 root declarations, 44 `agent` declarations,
   and 12 `input/portal` declarations. That breadth makes an automated API

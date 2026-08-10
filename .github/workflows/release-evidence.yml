@@ -430,5 +430,4 @@ jobs:
           gh release upload "$GITHUB_REF_NAME" \
             "${{ needs.package.outputs.archive }}" \
             "${{ needs.package.outputs.checksum }}" \
-            --repo "$GITHUB_REPOSITORY" \
-            --clobber
+            --repo "$GITHUB_REPOSITORY"

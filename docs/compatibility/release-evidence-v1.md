@@ -67,6 +67,11 @@ repository code; it only verifies the already packaged SHA-256 and uploads the
 two assets. Manual runs retain the bundle as a GitHub Actions artifact for 90
 days and do not modify a release.
 
+The upload deliberately has no overwrite or delete path. If either exact
+commit-bound asset name already exists, the publish job fails and leaves the
+existing release assets untouched. A rerun therefore cannot replace historical
+evidence, even when repository-level immutable releases are unavailable.
+
 The published post-API-freeze RC contract passes in
 [`v1.0.0-rc.1` Release Evidence run 30442843617](https://github.com/marang/robotgo/actions/runs/30442843617)
 on tagged commit

@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Made published release-evidence assets fail closed on filename collisions.
+  The write-authorized release job still checksum-verifies and uploads a new
+  exact-tag bundle, but it can no longer delete or replace an existing archive
+  or checksum during a rerun.
+
 - Added the schema-v8, deny-by-default `desktop.ocr` and
   `desktop.detect-elements` contracts plus their separately image-enabled MCP
   tools. Both consume only an explicit subregion of a live, already-redacted

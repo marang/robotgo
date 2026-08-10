@@ -92,6 +92,56 @@ func TestReleaseEvidenceRequiresEveryPromotedHostedCheck(t *testing.T) {
 	}
 }
 
+func TestPublishedReleaseEvidenceCannotReplaceExistingAssets(t *testing.T) {
+	t.Parallel()
+	workflow, err := os.ReadFile("../.github/workflows/release-evidence.yml")
+	if err != nil {
+		t.Fatalf("read release-evidence workflow: %v", err)
+	}
+	text := normalizeWorkflowText(workflow)
+	publishStart := strings.Index(text, "  publish:")
+	if publishStart < 0 {
+		t.Fatal("release evidence does not define a publish job")
+	}
+	publish := text[publishStart:]
+	for _, required := range []string{
+		"if: github.event_name == 'release'",
+		"contents: write",
+	} {
+		if !strings.Contains(publish, required) {
+			t.Errorf("release evidence publish job omits %q", required)
+		}
+	}
+	stepsStart := strings.Index(publish, "    steps:\n")
+	if stepsStart < 0 {
+		t.Fatal("release evidence publish job does not define steps")
+	}
+	const allowedSteps = `    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: release-evidence-bundle
+          path: bundle
+      - name: Verify and attach evidence to published release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          cd bundle
+          sha256sum -c "${{ needs.package.outputs.checksum }}"
+          gh release upload "$GITHUB_REF_NAME" \
+            "${{ needs.package.outputs.archive }}" \
+            "${{ needs.package.outputs.checksum }}" \
+            --repo "$GITHUB_REPOSITORY"`
+	if got := strings.TrimSpace(publish[stepsStart:]); got != strings.TrimSpace(allowedSteps) {
+		t.Errorf(
+			"release evidence publish steps changed outside the fail-closed allowlist\n--- got ---\n%s\n--- want ---\n%s",
+			got,
+			strings.TrimSpace(allowedSteps),
+		)
+	}
+}
+
 func TestReleaseEvidenceCallsRealDesktopProofBeforeCollection(t *testing.T) {
 	t.Parallel()
 	workflow, err := os.ReadFile("../.github/workflows/release-evidence.yml")
