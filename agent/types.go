@@ -10,11 +10,11 @@ import (
 )
 
 // CatalogSchemaVersion identifies the operation catalog JSON contract.
-const CatalogSchemaVersion = "11"
+const CatalogSchemaVersion = "12"
 
 // ActionProofSchemaVersion identifies the privacy-reduced semantic-action
 // proof contract. Proofs deliberately contain no request or desktop payload.
-const ActionProofSchemaVersion = "1"
+const ActionProofSchemaVersion = "2"
 
 // Operation identifies one strict agent operation.
 type Operation string
@@ -83,6 +83,12 @@ type OperationCapability struct {
 	UIVerificationTimeoutMillis  int                        `json:"ui_verification_timeout_ms,omitempty"`
 	TargetSpecVersion            string                     `json:"target_spec_version,omitempty"`
 	TargetResolutionStrategies   []TargetResolutionStrategy `json:"target_resolution_strategies,omitempty"`
+	TargetResolutionModes        []TargetResolutionMode     `json:"target_resolution_modes,omitempty"`
+	CapabilityLeaseVersion       string                     `json:"capability_lease_version,omitempty"`
+	CapabilityLeaseRequired      bool                       `json:"capability_lease_required,omitempty"`
+	MaxCapabilityLeases          uint64                     `json:"max_capability_leases,omitempty"`
+	MaxCapabilityLeaseMillis     int                        `json:"max_capability_lease_ms,omitempty"`
+	AdaptiveTargetThreshold      uint32                     `json:"adaptive_target_threshold,omitempty"`
 	MaxTargetAncestors           uint32                     `json:"max_target_ancestors,omitempty"`
 }
 
@@ -232,10 +238,14 @@ const (
 )
 
 // ActionResolutionStrategy is the bounded target-resolution vocabulary used
-// by Action Proof v1. Healing and candidate search are intentionally absent.
+// by Action Proof v2. It distinguishes exact retained selection from an
+// adaptive selection privately bound into a capability lease.
 type ActionResolutionStrategy string
 
-const ActionResolutionRetainedReference ActionResolutionStrategy = "retained-reference"
+const (
+	ActionResolutionRetainedReference ActionResolutionStrategy = "retained-reference"
+	ActionResolutionAdaptiveLease     ActionResolutionStrategy = "adaptive-capability-lease"
+)
 
 // ActionResolutionProof reports only structural resolution evidence.
 type ActionResolutionProof struct {
@@ -251,6 +261,14 @@ type ActionAuthorizationProof struct {
 	PolicyAllowed        bool `json:"policy_allowed"`
 	ConfirmationRequired bool `json:"confirmation_required"`
 	Confirmed            bool `json:"confirmed"`
+}
+
+// CapabilityLeaseProof reports only the lifecycle decision for a single-use
+// lease. The opaque lease token and its binding digests are never serialized.
+type CapabilityLeaseProof struct {
+	Required  bool                  `json:"required"`
+	Presented bool                  `json:"presented"`
+	Status    CapabilityLeaseStatus `json:"status"`
 }
 
 // ActionExecutionStatus distinguishes a skipped idempotent retry from the one
@@ -310,6 +328,7 @@ type ActionProof struct {
 	Status        ActionProofStatus         `json:"status"`
 	Resolution    *ActionResolutionProof    `json:"resolution,omitempty"`
 	Authorization *ActionAuthorizationProof `json:"authorization,omitempty"`
+	Lease         *CapabilityLeaseProof     `json:"lease,omitempty"`
 	Execution     ActionExecutionProof      `json:"execution"`
 	Verification  *ActionVerificationProof  `json:"verification,omitempty"`
 	Cleanup       ActionCleanupProof        `json:"cleanup"`
@@ -338,6 +357,11 @@ const (
 	ErrorTargetNotFound        ErrorCode = "target-not-found"
 	ErrorAmbiguousTarget       ErrorCode = "ambiguous-target"
 	ErrorIncompleteObservation ErrorCode = "incomplete-observation"
+	ErrorLeaseRequired         ErrorCode = "capability-lease-required"
+	ErrorLeaseInvalid          ErrorCode = "capability-lease-invalid"
+	ErrorLeaseExpired          ErrorCode = "capability-lease-expired"
+	ErrorLeaseConsumed         ErrorCode = "capability-lease-consumed"
+	ErrorLeaseMismatch         ErrorCode = "capability-lease-mismatch"
 )
 
 // ActionError is safe to serialize: Message never contains action payloads.
@@ -378,6 +402,11 @@ var (
 	ErrTargetNotFound        = errors.New("agent target was not found")
 	ErrAmbiguousTarget       = errors.New("agent target is ambiguous")
 	ErrIncompleteObservation = errors.New("agent observation is incomplete")
+	ErrLeaseRequired         = errors.New("agent capability lease is required")
+	ErrLeaseInvalid          = errors.New("agent capability lease is invalid")
+	ErrLeaseExpired          = errors.New("agent capability lease is expired")
+	ErrLeaseConsumed         = errors.New("agent capability lease is consumed")
+	ErrLeaseMismatch         = errors.New("agent capability lease binding does not match")
 )
 
 func newActionError(code ErrorCode, operation Operation, message string, cause error) *ActionError {

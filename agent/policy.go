@@ -40,6 +40,8 @@ const (
 	maxAgentVerificationAttempts     = 100
 	maxAgentVerificationIntervalMS   = 60_000
 	maxAgentVerificationTimeoutMS    = 300_000
+	maxAgentCapabilityLeases         = maxAgentQueries
+	maxAgentCapabilityLeaseMillis    = maxAgentSessionTimeoutMS
 	maxAgentWaitAttempts             = 100
 	maxAgentWaitIntervalMS           = 60_000
 	maxAgentWaitTimeoutMS            = 300_000
@@ -57,66 +59,71 @@ type WindowTarget struct {
 // Policy constrains every observation, query, and mutation performed by a Session.
 // Empty allow lists deny access; callers must opt in explicitly.
 type Policy struct {
-	AllowedOperations            []Operation     `json:"allowed_operations"`
-	ConfirmOperations            []Operation     `json:"confirm_operations,omitempty"`
-	AllowedDisplayIDs            []int           `json:"allowed_display_ids,omitempty"`
-	AllowedMouseButtons          []MouseButton   `json:"allowed_mouse_buttons,omitempty"`
-	AllowedKeys                  []string        `json:"allowed_keys,omitempty"`
-	AllowedModifiers             []KeyModifier   `json:"allowed_modifiers,omitempty"`
-	AllowedWindows               []WindowTarget  `json:"allowed_windows,omitempty"`
-	AllowedUIRoles               []UIRole        `json:"allowed_ui_roles,omitempty"`
-	AllowedUIProperties          []UIProperty    `json:"allowed_ui_properties,omitempty"`
-	AllowedUIActions             []UIAction      `json:"allowed_ui_actions,omitempty"`
-	AllowedViewRegions           []CaptureRegion `json:"allowed_view_regions,omitempty"`
-	ViewRedactionMasks           []CaptureRegion `json:"view_redaction_masks,omitempty"`
-	MaxActions                   uint64          `json:"max_actions"`
-	MaxTextRunes                 int             `json:"max_text_runes"`
-	AllowDoubleClick             bool            `json:"allow_double_click,omitempty"`
-	MaxScrollEvents              uint32          `json:"max_scroll_events,omitempty"`
-	MaxScrollDistance            uint64          `json:"max_scroll_distance,omitempty"`
-	MaxDragDistance              uint64          `json:"max_drag_distance,omitempty"`
-	MaxDragDurationMillis        int             `json:"max_drag_duration_ms,omitempty"`
-	MaxChordKeys                 uint32          `json:"max_chord_keys,omitempty"`
-	MinActionIntervalMillis      int             `json:"min_action_interval_ms,omitempty"`
-	MinUIQueryIntervalMillis     int             `json:"min_ui_query_interval_ms,omitempty"`
-	SessionTimeoutMillis         int             `json:"session_timeout_ms,omitempty"`
-	MaxObservations              uint64          `json:"max_observations,omitempty"`
-	MaxCapturePixels             uint64          `json:"max_capture_pixels,omitempty"`
-	MaxQueries                   uint64          `json:"max_queries,omitempty"`
-	MaxUIElements                uint32          `json:"max_ui_elements,omitempty"`
-	MaxUITreeDepth               uint32          `json:"max_ui_tree_depth,omitempty"`
-	MaxUIStringBytes             uint32          `json:"max_ui_string_bytes,omitempty"`
-	MaxUIActionValueBytes        uint32          `json:"max_ui_action_value_bytes,omitempty"`
-	UIActionTimeoutMillis        int             `json:"ui_action_timeout_ms,omitempty"`
-	UIVerificationAttempts       uint32          `json:"ui_verification_attempts,omitempty"`
-	UIVerificationIntervalMillis int             `json:"ui_verification_interval_ms,omitempty"`
-	UIVerificationTimeoutMillis  int             `json:"ui_verification_timeout_ms,omitempty"`
-	AllowFullDisplayView         bool            `json:"allow_full_display_view,omitempty"`
-	AllowPortalView              bool            `json:"allow_portal_view,omitempty"`
-	MaxViewSourcePixels          uint64          `json:"max_view_source_pixels,omitempty"`
-	MaxViewEncodedBytes          uint64          `json:"max_view_encoded_bytes,omitempty"`
-	MaxViewWidth                 int             `json:"max_view_width,omitempty"`
-	MaxViewHeight                int             `json:"max_view_height,omitempty"`
-	MaxViews                     uint64          `json:"max_views,omitempty"`
-	MaxConcurrentViews           uint32          `json:"max_concurrent_views,omitempty"`
-	MinViewIntervalMillis        int             `json:"min_view_interval_ms,omitempty"`
-	ViewTimeoutMillis            int             `json:"view_timeout_ms,omitempty"`
-	AllowedOCRLanguages          []string        `json:"allowed_ocr_languages,omitempty"`
-	AllowFullViewAnalysis        bool            `json:"allow_full_view_analysis,omitempty"`
-	MaxAnalysisPixels            uint64          `json:"max_analysis_pixels,omitempty"`
-	MaxOCRBoxes                  uint32          `json:"max_ocr_boxes,omitempty"`
-	MaxOCRTextBytes              uint32          `json:"max_ocr_text_bytes,omitempty"`
-	MaxVisualElements            uint32          `json:"max_visual_elements,omitempty"`
-	MaxAnalyses                  uint64          `json:"max_analyses,omitempty"`
-	MaxConcurrentAnalyses        uint32          `json:"max_concurrent_analyses,omitempty"`
-	MinAnalysisIntervalMillis    int             `json:"min_analysis_interval_ms,omitempty"`
-	AnalysisTimeoutMillis        int             `json:"analysis_timeout_ms,omitempty"`
-	WaitAttempts                 uint32          `json:"wait_attempts,omitempty"`
-	WaitIntervalMillis           int             `json:"wait_interval_ms,omitempty"`
-	WaitTimeoutMillis            int             `json:"wait_timeout_ms,omitempty"`
-	VerificationAttempts         uint32          `json:"verification_attempts,omitempty"`
-	VerificationIntervalMillis   int             `json:"verification_interval_ms,omitempty"`
-	VerificationTimeoutMillis    int             `json:"verification_timeout_ms,omitempty"`
+	AllowedOperations            []Operation            `json:"allowed_operations"`
+	ConfirmOperations            []Operation            `json:"confirm_operations,omitempty"`
+	AllowedDisplayIDs            []int                  `json:"allowed_display_ids,omitempty"`
+	AllowedMouseButtons          []MouseButton          `json:"allowed_mouse_buttons,omitempty"`
+	AllowedKeys                  []string               `json:"allowed_keys,omitempty"`
+	AllowedModifiers             []KeyModifier          `json:"allowed_modifiers,omitempty"`
+	AllowedWindows               []WindowTarget         `json:"allowed_windows,omitempty"`
+	AllowedUIRoles               []UIRole               `json:"allowed_ui_roles,omitempty"`
+	AllowedUIProperties          []UIProperty           `json:"allowed_ui_properties,omitempty"`
+	AllowedUIActions             []UIAction             `json:"allowed_ui_actions,omitempty"`
+	AllowedTargetModes           []TargetResolutionMode `json:"allowed_target_modes,omitempty"`
+	AllowedViewRegions           []CaptureRegion        `json:"allowed_view_regions,omitempty"`
+	ViewRedactionMasks           []CaptureRegion        `json:"view_redaction_masks,omitempty"`
+	MaxActions                   uint64                 `json:"max_actions"`
+	MaxTextRunes                 int                    `json:"max_text_runes"`
+	AllowDoubleClick             bool                   `json:"allow_double_click,omitempty"`
+	MaxScrollEvents              uint32                 `json:"max_scroll_events,omitempty"`
+	MaxScrollDistance            uint64                 `json:"max_scroll_distance,omitempty"`
+	MaxDragDistance              uint64                 `json:"max_drag_distance,omitempty"`
+	MaxDragDurationMillis        int                    `json:"max_drag_duration_ms,omitempty"`
+	MaxChordKeys                 uint32                 `json:"max_chord_keys,omitempty"`
+	MinActionIntervalMillis      int                    `json:"min_action_interval_ms,omitempty"`
+	MinUIQueryIntervalMillis     int                    `json:"min_ui_query_interval_ms,omitempty"`
+	SessionTimeoutMillis         int                    `json:"session_timeout_ms,omitempty"`
+	MaxObservations              uint64                 `json:"max_observations,omitempty"`
+	MaxCapturePixels             uint64                 `json:"max_capture_pixels,omitempty"`
+	MaxQueries                   uint64                 `json:"max_queries,omitempty"`
+	MaxUIElements                uint32                 `json:"max_ui_elements,omitempty"`
+	MaxUITreeDepth               uint32                 `json:"max_ui_tree_depth,omitempty"`
+	MaxUIStringBytes             uint32                 `json:"max_ui_string_bytes,omitempty"`
+	MaxUIActionValueBytes        uint32                 `json:"max_ui_action_value_bytes,omitempty"`
+	UIActionTimeoutMillis        int                    `json:"ui_action_timeout_ms,omitempty"`
+	UIVerificationAttempts       uint32                 `json:"ui_verification_attempts,omitempty"`
+	UIVerificationIntervalMillis int                    `json:"ui_verification_interval_ms,omitempty"`
+	UIVerificationTimeoutMillis  int                    `json:"ui_verification_timeout_ms,omitempty"`
+	RequireCapabilityLease       bool                   `json:"require_capability_lease,omitempty"`
+	MaxCapabilityLeases          uint64                 `json:"max_capability_leases,omitempty"`
+	MaxCapabilityLeaseMillis     int                    `json:"max_capability_lease_ms,omitempty"`
+	AdaptiveTargetThreshold      uint32                 `json:"adaptive_target_threshold,omitempty"`
+	AllowFullDisplayView         bool                   `json:"allow_full_display_view,omitempty"`
+	AllowPortalView              bool                   `json:"allow_portal_view,omitempty"`
+	MaxViewSourcePixels          uint64                 `json:"max_view_source_pixels,omitempty"`
+	MaxViewEncodedBytes          uint64                 `json:"max_view_encoded_bytes,omitempty"`
+	MaxViewWidth                 int                    `json:"max_view_width,omitempty"`
+	MaxViewHeight                int                    `json:"max_view_height,omitempty"`
+	MaxViews                     uint64                 `json:"max_views,omitempty"`
+	MaxConcurrentViews           uint32                 `json:"max_concurrent_views,omitempty"`
+	MinViewIntervalMillis        int                    `json:"min_view_interval_ms,omitempty"`
+	ViewTimeoutMillis            int                    `json:"view_timeout_ms,omitempty"`
+	AllowedOCRLanguages          []string               `json:"allowed_ocr_languages,omitempty"`
+	AllowFullViewAnalysis        bool                   `json:"allow_full_view_analysis,omitempty"`
+	MaxAnalysisPixels            uint64                 `json:"max_analysis_pixels,omitempty"`
+	MaxOCRBoxes                  uint32                 `json:"max_ocr_boxes,omitempty"`
+	MaxOCRTextBytes              uint32                 `json:"max_ocr_text_bytes,omitempty"`
+	MaxVisualElements            uint32                 `json:"max_visual_elements,omitempty"`
+	MaxAnalyses                  uint64                 `json:"max_analyses,omitempty"`
+	MaxConcurrentAnalyses        uint32                 `json:"max_concurrent_analyses,omitempty"`
+	MinAnalysisIntervalMillis    int                    `json:"min_analysis_interval_ms,omitempty"`
+	AnalysisTimeoutMillis        int                    `json:"analysis_timeout_ms,omitempty"`
+	WaitAttempts                 uint32                 `json:"wait_attempts,omitempty"`
+	WaitIntervalMillis           int                    `json:"wait_interval_ms,omitempty"`
+	WaitTimeoutMillis            int                    `json:"wait_timeout_ms,omitempty"`
+	VerificationAttempts         uint32                 `json:"verification_attempts,omitempty"`
+	VerificationIntervalMillis   int                    `json:"verification_interval_ms,omitempty"`
+	VerificationTimeoutMillis    int                    `json:"verification_timeout_ms,omitempty"`
 	allowOperation               map[Operation]struct{}
 	requireConfirmation          map[Operation]struct{}
 	allowDisplay                 map[int]struct{}
@@ -127,6 +134,7 @@ type Policy struct {
 	allowUIRole                  map[UIRole]struct{}
 	allowUIProperty              map[UIProperty]struct{}
 	allowUIAction                map[UIAction]struct{}
+	allowTargetMode              map[TargetResolutionMode]struct{}
 	allowOCRLanguage             map[string]struct{}
 }
 
@@ -177,6 +185,15 @@ func preparePolicy(input Policy) (Policy, error) {
 	}
 	if input.UIVerificationTimeoutMillis < 0 || input.UIVerificationTimeoutMillis > maxAgentUIVerificationTimeoutMS {
 		return Policy{}, fmt.Errorf("agent: UI verification timeout must be between 0 and %dms", maxAgentUIVerificationTimeoutMS)
+	}
+	if input.MaxCapabilityLeases > maxAgentCapabilityLeases {
+		return Policy{}, fmt.Errorf("agent: max capability leases exceeds hard limit %d", maxAgentCapabilityLeases)
+	}
+	if input.MaxCapabilityLeaseMillis < 0 || input.MaxCapabilityLeaseMillis > maxAgentCapabilityLeaseMillis {
+		return Policy{}, fmt.Errorf("agent: capability lease lifetime must be between 0 and %dms", maxAgentCapabilityLeaseMillis)
+	}
+	if input.AdaptiveTargetThreshold > 100 {
+		return Policy{}, fmt.Errorf("agent: adaptive target threshold must be between 1 and 100")
 	}
 	if (input.UIVerificationAttempts == 0) != (input.UIVerificationTimeoutMillis == 0) {
 		return Policy{}, fmt.Errorf("agent: UI verification attempts and timeout must both be zero or both be positive")
@@ -292,6 +309,7 @@ func preparePolicy(input Policy) (Policy, error) {
 		AllowedUIRoles:      append([]UIRole(nil), input.AllowedUIRoles...),
 		AllowedUIProperties: append([]UIProperty(nil), input.AllowedUIProperties...),
 		AllowedUIActions:    append([]UIAction(nil), input.AllowedUIActions...),
+		AllowedTargetModes:  append([]TargetResolutionMode(nil), input.AllowedTargetModes...),
 		AllowedViewRegions:  append([]CaptureRegion(nil), input.AllowedViewRegions...),
 		ViewRedactionMasks:  append([]CaptureRegion(nil), input.ViewRedactionMasks...),
 		MaxActions:          input.MaxActions, MaxTextRunes: input.MaxTextRunes,
@@ -315,6 +333,10 @@ func preparePolicy(input Policy) (Policy, error) {
 		UIVerificationAttempts:       input.UIVerificationAttempts,
 		UIVerificationIntervalMillis: input.UIVerificationIntervalMillis,
 		UIVerificationTimeoutMillis:  input.UIVerificationTimeoutMillis,
+		RequireCapabilityLease:       input.RequireCapabilityLease,
+		MaxCapabilityLeases:          input.MaxCapabilityLeases,
+		MaxCapabilityLeaseMillis:     input.MaxCapabilityLeaseMillis,
+		AdaptiveTargetThreshold:      input.AdaptiveTargetThreshold,
 		AllowFullDisplayView:         input.AllowFullDisplayView,
 		AllowPortalView:              input.AllowPortalView,
 		MaxViewSourcePixels:          input.MaxViewSourcePixels,
@@ -351,6 +373,7 @@ func preparePolicy(input Policy) (Policy, error) {
 		allowUIRole:                  make(map[UIRole]struct{}),
 		allowUIProperty:              make(map[UIProperty]struct{}),
 		allowUIAction:                make(map[UIAction]struct{}),
+		allowTargetMode:              make(map[TargetResolutionMode]struct{}),
 		allowOCRLanguage:             make(map[string]struct{}),
 	}
 	for _, operation := range prepared.AllowedOperations {
@@ -445,6 +468,33 @@ func preparePolicy(input Policy) (Policy, error) {
 		}
 		prepared.allowUIAction[action] = struct{}{}
 	}
+	if len(prepared.AllowedTargetModes) == 0 {
+		prepared.AllowedTargetModes = []TargetResolutionMode{TargetResolutionModeStrict}
+	}
+	for _, mode := range prepared.AllowedTargetModes {
+		if !validTargetResolutionMode(mode) {
+			return Policy{}, fmt.Errorf("agent: unknown semantic target mode %q", mode)
+		}
+		if _, exists := prepared.allowTargetMode[mode]; exists {
+			return Policy{}, fmt.Errorf("agent: duplicate semantic target mode %q", mode)
+		}
+		prepared.allowTargetMode[mode] = struct{}{}
+	}
+	if _, strict := prepared.allowTargetMode[TargetResolutionModeStrict]; !strict {
+		return Policy{}, fmt.Errorf("agent: strict semantic target mode is required")
+	}
+	_, adaptive := prepared.allowTargetMode[TargetResolutionModeAdaptive]
+	_, review := prepared.allowTargetMode[TargetResolutionModeReview]
+	if prepared.RequireCapabilityLease || adaptive {
+		if prepared.MaxCapabilityLeases == 0 || prepared.MaxCapabilityLeaseMillis == 0 {
+			return Policy{}, fmt.Errorf("agent: capability workflows require bounded lease count and lifetime")
+		}
+	}
+	if adaptive || review {
+		if prepared.AdaptiveTargetThreshold == 0 {
+			return Policy{}, fmt.Errorf("agent: adaptive and review modes require a positive target threshold")
+		}
+	}
 	for _, language := range prepared.AllowedOCRLanguages {
 		if !validOCRLanguage(language) {
 			return Policy{}, fmt.Errorf("agent: invalid allowed OCR language %q", language)
@@ -527,6 +577,9 @@ func preparePolicy(input Policy) (Policy, error) {
 	if _, allowed := prepared.allowOperation[OperationElementAct]; allowed {
 		if _, inspectAllowed := prepared.allowOperation[OperationInspectUI]; !inspectAllowed {
 			return Policy{}, fmt.Errorf("agent: desktop.element-act requires desktop.inspect-ui")
+		}
+		if _, resolveAllowed := prepared.allowOperation[OperationResolveUI]; prepared.RequireCapabilityLease && !resolveAllowed {
+			return Policy{}, fmt.Errorf("agent: lease-required desktop.element-act requires desktop.resolve-ui")
 		}
 		if len(prepared.allowUIAction) == 0 || prepared.MaxActions == 0 || prepared.UIActionTimeoutMillis == 0 ||
 			prepared.MinActionIntervalMillis == 0 || prepared.SessionTimeoutMillis == 0 {

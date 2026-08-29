@@ -436,11 +436,20 @@ func dispatchUIAAction(
 		}
 		return nil, nil
 	}
+	beforeDispatch := func() error {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		return runFinalGateCallback(ctx, request.BeforeDispatch)
+	}
 	if request.Action == "focus" {
 		if result, err := gate(); err != nil {
 			return ActionResult{}, err
 		} else if result != nil {
 			return *result, nil
+		}
+		if err := beforeDispatch(); err != nil {
+			return ActionResult{}, err
 		}
 		return ActionResult{Dispatched: true}, setUIAFocus(ctx, element)
 	}
@@ -528,6 +537,9 @@ func dispatchUIAAction(
 			} else if result != nil {
 				return *result, nil
 			}
+			if err := beforeDispatch(); err != nil {
+				return ActionResult{}, err
+			}
 			return ActionResult{Dispatched: true}, setUIARangeValue(ctx, pattern, value)
 		}
 		pattern, err := currentUIAPattern(ctx, element, uiaPatternValue)
@@ -539,6 +551,9 @@ func dispatchUIAAction(
 			return ActionResult{}, err
 		} else if result != nil {
 			return *result, nil
+		}
+		if err := beforeDispatch(); err != nil {
+			return ActionResult{}, err
 		}
 		return ActionResult{Dispatched: true}, setUIAStringValue(ctx, pattern, string(request.Value))
 	case "increment", "decrement":
@@ -596,6 +611,9 @@ func dispatchUIAAction(
 		} else if result != nil {
 			return *result, nil
 		}
+		if err := beforeDispatch(); err != nil {
+			return ActionResult{}, err
+		}
 		return ActionResult{Dispatched: true}, setUIARangeValue(ctx, pattern, next)
 	default:
 		return ActionResult{}, ErrUnsupported
@@ -609,6 +627,9 @@ func dispatchUIAAction(
 		return ActionResult{}, err
 	} else if result != nil {
 		return *result, nil
+	}
+	if err := beforeDispatch(); err != nil {
+		return ActionResult{}, err
 	}
 	return ActionResult{Dispatched: true}, callUIAPattern(ctx, pattern, method)
 }

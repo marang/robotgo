@@ -63,6 +63,12 @@ func resolveUICapability(policy Policy, capabilities robotgo.RuntimeCapabilities
 		UnavailableCode:            featureUnavailableCode(feature),
 		TargetSpecVersion:          TargetSpecSchemaVersion,
 		TargetResolutionStrategies: append([]TargetResolutionStrategy(nil), allTargetResolutionStrategies...),
+		TargetResolutionModes:      append([]TargetResolutionMode(nil), policy.AllowedTargetModes...),
+		CapabilityLeaseVersion:     CapabilityLeaseSchemaVersion,
+		CapabilityLeaseRequired:    policy.RequireCapabilityLease,
+		MaxCapabilityLeases:        policy.MaxCapabilityLeases,
+		MaxCapabilityLeaseMillis:   policy.MaxCapabilityLeaseMillis,
+		AdaptiveTargetThreshold:    policy.AdaptiveTargetThreshold,
 		MaxTargetAncestors:         min(policy.MaxUITreeDepth, uint32(maxTargetSpecAncestors)),
 	}
 }
@@ -71,10 +77,11 @@ func elementActCapability(policy Policy, capabilities robotgo.RuntimeCapabilitie
 	_, confirmationRequired := policy.requireConfirmation[OperationElementAct]
 	_, operationAllowed := policy.allowOperation[OperationElementAct]
 	_, inspectAllowed := policy.allowOperation[OperationInspectUI]
+	_, resolveAllowed := policy.allowOperation[OperationResolveUI]
 	policyAllowed := operationAllowed && inspectAllowed && len(policy.allowWindow) > 0 &&
 		len(policy.allowUIAction) > 0 && policy.MaxActions > 0 &&
 		policy.MinActionIntervalMillis > 0 && policy.UIActionTimeoutMillis > 0 &&
-		policy.SessionTimeoutMillis > 0
+		policy.SessionTimeoutMillis > 0 && (!policy.RequireCapabilityLease || resolveAllowed)
 	feature := capabilities.Accessibility
 	remediation := feature.Notes
 	if remediation == "" {
@@ -432,6 +439,9 @@ func cloneCatalog(source OperationCatalog) OperationCatalog {
 		cloned.Operations[index].TargetResolutionStrategies = append(
 			[]TargetResolutionStrategy(nil),
 			cloned.Operations[index].TargetResolutionStrategies...,
+		)
+		cloned.Operations[index].TargetResolutionModes = append(
+			[]TargetResolutionMode(nil), cloned.Operations[index].TargetResolutionModes...,
 		)
 	}
 	return cloned

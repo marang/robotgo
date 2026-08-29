@@ -59,6 +59,10 @@ func run() error {
 			agent.UIPropertyBounds, agent.UIPropertyActions, agent.UIPropertyHierarchy,
 		},
 		AllowedUIActions:             []agent.UIAction{agent.UIActionToggle},
+		AllowedTargetModes:           []agent.TargetResolutionMode{agent.TargetResolutionModeStrict},
+		RequireCapabilityLease:       true,
+		MaxCapabilityLeases:          1,
+		MaxCapabilityLeaseMillis:     5_000,
 		MaxActions:                   1,
 		MaxObservations:              8,
 		MaxQueries:                   8,
@@ -87,6 +91,17 @@ func run() error {
 		return err
 	}
 	defer func() { _ = session.ReleaseObservation(observation.ObservationID) }()
+	matchingStates := []agent.UIState(nil)
+	for _, element := range observation.Elements {
+		if element.Role == role && element.Name == *toggleName {
+			matchingStates = append([]agent.UIState(nil), element.States...)
+		}
+	}
+	desired := agent.UIElementConditionStatePresent
+	if slices.Contains(matchingStates, agent.UIStateChecked) {
+		desired = agent.UIElementConditionStateAbsent
+	}
+	postcondition := &agent.UIElementCondition{Kind: desired, State: agent.UIStateChecked}
 	resolution, err := session.ResolveUITarget(ctx, agent.ResolveUIRequest{
 		ObservationID: observation.ObservationID,
 		Target: agent.TargetSpec{
@@ -98,24 +113,22 @@ func run() error {
 			RequiredStates:  []agent.UIState{agent.UIStateEnabled},
 			RequiredActions: []agent.UIAction{agent.UIActionToggle},
 		},
+		Mode: agent.TargetResolutionModeStrict,
+		Lease: &agent.CapabilityLeaseRequest{
+			SchemaVersion: agent.CapabilityLeaseSchemaVersion,
+			Action:        agent.UIActionToggle, Postcondition: postcondition,
+			DurationMillis: 5_000,
+		},
 	})
 	if err != nil {
 		return err
 	}
-	if resolution.Expected == nil {
-		return errors.New("semantic target resolution returned no exact expectation")
-	}
-	desired := agent.UIElementConditionStatePresent
-	if slices.Contains(resolution.Expected.States, agent.UIStateChecked) {
-		desired = agent.UIElementConditionStateAbsent
+	if resolution.Lease == nil {
+		return errors.New("semantic target resolution returned no capability lease")
 	}
 	result, err := session.ActUIElement(ctx, agent.ElementActionRequest{
-		ObservationID: observation.ObservationID, ElementID: resolution.ElementID,
-		Action: agent.UIActionToggle, Confirmed: true,
-		Expected: *resolution.Expected,
-		Postcondition: &agent.UIElementCondition{
-			Kind: desired, State: agent.UIStateChecked,
-		},
+		CapabilityLeaseID: resolution.Lease.ID,
+		Action:            agent.UIActionToggle, Confirmed: true, Postcondition: postcondition,
 	})
 	if err != nil {
 		return err

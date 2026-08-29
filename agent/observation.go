@@ -775,6 +775,9 @@ func (s *Session) ReleaseObservation(id string) error {
 	record, ok := s.observations[id]
 	if ok {
 		delete(s.observations, id)
+		// Keep observation -> lease as the sole nested lock order. Issuance
+		// performs its liveness check and publication under the same order.
+		s.invalidateObservationLeases(id)
 	}
 	s.observationMu.Unlock()
 	if !ok {

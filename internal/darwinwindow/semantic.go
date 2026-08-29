@@ -83,6 +83,7 @@ type AccessibilityActionRequest struct {
 	Value           []byte
 	Postcondition   *AccessibilityElementCondition
 	BeforeFinalGate func(context.Context) error
+	BeforeDispatch  func(context.Context) error
 }
 
 type AccessibilityActionResult struct {

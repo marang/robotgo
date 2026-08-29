@@ -572,14 +572,18 @@ func TestResolveUICatalogPublishesDefensiveTargetSpecContract(t *testing.T) {
 	}
 	if capability.Operation != OperationResolveUI || !capability.Available || !capability.PolicyAllowed ||
 		capability.ProcessGlobalBackend || capability.TargetSpecVersion != TargetSpecSchemaVersion ||
+		capability.CapabilityLeaseVersion != CapabilityLeaseSchemaVersion ||
+		!slices.Equal(capability.TargetResolutionModes, []TargetResolutionMode{TargetResolutionModeStrict}) ||
 		capability.MaxTargetAncestors != semanticResolverPolicy().MaxUITreeDepth ||
 		!slices.Equal(capability.TargetResolutionStrategies, allTargetResolutionStrategies) {
 		t.Fatalf("resolver catalog capability = %+v", capability)
 	}
 	capability.TargetResolutionStrategies[0] = "mutated"
+	capability.TargetResolutionModes[0] = "mutated"
 	for _, candidate := range session.Catalog().Operations {
 		if candidate.Operation == OperationResolveUI &&
-			candidate.TargetResolutionStrategies[0] != TargetResolutionExactSemantic {
+			(candidate.TargetResolutionStrategies[0] != TargetResolutionExactSemantic ||
+				candidate.TargetResolutionModes[0] != TargetResolutionModeStrict) {
 			t.Fatalf("resolver strategy mutation leaked: %+v", candidate)
 		}
 	}

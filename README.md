@@ -935,22 +935,31 @@ fail closed, and `ReleaseObservation` or session close zeroes retained backend
 references. Inspection alone grants no element mutation.
 
 `Session.ResolveUITarget` and `desktop.resolve-ui` add a deny-by-default,
-read-only TargetSpec v1 resolver on top of one retained semantic observation.
+versioned TargetSpec v1 resolver on top of one retained semantic observation.
 A spec binds the original process/window kind, numeric target, and exact
 policy-owned title to one exact role/name plus optional required states,
 required actions, and an immediate-parent-first ancestor chain. Matching is
 deterministic: identity and ancestors use exact equality, required state/action
-sets use containment, and hierarchy levels are never skipped. Exactly one
-match returns its opaque observation-scoped element ID and a defensive
-`UIElementExpectation` ready for the existing action API. Zero matches return
+sets use containment, and hierarchy levels are never skipped. In default
+`strict` mode, exactly one match can retain the legacy opaque element ID and
+defensive expectation unless policy requires a capability lease. A lease
+request instead returns one opaque, session-bound authority for one target
+digest, action, optional postcondition, policy window, expiry, and native
+dispatch. Zero matches return
 `target-not-found`; multiple matches return `ambiguous-target` with counts but
 no candidate IDs. Incomplete candidate or identity data returns
 `incomplete-observation`. Hidden, sensitive, and policy-excluded content may
 still mark the public observation redacted/truncated without invalidating an
-otherwise complete allowed candidate set. Resolution calls no native backend,
-consumes no query, observation, or action quota, grants no mutation authority,
-and never uses fuzzy matching, healing, OCR, visual, pointer, or keyboard
-fallback. `ActUIElement` still performs its retained and live native gates.
+otherwise complete allowed candidate set. Resolution calls no native backend
+and consumes no query, observation, or action quota. `adaptive` mode permits
+only deterministic semantic name or ancestor-name drift above the immutable
+policy threshold; every qualified candidate counts, so two plausible
+candidates are always ambiguous regardless of score or tree order. `review`
+returns only a non-executable, payload-free patch proposal and never dispatches
+or rewrites a stored locator. OCR, visual, pointer, keyboard, and silent retry
+remain absent. `ActUIElement` consumes a lease atomically only at the native
+dispatch boundary; rejection, timeout, cancellation, observation release, or
+session close invalidates it fail-closed.
 
 `Session.ActUIElement` and the `desktop.element-act` operation require a
 separate deny-by-default
@@ -983,7 +992,7 @@ An explicit AT-SPI read-only state is projected as canonical `read-only` and
 suppresses mutating press, toggle, and value actions; focus and pure disclosure
 remain available.
 
-Every `ActUIElement` return includes Action Proof v1 with opaque transaction
+Every `ActUIElement` return includes Action Proof v2 with opaque transaction
 lineage, fixed resolution/authorization/execution/verification outcomes,
 separate precheck and postcondition counts, final-gate status, and transient
 cleanup state. It excludes target text, entered values, native references,
@@ -992,12 +1001,12 @@ remains `unverified-after-dispatch` even if a later probe happens to match, so
 callers are never invited to retry an uncertain mutation. Verification status
 `not-matched` requires a completed false probe; `failed` may have zero attempts
 when a requested probe could not start.
-Catalog schema v11 additionally advertises TargetSpec v1, the exact and
-structural semantic strategies, and the maximum ancestor depth while retaining
-the proof version, condition kinds, and fixed semantic-verification bounds.
-Audit schema v4 adds payload-free resolver start/finish events with fixed
-strategy/evidence tokens, candidate/rejection counts, ambiguity, and stable
-error codes; it retains the v3 proof/execution and verification fields.
+Catalog schema v12 advertises TargetSpec v1, resolver modes, semantic
+strategies, lease schema and bounds, adaptive threshold, and maximum ancestor
+depth while retaining condition and verification bounds. Audit schema v5 adds
+payload-free resolver mode/score/threshold and lease lifecycle evidence. Lease
+tokens, locator text, action values, policy payloads, and native references are
+never copied into proofs or audit events.
 
 On Linux, an already-active AT-SPI2 bus provides the first native
 adapter for exact process-and-title targets on GNOME, KDE, and other accessible

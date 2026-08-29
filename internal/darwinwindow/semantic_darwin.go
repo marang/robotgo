@@ -575,7 +575,7 @@ func dispatchAXAction(
 		} else if result != nil {
 			return *result, nil
 		}
-		return dispatchAccessibilityMutation(ctx, func() error {
+		return dispatchAccessibilityMutation(ctx, request.BeforeDispatch, func() error {
 			return semanticAXResult("perform semantic AX action", api.axUIElementPerformAction(element(), action))
 		})
 	case "toggle":
@@ -584,7 +584,7 @@ func dispatchAXAction(
 		} else if result != nil {
 			return *result, nil
 		}
-		return dispatchAccessibilityMutation(ctx, func() error {
+		return dispatchAccessibilityMutation(ctx, request.BeforeDispatch, func() error {
 			return semanticAXResult("perform semantic AX action", api.axUIElementPerformAction(element(), api.axPressAction))
 		})
 	case "increment":
@@ -593,7 +593,7 @@ func dispatchAXAction(
 		} else if result != nil {
 			return *result, nil
 		}
-		return dispatchAccessibilityMutation(ctx, func() error {
+		return dispatchAccessibilityMutation(ctx, request.BeforeDispatch, func() error {
 			return semanticAXResult("perform semantic AX action", api.axUIElementPerformAction(element(), api.axIncrementAction))
 		})
 	case "decrement":
@@ -602,7 +602,7 @@ func dispatchAXAction(
 		} else if result != nil {
 			return *result, nil
 		}
-		return dispatchAccessibilityMutation(ctx, func() error {
+		return dispatchAccessibilityMutation(ctx, request.BeforeDispatch, func() error {
 			return semanticAXResult("perform semantic AX action", api.axUIElementPerformAction(element(), api.axDecrementAction))
 		})
 	case "focus":
@@ -611,7 +611,7 @@ func dispatchAXAction(
 		} else if result != nil {
 			return *result, nil
 		}
-		return dispatchAccessibilityMutation(ctx, func() error {
+		return dispatchAccessibilityMutation(ctx, request.BeforeDispatch, func() error {
 			return semanticAXResult("focus semantic AX element", api.axUIElementSetAttributeValue(element(), api.axFocusedAttribute, api.cfBooleanTrue))
 		})
 	case "expand", "collapse":
@@ -629,7 +629,7 @@ func dispatchAXAction(
 			} else if result != nil {
 				return *result, nil
 			}
-			return dispatchAccessibilityMutation(ctx, func() error {
+			return dispatchAccessibilityMutation(ctx, request.BeforeDispatch, func() error {
 				return semanticAXResult("change semantic AX expansion", api.axUIElementSetAttributeValue(element(), api.axExpandedAttribute, value))
 			})
 		}
@@ -639,7 +639,7 @@ func dispatchAXAction(
 			} else if result != nil {
 				return *result, nil
 			}
-			return dispatchAccessibilityMutation(ctx, func() error {
+			return dispatchAccessibilityMutation(ctx, request.BeforeDispatch, func() error {
 				return semanticAXResult("show semantic AX menu", api.axUIElementPerformAction(element(), api.axShowMenuAction))
 			})
 		}
@@ -661,7 +661,7 @@ func dispatchAXAction(
 			} else if result != nil {
 				return *result, nil
 			}
-			return dispatchAccessibilityMutation(ctx, func() error {
+			return dispatchAccessibilityMutation(ctx, request.BeforeDispatch, func() error {
 				return semanticAXResult("set semantic AX numeric value", api.axUIElementSetAttributeValue(element(), api.axValueAttribute, number))
 			})
 		}
@@ -675,7 +675,7 @@ func dispatchAXAction(
 		} else if result != nil {
 			return *result, nil
 		}
-		return dispatchAccessibilityMutation(ctx, func() error {
+		return dispatchAccessibilityMutation(ctx, request.BeforeDispatch, func() error {
 			return semanticAXResult("set semantic AX text value", api.axUIElementSetAttributeValue(element(), api.axValueAttribute, value))
 		})
 	default:

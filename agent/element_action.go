@@ -65,13 +65,14 @@ type UIElementExpectation struct {
 // ElementActionRequest performs at most one native semantic action. Value is
 // accepted only for set-value and is never retained in results or audit data.
 type ElementActionRequest struct {
-	ObservationID string               `json:"observation_id"`
-	ElementID     string               `json:"element_id"`
-	Action        UIAction             `json:"action"`
-	Expected      UIElementExpectation `json:"expected"`
-	Postcondition *UIElementCondition  `json:"postcondition,omitempty"`
-	Value         string               `json:"value,omitempty"`
-	Confirmed     bool                 `json:"confirmed,omitempty"`
+	ObservationID     string               `json:"observation_id,omitempty"`
+	ElementID         string               `json:"element_id,omitempty"`
+	CapabilityLeaseID string               `json:"capability_lease_id,omitempty"`
+	Action            UIAction             `json:"action"`
+	Expected          UIElementExpectation `json:"expected,omitempty"`
+	Postcondition     *UIElementCondition  `json:"postcondition,omitempty"`
+	Value             string               `json:"value,omitempty"`
+	Confirmed         bool                 `json:"confirmed,omitempty"`
 }
 
 type uiBackendElementAction struct {
@@ -83,6 +84,7 @@ type uiBackendElementAction struct {
 	Value           []byte
 	Backend         string
 	BeforeFinalGate func(context.Context) error
+	BeforeDispatch  func(context.Context) error
 }
 
 type uiBackendElementConditionResult struct {
@@ -121,7 +123,7 @@ func (robotGoDriver) CheckUIElement(ctx context.Context, request uiBackendElemen
 
 // ActUIElement revalidates and performs at most one observation-bound native
 // semantic action. It never falls back to pointer, keyboard, capture, OCR, or
-// shell behavior. Every return contains Action Proof v1.
+// shell behavior. Every return contains Action Proof v2.
 func (s *Session) ActUIElement(ctx context.Context, request ElementActionRequest) (result ActionResult, returnErr error) {
 	started := time.Now()
 	id := fmt.Sprintf("action-%d", actionSerial.Add(1))
@@ -135,6 +137,13 @@ func (s *Session) ActUIElement(ctx context.Context, request ElementActionRequest
 		Execution: ActionExecutionProof{
 			Status: ActionExecutionNotDispatched,
 		},
+		Lease: &CapabilityLeaseProof{Required: s.policy.RequireCapabilityLease,
+			Presented: request.CapabilityLeaseID != "", Status: CapabilityLeaseNotRequired},
+	}
+	if s.policy.RequireCapabilityLease && request.CapabilityLeaseID == "" {
+		proof.Lease.Status = CapabilityLeaseAbsent
+	} else if request.CapabilityLeaseID != "" {
+		proof.Lease.Status = CapabilityLeaseInvalidated
 	}
 	result = ActionResult{
 		ActionID: id, Operation: OperationElementAct, Status: ActionFailed, Proof: proof,
@@ -147,8 +156,14 @@ func (s *Session) ActUIElement(ctx context.Context, request ElementActionRequest
 		retained               retainedUIElementAction
 		backendRequest         uiBackendElementAction
 		backendCleanupComplete = true
+		leaseReservation       *capabilityLeaseReservation
 	)
 	defer func() {
+		leaseWasActive := leaseReservation != nil && leaseReservation.active
+		s.invalidateCapabilityLease(leaseReservation)
+		if leaseWasActive && proof.Lease != nil {
+			proof.Lease.Status = CapabilityLeaseInvalidated
+		}
 		clear(retained.reference)
 		clear(backendRequest.Reference)
 		clear(backendRequest.Value)
@@ -165,6 +180,7 @@ func (s *Session) ActUIElement(ctx context.Context, request ElementActionRequest
 	}()
 
 	if err := s.acquire(ctx); err != nil {
+		s.invalidatePresentedCapabilityLease(request.CapabilityLeaseID)
 		returnErr = setElementActionFailure(&result, s.elementActionOperationError(err), ActionProofRejectedBeforeDispatch, false)
 		return result, returnErr
 	}
@@ -172,6 +188,32 @@ func (s *Session) ActUIElement(ctx context.Context, request ElementActionRequest
 	if err := s.ensureOpen(); err != nil {
 		returnErr = setElementActionFailure(&result, s.elementActionOperationError(err), ActionProofRejectedBeforeDispatch, false)
 		return result, returnErr
+	}
+	var leaseErr *ActionError
+	leaseReservation, leaseErr = s.reserveCapabilityLease(request)
+	if leaseErr != nil {
+		switch leaseErr.Code {
+		case ErrorLeaseRequired:
+			proof.Lease.Status = CapabilityLeaseAbsent
+		case ErrorLeaseExpired:
+			proof.Lease.Status = CapabilityLeaseExpired
+		case ErrorLeaseConsumed:
+			proof.Lease.Status = CapabilityLeaseConsumed
+		default:
+			proof.Lease.Status = CapabilityLeaseInvalidated
+		}
+		returnErr = setElementActionFailure(&result, leaseErr, ActionProofRejectedBeforeDispatch, false)
+		return result, returnErr
+	}
+	if leaseReservation != nil {
+		if request.ObservationID != "" || request.ElementID != "" || !emptyUIElementExpectation(request.Expected) {
+			returnErr = setElementActionFailure(&result, leaseActionError(ErrorLeaseMismatch, ErrLeaseMismatch), ActionProofRejectedBeforeDispatch, false)
+			return result, returnErr
+		}
+		request.ObservationID = leaseReservation.record.observationID
+		request.ElementID = leaseReservation.record.elementID
+		request.Expected = cloneUIElementExpectation(leaseReservation.record.expected)
+		proof.Lease.Status = CapabilityLeaseReserved
 	}
 	if err := validateElementActionRequest(request); err != nil {
 		returnErr = setElementActionFailure(&result,
@@ -201,6 +243,14 @@ func (s *Session) ActUIElement(ctx context.Context, request ElementActionRequest
 
 	retained, _ = s.retainUIElementAction(request.ObservationID, request.ElementID)
 	proof.Resolution = &ActionResolutionProof{Strategy: ActionResolutionRetainedReference}
+	if leaseReservation != nil {
+		proof.Resolution.CandidateCount = 1
+		proof.Resolution.Exact = leaseReservation.record.mode == TargetResolutionModeStrict
+		proof.Resolution.Healing = leaseReservation.record.mode == TargetResolutionModeAdaptive
+		if proof.Resolution.Healing {
+			proof.Resolution.Strategy = ActionResolutionAdaptiveLease
+		}
+	}
 	if len(retained.reference) == 0 {
 		returnErr = setElementActionFailure(&result, staleElementActionError(), ActionProofRejectedBeforeDispatch, false)
 		return result, returnErr
@@ -213,13 +263,32 @@ func (s *Session) ActUIElement(ctx context.Context, request ElementActionRequest
 		returnErr = setElementActionFailure(&result, staleElementActionError(), ActionProofRejectedBeforeDispatch, false)
 		return result, returnErr
 	}
-	proof.Resolution.Exact = true
+	if leaseReservation == nil || leaseReservation.record.mode == TargetResolutionModeStrict {
+		proof.Resolution.Exact = true
+	}
 
 	backendRequest = uiBackendElementAction{
 		Target: retained.target, Reference: append([]byte(nil), retained.reference...),
 		Expected: cloneUIElementExpectation(retained.expected), Action: request.Action,
 		Postcondition: cloneUIElementCondition(request.Postcondition),
 		Value:         append([]byte(nil), request.Value...), Backend: retained.backend,
+	}
+	backendRequest.BeforeDispatch = func(context.Context) error {
+		if err := s.consumeCapabilityLease(leaseReservation); err != nil {
+			switch {
+			case errors.Is(err, ErrLeaseExpired):
+				proof.Lease.Status = CapabilityLeaseExpired
+			case errors.Is(err, ErrLeaseConsumed):
+				proof.Lease.Status = CapabilityLeaseConsumed
+			default:
+				proof.Lease.Status = CapabilityLeaseInvalidated
+			}
+			return err
+		}
+		if leaseReservation != nil {
+			proof.Lease.Status = CapabilityLeaseConsumed
+		}
+		return nil
 	}
 	if request.Postcondition != nil {
 		var finalGateProbes uint64
@@ -264,6 +333,10 @@ func (s *Session) ActUIElement(ctx context.Context, request ElementActionRequest
 		Kind: AuditActionStarted, Operation: OperationElementAct, ActionID: id,
 		PreconditionObservationID: result.PreconditionObservationID,
 		ActionExecutionStatus:     ActionExecutionNotDispatched,
+	}
+	if proof.Lease != nil {
+		startedEvent.CapabilityLeasePresented = proof.Lease.Presented
+		startedEvent.CapabilityLeaseStatus = proof.Lease.Status
 	}
 	if request.Postcondition != nil {
 		startedEvent.UIConditionKind = request.Postcondition.Kind
@@ -636,6 +709,10 @@ func semanticActionAuditEvent(result ActionResult, phase UIConditionPhase) Audit
 		PreconditionObservationID: result.PreconditionObservationID,
 		UIConditionPhase:          phase,
 	}
+	if result.Proof != nil && result.Proof.Lease != nil {
+		event.CapabilityLeasePresented = result.Proof.Lease.Presented
+		event.CapabilityLeaseStatus = result.Proof.Lease.Status
+	}
 	if result.Error != nil {
 		event.ErrorCode = result.Error.Code
 	}
@@ -694,6 +771,11 @@ func validateElementActionRequest(request ElementActionRequest) error {
 		return errors.New("only set-value accepts a value")
 	}
 	return validateUIElementCondition(request.Action, request.Postcondition)
+}
+
+func emptyUIElementExpectation(expectation UIElementExpectation) bool {
+	return expectation.Role == "" && expectation.Name == "" && !expectation.Sensitive &&
+		len(expectation.States) == 0 && expectation.Bounds == nil && len(expectation.Actions) == 0
 }
 
 func validateUIElementCondition(action UIAction, condition *UIElementCondition) error {

@@ -388,15 +388,15 @@ func (s *Server) registerTools() {
 		mcp.AddTool(s.protocol, &mcp.Tool{
 			Name:        ToolResolveUI,
 			Title:       "Resolve semantic UI target",
-			Description: "Deterministically resolve one versioned exact or structural TargetSpec inside a retained semantic observation. The tool performs no desktop I/O or mutation and returns no candidate element IDs when resolution is missing or ambiguous.",
-			Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, IdempotentHint: true, OpenWorldHint: &closedWorld},
+			Description: "Resolve one versioned semantic TargetSpec in strict, adaptive, or non-executable review mode. Executable resolution may mint one opaque, transaction-bound, single-use capability lease; missing or ambiguous candidates return no element identity.",
+			Annotations: &mcp.ToolAnnotations{OpenWorldHint: &closedWorld},
 		}, s.resolveUI)
 	}
 	if _, ok := s.adapter.session.(SemanticActionSession); ok {
 		mcp.AddTool(s.protocol, &mcp.Tool{
 			Name:        ToolElementAct,
 			Title:       "Act on observed semantic element",
-			Description: "Revalidate and execute at most one policy-approved native semantic action against a live observation-bound element, optionally verify one target-relative postcondition, and return Action Proof v1. Pointer and keyboard fallback are never used.",
+			Description: "Revalidate and execute at most one policy-approved native semantic action against a live observation-bound element or single-use capability lease, optionally verify one target-relative postcondition, and return Action Proof v2. Pointer and keyboard fallback are never used.",
 			Annotations: &mcp.ToolAnnotations{DestructiveHint: &destructive, OpenWorldHint: &openWorld},
 		}, s.elementAct)
 	}

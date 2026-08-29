@@ -113,6 +113,11 @@ func act(ctx context.Context, request ActionRequest) (ActionResult, error) {
 			return runFinalGateCallback(ctx, request.BeforeFinalGate)
 		}
 	}
+	if request.BeforeDispatch != nil {
+		nativeRequest.BeforeDispatch = func(ctx context.Context) error {
+			return runFinalGateCallback(ctx, request.BeforeDispatch)
+		}
+	}
 	if request.Postcondition != nil {
 		nativeRequest.Postcondition = &darwinwindow.AccessibilityElementCondition{
 			Kind:  darwinwindow.AccessibilityElementConditionKind(request.Postcondition.Kind),

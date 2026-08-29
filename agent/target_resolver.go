@@ -13,7 +13,7 @@ const (
 	TargetSpecSchemaVersion = "1"
 	// TargetResolutionSchemaVersion identifies the privacy-reduced resolver
 	// result contract.
-	TargetResolutionSchemaVersion = "1"
+	TargetResolutionSchemaVersion = "2"
 	maxTargetSpecAncestors        = maxAgentUITreeDepth
 )
 
@@ -24,11 +24,13 @@ type TargetResolutionStrategy string
 const (
 	TargetResolutionExactSemantic      TargetResolutionStrategy = "exact-semantic"
 	TargetResolutionStructuralSemantic TargetResolutionStrategy = "structural-semantic"
+	TargetResolutionAdaptiveSemantic   TargetResolutionStrategy = "adaptive-semantic"
 )
 
 var allTargetResolutionStrategies = []TargetResolutionStrategy{
 	TargetResolutionExactSemantic,
 	TargetResolutionStructuralSemantic,
+	TargetResolutionAdaptiveSemantic,
 }
 
 // TargetEvidence is a fixed, payload-free explanation token. The order in a
@@ -77,24 +79,41 @@ type TargetSpec struct {
 // ResolveUIRequest resolves one TargetSpec only within one live retained UI
 // observation. Confirmed is used only when immutable policy requires it.
 type ResolveUIRequest struct {
-	ObservationID string     `json:"observation_id"`
-	Target        TargetSpec `json:"target"`
-	Confirmed     bool       `json:"confirmed,omitempty"`
+	ObservationID string                  `json:"observation_id"`
+	Target        TargetSpec              `json:"target"`
+	Mode          TargetResolutionMode    `json:"mode,omitempty"`
+	Lease         *CapabilityLeaseRequest `json:"lease,omitempty"`
+	Confirmed     bool                    `json:"confirmed,omitempty"`
 }
 
-// TargetResolutionResult selects an opaque observation-scoped element only
-// when exactly one candidate matches. Expected is a defensive copy suitable
-// for ElementActionRequest; it grants no mutation authority by itself.
+// TargetPatchProposal is deliberately non-executable and payload-free. It
+// identifies which locator clauses drifted without returning replacement text.
+type TargetPatchProposal struct {
+	SchemaVersion string           `json:"schema_version"`
+	Changed       []TargetEvidence `json:"changed"`
+	Score         uint32           `json:"score"`
+	Threshold     uint32           `json:"threshold"`
+	Executable    bool             `json:"executable"`
+}
+
+// TargetResolutionResult returns legacy exact selection, an opaque single-use
+// lease, or a non-executable review proposal only when one candidate qualifies.
 type TargetResolutionResult struct {
 	SchemaVersion          string                   `json:"schema_version"`
 	ObservationID          string                   `json:"observation_id,omitempty"`
 	Strategy               TargetResolutionStrategy `json:"strategy,omitempty"`
+	Mode                   TargetResolutionMode     `json:"mode"`
 	MatchedBy              []TargetEvidence         `json:"matched_by,omitempty"`
+	Changed                []TargetEvidence         `json:"changed,omitempty"`
 	CandidateCount         uint32                   `json:"candidate_count"`
 	RejectedCandidateCount uint32                   `json:"rejected_candidate_count"`
 	Ambiguous              bool                     `json:"ambiguous"`
+	AdaptiveScore          uint32                   `json:"adaptive_score,omitempty"`
+	AdaptiveThreshold      uint32                   `json:"adaptive_threshold,omitempty"`
 	ElementID              string                   `json:"element_id,omitempty"`
 	Expected               *UIElementExpectation    `json:"expected,omitempty"`
+	Lease                  *CapabilityLease         `json:"lease,omitempty"`
+	Patch                  *TargetPatchProposal     `json:"patch,omitempty"`
 }
 
 type retainedUITarget struct {
@@ -118,12 +137,16 @@ func (s *Session) ResolveUITarget(ctx context.Context, request ResolveUIRequest)
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	result := TargetResolutionResult{SchemaVersion: TargetResolutionSchemaVersion}
+	mode := normalizeTargetResolutionMode(request.Mode)
+	result := TargetResolutionResult{SchemaVersion: TargetResolutionSchemaVersion, Mode: mode}
 	if err := validateResolveUIRequest(request); err != nil {
 		return result, targetResolutionError(ErrorInvalidInput, "invalid semantic target specification", err)
 	}
 	result.ObservationID = request.ObservationID
 	result.Strategy = targetResolutionStrategy(request.Target)
+	if mode != TargetResolutionModeStrict {
+		result.Strategy = TargetResolutionAdaptiveSemantic
+	}
 
 	if err := s.acquire(ctx); err != nil {
 		return clearTargetSelection(result), targetResolutionOperationError(err)
@@ -173,6 +196,8 @@ func (s *Session) ResolveUITarget(ctx context.Context, request ResolveUIRequest)
 		byID[graph.elements[index].elementID] = index
 	}
 	var selected *retainedUITarget
+	var selectedScore uint32
+	var selectedChanged []TargetEvidence
 	var incompleteCandidate bool
 	for index := range graph.elements {
 		if operationErr := s.targetResolutionExecutionError(ctx); operationErr != nil {
@@ -180,6 +205,11 @@ func (s *Session) ResolveUITarget(ctx context.Context, request ResolveUIRequest)
 		}
 		candidate := &graph.elements[index]
 		matches, incomplete := matchesTargetSpec(candidate, request.Target, graph.elements, byID)
+		score, changed, adaptiveIncomplete := adaptiveTargetScore(candidate, request.Target, graph.elements, byID)
+		if mode != TargetResolutionModeStrict {
+			matches = !adaptiveIncomplete && score >= s.policy.AdaptiveTargetThreshold
+			incomplete = adaptiveIncomplete
+		}
 		if !matches {
 			result.RejectedCandidateCount++
 			incompleteCandidate = incompleteCandidate || incomplete
@@ -188,6 +218,8 @@ func (s *Session) ResolveUITarget(ctx context.Context, request ResolveUIRequest)
 		result.CandidateCount++
 		if selected == nil {
 			selected = candidate
+			selectedScore = score
+			selectedChanged = changed
 		}
 	}
 	if operationErr := s.targetResolutionExecutionError(ctx); operationErr != nil {
@@ -208,6 +240,34 @@ func (s *Session) ResolveUITarget(ctx context.Context, request ResolveUIRequest)
 		return s.finishTargetResolution(ctx, clearTargetSelection(result), operationErr)
 	case 1:
 		result.MatchedBy = targetResolutionEvidence(request.Target)
+		if mode != TargetResolutionModeStrict {
+			result.AdaptiveScore = selectedScore
+			result.AdaptiveThreshold = s.policy.AdaptiveTargetThreshold
+			result.Changed = append([]TargetEvidence(nil), selectedChanged...)
+			for _, changed := range selectedChanged {
+				result.MatchedBy = slices.DeleteFunc(result.MatchedBy, func(value TargetEvidence) bool { return value == changed })
+			}
+		}
+		if mode == TargetResolutionModeReview {
+			result.Patch = &TargetPatchProposal{SchemaVersion: TargetPatchProposalSchemaVersion, Changed: append([]TargetEvidence{}, selectedChanged...),
+				Score: selectedScore, Threshold: s.policy.AdaptiveTargetThreshold, Executable: false}
+			return s.finishTargetResolution(ctx, result, nil)
+		}
+		if request.Lease != nil {
+			lease, err := s.issueCapabilityLease(request, selected)
+			if err != nil {
+				code := ErrorBackendFailure
+				if errors.Is(err, ErrStaleTarget) {
+					code = ErrorStaleTarget
+				} else if errors.Is(err, ErrPolicyDenied) {
+					code = ErrorPolicyDenied
+				}
+				operationErr := targetResolutionError(code, "semantic capability lease could not be issued", err)
+				return s.finishTargetResolution(ctx, clearTargetSelection(result), operationErr)
+			}
+			result.Lease = lease
+			return s.finishTargetResolution(ctx, result, nil)
+		}
 		expected := cloneUIElementExpectation(selected.expected)
 		result.ElementID = selected.elementID
 		result.Expected = &expected
@@ -221,8 +281,32 @@ func (s *Session) ResolveUITarget(ctx context.Context, request ResolveUIRequest)
 }
 
 func validateResolveUIRequest(request ResolveUIRequest) error {
+	mode := normalizeTargetResolutionMode(request.Mode)
 	if !validObservationID(request.ObservationID) || request.Target.SchemaVersion != TargetSpecSchemaVersion {
 		return errors.New("invalid observation ID or target schema version")
+	}
+	if !validTargetResolutionMode(mode) {
+		return errors.New("invalid semantic target mode")
+	}
+	if mode == TargetResolutionModeAdaptive && request.Lease == nil {
+		return errors.New("adaptive resolution requires a single-use capability lease")
+	}
+	if mode == TargetResolutionModeReview && request.Lease != nil {
+		return errors.New("review resolution cannot issue executable authority")
+	}
+	if request.Lease != nil {
+		if request.Lease.SchemaVersion != CapabilityLeaseSchemaVersion || !validUIAction(request.Lease.Action) ||
+			request.Lease.DurationMillis <= 0 || request.Lease.DurationMillis > maxAgentCapabilityLeaseMillis ||
+			validateUIElementCondition(request.Lease.Action, request.Lease.Postcondition) != nil {
+			return errors.New("invalid semantic capability lease request")
+		}
+		if request.Lease.Action == UIActionSetValue {
+			if _, ok := parseLeaseValueDigest(request.Lease.ActionValueSHA256); !ok {
+				return errors.New("set-value lease requires a SHA-256 value binding")
+			}
+		} else if request.Lease.ActionValueSHA256 != "" {
+			return errors.New("only set-value accepts a value binding")
+		}
 	}
 	window := request.Target.Window
 	if window.Target <= 0 || !validWindowTargetKind(window.Kind) || window.ExpectedTitle == "" ||
@@ -257,6 +341,10 @@ func validTargetIdentity(role UIRole, name string, states []UIState) bool {
 }
 
 func (s *Session) authorizeTargetResolution(request ResolveUIRequest) *ActionError {
+	mode := normalizeTargetResolutionMode(request.Mode)
+	if s.policy.RequireCapabilityLease && mode != TargetResolutionModeReview && request.Lease == nil {
+		return targetResolutionError(ErrorLeaseRequired, "semantic capability lease is required", ErrLeaseRequired)
+	}
 	if _, allowed := s.policy.allowOperation[OperationResolveUI]; !allowed {
 		return targetResolutionError(ErrorPolicyDenied, "agent policy denied semantic target resolution", ErrPolicyDenied)
 	}
@@ -268,6 +356,18 @@ func (s *Session) authorizeTargetResolution(request ResolveUIRequest) *ActionErr
 		kind:   request.Target.Window.Kind,
 	}]; !allowed {
 		return targetResolutionError(ErrorPolicyDenied, "agent policy denied the semantic target window", ErrPolicyDenied)
+	}
+	if _, allowed := s.policy.allowTargetMode[mode]; !allowed {
+		return targetResolutionError(ErrorPolicyDenied, "agent policy denied the semantic target mode", ErrPolicyDenied)
+	}
+	if request.Lease != nil {
+		if request.Lease.DurationMillis > s.policy.MaxCapabilityLeaseMillis ||
+			!slices.Contains(request.Target.RequiredActions, request.Lease.Action) {
+			return targetResolutionError(ErrorPolicyDenied, "agent policy denied the semantic capability lease binding", ErrPolicyDenied)
+		}
+		if _, allowed := s.policy.allowUIAction[request.Lease.Action]; !allowed {
+			return targetResolutionError(ErrorPolicyDenied, "agent policy denied the semantic capability lease action", ErrPolicyDenied)
+		}
 	}
 	totalNameBytes := len(request.Target.Name)
 	for _, ancestor := range request.Target.Ancestors {
@@ -347,6 +447,51 @@ func matchesTargetSpec(
 	return true, false
 }
 
+func adaptiveTargetScore(candidate *retainedUITarget, spec TargetSpec, elements []retainedUITarget, byID map[string]int) (uint32, []TargetEvidence, bool) {
+	if candidate == nil || candidate.expected.Sensitive || candidate.expected.Role != spec.Role ||
+		!validUIBounds(candidate.expected.Bounds) || !slices.Contains(candidate.expected.States, UIStateEnabled) ||
+		len(candidate.expected.Actions) == 0 || !containsAllUIStates(candidate.expected.States, spec.RequiredStates) ||
+		!containsAllUIActions(candidate.expected.Actions, spec.RequiredActions) {
+		return 0, nil, false
+	}
+	score := uint32(adaptiveBaseScore) // exact window, role, required states, and actions
+	changed := make([]TargetEvidence, 0, 2)
+	if candidate.expected.Name == spec.Name {
+		score += adaptiveNameScore
+	} else {
+		changed = append(changed, TargetEvidenceName)
+	}
+	if len(spec.Ancestors) == 0 {
+		return score + adaptiveAncestorScore, changed, false
+	}
+	matchedAncestors := uint32(0)
+	parentID := candidate.parentID
+	for _, ancestor := range spec.Ancestors {
+		parentIndex, ok := byID[parentID]
+		if !ok {
+			return 0, nil, candidate.parentIncomplete
+		}
+		parent := &elements[parentIndex]
+		if parent.expected.Sensitive {
+			return 0, nil, true
+		}
+		if parent.expected.Role != ancestor.Role ||
+			!containsAllUIStates(parent.expected.States, ancestor.RequiredStates) {
+			return 0, nil, false
+		}
+		if parent.expected.Name == ancestor.Name {
+			matchedAncestors++
+		}
+		candidate = parent
+		parentID = parent.parentID
+	}
+	if matchedAncestors != uint32(len(spec.Ancestors)) {
+		changed = append(changed, TargetEvidenceAncestors)
+	}
+	score += adaptiveAncestorScore * matchedAncestors / uint32(len(spec.Ancestors))
+	return score, changed, false
+}
+
 func containsAllUIStates(actual, required []UIState) bool {
 	for _, value := range required {
 		if !slices.Contains(actual, value) {
@@ -394,13 +539,24 @@ func targetResolutionAuditEvent(kind AuditKind, result TargetResolutionResult, c
 	event := AuditEvent{
 		Kind: kind, Operation: OperationResolveUI, ObservationID: result.ObservationID,
 		TargetResolutionStrategy: result.Strategy,
+		TargetResolutionMode:     result.Mode,
 		TargetCandidateCount:     result.CandidateCount,
 		TargetRejectedCount:      result.RejectedCandidateCount,
 		TargetAmbiguous:          result.Ambiguous,
 		ErrorCode:                code,
 	}
+	if result.Patch != nil {
+		event.TargetAdaptiveScore = result.Patch.Score
+		event.TargetAdaptiveThreshold = result.Patch.Threshold
+	}
+	if result.AdaptiveScore > 0 {
+		event.TargetAdaptiveScore = result.AdaptiveScore
+		event.TargetAdaptiveThreshold = result.AdaptiveThreshold
+	}
+	event.CapabilityLeaseIssued = result.Lease != nil
 	if kind == AuditResolutionFinished {
 		event.TargetMatchedBy = append([]TargetEvidence(nil), result.MatchedBy...)
+		event.TargetChanged = append([]TargetEvidence(nil), result.Changed...)
 	}
 	return event
 }
@@ -421,6 +577,9 @@ func (s *Session) finishTargetResolution(
 		result,
 		classifyTargetResolutionError(operationErr),
 	)); auditErr != nil {
+		if result.Lease != nil {
+			s.invalidateIssuedCapabilityLease(result.Lease.ID)
+		}
 		return clearTargetSelection(result), targetResolutionError(
 			ErrorAuditDelivery,
 			"semantic target resolution completed but audit delivery failed",
@@ -436,6 +595,13 @@ func clearTargetSelection(result TargetResolutionResult) TargetResolutionResult 
 		*result.Expected = UIElementExpectation{}
 		result.Expected = nil
 	}
+	if result.Lease != nil {
+		result.Lease.ID = ""
+		result.Lease = nil
+	}
+	result.Patch = nil
+	clear(result.Changed)
+	result.Changed = nil
 	return result
 }
 
