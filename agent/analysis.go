@@ -204,8 +204,12 @@ func runOCRAnalyzer(ctx context.Context, analyzer ocrAnalyzer, source *image.RGB
 	completed := make(chan ocrWorkerResult)
 	go func() {
 		defer releaseAnalysisWorker()
-		defer wipeMutableImage(source)
-		boxes, err := analyzer.Analyze(ctx, source, languages)
+		var boxes []rawOCRBox
+		var err error
+		func() {
+			defer wipeMutableImage(source)
+			boxes, err = analyzer.Analyze(ctx, source, languages)
+		}()
 		result := ocrWorkerResult{boxes: boxes, err: err}
 		select {
 		case completed <- result:
