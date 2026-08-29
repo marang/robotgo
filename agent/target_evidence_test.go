@@ -67,7 +67,7 @@ func targetEvidenceSnapshot() uiBackendSnapshot {
 func targetEvidenceSession(t *testing.T, policy Policy) (*Session, *semanticFakeDriver) {
 	t.Helper()
 	session, driver := newSemanticSession(t, policy, targetEvidenceSnapshot())
-	driver.fakeDriver.captureImages = []image.Image{syntheticCapture(8, 6, 0)}
+	driver.captureImages = []image.Image{syntheticCapture(8, 6, 0)}
 	return session, driver
 }
 
@@ -163,7 +163,7 @@ func TestCombinedTargetEvidenceUsesOneObservationAndFixedScores(t *testing.T) {
 			source.SetRGBA(x, y, color.RGBA{A: 255})
 		}
 	}
-	driver.fakeDriver.captureImages = []image.Image{source}
+	driver.captureImages = []image.Image{source}
 	installFakeOCR(session, &fakeOCRAnalyzer{boxes: []rawOCRBox{{
 		text: []byte("Save"), bounds: image.Rect(1, 1, 3, 2), confidence: 0.9,
 	}}})
@@ -297,7 +297,7 @@ func TestVisualTargetEvidenceProducesReviewOnlyProposal(t *testing.T) {
 			source.SetRGBA(x, y, color.RGBA{A: 255})
 		}
 	}
-	driver.fakeDriver.captureImages = []image.Image{source}
+	driver.captureImages = []image.Image{source}
 	view := createTargetEvidenceView(t, session)
 	visual, err := session.DetectVisualElements(t.Context(), VisualElementsRequest{
 		ObservationID: view.ObservationID, Region: targetEvidenceAnalysisRegion, MinConfidence: 0.8,
