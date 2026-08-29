@@ -347,6 +347,26 @@ func TestRecorderBoundsLifecycleAndCleanup(t *testing.T) {
 			t.Fatalf("session close = %v recorder=%+v", closeErr, recorder)
 		}
 	})
+
+	t.Run("session-expiry-clears", func(t *testing.T) {
+		session, _ := newSemanticSession(t, recorderPolicy(), semanticSnapshot())
+		recorder, err := session.StartRecorder(t.Context(), RecorderRequest{SchemaVersion: SemanticRecorderSchemaVersion})
+		if err != nil {
+			t.Fatal(err)
+		}
+		session.recordNonSemanticAction(ActionRequest{Operation: OperationClick}, ActionResult{Status: ActionSucceeded}, nil)
+		session.cancel()
+		select {
+		case <-recorder.done:
+		case <-time.After(time.Second):
+			t.Fatal("recorder did not expire with its session")
+		}
+		session.recordNonSemanticAction(ActionRequest{Operation: OperationClick}, ActionResult{Status: ActionSucceeded}, nil)
+		if _, stopErr := recorder.Stop(t.Context()); !hasErrorCode(stopErr, ErrorRecorderExpired) ||
+			len(recorder.events) != 0 || session.activeRecorder() != nil {
+			t.Fatalf("session-expired stop = %v recorder=%+v", stopErr, recorder)
+		}
+	})
 }
 
 func recorderExpired(recorder *SemanticRecorder) bool {

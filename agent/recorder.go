@@ -212,6 +212,8 @@ type SemanticRecorder struct {
 	session *Session
 
 	mu                  sync.Mutex
+	done                chan struct{}
+	doneOnce            sync.Once
 	startedAt           time.Time
 	active              bool
 	expired             bool
@@ -253,7 +255,7 @@ func (s *Session) StartRecorder(ctx context.Context, request RecorderRequest) (*
 
 	now := s.now().UTC()
 	recorder := &SemanticRecorder{
-		session: s, startedAt: now, active: true,
+		session: s, done: make(chan struct{}), startedAt: now, active: true,
 		maxEvents: s.policy.MaxRecorderEvents, maxBytes: s.policy.MaxRecorderBytes,
 		targetByDigest:      make(map[[sha256.Size]byte]string),
 		windowByDigest:      make(map[[sha256.Size]byte]string),
@@ -277,6 +279,7 @@ func (s *Session) StartRecorder(ctx context.Context, request RecorderRequest) (*
 	recorder.mu.Unlock()
 	s.recorder = recorder
 	s.recorderMu.Unlock()
+	go recorder.expireWithSession()
 	return recorder, nil
 }
 
@@ -293,6 +296,10 @@ func (r *SemanticRecorder) Stop(ctx context.Context) (RecordedFlow, error) {
 		_ = r.Close()
 		return RecordedFlow{}, recorderContextError(ctx)
 	}
+	if r.sessionExpired() {
+		r.expire()
+		return RecordedFlow{}, recorderActionError(ErrorRecorderExpired, "semantic recorder session lifetime expired", ErrRecorderExpired)
+	}
 	r.detach()
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -307,6 +314,7 @@ func (r *SemanticRecorder) Stop(ctx context.Context) (RecordedFlow, error) {
 		r.timer.Stop()
 		r.timer = nil
 	}
+	r.signalDone()
 	finished := time.Now().UTC()
 	if r.session != nil && r.session.now != nil {
 		finished = r.session.now().UTC()
@@ -340,6 +348,7 @@ func (r *SemanticRecorder) Close() error {
 	}
 	r.active = false
 	r.clearLocked()
+	r.signalDone()
 	return nil
 }
 
@@ -353,9 +362,42 @@ func (r *SemanticRecorder) expire() {
 		r.expired = true
 		r.clearLocked()
 	}
+	if r.timer != nil {
+		r.timer.Stop()
+	}
 	r.timer = nil
+	r.signalDone()
 	r.mu.Unlock()
 	r.detach()
+}
+
+func (r *SemanticRecorder) expireWithSession() {
+	if r == nil || r.session == nil {
+		return
+	}
+	select {
+	case <-r.session.ctx.Done():
+		r.expire()
+	case <-r.done:
+	}
+}
+
+func (r *SemanticRecorder) sessionExpired() bool {
+	if r == nil || r.session == nil {
+		return false
+	}
+	select {
+	case <-r.session.ctx.Done():
+		return true
+	default:
+		return false
+	}
+}
+
+func (r *SemanticRecorder) signalDone() {
+	if r != nil && r.done != nil {
+		r.doneOnce.Do(func() { close(r.done) })
+	}
 }
 
 func (r *SemanticRecorder) detach() {
@@ -387,8 +429,13 @@ func (s *Session) activeRecorder() *SemanticRecorder {
 		return nil
 	}
 	s.recorderMu.Lock()
-	defer s.recorderMu.Unlock()
-	return s.recorder
+	recorder := s.recorder
+	s.recorderMu.Unlock()
+	if recorder != nil && recorder.sessionExpired() {
+		recorder.expire()
+		return nil
+	}
+	return recorder
 }
 
 func (s *Session) recordTargetResolution(request ResolveUIRequest, result TargetResolutionResult, operationErr error) {
