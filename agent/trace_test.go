@@ -12,6 +12,8 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	robotgo "github.com/marang/robotgo"
 )
 
 type recordingTraceSink struct {
@@ -150,6 +152,34 @@ func TestTracePolicyIsDenyByDefaultAndRequiresAllBounds(t *testing.T) {
 		if record.traceResolution.present || len(record.traceResolution.matchedBy) != 0 ||
 			len(record.traceResolution.evidenceSources) != 0 {
 			t.Fatalf("default-denied lease retained trace provenance: %+v", record.traceResolution)
+		}
+	})
+
+	t.Run("rejected-request-invalidates-presented-lease", func(t *testing.T) {
+		policy := capabilityLeasePolicy()
+		policy.AllowedTraceTiers = []TracePrivacyTier{TracePrivacyMetadataOnly}
+		policy.MaxTraceEvents = 16
+		policy.MaxTraceBytes = 16 << 10
+		policy.TraceLifetimeMillis = 5_000
+		session, driver, observation := inspectResolverFixture(t, policy, semanticSnapshot())
+		issued := issuePressLease(t, session, observation, TargetResolutionModeStrict, "Save")
+		result, err := session.ActUIElement(t.Context(), ElementActionRequest{
+			CapabilityLeaseID: issued.Lease.ID, Action: UIActionPress, Confirmed: true,
+			Trace: &TraceRequest{SchemaVersion: TraceRequestSchemaVersion, Tier: TracePrivacySemanticRedacted},
+		})
+		key := sha256.Sum256([]byte(issued.Lease.ID))
+		stored := session.leases[key]
+		if !hasErrorCode(err, ErrorPolicyDenied) || result.Proof == nil ||
+			!result.Proof.Cleanup.TransientResourcesReleased || stored.status != CapabilityLeaseInvalidated ||
+			stored.traceResolution.present || driver.actCalls != 0 || driver.checkCalls != 0 {
+			t.Fatalf("rejected trace lease result=%+v err=%v stored=%+v calls=%d/%d",
+				result, err, stored, driver.actCalls, driver.checkCalls)
+		}
+		_, retryErr := session.ActUIElement(t.Context(), ElementActionRequest{
+			CapabilityLeaseID: issued.Lease.ID, Action: UIActionPress, Confirmed: true,
+		})
+		if !hasErrorCode(retryErr, ErrorLeaseInvalid) {
+			t.Fatalf("trace-rejected lease remained reusable: %v", retryErr)
 		}
 	})
 }
@@ -617,7 +647,29 @@ func TestTraceCloseRaceReturnsOneBoundedTerminalTrace(t *testing.T) {
 
 func TestTraceCatalogExposesConfiguredBounds(t *testing.T) {
 	policy := tracePolicy(true, TracePrivacyMetadataOnly, TracePrivacySemanticRedacted)
-	session, _ := newSemanticSession(t, policy, semanticSnapshot())
+	prepared, err := preparePolicy(policy)
+	if err != nil {
+		t.Fatal(err)
+	}
+	capabilities := availableCapabilities()
+	capabilities.Accessibility = robotgo.FeatureCapability{
+		Available: true, Backend: "fake-accessibility", Reason: "self-owned fixture",
+	}
+	withoutSink := buildCatalog(prepared, capabilities)
+	for _, capability := range withoutSink.Operations {
+		if capability.Operation == OperationElementAct && capability.TraceExportAllowed {
+			t.Fatalf("catalog advertised trace export without a sink: %+v", capability)
+		}
+	}
+	driver := &semanticFakeDriver{
+		fakeDriver: &fakeDriver{resolvedHandle: 9001, windowTitle: "fixture"},
+		snapshot:   semanticSnapshot(), dispatch: true, actCleanup: true,
+	}
+	session, err := newSessionWithSinks(prepared, driver, capabilities, nil, &recordingTraceSink{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = session.Close() })
 	for _, capability := range session.Catalog().Operations {
 		if capability.Operation != OperationElementAct {
 			continue

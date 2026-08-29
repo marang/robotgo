@@ -13,6 +13,14 @@ const (
 )
 
 func buildCatalog(policy Policy, capabilities robotgo.RuntimeCapabilities) OperationCatalog {
+	return buildCatalogWithTraceExport(policy, capabilities, false)
+}
+
+func buildCatalogWithTraceExport(
+	policy Policy,
+	capabilities robotgo.RuntimeCapabilities,
+	traceExportConfigured bool,
+) OperationCatalog {
 	return OperationCatalog{
 		SchemaVersion: CatalogSchemaVersion,
 		Operations: []OperationCapability{
@@ -22,7 +30,7 @@ func buildCatalog(policy Policy, capabilities robotgo.RuntimeCapabilities) Opera
 			analysisCapability(OperationDetectElements, policy),
 			inspectUICapability(policy, capabilities),
 			resolveUICapability(policy, capabilities),
-			elementActCapability(policy, capabilities),
+			elementActCapability(policy, capabilities, traceExportConfigured),
 			findColorCapability(policy, capabilities),
 			waitColorCapability(policy, capabilities),
 			operationCapability(OperationMove, policy, capabilities.Mouse),
@@ -80,7 +88,11 @@ func resolveUICapability(policy Policy, capabilities robotgo.RuntimeCapabilities
 	}
 }
 
-func elementActCapability(policy Policy, capabilities robotgo.RuntimeCapabilities) OperationCapability {
+func elementActCapability(
+	policy Policy,
+	capabilities robotgo.RuntimeCapabilities,
+	traceExportConfigured bool,
+) OperationCapability {
 	_, confirmationRequired := policy.requireConfirmation[OperationElementAct]
 	_, operationAllowed := policy.allowOperation[OperationElementAct]
 	_, inspectAllowed := policy.allowOperation[OperationInspectUI]
@@ -111,7 +123,7 @@ func elementActCapability(policy Policy, capabilities robotgo.RuntimeCapabilitie
 		MaxTraceEvents:               policy.MaxTraceEvents,
 		MaxTraceBytes:                policy.MaxTraceBytes,
 		TraceLifetimeMillis:          policy.TraceLifetimeMillis,
-		TraceExportAllowed:           policy.AllowTraceExport,
+		TraceExportAllowed:           policy.AllowTraceExport && traceExportConfigured,
 	}
 }
 

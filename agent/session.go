@@ -215,8 +215,9 @@ func newSessionWithSinks(
 		ctx, cancel = context.WithCancel(context.Background())
 	}
 	s := &Session{
-		policy: policy, driver: driver, catalog: buildCatalog(policy, capabilities),
-		ctx: ctx, cancel: cancel, actionGate: make(chan struct{}, 1),
+		policy: policy, driver: driver,
+		catalog: buildCatalogWithTraceExport(policy, capabilities, traceSink != nil),
+		ctx:     ctx, cancel: cancel, actionGate: make(chan struct{}, 1),
 		observations: make(map[string]observationRecord), views: make(map[string]*View),
 		leases:       make(map[[32]byte]capabilityLeaseRecord),
 		policyDigest: policyCapabilityDigest(policy),

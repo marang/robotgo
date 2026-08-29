@@ -152,6 +152,9 @@ func (s *Session) ActUIElement(ctx context.Context, request ElementActionRequest
 	}
 	traceRecorder, traceErr := s.prepareActionTrace(id, request.Trace)
 	if traceErr != nil {
+		s.invalidatePresentedCapabilityLease(request.CapabilityLeaseID)
+		proof.Cleanup.TransientResourcesReleased = true
+		result.DurationMillis = time.Since(started).Milliseconds()
 		returnErr = setElementActionFailure(&result, traceErr, ActionProofRejectedBeforeDispatch, false)
 		return result, returnErr
 	}
