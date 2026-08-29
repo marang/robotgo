@@ -438,6 +438,39 @@ func TestTraceTruncationPreservesLifecycleAndByteBound(t *testing.T) {
 	}
 }
 
+func TestTraceProjectionAndTruncationClearRemovedProvenance(t *testing.T) {
+	providerBacking := []TargetEvidenceProvider{{
+		Source: TargetEvidenceSourceOCR, Backend: "private-provider", Model: "private-model",
+	}}
+	sourceBacking := []TargetEvidenceSource{TargetEvidenceSourceOCR}
+	matchedBacking := []TargetEvidence{TargetEvidenceName}
+	changedBacking := []TargetEvidence{TargetEvidenceAncestors}
+	event := TraceEvent{
+		EvidenceProviders: providerBacking, EvidenceSources: sourceBacking,
+		MatchedBy: matchedBacking, Changed: changedBacking,
+	}
+	projectTraceEvent(&event, TracePrivacyMetadataOnly)
+	if providerBacking[0] != (TargetEvidenceProvider{}) || sourceBacking[0] != "" ||
+		matchedBacking[0] != "" || changedBacking[0] != "" {
+		t.Fatalf("projection retained removed provenance: %+v %+v %+v %+v",
+			providerBacking, sourceBacking, matchedBacking, changedBacking)
+	}
+
+	removedBacking := []TargetEvidenceProvider{{
+		Source: TargetEvidenceSourceVisual, Backend: "private-provider", Model: "private-model",
+	}}
+	trace := RobotGoTrace{Events: []TraceEvent{
+		{Kind: TraceTransactionStarted},
+		{Kind: TraceResolutionFinished, EvidenceProviders: removedBacking},
+		{Kind: TraceCleanupFinished},
+		{Kind: TraceTransactionFinished},
+	}}
+	removeTraceDetailEvent(&trace)
+	if removedBacking[0] != (TargetEvidenceProvider{}) || len(trace.Events) != 3 {
+		t.Fatalf("truncation retained removed provenance: %+v events=%+v", removedBacking, trace.Events)
+	}
+}
+
 func TestTraceCancellationAndLifetimeAreExplicit(t *testing.T) {
 	t.Run("canceled", func(t *testing.T) {
 		policy := tracePolicy(false, TracePrivacyMetadataOnly)

@@ -503,8 +503,9 @@ func removeTraceDetailEvent(trace *RobotGoTrace) {
 	if remove < 0 {
 		remove = len(trace.Events) - 3
 	}
+	clearTraceEvent(&trace.Events[remove])
 	copy(trace.Events[remove:], trace.Events[remove+1:])
-	trace.Events[len(trace.Events)-1] = TraceEvent{}
+	clearTraceEvent(&trace.Events[len(trace.Events)-1])
 	trace.Events = trace.Events[:len(trace.Events)-1]
 	trace.Truncated = true
 	trace.MissingEvidence = true
@@ -525,11 +526,13 @@ func projectTraceEvent(event *TraceEvent, tier TracePrivacyTier) {
 	if tier == TracePrivacyFullExplicit {
 		return
 	}
+	clear(event.EvidenceProviders)
 	event.EvidenceProviders = nil
 	if tier == TracePrivacyVisualRedacted {
 		return
 	}
 	event.EvidenceObservationID = ""
+	clear(event.EvidenceSources)
 	event.EvidenceSources = nil
 	event.EvidenceAgeMillis = 0
 	if tier == TracePrivacySemanticRedacted {
@@ -544,8 +547,21 @@ func projectTraceEvent(event *TraceEvent, tier TracePrivacyTier) {
 	event.Ambiguous = false
 	event.AdaptiveScore = 0
 	event.AdaptiveThreshold = 0
+	clear(event.MatchedBy)
+	clear(event.Changed)
 	event.MatchedBy = nil
 	event.Changed = nil
+}
+
+func clearTraceEvent(event *TraceEvent) {
+	if event == nil {
+		return
+	}
+	clear(event.MatchedBy)
+	clear(event.Changed)
+	clear(event.EvidenceSources)
+	clear(event.EvidenceProviders)
+	*event = TraceEvent{}
 }
 
 func cloneRobotGoTrace(source RobotGoTrace) RobotGoTrace {
@@ -565,11 +581,7 @@ func clearRobotGoTrace(trace *RobotGoTrace) {
 		return
 	}
 	for index := range trace.Events {
-		clear(trace.Events[index].MatchedBy)
-		clear(trace.Events[index].Changed)
-		clear(trace.Events[index].EvidenceSources)
-		clear(trace.Events[index].EvidenceProviders)
-		trace.Events[index] = TraceEvent{}
+		clearTraceEvent(&trace.Events[index])
 	}
 	clear(trace.Events)
 	*trace = RobotGoTrace{}
