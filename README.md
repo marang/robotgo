@@ -934,8 +934,9 @@ are omitted, password/sensitive text is redacted, invalid backend identities
 fail closed, and `ReleaseObservation` or session close zeroes retained backend
 references. Inspection alone grants no element mutation.
 
-`Session.ResolveUITarget` and `desktop.resolve-ui` add a deny-by-default,
-versioned TargetSpec v1 resolver on top of one retained semantic observation.
+`Session.ResolveUITarget` and `desktop.resolve-ui` provide a deny-by-default,
+versioned TargetSpec v2 resolver on top of one retained semantic observation.
+Semantic-only TargetSpec v1 inputs remain accepted with unchanged behavior.
 A spec binds the original process/window kind, numeric target, and exact
 policy-owned title to one exact role/name plus optional required states,
 required actions, and an immediate-parent-first ancestor chain. Matching is
@@ -956,8 +957,18 @@ only deterministic semantic name or ancestor-name drift above the immutable
 policy threshold; every qualified candidate counts, so two plausible
 candidates are always ambiguous regardless of score or tree order. `review`
 returns only a non-executable, payload-free patch proposal and never dispatches
-or rewrites a stored locator. OCR, visual, pointer, keyboard, and silent retry
-remain absent. `ActUIElement` consumes a lease atomically only at the native
+or rewrites a stored locator. In adaptive or review mode, v2 may reference at
+most one OCR item and one visual proposal from the same explicit, still-live
+image observation. Native accessibility candidates keep precedence. Weaker
+evidence is consulted only when semantic adaptation finds no candidate; it can
+score existing candidates by geometry but never creates coordinate action
+authority or overrides incomplete or ambiguous semantic evidence. Policy must
+allow the exact source, backend/model, analysis region, confidence threshold,
+and maximum age. Redacted, downscaled, sanitized, truncated, clipped, stale,
+or released image lineage fails closed. An evidence-backed lease expires no
+later than its oldest image/analysis evidence and is invalidated when either
+observation is released. Pointer, keyboard, and silent retry remain absent.
+`ActUIElement` consumes a lease atomically only at the native
 dispatch boundary; rejection, timeout, cancellation, observation release, or
 session close invalidates it fail-closed.
 
@@ -1001,12 +1012,14 @@ remains `unverified-after-dispatch` even if a later probe happens to match, so
 callers are never invited to retry an uncertain mutation. Verification status
 `not-matched` requires a completed false probe; `failed` may have zero attempts
 when a requested probe could not start.
-Catalog schema v12 advertises TargetSpec v1, resolver modes, semantic
-strategies, lease schema and bounds, adaptive threshold, and maximum ancestor
-depth while retaining condition and verification bounds. Audit schema v5 adds
-payload-free resolver mode/score/threshold and lease lifecycle evidence. Lease
-tokens, locator text, action values, policy payloads, and native references are
-never copied into proofs or audit events.
+Catalog schema v13 advertises TargetSpec v2, resolver modes, semantic and
+reviewed OCR/visual strategies, provider/source/age/confidence bounds, lease
+schema and bounds, adaptive threshold, and maximum ancestor depth while
+retaining condition and verification bounds. Audit schema v6 adds payload-free
+resolver source and evidence-age tokens to the existing mode/score/threshold
+and lease lifecycle evidence. Lease tokens, OCR text, pixels, locator text,
+action values, policy payloads, and native references are never copied into
+resolver results, proofs, or audit events.
 
 On Linux, an already-active AT-SPI2 bus provides the first native
 adapter for exact process-and-title targets on GNOME, KDE, and other accessible
@@ -1340,7 +1353,9 @@ the CLI Tesseract fallback is deliberately not used because it would require a
 temporary image file. `robotgo_detect_elements` uses the built-in,
 deterministic `contrast-components-v1` fallback and returns geometry only.
 Both outputs carry their source observation, exact region, backend/model,
-confidence, truncation/sanitization state, and `untrusted: true`. They never
+confidence, truncation/sanitization state, and `untrusted: true`. When immutable
+policy also allows that exact source, provider, and evidence region, a non-empty
+result additionally carries an opaque `evidence_id`. They never
 include raw model diagnostics, hidden embeddings, or additional pixels.
 Accessibility inspection remains the preferred semantic source.
 
@@ -1352,6 +1367,36 @@ go run ./examples/agent_image_analysis -confirm -mode detect \
   -x 0 -y 0 -width 320 -height 200 -display 0
 go run -tags ocr ./examples/agent_image_analysis -confirm -mode ocr \
   -language eng -x 0 -y 0 -width 320 -height 200 -display 0
+```
+
+The review-only TargetSpec v2 example selects one proposal index from the
+explicit analysis result and never mints a lease or dispatches an action:
+
+```bash
+go run ./examples/target_evidence_review -confirm -pid 1234 \
+  -title 'Self-owned fixture' -role button -name 'Former label' \
+  -x 0 -y 0 -width 320 -height 200 -display 0 -item 0
+```
+
+The corresponding policy fields are all deny-by-default. Provider values must
+match the analysis metadata exactly; Go callers can use
+`VisualAnalysisBackend`/`VisualAnalysisModel` or
+`OCRAnalysisBackend`/`OCRAnalysisModel` instead of string literals:
+
+```json
+{
+  "allowed_target_modes": ["strict", "review"],
+  "allowed_target_evidence_sources": ["visual"],
+  "allowed_target_evidence_providers": [
+    {"source": "visual", "backend": "robotgo-visual", "model": "contrast-components-v1"}
+  ],
+  "allowed_target_evidence_regions": [
+    {"x": 1, "y": 1, "width": 318, "height": 198, "display_id": 0}
+  ],
+  "adaptive_target_threshold": 90,
+  "max_target_evidence_age_ms": 5000,
+  "min_target_visual_confidence": 0.5
+}
 ```
 
 The view deadline bounds every supported platform path. Native Wayland passes
@@ -1474,6 +1519,7 @@ The checked-in examples use this fork's module path and track the current API:
 - [Policy-gated agent session](examples/agent_session/main.go)
 - [Bounded agent actions](examples/agent_actions/main.go)
 - [Privacy-safe agent visual conditions](examples/agent_conditions/main.go)
+- [Review-only TargetSpec visual evidence](examples/target_evidence_review/main.go)
 - [Linux capabilities](examples/linux_capabilities/main.go)
 - [Cross-platform runtime capabilities](examples/runtime_capabilities/main.go)
 - [Versioned runtime diagnostics](examples/runtime_diagnostics/main.go)

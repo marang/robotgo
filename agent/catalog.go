@@ -60,16 +60,23 @@ func resolveUICapability(policy Policy, capabilities robotgo.RuntimeCapabilities
 		Risk: RiskSensitiveRead, ConfirmationRequired: confirmationRequired,
 		Cancellation: CancellationCooperative, ProcessGlobalBackend: false,
 		ExclusiveAgentSession: true, Reason: feature.Reason, Remediation: remediation,
-		UnavailableCode:            featureUnavailableCode(feature),
-		TargetSpecVersion:          TargetSpecSchemaVersion,
-		TargetResolutionStrategies: append([]TargetResolutionStrategy(nil), allTargetResolutionStrategies...),
-		TargetResolutionModes:      append([]TargetResolutionMode(nil), policy.AllowedTargetModes...),
-		CapabilityLeaseVersion:     CapabilityLeaseSchemaVersion,
-		CapabilityLeaseRequired:    policy.RequireCapabilityLease,
-		MaxCapabilityLeases:        policy.MaxCapabilityLeases,
-		MaxCapabilityLeaseMillis:   policy.MaxCapabilityLeaseMillis,
-		AdaptiveTargetThreshold:    policy.AdaptiveTargetThreshold,
-		MaxTargetAncestors:         min(policy.MaxUITreeDepth, uint32(maxTargetSpecAncestors)),
+		UnavailableCode:             featureUnavailableCode(feature),
+		TargetSpecVersion:           TargetSpecSchemaVersion,
+		TargetResolutionStrategies:  append([]TargetResolutionStrategy(nil), allTargetResolutionStrategies...),
+		TargetResolutionModes:       append([]TargetResolutionMode(nil), policy.AllowedTargetModes...),
+		CapabilityLeaseVersion:      CapabilityLeaseSchemaVersion,
+		CapabilityLeaseRequired:     policy.RequireCapabilityLease,
+		MaxCapabilityLeases:         policy.MaxCapabilityLeases,
+		MaxCapabilityLeaseMillis:    policy.MaxCapabilityLeaseMillis,
+		AdaptiveTargetThreshold:     policy.AdaptiveTargetThreshold,
+		MaxTargetAncestors:          min(policy.MaxUITreeDepth, uint32(maxTargetSpecAncestors)),
+		TargetEvidenceClauseVersion: TargetEvidenceClauseSchemaVersion,
+		TargetEvidenceSources:       append([]TargetEvidenceSource(nil), policy.AllowedTargetEvidenceSources...),
+		TargetEvidenceProviders:     append([]TargetEvidenceProvider(nil), policy.AllowedTargetEvidenceProviders...),
+		MaxTargetEvidenceClauses:    maxTargetEvidenceClauses,
+		MaxTargetEvidenceAgeMillis:  policy.MaxTargetEvidenceAgeMillis,
+		MinTargetOCRConfidence:      policy.MinTargetOCRConfidence,
+		MinTargetVisualConfidence:   policy.MinTargetVisualConfidence,
 	}
 }
 
@@ -105,7 +112,7 @@ func elementActCapability(policy Policy, capabilities robotgo.RuntimeCapabilitie
 func analysisCapability(operation Operation, policy Policy) OperationCapability {
 	_, confirmationRequired := policy.requireConfirmation[operation]
 	_, operationAllowed := policy.allowOperation[operation]
-	available, backend, reason, remediation := true, visualBackendName, "", ""
+	available, backend, reason, remediation := true, VisualAnalysisBackend, "", ""
 	if operation == OperationOCR {
 		available, backend = ocrBackendAvailable, ocrBackendName
 		if !available {
@@ -442,6 +449,12 @@ func cloneCatalog(source OperationCatalog) OperationCatalog {
 		)
 		cloned.Operations[index].TargetResolutionModes = append(
 			[]TargetResolutionMode(nil), cloned.Operations[index].TargetResolutionModes...,
+		)
+		cloned.Operations[index].TargetEvidenceSources = append(
+			[]TargetEvidenceSource(nil), cloned.Operations[index].TargetEvidenceSources...,
+		)
+		cloned.Operations[index].TargetEvidenceProviders = append(
+			[]TargetEvidenceProvider(nil), cloned.Operations[index].TargetEvidenceProviders...,
 		)
 	}
 	return cloned

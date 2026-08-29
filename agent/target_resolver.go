@@ -8,29 +8,37 @@ import (
 )
 
 const (
-	// TargetSpecSchemaVersion identifies the deterministic semantic locator
-	// contract. TargetSpec v1 deliberately has no fuzzy or visual clauses.
-	TargetSpecSchemaVersion = "1"
+	// TargetSpecSchemaVersion identifies the deterministic semantic plus
+	// reviewed analysis-evidence locator contract. Semantic-only v1 inputs
+	// remain accepted with unchanged behavior.
+	TargetSpecSchemaVersion       = "2"
+	TargetSpecLegacySchemaVersion = "1"
 	// TargetResolutionSchemaVersion identifies the privacy-reduced resolver
 	// result contract.
 	TargetResolutionSchemaVersion = "2"
 	maxTargetSpecAncestors        = maxAgentUITreeDepth
 )
 
-// TargetResolutionStrategy identifies the exact semantic resolver path.
-// Healing and visual fallback are intentionally absent from v1.
+// TargetResolutionStrategy identifies the exact semantic or reviewed,
+// policy-gated analysis-evidence resolver path.
 type TargetResolutionStrategy string
 
 const (
 	TargetResolutionExactSemantic      TargetResolutionStrategy = "exact-semantic"
 	TargetResolutionStructuralSemantic TargetResolutionStrategy = "structural-semantic"
 	TargetResolutionAdaptiveSemantic   TargetResolutionStrategy = "adaptive-semantic"
+	TargetResolutionOCREvidence        TargetResolutionStrategy = "ocr-evidence"
+	TargetResolutionVisualEvidence     TargetResolutionStrategy = "visual-evidence"
+	TargetResolutionCombinedEvidence   TargetResolutionStrategy = "combined-evidence"
 )
 
 var allTargetResolutionStrategies = []TargetResolutionStrategy{
 	TargetResolutionExactSemantic,
 	TargetResolutionStructuralSemantic,
 	TargetResolutionAdaptiveSemantic,
+	TargetResolutionOCREvidence,
+	TargetResolutionVisualEvidence,
+	TargetResolutionCombinedEvidence,
 }
 
 // TargetEvidence is a fixed, payload-free explanation token. The order in a
@@ -38,12 +46,16 @@ var allTargetResolutionStrategies = []TargetResolutionStrategy{
 type TargetEvidence string
 
 const (
-	TargetEvidenceWindowIdentity TargetEvidence = "window-identity"
-	TargetEvidenceRole           TargetEvidence = "role"
-	TargetEvidenceName           TargetEvidence = "name"
-	TargetEvidenceStates         TargetEvidence = "required-states"
-	TargetEvidenceActions        TargetEvidence = "required-actions"
-	TargetEvidenceAncestors      TargetEvidence = "ancestor-chain"
+	TargetEvidenceWindowIdentity     TargetEvidence = "window-identity"
+	TargetEvidenceRole               TargetEvidence = "role"
+	TargetEvidenceName               TargetEvidence = "name"
+	TargetEvidenceStates             TargetEvidence = "required-states"
+	TargetEvidenceActions            TargetEvidence = "required-actions"
+	TargetEvidenceAncestors          TargetEvidence = "ancestor-chain"
+	TargetEvidenceImageObservation   TargetEvidence = "image-observation"
+	TargetEvidenceAnalysisProvenance TargetEvidence = "analysis-provenance"
+	TargetEvidenceOCRItem            TargetEvidence = "ocr-item"
+	TargetEvidenceVisualItem         TargetEvidence = "visual-item"
 )
 
 // TargetWindowSpec binds a TargetSpec to the same explicit, policy-owned
@@ -67,13 +79,14 @@ type TargetAncestor struct {
 // window. Required state/action clauses use set containment; all identity and
 // ancestor fields use exact equality.
 type TargetSpec struct {
-	SchemaVersion   string           `json:"schema_version"`
-	Window          TargetWindowSpec `json:"window"`
-	Role            UIRole           `json:"role"`
-	Name            string           `json:"name"`
-	RequiredStates  []UIState        `json:"required_states,omitempty"`
-	RequiredActions []UIAction       `json:"required_actions,omitempty"`
-	Ancestors       []TargetAncestor `json:"ancestors,omitempty"`
+	SchemaVersion   string                 `json:"schema_version"`
+	Window          TargetWindowSpec       `json:"window"`
+	Role            UIRole                 `json:"role"`
+	Name            string                 `json:"name"`
+	RequiredStates  []UIState              `json:"required_states,omitempty"`
+	RequiredActions []UIAction             `json:"required_actions,omitempty"`
+	Ancestors       []TargetAncestor       `json:"ancestors,omitempty"`
+	Evidence        []TargetEvidenceClause `json:"evidence,omitempty"`
 }
 
 // ResolveUIRequest resolves one TargetSpec only within one live retained UI
@@ -114,6 +127,9 @@ type TargetResolutionResult struct {
 	Expected               *UIElementExpectation    `json:"expected,omitempty"`
 	Lease                  *CapabilityLease         `json:"lease,omitempty"`
 	Patch                  *TargetPatchProposal     `json:"patch,omitempty"`
+	EvidenceSources        []TargetEvidenceSource   `json:"evidence_sources,omitempty"`
+	EvidenceProviders      []TargetEvidenceProvider `json:"evidence_providers,omitempty"`
+	EvidenceAgeMillis      int64                    `json:"evidence_age_ms,omitempty"`
 }
 
 type retainedUITarget struct {
@@ -233,6 +249,53 @@ func (s *Session) ResolveUITarget(ctx context.Context, request ResolveUIRequest)
 		)
 		return s.finishTargetResolution(ctx, clearTargetSelection(result), operationErr)
 	}
+	var evidenceBundle retainedTargetEvidenceBundle
+	if result.CandidateCount == 0 && len(request.Target.Evidence) > 0 {
+		var evidenceErr error
+		evidenceBundle, evidenceErr = s.retainTargetEvidenceBundle(request.Target.Evidence)
+		if evidenceErr != nil {
+			return s.finishTargetResolution(ctx, clearTargetSelection(result), evidenceErr)
+		}
+		defer clearRetainedTargetEvidenceBundle(&evidenceBundle)
+		if evidenceErr = s.authorizeTargetEvidence(&evidenceBundle); evidenceErr != nil {
+			return s.finishTargetResolution(ctx, clearTargetSelection(result), evidenceErr)
+		}
+		result.Strategy = targetEvidenceStrategy(evidenceBundle)
+		result.EvidenceSources, result.EvidenceProviders = targetEvidenceResultMetadata(evidenceBundle)
+		result.EvidenceAgeMillis = evidenceBundle.ageMillis
+		result.RejectedCandidateCount = 0
+		incompleteCandidate = false
+		for index := range graph.elements {
+			if operationErr := s.targetResolutionExecutionError(ctx); operationErr != nil {
+				return s.finishTargetResolution(ctx, clearTargetSelection(result), operationErr)
+			}
+			candidate := &graph.elements[index]
+			score, changed, incomplete := adaptiveTargetScore(candidate, request.Target, graph.elements, byID)
+			bonus, evidenceMatches := targetEvidenceCandidateScore(candidate, evidenceBundle)
+			if !incomplete && evidenceMatches {
+				score = min(uint32(100), score+bonus)
+			}
+			if incomplete || !evidenceMatches || score < s.policy.AdaptiveTargetThreshold {
+				result.RejectedCandidateCount++
+				incompleteCandidate = incompleteCandidate || incomplete
+				continue
+			}
+			result.CandidateCount++
+			if selected == nil {
+				selected = candidate
+				selectedScore = score
+				selectedChanged = changed
+			}
+		}
+		if result.CandidateCount <= 1 && incompleteCandidate {
+			operationErr := targetResolutionError(
+				ErrorIncompleteObservation,
+				"semantic target cannot be proven from incomplete visual evidence",
+				ErrIncompleteObservation,
+			)
+			return s.finishTargetResolution(ctx, clearTargetSelection(result), operationErr)
+		}
+	}
 
 	switch result.CandidateCount {
 	case 0:
@@ -247,6 +310,9 @@ func (s *Session) ResolveUITarget(ctx context.Context, request ResolveUIRequest)
 			for _, changed := range selectedChanged {
 				result.MatchedBy = slices.DeleteFunc(result.MatchedBy, func(value TargetEvidence) bool { return value == changed })
 			}
+			if len(evidenceBundle.evidence) > 0 {
+				result.MatchedBy = append(result.MatchedBy, targetEvidenceTokens(evidenceBundle)...)
+			}
 		}
 		if mode == TargetResolutionModeReview {
 			result.Patch = &TargetPatchProposal{SchemaVersion: TargetPatchProposalSchemaVersion, Changed: append([]TargetEvidence{}, selectedChanged...),
@@ -254,7 +320,7 @@ func (s *Session) ResolveUITarget(ctx context.Context, request ResolveUIRequest)
 			return s.finishTargetResolution(ctx, result, nil)
 		}
 		if request.Lease != nil {
-			lease, err := s.issueCapabilityLease(request, selected)
+			lease, err := s.issueCapabilityLease(request, selected, evidenceBundle.expiresAt)
 			if err != nil {
 				code := ErrorBackendFailure
 				if errors.Is(err, ErrStaleTarget) {
@@ -282,8 +348,12 @@ func (s *Session) ResolveUITarget(ctx context.Context, request ResolveUIRequest)
 
 func validateResolveUIRequest(request ResolveUIRequest) error {
 	mode := normalizeTargetResolutionMode(request.Mode)
-	if !validObservationID(request.ObservationID) || request.Target.SchemaVersion != TargetSpecSchemaVersion {
+	if !validObservationID(request.ObservationID) ||
+		(request.Target.SchemaVersion != TargetSpecSchemaVersion && request.Target.SchemaVersion != TargetSpecLegacySchemaVersion) {
 		return errors.New("invalid observation ID or target schema version")
+	}
+	if request.Target.SchemaVersion == TargetSpecLegacySchemaVersion && len(request.Target.Evidence) != 0 {
+		return errors.New("TargetSpec v1 cannot contain analysis evidence")
 	}
 	if !validTargetResolutionMode(mode) {
 		return errors.New("invalid semantic target mode")
@@ -293,6 +363,28 @@ func validateResolveUIRequest(request ResolveUIRequest) error {
 	}
 	if mode == TargetResolutionModeReview && request.Lease != nil {
 		return errors.New("review resolution cannot issue executable authority")
+	}
+	if len(request.Target.Evidence) > maxTargetEvidenceClauses ||
+		(mode == TargetResolutionModeStrict && len(request.Target.Evidence) != 0) {
+		return errors.New("target analysis evidence requires bounded adaptive or review mode")
+	}
+	seenEvidenceSources := make(map[TargetEvidenceSource]struct{}, len(request.Target.Evidence))
+	evidenceObservationID := ""
+	for _, clause := range request.Target.Evidence {
+		if clause.SchemaVersion != TargetEvidenceClauseSchemaVersion ||
+			!validObservationID(clause.ObservationID) || !validTargetEvidenceID(clause.EvidenceID) ||
+			!validTargetEvidenceSource(clause.Source) {
+			return errors.New("invalid target analysis evidence clause")
+		}
+		if evidenceObservationID == "" {
+			evidenceObservationID = clause.ObservationID
+		} else if evidenceObservationID != clause.ObservationID {
+			return errors.New("target analysis evidence must share one image observation")
+		}
+		if _, duplicate := seenEvidenceSources[clause.Source]; duplicate {
+			return errors.New("target analysis evidence source is duplicated")
+		}
+		seenEvidenceSources[clause.Source] = struct{}{}
 	}
 	if request.Lease != nil {
 		if request.Lease.SchemaVersion != CapabilityLeaseSchemaVersion || !validUIAction(request.Lease.Action) ||
@@ -359,6 +451,11 @@ func (s *Session) authorizeTargetResolution(request ResolveUIRequest) *ActionErr
 	}
 	if _, allowed := s.policy.allowTargetMode[mode]; !allowed {
 		return targetResolutionError(ErrorPolicyDenied, "agent policy denied the semantic target mode", ErrPolicyDenied)
+	}
+	for _, clause := range request.Target.Evidence {
+		if _, allowed := s.policy.allowTargetEvidenceSource[clause.Source]; !allowed {
+			return targetResolutionError(ErrorPolicyDenied, "agent policy denied the target evidence source", ErrPolicyDenied)
+		}
 	}
 	if request.Lease != nil {
 		if request.Lease.DurationMillis > s.policy.MaxCapabilityLeaseMillis ||
@@ -543,6 +640,8 @@ func targetResolutionAuditEvent(kind AuditKind, result TargetResolutionResult, c
 		TargetCandidateCount:     result.CandidateCount,
 		TargetRejectedCount:      result.RejectedCandidateCount,
 		TargetAmbiguous:          result.Ambiguous,
+		TargetEvidenceSources:    append([]TargetEvidenceSource(nil), result.EvidenceSources...),
+		TargetEvidenceAgeMillis:  result.EvidenceAgeMillis,
 		ErrorCode:                code,
 	}
 	if result.Patch != nil {

@@ -73,18 +73,19 @@ type CapabilityLease struct {
 }
 
 type capabilityLeaseRecord struct {
-	status         CapabilityLeaseStatus
-	mode           TargetResolutionMode
-	observationID  string
-	elementID      string
-	expected       UIElementExpectation
-	targetDigest   [sha256.Size]byte
-	policyDigest   [sha256.Size]byte
-	action         UIAction
-	postcondition  *UIElementCondition
-	valueDigest    [sha256.Size]byte
-	hasValueDigest bool
-	expiresAt      time.Time
+	status                CapabilityLeaseStatus
+	mode                  TargetResolutionMode
+	observationID         string
+	evidenceObservationID string
+	elementID             string
+	expected              UIElementExpectation
+	targetDigest          [sha256.Size]byte
+	policyDigest          [sha256.Size]byte
+	action                UIAction
+	postcondition         *UIElementCondition
+	valueDigest           [sha256.Size]byte
+	hasValueDigest        bool
+	expiresAt             time.Time
 }
 
 type capabilityLeaseReservation struct {
@@ -142,7 +143,7 @@ func cloneCapabilityLeaseRecord(record capabilityLeaseRecord) capabilityLeaseRec
 	return record
 }
 
-func (s *Session) issueCapabilityLease(request ResolveUIRequest, selected *retainedUITarget) (*CapabilityLease, error) {
+func (s *Session) issueCapabilityLease(request ResolveUIRequest, selected *retainedUITarget, evidenceExpiresAt time.Time) (*CapabilityLease, error) {
 	if request.Lease == nil || selected == nil {
 		return nil, ErrLeaseInvalid
 	}
@@ -162,6 +163,15 @@ func (s *Session) issueCapabilityLease(request ResolveUIRequest, selected *retai
 		postcondition: cloneUIElementCondition(request.Lease.Postcondition),
 		expiresAt:     now.Add(time.Duration(request.Lease.DurationMillis) * time.Millisecond),
 	}
+	if !evidenceExpiresAt.IsZero() && len(request.Target.Evidence) > 0 {
+		record.evidenceObservationID = request.Target.Evidence[0].ObservationID
+		if evidenceExpiresAt.Before(record.expiresAt) {
+			record.expiresAt = evidenceExpiresAt
+		}
+		if !now.Before(record.expiresAt) {
+			return nil, ErrStaleTarget
+		}
+	}
 	if request.Lease.Action == UIActionSetValue {
 		record.valueDigest, record.hasValueDigest = parseLeaseValueDigest(request.Lease.ActionValueSHA256)
 	}
@@ -176,6 +186,19 @@ func (s *Session) issueCapabilityLease(request ResolveUIRequest, selected *retai
 		!expectedOK || !referenceOK || len(reference) == 0 ||
 		!equalUIExpectation(expected, selected.expected) {
 		return nil, ErrStaleTarget
+	}
+	if record.evidenceObservationID != "" {
+		evidenceObservation, evidenceOK := s.observations[record.evidenceObservationID]
+		if !evidenceOK || evidenceObservation.source != OperationView || evidenceObservation.capture == nil ||
+			!evidenceObservation.capture.usable() {
+			return nil, ErrStaleTarget
+		}
+		for _, clause := range request.Target.Evidence {
+			evidence, exists := evidenceObservation.targetEvidence[clause.EvidenceID]
+			if !exists || evidence.source != clause.Source || int(clause.ItemIndex) >= len(evidence.items) {
+				return nil, ErrStaleTarget
+			}
+		}
 	}
 	s.leaseMu.Lock()
 	defer s.leaseMu.Unlock()
@@ -282,7 +305,8 @@ func (s *Session) invalidateObservationLeases(observationID string) {
 	s.leaseMu.Lock()
 	defer s.leaseMu.Unlock()
 	for key, record := range s.leases {
-		if record.observationID == observationID && (record.status == CapabilityLeaseIssued || record.status == CapabilityLeaseReserved) {
+		if (record.observationID == observationID || record.evidenceObservationID == observationID) &&
+			(record.status == CapabilityLeaseIssued || record.status == CapabilityLeaseReserved) {
 			record.status = CapabilityLeaseInvalidated
 			s.leases[key] = record
 		}

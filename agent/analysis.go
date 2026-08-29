@@ -11,12 +11,20 @@ import (
 )
 
 const (
-	visualBackendName = "robotgo-visual"
-	visualModelName   = "contrast-components-v1"
+	// VisualAnalysisBackend identifies RobotGo's deterministic in-memory
+	// visual component detector for target-evidence policy allowlists.
+	VisualAnalysisBackend = "robotgo-visual"
+	// VisualAnalysisModel identifies the fixed visual proposal algorithm.
+	VisualAnalysisModel = "contrast-components-v1"
+	// OCRAnalysisBackend identifies RobotGo's optional in-memory Tesseract
+	// backend for target-evidence policy allowlists.
+	OCRAnalysisBackend = "tesseract-memory"
+	// OCRAnalysisModel identifies the fixed OCR word-box result contract.
+	OCRAnalysisModel = "tesseract-word-boxes-v1"
 )
 
 // AnalysisSchemaVersion identifies the OCR and visual-proposal result contract.
-const AnalysisSchemaVersion = "1"
+const AnalysisSchemaVersion = "2"
 
 var analysisWorkerGate = func() chan struct{} {
 	gate := make(chan struct{}, 1)
@@ -49,6 +57,7 @@ type AnalysisMetadata struct {
 	Truncated      bool          `json:"truncated,omitempty"`
 	Sanitized      bool          `json:"sanitized,omitempty"`
 	Untrusted      bool          `json:"untrusted"`
+	EvidenceID     string        `json:"evidence_id,omitempty"`
 }
 
 type OCRTextBox struct {
@@ -132,7 +141,27 @@ func (s *Session) OCR(ctx context.Context, request OCRRequest) (OCRResult, error
 	)
 	clearRawOCRBoxes(boxes)
 	result.Metadata.DurationMillis = max(int64(0), s.now().Sub(started).Milliseconds())
+	evidence := retainedTargetEvidence{
+		source: TargetEvidenceSourceOCR, region: request.Region,
+		backend: result.Metadata.Backend, model: result.Metadata.Model,
+		languages: append([]string(nil), request.Languages...), createdAt: s.now().UTC(),
+		truncated: result.Metadata.Truncated, sanitized: result.Metadata.Sanitized,
+		items: make([]retainedTargetEvidenceItem, len(result.Boxes)),
+	}
+	for index := range result.Boxes {
+		evidence.items[index] = retainedTargetEvidenceItem{
+			bounds: result.Boxes[index].Bounds, confidence: result.Boxes[index].Confidence,
+		}
+	}
+	evidenceID, err := s.publishTargetEvidence(request.ObservationID, evidence)
+	if err != nil {
+		return result, s.finishAnalysisFailure(ctx, OperationOCR, request.ObservationID,
+			analysisError(OperationOCR, ErrorStaleTarget, "image observation expired before OCR evidence publication", err))
+	}
+	result.Metadata.EvidenceID = evidenceID
 	if err := s.finishAnalysisSuccess(ctx, OperationOCR, request.ObservationID); err != nil {
+		s.removeTargetEvidence(request.ObservationID, evidenceID)
+		result.Metadata.EvidenceID = ""
 		return result, err
 	}
 	return result, nil
@@ -142,7 +171,7 @@ func (s *Session) OCR(ctx context.Context, request OCRRequest) (OCRResult, error
 // one explicit subregion of a live desktop.view observation.
 func (s *Session) DetectVisualElements(ctx context.Context, request VisualElementsRequest) (VisualElementsResult, error) {
 	var result VisualElementsResult
-	result.Metadata = analysisMetadata(request.ObservationID, request.Region, visualBackendName, visualModelName)
+	result.Metadata = analysisMetadata(request.ObservationID, request.Region, VisualAnalysisBackend, VisualAnalysisModel)
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -185,7 +214,27 @@ func (s *Session) DetectVisualElements(ctx context.Context, request VisualElemen
 	result.Metadata.Truncated = truncated
 	result.Metadata.Sanitized = redacted
 	result.Metadata.DurationMillis = max(int64(0), s.now().Sub(started).Milliseconds())
+	evidence := retainedTargetEvidence{
+		source: TargetEvidenceSourceVisual, region: request.Region,
+		backend: result.Metadata.Backend, model: result.Metadata.Model, createdAt: s.now().UTC(),
+		truncated: result.Metadata.Truncated, sanitized: result.Metadata.Sanitized,
+		items: make([]retainedTargetEvidenceItem, len(result.Elements)),
+	}
+	for index := range result.Elements {
+		evidence.items[index] = retainedTargetEvidenceItem{
+			bounds: result.Elements[index].Bounds, confidence: result.Elements[index].Confidence,
+			kind: result.Elements[index].Kind,
+		}
+	}
+	evidenceID, err := s.publishTargetEvidence(request.ObservationID, evidence)
+	if err != nil {
+		return result, s.finishAnalysisFailure(ctx, OperationDetectElements, request.ObservationID,
+			analysisError(OperationDetectElements, ErrorStaleTarget, "image observation expired before visual evidence publication", err))
+	}
+	result.Metadata.EvidenceID = evidenceID
 	if err := s.finishAnalysisSuccess(ctx, OperationDetectElements, request.ObservationID); err != nil {
+		s.removeTargetEvidence(request.ObservationID, evidenceID)
+		result.Metadata.EvidenceID = ""
 		return result, err
 	}
 	return result, nil

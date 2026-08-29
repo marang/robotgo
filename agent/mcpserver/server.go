@@ -388,7 +388,7 @@ func (s *Server) registerTools() {
 		mcp.AddTool(s.protocol, &mcp.Tool{
 			Name:        ToolResolveUI,
 			Title:       "Resolve semantic UI target",
-			Description: "Resolve one versioned semantic TargetSpec in strict, adaptive, or non-executable review mode. Executable resolution may mint one opaque, transaction-bound, single-use capability lease; missing or ambiguous candidates return no element identity.",
+			Description: "Resolve one versioned TargetSpec in strict, adaptive, or non-executable review mode. Explicit policy-gated OCR or visual result items may disambiguate existing semantic candidates but never create coordinate authority. Executable resolution may mint one opaque, transaction-bound, single-use capability lease; missing or ambiguous candidates return no element identity.",
 			Annotations: &mcp.ToolAnnotations{OpenWorldHint: &closedWorld},
 		}, s.resolveUI)
 	}

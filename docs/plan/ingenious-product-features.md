@@ -66,6 +66,15 @@ healing admits only deterministic semantic name drift above a policy threshold;
 all qualifying candidates count and review proposals are non-executable. Action
 Proof v2 and Audit schema v5 expose fixed lifecycle and evidence only.
 
+Implementation checkpoint (LAB-83): TargetSpec v2 and catalog schema v13 add
+explicit, policy-gated references to reviewed OCR and visual result items from
+one live image observation. Accessibility candidates retain precedence; fixed
+OCR/visual score bonuses can disambiguate only existing native candidates and
+never grant coordinate authority. Exact provider/region/confidence/age policy,
+stale and transformed-lineage rejection, evidence-bound lease expiry, cleanup,
+and Audit schema v6 keep pixels and OCR text outside resolver, MCP, lease, and
+audit state. Semantic-only TargetSpec v1 remains compatible.
+
 ## 1. Semantic and visual scene graph
 
 Combine available perception sources into one normalized, observation-bound UI
@@ -496,9 +505,11 @@ The recommended product sequence is:
 4. add target-relative semantic postconditions and Action Proof v1
    (`LAB-79`, complete)
 5. introduce a versioned `TargetSpec` and deterministic explainable resolver
+   (`LAB-81`, complete)
 6. add single-use capability leases plus strict, adaptive, and review healing
+   (`LAB-82`, complete)
 7. integrate image/OCR evidence into the same resolver and authorization
-   contract
+   contract (`LAB-83`, complete)
 8. add RobotGo Trace with explicit privacy levels
 9. add recorder and verified-flow code generation
 10. add a side-effect-free cross-platform capability planner
