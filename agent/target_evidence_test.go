@@ -679,6 +679,25 @@ func TestTargetEvidenceRetentionIsBoundedAndClearsEvictedRecords(t *testing.T) {
 	}
 }
 
+func TestTargetEvidenceEqualTimeEvictionUsesInsertionSequence(t *testing.T) {
+	createdAt := time.Date(2026, time.August, 29, 12, 0, 0, 0, time.UTC)
+	records := make(map[string]retainedTargetEvidence, maxRetainedTargetEvidenceRecords)
+	for serial := uint64(10); serial < uint64(10+maxRetainedTargetEvidenceRecords-1); serial++ {
+		id := fmt.Sprintf("%s%d", targetEvidenceIDPrefix, serial)
+		records[id] = retainedTargetEvidence{id: id, serial: serial, createdAt: createdAt}
+	}
+	oldestID := targetEvidenceIDPrefix + "2"
+	records[oldestID] = retainedTargetEvidence{id: oldestID, serial: 2, createdAt: createdAt}
+
+	pruneRetainedTargetEvidence(records, createdAt, time.Second)
+	if _, exists := records[oldestID]; exists {
+		t.Fatalf("oldest equal-time evidence %q was not evicted", oldestID)
+	}
+	if _, exists := records[targetEvidenceIDPrefix+"10"]; !exists {
+		t.Fatal("newer equal-time evidence was evicted by lexicographic ID order")
+	}
+}
+
 func TestTargetEvidenceIsClearedWithObservation(t *testing.T) {
 	session, _ := targetEvidenceSession(t, targetEvidencePolicy(TargetEvidenceSourceOCR))
 	installFakeOCR(session, &fakeOCRAnalyzer{boxes: []rawOCRBox{{

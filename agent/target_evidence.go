@@ -61,6 +61,7 @@ type retainedTargetEvidenceItem struct {
 
 type retainedTargetEvidence struct {
 	id        string
+	serial    uint64
 	source    TargetEvidenceSource
 	region    CaptureRegion
 	backend   string
@@ -100,8 +101,9 @@ func validTargetEvidenceConfidence(value float64) bool {
 	return !math.IsNaN(value) && !math.IsInf(value, 0) && value > 0 && value <= 1
 }
 
-func newTargetEvidenceID() string {
-	return fmt.Sprintf("%s%d", targetEvidenceIDPrefix, targetEvidenceSerial.Add(1))
+func newTargetEvidenceIdentity() (string, uint64) {
+	serial := targetEvidenceSerial.Add(1)
+	return fmt.Sprintf("%s%d", targetEvidenceIDPrefix, serial), serial
 }
 
 func validTargetEvidenceID(value string) bool {
@@ -136,6 +138,7 @@ func clearRetainedTargetEvidence(evidence *retainedTargetEvidence) {
 	clear(evidence.items)
 	evidence.items = nil
 	evidence.id = ""
+	evidence.serial = 0
 	evidence.backend = ""
 	evidence.model = ""
 }
@@ -155,7 +158,7 @@ func (s *Session) storeTargetEvidence(observationID string, evidence retainedTar
 	pruneRetainedTargetEvidence(
 		record.targetEvidence, s.now(), time.Duration(s.policy.MaxTargetEvidenceAgeMillis)*time.Millisecond,
 	)
-	evidence.id = newTargetEvidenceID()
+	evidence.id, evidence.serial = newTargetEvidenceIdentity()
 	record.targetEvidence[evidence.id] = evidence
 	s.observations[observationID] = record
 	return evidence.id, nil
@@ -172,11 +175,13 @@ func pruneRetainedTargetEvidence(records map[string]retainedTargetEvidence, now 
 	for len(records) >= maxRetainedTargetEvidenceRecords {
 		oldestID := ""
 		var oldestCreatedAt time.Time
+		var oldestSerial uint64
 		for id, evidence := range records {
 			if oldestID == "" || evidence.createdAt.Before(oldestCreatedAt) ||
-				(evidence.createdAt.Equal(oldestCreatedAt) && id < oldestID) {
+				(evidence.createdAt.Equal(oldestCreatedAt) && evidence.serial < oldestSerial) {
 				oldestID = id
 				oldestCreatedAt = evidence.createdAt
+				oldestSerial = evidence.serial
 			}
 		}
 		evidence := records[oldestID]
