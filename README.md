@@ -179,7 +179,7 @@ See [`examples/purego_macos_input`](examples/purego_macos_input) and
 
 ## Requirements
 
-- Go 1.25 or newer, matching [`go.mod`](go.mod).
+- Go 1.26 or newer, matching [`go.mod`](go.mod).
 - A CGO-compatible C toolchain for the full native desktop-automation feature
   set. The supported Pure-Go subsets in the table above work without a C
   compiler; unavailable operations fail explicitly.

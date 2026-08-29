@@ -23,8 +23,8 @@ func validManifest() Manifest {
 		},
 		APTSnapshot: "https://snapshot.ubuntu.com/ubuntu/20260705T000000Z/",
 		Go: Artifact{
-			Version: "go1.25.12",
-			URL:     "https://go.dev/dl/go1.25.12.linux-amd64.tar.gz",
+			Version: "go1.26.7",
+			URL:     "https://go.dev/dl/go1.26.7.linux-amd64.tar.gz",
 			SHA256:  strings.Repeat("b", 64),
 		},
 		ActionsRunner: Artifact{

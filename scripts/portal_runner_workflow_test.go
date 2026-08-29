@@ -39,7 +39,7 @@ func TestPortalWorkflowsUseHostedPinnedLaneContract(t *testing.T) {
 			"actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
 			"actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e",
 			"Set up Go",
-			"go-version: 1.25.x",
+			"go-version: 1.26.x",
 			"persist-credentials: false",
 			"runs-on: ubuntu-24.04",
 			`infrastructure/portal-runner/${{ matrix.desktop }}/manifest.json`,

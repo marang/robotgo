@@ -61,7 +61,7 @@ func validReport(lane Lane, cell Cell) PreflightReport {
 			KernelName:    "Linux",
 			KernelRelease: "6.12.4-test",
 			Architecture:  "amd64",
-			GoVersion:     "go1.25.0",
+			GoVersion:     "go1.26.0",
 		},
 		Desktop: Desktop{
 			Lane:              lane,

@@ -15,9 +15,9 @@
   },
   "apt_snapshot": "https://snapshot.ubuntu.com/ubuntu/20260705T000000Z/",
   "go": {
-    "version": "go1.25.12",
-    "url": "https://go.dev/dl/go1.25.12.linux-amd64.tar.gz",
-    "sha256": "234828b7a89e0e303d2556310ee549fbcf253d28de937bac3da13d6294262ac1"
+    "version": "go1.26.7",
+    "url": "https://go.dev/dl/go1.26.7.linux-amd64.tar.gz",
+    "sha256": "ffb5f8de10c62550dfddab66b36b57030721e0a44a3218e9e1181d7b59f121ca"
   },
   "actions_runner": {
     "version": "2.336.0",
