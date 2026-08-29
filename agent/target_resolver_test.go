@@ -572,7 +572,7 @@ func TestResolveUICatalogPublishesDefensiveTargetSpecContract(t *testing.T) {
 	}
 	if capability.Operation != OperationResolveUI || !capability.Available || !capability.PolicyAllowed ||
 		capability.ProcessGlobalBackend || capability.TargetSpecVersion != TargetSpecSchemaVersion ||
-		capability.MaxTargetAncestors != maxTargetSpecAncestors ||
+		capability.MaxTargetAncestors != semanticResolverPolicy().MaxUITreeDepth ||
 		!slices.Equal(capability.TargetResolutionStrategies, allTargetResolutionStrategies) {
 		t.Fatalf("resolver catalog capability = %+v", capability)
 	}

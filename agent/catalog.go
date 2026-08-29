@@ -63,7 +63,7 @@ func resolveUICapability(policy Policy, capabilities robotgo.RuntimeCapabilities
 		UnavailableCode:            featureUnavailableCode(feature),
 		TargetSpecVersion:          TargetSpecSchemaVersion,
 		TargetResolutionStrategies: append([]TargetResolutionStrategy(nil), allTargetResolutionStrategies...),
-		MaxTargetAncestors:         maxTargetSpecAncestors,
+		MaxTargetAncestors:         min(policy.MaxUITreeDepth, uint32(maxTargetSpecAncestors)),
 	}
 }
 
