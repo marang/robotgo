@@ -480,6 +480,7 @@ func adaptiveTargetScore(candidate *retainedUITarget, spec TargetSpec, elements 
 		if parent.expected.Name == ancestor.Name {
 			matchedAncestors++
 		}
+		candidate = parent
 		parentID = parent.parentID
 	}
 	if matchedAncestors != uint32(len(spec.Ancestors)) {

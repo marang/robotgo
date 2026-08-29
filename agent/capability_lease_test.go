@@ -415,6 +415,34 @@ func TestAdaptiveAndReviewResolutionAreUniqueAndNonExecutable(t *testing.T) {
 			t.Fatalf("sensitive ancestor result=%+v err=%v", result, err)
 		}
 	})
+	t.Run("missing-grandparent-fails-closed", func(t *testing.T) {
+		policy := capabilityLeasePolicy()
+		policy.AllowedUIRoles = append(policy.AllowedUIRoles, UIRoleGroup)
+		snapshot := uiBackendSnapshot{Backend: "fake-accessibility", Nodes: []uiBackendNode{
+			{StableID: []byte("window"), Parent: -1, Depth: 0, Role: UIRoleWindow, Name: "Fixture", States: []UIState{UIStateEnabled}},
+			{StableID: []byte("hidden-root"), Parent: 0, Depth: 1, Role: UIRoleGroup, Name: "Root", Hidden: true, States: []UIState{UIStateEnabled}},
+			{StableID: []byte("incomplete-section"), Parent: 1, Depth: 2, Role: UIRoleGroup, Name: "Section", States: []UIState{UIStateEnabled}},
+			{StableID: []byte("incomplete-button"), Parent: 2, Depth: 3, Role: UIRoleButton, Name: "Save", States: []UIState{UIStateEnabled}, Actions: []UIAction{UIActionPress}, Bounds: &UIBounds{Width: 40, Height: 20}},
+			{StableID: []byte("public-root"), Parent: 0, Depth: 1, Role: UIRoleGroup, Name: "Root", States: []UIState{UIStateEnabled}},
+			{StableID: []byte("public-section"), Parent: 4, Depth: 2, Role: UIRoleGroup, Name: "Section", States: []UIState{UIStateEnabled}},
+			{StableID: []byte("public-button"), Parent: 5, Depth: 3, Role: UIRoleButton, Name: "Save", States: []UIState{UIStateEnabled}, Actions: []UIAction{UIActionPress}, Bounds: &UIBounds{Width: 40, Height: 20}},
+		}}
+		session, _, observation := inspectResolverFixture(t, policy, snapshot)
+		spec := targetSpec("Save")
+		spec.RequiredStates = []UIState{UIStateEnabled}
+		spec.RequiredActions = []UIAction{UIActionPress}
+		spec.Ancestors = []TargetAncestor{
+			{Role: UIRoleGroup, Name: "Section", RequiredStates: []UIState{UIStateEnabled}},
+			{Role: UIRoleGroup, Name: "Root", RequiredStates: []UIState{UIStateEnabled}},
+		}
+		result, err := session.ResolveUITarget(t.Context(), ResolveUIRequest{
+			ObservationID: observation.ObservationID, Target: spec, Mode: TargetResolutionModeAdaptive,
+			Lease: &CapabilityLeaseRequest{SchemaVersion: CapabilityLeaseSchemaVersion, Action: UIActionPress, DurationMillis: 1000},
+		})
+		if !hasErrorCode(err, ErrorIncompleteObservation) || result.Lease != nil || result.CandidateCount != 1 {
+			t.Fatalf("missing grandparent result=%+v err=%v", result, err)
+		}
+	})
 }
 
 func TestCapabilityLeaseSerializationContainsNoDesktopOrAuthorityPayload(t *testing.T) {
