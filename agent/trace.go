@@ -337,7 +337,7 @@ func (r *actionTraceRecorder) events(result ActionResult, errorCode ErrorCode) (
 		resolution.EvidenceSources = append([]TargetEvidenceSource(nil), r.resolution.evidenceSources...)
 		resolution.EvidenceProviders = append([]TargetEvidenceProvider(nil), r.resolution.evidenceProviders...)
 		resolution.EvidenceAgeMillis = r.resolution.evidenceAgeMillis
-	} else if proof != nil && proof.Resolution != nil {
+	} else if proof != nil && proof.Resolution != nil && proof.Resolution.CandidateCount > 0 {
 		resolution.Code = TraceCodeResolved
 		resolution.ObservationID = result.PreconditionObservationID
 		resolution.ActionResolutionStrategy = proof.Resolution.Strategy

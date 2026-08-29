@@ -275,6 +275,23 @@ func TestTraceCarriesLeaseBoundResolverEvidenceWithoutAuthority(t *testing.T) {
 	}
 }
 
+func TestTraceReportsReleasedDirectTargetAsMissingResolutionEvidence(t *testing.T) {
+	policy := tracePolicy(false, TracePrivacySemanticRedacted)
+	session, driver, request := verifiedTraceFixture(t, policy, TracePrivacySemanticRedacted)
+	if err := session.ReleaseObservation(request.ObservationID); err != nil {
+		t.Fatal(err)
+	}
+	result, err := session.ActUIElement(t.Context(), request)
+	if !hasErrorCode(err, ErrorStaleTarget) || result.Trace == nil || driver.actCalls != 0 || driver.checkCalls != 0 {
+		t.Fatalf("released-target trace result=%+v err=%v calls=%d/%d", result, err, driver.actCalls, driver.checkCalls)
+	}
+	resolution := traceEventByKind(t, result.Trace, TraceResolutionFinished)
+	if resolution.Code != TraceCodeMissingEvidence || !result.Trace.MissingEvidence ||
+		resolution.ObservationID != "" || resolution.CandidateCount != 0 {
+		t.Fatalf("released target was reported as resolved: trace=%+v resolution=%+v", result.Trace, resolution)
+	}
+}
+
 func TestTraceResolverEvidenceIsClearedOnTerminalLeaseTransitions(t *testing.T) {
 	for _, test := range []struct {
 		name       string
