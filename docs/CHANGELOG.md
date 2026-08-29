@@ -2,6 +2,24 @@
 
 ## Unreleased
 
+- Added the deny-by-default Semantic Recorder and Recorded Flow v1. Explicit
+  start/stop plus immutable event, retained-byte, and lifetime bounds capture
+  only semantic observation shape, payload-free resolver evidence, action and
+  postcondition kinds, terminal proof shape, and privacy-safe Trace lineage.
+  Values, coordinates, pixels, native references, capability tokens, clipboard
+  data, unrestricted trees, and raw backend errors are never retained.
+  Deterministic Go and MCP generators pin schema versions and state policy
+  prerequisites without creating policy or approval; coordinate/native input,
+  locator patches, visual evidence, destructive or unknown impact, incomplete
+  Trace, truncation, and unverified outcomes remain explicit non-executable
+  review items. Observation and window references use replay-bound `source-N`
+  and `window-N` aliases rather than captured identifiers. Generated replay
+  rejects incomplete Action Proof, postcondition, cleanup, or Trace results.
+  Golden tests
+  compile a generated self-owned fixture without executing it, and cleanup is
+  covered across success, failure, cancellation, expiry, recorder close, and
+  session close.
+
 - Added deny-by-default RobotGo Trace v1 for verified semantic action
   transactions. Explicit per-action capture and immutable policy independently
   bound four fixed privacy tiers, event count, serialized bytes, lifetime, and

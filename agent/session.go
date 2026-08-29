@@ -148,6 +148,8 @@ type Session struct {
 	auditSink        AuditSink
 	auditSequence    uint64
 	traceSink        TraceSink
+	recorderMu       sync.Mutex
+	recorder         *SemanticRecorder
 	pressedInputs    []pressedInput
 	inputTainted     bool
 	lastAction       time.Time
@@ -256,6 +258,7 @@ func (s *Session) Close() error {
 		s.cancel()
 		<-s.actionGate
 		s.closeViews()
+		s.closeRecorder()
 		s.closeCapabilityLeases()
 		s.closeObservations()
 		s.actionGate <- struct{}{}
@@ -291,7 +294,9 @@ func (s *Session) DryRun(ctx context.Context, request ActionRequest) (ActionResu
 
 // Execute validates and serially performs one typed desktop mutation.
 func (s *Session) Execute(ctx context.Context, request ActionRequest) (ActionResult, error) {
-	return s.run(ctx, request, false)
+	result, err := s.run(ctx, request, false)
+	s.recordNonSemanticAction(request, result, err)
+	return result, err
 }
 
 func (s *Session) run(ctx context.Context, request ActionRequest, dryRun bool) (ActionResult, error) {

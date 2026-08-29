@@ -207,6 +207,16 @@ already-satisfied no-dispatch behavior, separate semantic-verification quotas,
 Action Proof v1 outcomes and counts, native-reference/value zeroing,
 no-match/timeout cleanup, payload-free terminal audit events, and the documented
 input and capture cancellation boundaries.
+
+Semantic Recorder and generated-flow coverage is part of the default agent
+suite. It uses only self-owned in-memory semantic fixtures; the generated Go
+artifact is compiled in a temporary module but never invoked:
+
+```bash
+go test ./agent -run '^(TestRecorder|TestRecordedFlow|TestGeneratedFlow)' -count=1 -v
+go test -race ./agent -run '^(TestRecorder|TestRecordedFlow|TestGeneratedFlow)' -count=1
+```
+
 The Linux AT-SPI unit suite uses an in-memory query fixture to verify exact
 process/title/object-ancestry matching, role/property minimization,
 hidden-subtree pruning, fixed role/state/action mapping, pre-dispatch semantic

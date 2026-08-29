@@ -1,0 +1,91 @@
+package recordedflow
+
+import (
+	"context"
+	"errors"
+
+	"github.com/marang/robotgo/agent"
+)
+
+const (
+	generatedFlowSchemaVersion      = "1"
+	generatedTargetSpecVersion      = "2"
+	generatedCapabilityLeaseVersion = "1"
+	generatedActionProofVersion     = "2"
+	generatedTraceRequestVersion    = "1"
+	generatedTraceVersion           = "1"
+)
+
+type flowSession interface {
+	ResolveUITarget(context.Context, agent.ResolveUIRequest) (agent.TargetResolutionResult, error)
+	ActUIElement(context.Context, agent.ElementActionRequest) (agent.ActionResult, error)
+}
+
+// Policy prerequisites: desktop.inspect-ui, desktop.resolve-ui, and desktop.element-act;
+// Required UI roles: button, window. Required UI properties: actions, bounds, hierarchy, name, role, state.
+// Required UI actions: press. Required trace tiers: metadata-only.
+// Strict target resolution and bounded capability leases are required.
+// This generated function never creates policy and receives confirmation only from its caller.
+func RunVerifiedFlow(ctx context.Context, session flowSession, observations map[string]string, windows map[string]agent.TargetWindowSpec, leaseDurationMillis int, confirmed bool) error {
+	_ = generatedFlowSchemaVersion
+	target1 := agent.TargetSpec{
+		SchemaVersion:   generatedTargetSpecVersion,
+		Window:          windows["window-1"],
+		Role:            agent.UIRole("button"),
+		Name:            "Save",
+		RequiredStates:  []agent.UIState{agent.UIState("enabled")},
+		RequiredActions: []agent.UIAction{agent.UIAction("press")},
+		Ancestors: []agent.TargetAncestor{
+			{Role: agent.UIRole("window"), Name: "Editor", RequiredStates: []agent.UIState{agent.UIState("enabled")}},
+		},
+	}
+	resolution1, err := session.ResolveUITarget(ctx, agent.ResolveUIRequest{
+		ObservationID: observations["source-1"],
+		Target:        target1,
+		Mode:          agent.TargetResolutionModeStrict,
+		Lease: &agent.CapabilityLeaseRequest{
+			SchemaVersion:  generatedCapabilityLeaseVersion,
+			Action:         agent.UIAction("press"),
+			Postcondition:  &agent.UIElementCondition{Kind: agent.UIElementConditionKind("state-present"), State: agent.UIState("checked")},
+			DurationMillis: leaseDurationMillis,
+		},
+		Confirmed: confirmed,
+	})
+	if err != nil {
+		return err
+	}
+	if resolution1.Lease == nil {
+		return errors.New("generated semantic resolution returned no capability lease")
+	}
+	action1, err := session.ActUIElement(ctx, agent.ElementActionRequest{
+		CapabilityLeaseID: resolution1.Lease.ID,
+		Action:            agent.UIAction("press"),
+		Postcondition:     &agent.UIElementCondition{Kind: agent.UIElementConditionKind("state-present"), State: agent.UIState("checked")},
+		Confirmed:         confirmed,
+		Hint:              &agent.RecorderActionHint{Impact: agent.RecorderActionImpact("reversible")},
+		Trace:             &agent.TraceRequest{SchemaVersion: generatedTraceRequestVersion, Tier: agent.TracePrivacyTier("metadata-only")},
+	})
+	if err != nil {
+		return err
+	}
+	if err := verifyGeneratedActionResult(action1, agent.TracePrivacyTier("metadata-only")); err != nil {
+		return err
+	}
+	// REVIEW REQUIRED step 4: unsupported-action, coordinate-input.
+	return nil
+}
+
+func verifyGeneratedActionResult(result agent.ActionResult, traceTier agent.TracePrivacyTier) error {
+	if result.Status != agent.ActionSucceeded || result.Proof == nil ||
+		result.Proof.SchemaVersion != generatedActionProofVersion || result.Proof.Status != agent.ActionProofVerified ||
+		result.Proof.Verification == nil || result.Proof.Verification.Status != agent.ActionVerificationMatched ||
+		!result.Proof.Cleanup.TransientResourcesReleased {
+		return errors.New("generated semantic action did not return complete verified proof")
+	}
+	if result.Trace == nil || result.Trace.SchemaVersion != generatedTraceVersion ||
+		result.Trace.Tier != traceTier || result.Trace.TransactionID != result.Proof.TransactionID ||
+		result.Trace.Truncated || result.Trace.MissingEvidence || result.Trace.Expired || !result.Trace.CleanupComplete {
+		return errors.New("generated semantic action did not return complete trace evidence")
+	}
+	return nil
+}

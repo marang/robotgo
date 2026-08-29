@@ -1,0 +1,145 @@
+{
+  "schema_version": "1",
+  "target_spec_version": "2",
+  "action_proof_version": "2",
+  "trace_version": "1",
+  "policy_prerequisites": {
+    "operations": [
+      "desktop.inspect-ui",
+      "desktop.resolve-ui",
+      "desktop.element-act"
+    ],
+    "target_modes": [
+      "strict"
+    ],
+    "ui_roles": [
+      "button",
+      "window"
+    ],
+    "ui_properties": [
+      "actions",
+      "bounds",
+      "hierarchy",
+      "name",
+      "role",
+      "state"
+    ],
+    "ui_actions": [
+      "press"
+    ],
+    "trace_tiers": [
+      "metadata-only"
+    ],
+    "capability_lease_required": true,
+    "confirmation_from_operator": true,
+    "generated_policy_broadening": false
+  },
+  "steps": [
+    {
+      "id": "step-3",
+      "target_id": "target-1",
+      "review_required": false,
+      "resolve": {
+        "tool": "robotgo_resolve_ui",
+        "arguments": {
+          "confirmed": {
+            "$ref": "operator_confirmation"
+          },
+          "lease": {
+            "action": "press",
+            "duration_ms": {
+              "$ref": "operator_lease_duration_ms"
+            },
+            "postcondition": {
+              "kind": "state-present",
+              "state": "checked"
+            },
+            "schema_version": "1"
+          },
+          "mode": "strict",
+          "observation_id": {
+            "$ref": "operator_observations.source-1"
+          },
+          "target": {
+            "ancestors": [
+              {
+                "role": "window",
+                "name": "Editor",
+                "required_states": [
+                  "enabled"
+                ]
+              }
+            ],
+            "name": "Save",
+            "required_actions": [
+              "press"
+            ],
+            "required_states": [
+              "enabled"
+            ],
+            "role": "button",
+            "schema_version": "2",
+            "window": {
+              "$ref": "operator_windows.window-1"
+            }
+          }
+        }
+      },
+      "act": {
+        "tool": "robotgo_element_act",
+        "arguments": {
+          "action": "press",
+          "capability_lease_id": {
+            "$ref": "step-3.resolve.lease.id"
+          },
+          "confirmed": {
+            "$ref": "operator_confirmation"
+          },
+          "postcondition": {
+            "kind": "state-present",
+            "state": "checked"
+          },
+          "recorder_hint": {
+            "impact": "reversible"
+          },
+          "trace": {
+            "schema_version": "1",
+            "tier": "metadata-only"
+          }
+        },
+        "expected_result": {
+          "proof": {
+            "cleanup": {
+              "transient_resources_released": true
+            },
+            "schema_version": "2",
+            "status": "verified",
+            "verification": {
+              "status": "matched"
+            }
+          },
+          "status": "succeeded",
+          "trace": {
+            "cleanup_complete": true,
+            "expired": false,
+            "missing_evidence": false,
+            "schema_version": "1",
+            "tier": "metadata-only",
+            "transaction_id": {
+              "$ref": "step-3.act.proof.transaction_id"
+            },
+            "truncated": false
+          }
+        }
+      }
+    },
+    {
+      "id": "step-4",
+      "review_required": true,
+      "review_reasons": [
+        "unsupported-action",
+        "coordinate-input"
+      ]
+    }
+  ]
+}

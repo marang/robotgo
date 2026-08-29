@@ -124,6 +124,11 @@ func elementActCapability(
 		MaxTraceBytes:                policy.MaxTraceBytes,
 		TraceLifetimeMillis:          policy.TraceLifetimeMillis,
 		TraceExportAllowed:           policy.AllowTraceExport && traceExportConfigured,
+		RecorderSchemaVersion:        SemanticRecorderSchemaVersion,
+		RecorderAllowed:              policy.AllowRecorder,
+		MaxRecorderEvents:            policy.MaxRecorderEvents,
+		MaxRecorderBytes:             policy.MaxRecorderBytes,
+		RecorderLifetimeMillis:       policy.RecorderLifetimeMillis,
 	}
 }
 

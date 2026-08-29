@@ -75,6 +75,7 @@ type ElementActionRequest struct {
 	Value             string               `json:"value,omitempty"`
 	Confirmed         bool                 `json:"confirmed,omitempty"`
 	Trace             *TraceRequest        `json:"trace,omitempty"`
+	Hint              *RecorderActionHint  `json:"recorder_hint,omitempty"`
 }
 
 type uiBackendElementAction struct {
@@ -127,6 +128,8 @@ func (robotGoDriver) CheckUIElement(ctx context.Context, request uiBackendElemen
 // semantic action. It never falls back to pointer, keyboard, capture, OCR, or
 // shell behavior. Every return contains Action Proof v2.
 func (s *Session) ActUIElement(ctx context.Context, request ElementActionRequest) (result ActionResult, returnErr error) {
+	presentedLeaseID := request.CapabilityLeaseID
+	defer func() { s.recordElementAction(request, presentedLeaseID, result, returnErr) }()
 	started := time.Now()
 	id := fmt.Sprintf("action-%d", actionSerial.Add(1))
 	if ctx == nil {

@@ -1029,8 +1029,42 @@ errors. A configured `TraceSink` receives a defensive complete copy only when
 both request and policy allow export. Export failure is returned separately as
 `trace-export-failed` without rewriting Action Proof or the desktop outcome.
 
-Catalog schema v14 advertises Trace v1 tiers and resource/export bounds in
-addition to TargetSpec v2, resolver modes, semantic and
+`Session.StartRecorder` adds an explicitly enabled, session-scoped semantic
+recorder for self-owned workflows. Recorder policy is independent and
+deny-by-default: `AllowRecorder`, maximum event count, retained bytes, and
+lifetime must all be set, and the lifetime cannot exceed the session. Exactly
+one recorder may be active. `Stop` returns Recorded Flow v1 and atomically
+clears its temporary target bindings; cancellation, expiry, `Close`, and
+`Session.Close` clear them without producing an artifact.
+
+The recorder observes only bounded semantic inspection shape, privacy-reduced
+resolver evidence, semantic action/postcondition kinds, terminal Action Proof
+shape, and Trace lineage. It never retains action values, coordinates, pixels,
+native window or element references, capability tokens, clipboard content, or
+raw backend errors. Repeated semantic targets receive one stable recorded ID.
+Observation and window identities are replaced by stable `source-N` and
+`window-N` aliases that callers bind at replay time. Only an explicit
+`reversible` action hint can produce an executable step. Coordinate input,
+omitted values, native-reference operations, locator patches, OCR/visual
+evidence, destructive or unknown-impact actions, missing postconditions,
+missing or incomplete Trace, truncation, and unverified outcomes become
+non-executable `REVIEW REQUIRED` items.
+
+`RecordedFlow.Generate` deterministically formats a Go function plus an MCP
+request-template fixture with pinned schema versions. Both list policy
+prerequisites, accept operator-owned observation/window maps and confirmation
+as inputs, and never create or broaden policy. Safe verified steps resolve a
+fresh single-use capability lease before each semantic action. Review items
+emit no action request. Generated replay checks verified Action Proof v2,
+matched postconditions, cleanup, and complete matching Trace v1 evidence;
+MCP fixtures state the same expected result. Generation itself performs no
+desktop operation. The verified
+semantic example demonstrates record → generate after one explicitly
+confirmed self-owned toggle.
+
+Catalog schema v15 advertises Recorded Flow v1 and recorder resource bounds in
+addition to Trace v1 tiers and resource/export bounds, TargetSpec v2, resolver
+modes, semantic and
 reviewed OCR/visual strategies, provider/source/age/confidence bounds, lease
 schema and bounds, adaptive threshold, and maximum ancestor depth while
 retaining condition and verification bounds. Audit schema v6 adds payload-free
@@ -1542,7 +1576,7 @@ The checked-in examples use this fork's module path and track the current API:
 - [Bounded agent actions](examples/agent_actions/main.go)
 - [Privacy-safe agent visual conditions](examples/agent_conditions/main.go)
 - [Review-only TargetSpec visual evidence](examples/target_evidence_review/main.go)
-- [Verified semantic action with privacy-tiered Trace](examples/semantic_element_action/main.go)
+- [Verified semantic action with Trace and semantic flow generation](examples/semantic_element_action/main.go)
 - [Linux capabilities](examples/linux_capabilities/main.go)
 - [Cross-platform runtime capabilities](examples/runtime_capabilities/main.go)
 - [Versioned runtime diagnostics](examples/runtime_diagnostics/main.go)
