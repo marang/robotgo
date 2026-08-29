@@ -1,12 +1,18 @@
 # Verified Adaptive Workflows Plan
 
-Status: P011 in progress; LAB-79 semantic conditions and Action Proof v1 complete
+Status: P011 in progress; LAB-81 TargetSpec v1 and deterministic resolver complete
 
 Linear coordination:
 
 - Project: [`RobotGo | P011 | Verified Adaptive Workflows`](https://linear.app/riotbox/project/robotgo-or-p011-or-verified-adaptive-workflows-0d00997b9381)
 - Observation-bound element actions: [`LAB-77`](https://linear.app/riotbox/issue/LAB-77/add-observation-bound-semantic-element-actions)
 - Semantic conditions and Action Proof v1: [`LAB-79`](https://linear.app/riotbox/issue/LAB-79/add-observation-bound-semantic-postconditions-and-action-proof-v1)
+- TargetSpec v1 and deterministic resolver: [`LAB-81`](https://linear.app/riotbox/issue/LAB-81/add-versioned-semantic-targetspec-and-deterministic-resolver)
+- Capability leases and controlled healing: [`LAB-82`](https://linear.app/riotbox/issue/LAB-82/add-single-use-capability-leases-and-controlled-semantic-healing)
+- OCR/visual resolver evidence: [`LAB-83`](https://linear.app/riotbox/issue/LAB-83/integrate-policy-gated-ocr-and-visual-evidence-into-targetspec)
+- Privacy-tiered trace: [`LAB-84`](https://linear.app/riotbox/issue/LAB-84/add-privacy-tiered-robotgo-trace-for-verified-transactions)
+- Semantic recorder/codegen: [`LAB-85`](https://linear.app/riotbox/issue/LAB-85/add-semantic-recorder-and-verified-flow-code-generation)
+- Side-effect-free capability planner: [`LAB-86`](https://linear.app/riotbox/issue/LAB-86/add-side-effect-free-verified-flow-capability-planner)
 
 ## Product contract
 
@@ -91,13 +97,38 @@ dispatch remains `unverified-after-dispatch` even if later observation matches;
 there is no fallback or automatic retry. Audit schema v3 mirrors the bounded
 condition phase, proof/execution status, and attempt counts without payloads.
 
+## LAB-81 TargetSpec and resolver slice
+
+Catalog schema v11 adds TargetSpec v1 and the read-only `desktop.resolve-ui`
+operation. A spec binds the exact source process/window target and private
+policy title to one exact role/name, optional required state/action sets, and
+an optional immediate-parent-first ancestor chain. The resolver scans only the
+sanitized retained observation graph. It performs no native query, consumes no
+query/observation/action quota, and grants no mutation authority.
+
+Exact and structural semantic matching are deterministic and use fixed
+payload-free evidence tokens. One unique match returns the opaque element ID
+and a defensive exact expectation for `ActUIElement`; zero returns
+`target-not-found`, and multiple matches return `ambiguous-target` without any
+candidate IDs. Candidate/identity truncation returns
+`incomplete-observation`, while redaction of hidden, sensitive, or disallowed
+content does not by itself invalidate a complete allowed candidate set. There
+is no fuzzy matching, healing, locator patching, OCR/visual evidence, or input
+fallback in this slice. Audit schema v4 adds resolver start/finish evidence
+without target names, titles, values, native references, or tree payloads.
+
 ## Next slices
 
-1. versioned `TargetSpec` and deterministic exact/structural resolver;
-2. single-use capability leases and strict/adaptive/review healing modes;
-3. policy-gated OCR/visual evidence in the same resolver;
-4. privacy-tiered RobotGo Trace;
-5. semantic recorder/code generation and a side-effect-free capability planner.
+1. single-use capability leases and strict/adaptive/review healing modes
+   ([`LAB-82`](https://linear.app/riotbox/issue/LAB-82/add-single-use-capability-leases-and-controlled-semantic-healing));
+2. policy-gated OCR/visual evidence in the same resolver
+   ([`LAB-83`](https://linear.app/riotbox/issue/LAB-83/integrate-policy-gated-ocr-and-visual-evidence-into-targetspec));
+3. privacy-tiered RobotGo Trace
+   ([`LAB-84`](https://linear.app/riotbox/issue/LAB-84/add-privacy-tiered-robotgo-trace-for-verified-transactions));
+4. semantic recorder/code generation
+   ([`LAB-85`](https://linear.app/riotbox/issue/LAB-85/add-semantic-recorder-and-verified-flow-code-generation));
+5. side-effect-free capability planner
+   ([`LAB-86`](https://linear.app/riotbox/issue/LAB-86/add-side-effect-free-verified-flow-capability-planner)).
 
 Each slice remains independently deny-by-default and must preserve exact target
 scope, explicit fallback provenance, sensitive-data cleanup, and truthful

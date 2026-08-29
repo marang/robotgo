@@ -28,6 +28,7 @@ type fakeSession struct {
 	waitFunc       func(context.Context, agent.WaitColorRequest) (agent.WaitColorResult, error)
 	releaseFunc    func(string) error
 	inspectFunc    func(context.Context, agent.InspectUIRequest) (agent.UIObservation, error)
+	resolveFunc    func(context.Context, agent.ResolveUIRequest) (agent.TargetResolutionResult, error)
 	elementActFunc func(context.Context, agent.ElementActionRequest) (agent.ActionResult, error)
 	viewFunc       func(context.Context, agent.ViewRequest) (*agent.View, error)
 	ocrFunc        func(context.Context, agent.OCRRequest) (agent.OCRResult, error)
@@ -42,6 +43,7 @@ type fakeSession struct {
 	waits       int
 	releases    int
 	inspects    int
+	resolves    int
 	elementActs int
 	views       int
 	ocrs        int
@@ -122,6 +124,16 @@ func (f *fakeSession) InspectUI(ctx context.Context, request agent.InspectUIRequ
 		return f.inspectFunc(ctx, request)
 	}
 	return agent.UIObservation{}, errors.New("unused")
+}
+
+func (f *fakeSession) ResolveUITarget(ctx context.Context, request agent.ResolveUIRequest) (agent.TargetResolutionResult, error) {
+	f.mu.Lock()
+	f.resolves++
+	f.mu.Unlock()
+	if f.resolveFunc != nil {
+		return f.resolveFunc(ctx, request)
+	}
+	return agent.TargetResolutionResult{}, errors.New("unused")
 }
 
 func (f *fakeSession) ActUIElement(ctx context.Context, request agent.ElementActionRequest) (agent.ActionResult, error) {
@@ -321,8 +333,19 @@ func TestProtocolInitializesAndListsFocusedTools(t *testing.T) {
 				}
 			}
 		}
+		if tool.Name == ToolResolveUI {
+			schema, marshalErr := json.Marshal(tool.InputSchema)
+			if marshalErr != nil {
+				t.Fatalf("marshal resolve-ui schema: %v", marshalErr)
+			}
+			for _, field := range []string{"schema_version", "window", "required_states", "required_actions", "ancestors"} {
+				if !strings.Contains(string(schema), `"`+field+`"`) {
+					t.Errorf("robotgo_resolve_ui schema omitted %q: %s", field, schema)
+				}
+			}
+		}
 		switch tool.Name {
-		case ToolFind, ToolWait, ToolInspectUI, ToolView, ToolOCR, ToolDetectElements:
+		case ToolFind, ToolWait, ToolInspectUI, ToolResolveUI, ToolView, ToolOCR, ToolDetectElements:
 			if tool.Annotations == nil || !tool.Annotations.ReadOnlyHint {
 				t.Errorf("tool %q is not marked read-only", tool.Name)
 			}
@@ -335,7 +358,7 @@ func TestProtocolInitializesAndListsFocusedTools(t *testing.T) {
 	}
 	slices.Sort(names)
 	want := []string{
-		ToolAct, ToolCapabilities, ToolClose, ToolElementAct, ToolFind, ToolInspectUI, ToolObserve,
+		ToolAct, ToolCapabilities, ToolClose, ToolElementAct, ToolFind, ToolInspectUI, ToolResolveUI, ToolObserve,
 		ToolReleaseObservation, ToolWait,
 	}
 	slices.Sort(want)
@@ -717,6 +740,78 @@ func TestInspectUIReturnsOnlyPrivacyReducedSemanticContract(t *testing.T) {
 		if strings.Contains(serialized, forbidden) {
 			t.Fatalf("inspect UI leaked %q: %s", forbidden, serialized)
 		}
+	}
+}
+
+func TestResolveUIReturnsMutationReadySelectionWithoutPrivateEvidencePayload(t *testing.T) {
+	fake := &fakeSession{resolveFunc: func(_ context.Context, request agent.ResolveUIRequest) (agent.TargetResolutionResult, error) {
+		if request.ObservationID != "observation-9" || request.Target.SchemaVersion != agent.TargetSpecSchemaVersion ||
+			request.Target.Name != "Save" || request.Target.Window.ExpectedTitle != "private-window-title" {
+			return agent.TargetResolutionResult{}, errors.New("unexpected resolver request")
+		}
+		expected := agent.UIElementExpectation{
+			Role: agent.UIRoleButton, Name: "Save", States: []agent.UIState{agent.UIStateEnabled},
+			Bounds:  &agent.UIBounds{X: 1, Y: 2, Width: 3, Height: 4},
+			Actions: []agent.UIAction{agent.UIActionPress},
+		}
+		return agent.TargetResolutionResult{
+			SchemaVersion: agent.TargetResolutionSchemaVersion,
+			ObservationID: "observation-9", Strategy: agent.TargetResolutionExactSemantic,
+			MatchedBy: []agent.TargetEvidence{
+				agent.TargetEvidenceWindowIdentity, agent.TargetEvidenceRole, agent.TargetEvidenceName,
+			},
+			CandidateCount: 1, RejectedCandidateCount: 2,
+			ElementID: "observation-9-element-2", Expected: &expected,
+		}, nil
+	}}
+	client := connectProtocol(t, newProtocolServer(t, fake))
+	result := callTool(t, client, ToolResolveUI, agent.ResolveUIRequest{
+		ObservationID: "observation-9",
+		Target: agent.TargetSpec{
+			SchemaVersion: agent.TargetSpecSchemaVersion,
+			Window: agent.TargetWindowSpec{
+				Target: 42, Kind: agent.WindowTargetProcess, ExpectedTitle: "private-window-title",
+			},
+			Role: agent.UIRoleButton, Name: "Save",
+		},
+	})
+	output := decodeOutput[ResolveUIOutput](t, result)
+	serialized := serializedResult(t, result)
+	structured, marshalErr := json.Marshal(output)
+	if marshalErr != nil {
+		t.Fatal(marshalErr)
+	}
+	if result.IsError || output.Result == nil || output.Result.Expected == nil ||
+		output.Result.Expected.Name != "Save" || output.Result.ElementID != "observation-9-element-2" ||
+		strings.Contains(serialized, "private-window-title") || strings.Count(string(structured), "Save") != 1 {
+		t.Fatalf("resolve UI output = %+v, %s", output, serialized)
+	}
+}
+
+func TestResolveUIAmbiguityReturnsCountsWithoutCandidateIDs(t *testing.T) {
+	fake := &fakeSession{resolveFunc: func(_ context.Context, _ agent.ResolveUIRequest) (agent.TargetResolutionResult, error) {
+		result := agent.TargetResolutionResult{
+			SchemaVersion: agent.TargetResolutionSchemaVersion,
+			ObservationID: "observation-9", Strategy: agent.TargetResolutionExactSemantic,
+			MatchedBy: []agent.TargetEvidence{
+				agent.TargetEvidenceWindowIdentity, agent.TargetEvidenceRole, agent.TargetEvidenceName,
+			},
+			CandidateCount: 2, RejectedCandidateCount: 3, Ambiguous: true,
+		}
+		return result, &agent.ActionError{
+			Code: agent.ErrorAmbiguousTarget, Operation: agent.OperationResolveUI,
+			Message: "semantic target is ambiguous",
+		}
+	}}
+	client := connectProtocol(t, newProtocolServer(t, fake))
+	result := callTool(t, client, ToolResolveUI, agent.ResolveUIRequest{})
+	output := decodeOutput[ResolveUIOutput](t, result)
+	serialized := serializedResult(t, result)
+	if !result.IsError || output.Result == nil || output.Error == nil ||
+		output.Error.Code != agent.ErrorAmbiguousTarget || !output.Result.Ambiguous ||
+		output.Result.CandidateCount != 2 || output.Result.ElementID != "" || output.Result.Expected != nil ||
+		strings.Contains(serialized, "element_id") || strings.Contains(serialized, "expected") {
+		t.Fatalf("ambiguous resolve UI output = %+v, %s", output, serialized)
 	}
 }
 
@@ -1134,11 +1229,13 @@ func TestCloseIsIdempotentAndLaterCallsFailClosed(t *testing.T) {
 		}
 	}
 
-	for _, tool := range []string{ToolCapabilities, ToolObserve, ToolInspectUI, ToolElementAct, ToolFind, ToolWait, ToolReleaseObservation, ToolAct} {
+	for _, tool := range []string{ToolCapabilities, ToolObserve, ToolInspectUI, ToolResolveUI, ToolElementAct, ToolFind, ToolWait, ToolReleaseObservation, ToolAct} {
 		arguments := any(map[string]any{})
 		switch tool {
 		case ToolInspectUI:
 			arguments = agent.InspectUIRequest{Target: 1, Kind: agent.WindowTargetProcess}
+		case ToolResolveUI:
+			arguments = agent.ResolveUIRequest{ObservationID: "observation-1"}
 		case ToolElementAct:
 			arguments = agent.ElementActionRequest{ObservationID: "observation-1", ElementID: "observation-1-element-1"}
 		case ToolFind:

@@ -253,7 +253,8 @@ screenshot:
 ```bash
 go run ./examples/semantic_ui -pid 1234 -title 'Self-owned fixture' -confirm
 go run ./examples/semantic_element_action \
-  -pid 1234 -title 'Self-owned fixture' -toggle 'Enable sync' -confirm
+  -pid 1234 -title 'Self-owned fixture' -role checkbox \
+  -toggle 'Enable sync' -confirm
 ```
 
 macOS unit and cross-build checks are blocking, including fixed role/action

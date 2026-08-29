@@ -751,7 +751,7 @@ func TestSanitizeUISnapshotRejectsMalformedStructureAndEnums(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			snapshot := semanticSnapshot()
 			mutate(&snapshot)
-			elements, references, _, _, err := sanitizeUIBackendSnapshot("observation-1", snapshot, policy)
+			elements, references, _, _, _, err := sanitizeUIBackendSnapshot("observation-1", snapshot, policy)
 			closeUIReferences(references)
 			if err == nil || len(elements) != 0 {
 				t.Fatalf("malformed snapshot result = %+v, %v", elements, err)
@@ -785,7 +785,7 @@ func TestSanitizeUISnapshotEnforcesNodeAndUTF8ByteLimits(t *testing.T) {
 	}
 	snapshot := semanticSnapshot()
 	snapshot.Nodes[0].Name = "€€"
-	elements, references, truncated, _, err := sanitizeUIBackendSnapshot("observation-1", snapshot, policy)
+	elements, references, _, truncated, _, err := sanitizeUIBackendSnapshot("observation-1", snapshot, policy)
 	t.Cleanup(func() { closeUIReferences(references) })
 	if err != nil {
 		t.Fatal(err)

@@ -1,7 +1,7 @@
 //go:build darwin || linux || windows
 
 // Command semantic_element_action inspects one self-owned accessible window,
-// toggles one uniquely named checkbox or switch, and verifies the opposite
+// resolves and toggles one uniquely named checkbox or switch, and verifies the opposite
 // checked state. It never falls back to pointer or keyboard input.
 package main
 
@@ -29,16 +29,23 @@ func run() error {
 	pid := flag.Int("pid", 0, "PID of a self-owned accessible application")
 	title := flag.String("title", "", "exact top-level accessible window title")
 	toggleName := flag.String("toggle", "", "exact accessible name of the checkbox or switch to toggle")
+	toggleRole := flag.String("role", "", "exact semantic role: checkbox or switch")
 	confirm := flag.Bool("confirm", false, "confirm the observation-bound semantic toggle")
 	flag.Parse()
-	if *pid <= 0 || *title == "" || *toggleName == "" {
-		return errors.New("positive -pid plus exact non-empty -title and -toggle are required")
+	if *pid <= 0 || *title == "" || *toggleName == "" || *toggleRole == "" {
+		return errors.New("positive -pid plus exact non-empty -title, -toggle, and -role are required")
 	}
 	if !*confirm {
 		return errors.New("pass -confirm after verifying the self-owned target and toggle")
 	}
+	role := agent.UIRole(*toggleRole)
+	if role != agent.UIRoleCheckbox && role != agent.UIRoleSwitch {
+		return errors.New("-role must be checkbox or switch")
+	}
 	policy := agent.Policy{
-		AllowedOperations: []agent.Operation{agent.OperationInspectUI, agent.OperationElementAct},
+		AllowedOperations: []agent.Operation{
+			agent.OperationInspectUI, agent.OperationResolveUI, agent.OperationElementAct,
+		},
 		ConfirmOperations: []agent.Operation{agent.OperationElementAct},
 		AllowedWindows: []agent.WindowTarget{{
 			Target: *pid, Kind: agent.WindowTargetProcess, ExpectedTitle: *title,
@@ -80,30 +87,32 @@ func run() error {
 		return err
 	}
 	defer func() { _ = session.ReleaseObservation(observation.ObservationID) }()
-	var matches []agent.UIElement
-	for _, element := range observation.Elements {
-		if (element.Role == agent.UIRoleCheckbox || element.Role == agent.UIRoleSwitch) &&
-			element.Name == *toggleName && element.Bounds != nil &&
-			slices.Contains(element.States, agent.UIStateEnabled) &&
-			slices.Contains(element.Actions, agent.UIActionToggle) {
-			matches = append(matches, element)
-		}
+	resolution, err := session.ResolveUITarget(ctx, agent.ResolveUIRequest{
+		ObservationID: observation.ObservationID,
+		Target: agent.TargetSpec{
+			SchemaVersion: agent.TargetSpecSchemaVersion,
+			Window: agent.TargetWindowSpec{
+				Target: *pid, Kind: agent.WindowTargetProcess, ExpectedTitle: *title,
+			},
+			Role: role, Name: *toggleName,
+			RequiredStates:  []agent.UIState{agent.UIStateEnabled},
+			RequiredActions: []agent.UIAction{agent.UIActionToggle},
+		},
+	})
+	if err != nil {
+		return err
 	}
-	if len(matches) != 1 {
-		return fmt.Errorf("expected exactly one matching checkbox or switch, found %d", len(matches))
+	if resolution.Expected == nil {
+		return errors.New("semantic target resolution returned no exact expectation")
 	}
-	element := matches[0]
 	desired := agent.UIElementConditionStatePresent
-	if slices.Contains(element.States, agent.UIStateChecked) {
+	if slices.Contains(resolution.Expected.States, agent.UIStateChecked) {
 		desired = agent.UIElementConditionStateAbsent
 	}
 	result, err := session.ActUIElement(ctx, agent.ElementActionRequest{
-		ObservationID: observation.ObservationID, ElementID: element.ElementID,
+		ObservationID: observation.ObservationID, ElementID: resolution.ElementID,
 		Action: agent.UIActionToggle, Confirmed: true,
-		Expected: agent.UIElementExpectation{
-			Role: element.Role, Name: element.Name, Sensitive: element.Sensitive,
-			States: element.States, Bounds: element.Bounds, Actions: element.Actions,
-		},
+		Expected: *resolution.Expected,
 		Postcondition: &agent.UIElementCondition{
 			Kind: desired, State: agent.UIStateChecked,
 		},

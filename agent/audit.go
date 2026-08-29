@@ -6,7 +6,7 @@ import (
 )
 
 // AuditSchemaVersion identifies the payload-free audit event contract.
-const AuditSchemaVersion = "3"
+const AuditSchemaVersion = "4"
 
 // UIConditionPhase identifies which bounded semantic verification phase
 // produced a terminal audit event.
@@ -30,34 +30,41 @@ const (
 	AuditVerificationFinished AuditKind = "verification.finished"
 	AuditConditionStarted     AuditKind = "condition.started"
 	AuditConditionFinished    AuditKind = "condition.finished"
+	AuditResolutionStarted    AuditKind = "resolution.started"
+	AuditResolutionFinished   AuditKind = "resolution.finished"
 )
 
 // AuditEvent deliberately contains no request payload, coordinates, text,
 // pixels, capture digest, backend error detail, or restore token.
 type AuditEvent struct {
-	SchemaVersion             string                 `json:"schema_version"`
-	Sequence                  uint64                 `json:"sequence"`
-	Kind                      AuditKind              `json:"kind"`
-	Timestamp                 time.Time              `json:"timestamp"`
-	Operation                 Operation              `json:"operation,omitempty"`
-	ActionID                  string                 `json:"action_id,omitempty"`
-	ObservationID             string                 `json:"observation_id,omitempty"`
-	PreconditionObservationID string                 `json:"precondition_observation_id,omitempty"`
-	PostObservationID         string                 `json:"post_observation_id,omitempty"`
-	ActionStatus              ActionStatus           `json:"action_status,omitempty"`
-	VerificationStatus        VerificationStatus     `json:"verification_status,omitempty"`
-	VerificationAttempts      uint32                 `json:"verification_attempts,omitempty"`
-	ConditionID               string                 `json:"condition_id,omitempty"`
-	ConditionStatus           ConditionStatus        `json:"condition_status,omitempty"`
-	ConditionAttempts         uint32                 `json:"condition_attempts,omitempty"`
-	ActionProofStatus         ActionProofStatus      `json:"action_proof_status,omitempty"`
-	ActionExecutionStatus     ActionExecutionStatus  `json:"action_execution_status,omitempty"`
-	UIConditionKind           UIElementConditionKind `json:"ui_condition_kind,omitempty"`
-	UIConditionPhase          UIConditionPhase       `json:"ui_condition_phase,omitempty"`
-	UIPrecheckAttempts        uint32                 `json:"ui_precheck_attempts,omitempty"`
-	UIFinalGateChecked        bool                   `json:"ui_final_gate_checked,omitempty"`
-	UIPostconditionAttempts   uint32                 `json:"ui_postcondition_attempts,omitempty"`
-	ErrorCode                 ErrorCode              `json:"error_code,omitempty"`
+	SchemaVersion             string                   `json:"schema_version"`
+	Sequence                  uint64                   `json:"sequence"`
+	Kind                      AuditKind                `json:"kind"`
+	Timestamp                 time.Time                `json:"timestamp"`
+	Operation                 Operation                `json:"operation,omitempty"`
+	ActionID                  string                   `json:"action_id,omitempty"`
+	ObservationID             string                   `json:"observation_id,omitempty"`
+	PreconditionObservationID string                   `json:"precondition_observation_id,omitempty"`
+	PostObservationID         string                   `json:"post_observation_id,omitempty"`
+	ActionStatus              ActionStatus             `json:"action_status,omitempty"`
+	VerificationStatus        VerificationStatus       `json:"verification_status,omitempty"`
+	VerificationAttempts      uint32                   `json:"verification_attempts,omitempty"`
+	ConditionID               string                   `json:"condition_id,omitempty"`
+	ConditionStatus           ConditionStatus          `json:"condition_status,omitempty"`
+	ConditionAttempts         uint32                   `json:"condition_attempts,omitempty"`
+	ActionProofStatus         ActionProofStatus        `json:"action_proof_status,omitempty"`
+	ActionExecutionStatus     ActionExecutionStatus    `json:"action_execution_status,omitempty"`
+	UIConditionKind           UIElementConditionKind   `json:"ui_condition_kind,omitempty"`
+	UIConditionPhase          UIConditionPhase         `json:"ui_condition_phase,omitempty"`
+	UIPrecheckAttempts        uint32                   `json:"ui_precheck_attempts,omitempty"`
+	UIFinalGateChecked        bool                     `json:"ui_final_gate_checked,omitempty"`
+	UIPostconditionAttempts   uint32                   `json:"ui_postcondition_attempts,omitempty"`
+	TargetResolutionStrategy  TargetResolutionStrategy `json:"target_resolution_strategy,omitempty"`
+	TargetMatchedBy           []TargetEvidence         `json:"target_matched_by,omitempty"`
+	TargetCandidateCount      uint32                   `json:"target_candidate_count,omitempty"`
+	TargetRejectedCount       uint32                   `json:"target_rejected_count,omitempty"`
+	TargetAmbiguous           bool                     `json:"target_ambiguous,omitempty"`
+	ErrorCode                 ErrorCode                `json:"error_code,omitempty"`
 }
 
 // AuditSink receives synchronous, payload-free events. Implementations should

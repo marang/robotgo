@@ -512,6 +512,18 @@ func preparePolicy(input Policy) (Policy, error) {
 			return Policy{}, fmt.Errorf("agent: desktop.inspect-ui requires the role property")
 		}
 	}
+	if _, allowed := prepared.allowOperation[OperationResolveUI]; allowed {
+		if _, inspectAllowed := prepared.allowOperation[OperationInspectUI]; !inspectAllowed {
+			return Policy{}, fmt.Errorf("agent: desktop.resolve-ui requires desktop.inspect-ui")
+		}
+		for _, property := range []UIProperty{
+			UIPropertyRole, UIPropertyName, UIPropertyState, UIPropertyBounds, UIPropertyActions,
+		} {
+			if _, propertyAllowed := prepared.allowUIProperty[property]; !propertyAllowed {
+				return Policy{}, fmt.Errorf("agent: desktop.resolve-ui requires the %s property", property)
+			}
+		}
+	}
 	if _, allowed := prepared.allowOperation[OperationElementAct]; allowed {
 		if _, inspectAllowed := prepared.allowOperation[OperationInspectUI]; !inspectAllowed {
 			return Policy{}, fmt.Errorf("agent: desktop.element-act requires desktop.inspect-ui")
@@ -640,7 +652,7 @@ func knownOperation(operation Operation) bool {
 	case OperationMove, OperationClick, OperationScroll, OperationDrag,
 		OperationTypeText, OperationKeyChord, OperationActivate,
 		OperationObserve, OperationView, OperationOCR, OperationDetectElements,
-		OperationInspectUI, OperationFindColor, OperationWaitColor:
+		OperationInspectUI, OperationResolveUI, OperationFindColor, OperationWaitColor:
 		return true
 	case OperationElementAct:
 		return true

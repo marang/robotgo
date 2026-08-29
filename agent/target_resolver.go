@@ -1,0 +1,504 @@
+package agent
+
+import (
+	"context"
+	"errors"
+	"slices"
+	"unicode/utf8"
+)
+
+const (
+	// TargetSpecSchemaVersion identifies the deterministic semantic locator
+	// contract. TargetSpec v1 deliberately has no fuzzy or visual clauses.
+	TargetSpecSchemaVersion = "1"
+	// TargetResolutionSchemaVersion identifies the privacy-reduced resolver
+	// result contract.
+	TargetResolutionSchemaVersion = "1"
+	maxTargetSpecAncestors        = maxAgentUITreeDepth
+)
+
+// TargetResolutionStrategy identifies the exact semantic resolver path.
+// Healing and visual fallback are intentionally absent from v1.
+type TargetResolutionStrategy string
+
+const (
+	TargetResolutionExactSemantic      TargetResolutionStrategy = "exact-semantic"
+	TargetResolutionStructuralSemantic TargetResolutionStrategy = "structural-semantic"
+)
+
+var allTargetResolutionStrategies = []TargetResolutionStrategy{
+	TargetResolutionExactSemantic,
+	TargetResolutionStructuralSemantic,
+}
+
+// TargetEvidence is a fixed, payload-free explanation token. The order in a
+// result is stable and follows the order of these constants.
+type TargetEvidence string
+
+const (
+	TargetEvidenceWindowIdentity TargetEvidence = "window-identity"
+	TargetEvidenceRole           TargetEvidence = "role"
+	TargetEvidenceName           TargetEvidence = "name"
+	TargetEvidenceStates         TargetEvidence = "required-states"
+	TargetEvidenceActions        TargetEvidence = "required-actions"
+	TargetEvidenceAncestors      TargetEvidence = "ancestor-chain"
+)
+
+// TargetWindowSpec binds a TargetSpec to the same explicit, policy-owned
+// window identity used by its source semantic observation. ExpectedTitle is
+// compared privately and is never returned in resolver evidence or errors.
+type TargetWindowSpec struct {
+	Target        int              `json:"target"`
+	Kind          WindowTargetKind `json:"kind"`
+	ExpectedTitle string           `json:"expected_title"`
+}
+
+// TargetAncestor is one exact structural anchor. Ancestors are ordered from
+// the immediate parent outward and resolution never skips hierarchy levels.
+type TargetAncestor struct {
+	Role           UIRole    `json:"role"`
+	Name           string    `json:"name"`
+	RequiredStates []UIState `json:"required_states,omitempty"`
+}
+
+// TargetSpec describes one exact semantic target in one observation-scoped
+// window. Required state/action clauses use set containment; all identity and
+// ancestor fields use exact equality.
+type TargetSpec struct {
+	SchemaVersion   string           `json:"schema_version"`
+	Window          TargetWindowSpec `json:"window"`
+	Role            UIRole           `json:"role"`
+	Name            string           `json:"name"`
+	RequiredStates  []UIState        `json:"required_states,omitempty"`
+	RequiredActions []UIAction       `json:"required_actions,omitempty"`
+	Ancestors       []TargetAncestor `json:"ancestors,omitempty"`
+}
+
+// ResolveUIRequest resolves one TargetSpec only within one live retained UI
+// observation. Confirmed is used only when immutable policy requires it.
+type ResolveUIRequest struct {
+	ObservationID string     `json:"observation_id"`
+	Target        TargetSpec `json:"target"`
+	Confirmed     bool       `json:"confirmed,omitempty"`
+}
+
+// TargetResolutionResult selects an opaque observation-scoped element only
+// when exactly one candidate matches. Expected is a defensive copy suitable
+// for ElementActionRequest; it grants no mutation authority by itself.
+type TargetResolutionResult struct {
+	SchemaVersion          string                   `json:"schema_version"`
+	ObservationID          string                   `json:"observation_id,omitempty"`
+	Strategy               TargetResolutionStrategy `json:"strategy,omitempty"`
+	MatchedBy              []TargetEvidence         `json:"matched_by,omitempty"`
+	CandidateCount         uint32                   `json:"candidate_count"`
+	RejectedCandidateCount uint32                   `json:"rejected_candidate_count"`
+	Ambiguous              bool                     `json:"ambiguous"`
+	ElementID              string                   `json:"element_id,omitempty"`
+	Expected               *UIElementExpectation    `json:"expected,omitempty"`
+}
+
+type retainedUITarget struct {
+	elementID        string
+	parentID         string
+	parentIncomplete bool
+	expected         UIElementExpectation
+}
+
+type retainedUITargetGraph struct {
+	target     uiBackendTarget
+	elements   []retainedUITarget
+	incomplete bool
+	actionable bool
+}
+
+// ResolveUITarget deterministically resolves one exact semantic or structural
+// TargetSpec against a retained sanitized observation. It never calls a
+// desktop backend and consumes no query, observation, or action quota.
+func (s *Session) ResolveUITarget(ctx context.Context, request ResolveUIRequest) (TargetResolutionResult, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	result := TargetResolutionResult{SchemaVersion: TargetResolutionSchemaVersion}
+	if err := validateResolveUIRequest(request); err != nil {
+		return result, targetResolutionError(ErrorInvalidInput, "invalid semantic target specification", err)
+	}
+	result.ObservationID = request.ObservationID
+	result.Strategy = targetResolutionStrategy(request.Target)
+
+	if err := s.acquire(ctx); err != nil {
+		return clearTargetSelection(result), targetResolutionOperationError(err)
+	}
+	defer s.release()
+	if err := s.ensureOpen(); err != nil {
+		return clearTargetSelection(result), targetResolutionOperationError(err)
+	}
+	if err := s.authorizeTargetResolution(request); err != nil {
+		return clearTargetSelection(result), err
+	}
+	if err := s.emitAudit(ctx, targetResolutionAuditEvent(AuditResolutionStarted, result, "")); err != nil {
+		return clearTargetSelection(result), targetResolutionError(
+			ErrorAuditDelivery, "audit sink rejected semantic target resolution intent", err)
+	}
+	if err := s.targetResolutionExecutionError(ctx); err != nil {
+		return s.finishTargetResolution(ctx, clearTargetSelection(result), err)
+	}
+
+	graph, ok := s.retainUITargetGraph(request.ObservationID)
+	if !ok {
+		operationErr := targetResolutionError(ErrorTargetNotFound, "semantic target observation is unavailable", ErrTargetNotFound)
+		return s.finishTargetResolution(ctx, clearTargetSelection(result), operationErr)
+	}
+	defer clearRetainedUITargets(graph.elements)
+	if operationErr := s.targetResolutionExecutionError(ctx); operationErr != nil {
+		return s.finishTargetResolution(ctx, clearTargetSelection(result), operationErr)
+	}
+	if graph.target.Target != request.Target.Window.Target || graph.target.Kind != request.Target.Window.Kind ||
+		graph.target.ExpectedTitle != request.Target.Window.ExpectedTitle {
+		result.RejectedCandidateCount = uint32(len(graph.elements))
+		operationErr := targetResolutionError(ErrorTargetNotFound, "semantic target was not found", ErrTargetNotFound)
+		return s.finishTargetResolution(ctx, clearTargetSelection(result), operationErr)
+	}
+	if graph.incomplete || !graph.actionable {
+		result.RejectedCandidateCount = uint32(len(graph.elements))
+		operationErr := targetResolutionError(
+			ErrorIncompleteObservation,
+			"semantic target cannot be proven from an incomplete observation",
+			ErrIncompleteObservation,
+		)
+		return s.finishTargetResolution(ctx, clearTargetSelection(result), operationErr)
+	}
+
+	byID := make(map[string]int, len(graph.elements))
+	for index := range graph.elements {
+		byID[graph.elements[index].elementID] = index
+	}
+	var selected *retainedUITarget
+	var incompleteCandidate bool
+	for index := range graph.elements {
+		if operationErr := s.targetResolutionExecutionError(ctx); operationErr != nil {
+			return s.finishTargetResolution(ctx, clearTargetSelection(result), operationErr)
+		}
+		candidate := &graph.elements[index]
+		matches, incomplete := matchesTargetSpec(candidate, request.Target, graph.elements, byID)
+		if !matches {
+			result.RejectedCandidateCount++
+			incompleteCandidate = incompleteCandidate || incomplete
+			continue
+		}
+		result.CandidateCount++
+		if selected == nil {
+			selected = candidate
+		}
+	}
+	if operationErr := s.targetResolutionExecutionError(ctx); operationErr != nil {
+		return s.finishTargetResolution(ctx, clearTargetSelection(result), operationErr)
+	}
+	if result.CandidateCount <= 1 && incompleteCandidate {
+		operationErr := targetResolutionError(
+			ErrorIncompleteObservation,
+			"semantic target cannot be proven from an incomplete observation",
+			ErrIncompleteObservation,
+		)
+		return s.finishTargetResolution(ctx, clearTargetSelection(result), operationErr)
+	}
+
+	switch result.CandidateCount {
+	case 0:
+		operationErr := targetResolutionError(ErrorTargetNotFound, "semantic target was not found", ErrTargetNotFound)
+		return s.finishTargetResolution(ctx, clearTargetSelection(result), operationErr)
+	case 1:
+		result.MatchedBy = targetResolutionEvidence(request.Target)
+		expected := cloneUIElementExpectation(selected.expected)
+		result.ElementID = selected.elementID
+		result.Expected = &expected
+		return s.finishTargetResolution(ctx, result, nil)
+	default:
+		result.MatchedBy = targetResolutionEvidence(request.Target)
+		result.Ambiguous = true
+		operationErr := targetResolutionError(ErrorAmbiguousTarget, "semantic target is ambiguous", ErrAmbiguousTarget)
+		return s.finishTargetResolution(ctx, clearTargetSelection(result), operationErr)
+	}
+}
+
+func validateResolveUIRequest(request ResolveUIRequest) error {
+	if !validObservationID(request.ObservationID) || request.Target.SchemaVersion != TargetSpecSchemaVersion {
+		return errors.New("invalid observation ID or target schema version")
+	}
+	window := request.Target.Window
+	if window.Target <= 0 || !validWindowTargetKind(window.Kind) || window.ExpectedTitle == "" ||
+		!utf8.ValidString(window.ExpectedTitle) || utf8.RuneCountInString(window.ExpectedTitle) > maxAgentWindowTitleRunes {
+		return errors.New("invalid target window identity")
+	}
+	totalNameBytes := len(request.Target.Name)
+	if !validTargetIdentity(request.Target.Role, request.Target.Name, request.Target.RequiredStates) ||
+		len(request.Target.RequiredActions) > maxUIActionsPerNode ||
+		!validUniqueUIActions(request.Target.RequiredActions) {
+		return errors.New("invalid target semantic identity")
+	}
+	if len(request.Target.Ancestors) > maxTargetSpecAncestors {
+		return errors.New("target ancestor chain exceeds the hard limit")
+	}
+	for _, ancestor := range request.Target.Ancestors {
+		if len(ancestor.Name) > maxAgentUIStringBytes-totalNameBytes {
+			return errors.New("target identity text exceeds the hard aggregate limit")
+		}
+		totalNameBytes += len(ancestor.Name)
+		if !validTargetIdentity(ancestor.Role, ancestor.Name, ancestor.RequiredStates) {
+			return errors.New("invalid target ancestor identity")
+		}
+	}
+	return nil
+}
+
+func validTargetIdentity(role UIRole, name string, states []UIState) bool {
+	return validUIRole(role) && name != "" && utf8.ValidString(name) &&
+		len(name) <= maxAgentUIStringBytes && sanitizeUIText(name) == name &&
+		len(states) <= maxUIStatesPerNode && validUniqueUIStates(states)
+}
+
+func (s *Session) authorizeTargetResolution(request ResolveUIRequest) *ActionError {
+	if _, allowed := s.policy.allowOperation[OperationResolveUI]; !allowed {
+		return targetResolutionError(ErrorPolicyDenied, "agent policy denied semantic target resolution", ErrPolicyDenied)
+	}
+	if _, required := s.policy.requireConfirmation[OperationResolveUI]; required && !request.Confirmed {
+		return targetResolutionError(ErrorPolicyDenied, "agent policy requires semantic target resolution confirmation", ErrPolicyDenied)
+	}
+	if _, allowed := s.policy.allowWindow[windowTargetIdentity{
+		target: request.Target.Window.Target,
+		kind:   request.Target.Window.Kind,
+	}]; !allowed {
+		return targetResolutionError(ErrorPolicyDenied, "agent policy denied the semantic target window", ErrPolicyDenied)
+	}
+	totalNameBytes := len(request.Target.Name)
+	for _, ancestor := range request.Target.Ancestors {
+		totalNameBytes += len(ancestor.Name)
+	}
+	if totalNameBytes > int(s.policy.MaxUIStringBytes) || len(request.Target.Ancestors) > int(s.policy.MaxUITreeDepth) {
+		return targetResolutionError(ErrorPolicyDenied, "semantic target specification exceeds UI policy bounds", ErrPolicyDenied)
+	}
+	for _, property := range []UIProperty{
+		UIPropertyRole, UIPropertyName, UIPropertyState, UIPropertyBounds, UIPropertyActions,
+	} {
+		if _, allowed := s.policy.allowUIProperty[property]; !allowed {
+			return targetResolutionError(ErrorPolicyDenied, "agent policy denied a required semantic target property", ErrPolicyDenied)
+		}
+	}
+	if len(request.Target.Ancestors) > 0 {
+		if _, allowed := s.policy.allowUIProperty[UIPropertyHierarchy]; !allowed {
+			return targetResolutionError(ErrorPolicyDenied, "agent policy denied semantic target hierarchy", ErrPolicyDenied)
+		}
+	}
+	if _, allowed := s.policy.allowUIRole[request.Target.Role]; !allowed {
+		return targetResolutionError(ErrorPolicyDenied, "agent policy denied the semantic target role", ErrPolicyDenied)
+	}
+	for _, ancestor := range request.Target.Ancestors {
+		if _, allowed := s.policy.allowUIRole[ancestor.Role]; !allowed {
+			return targetResolutionError(ErrorPolicyDenied, "agent policy denied a semantic target ancestor role", ErrPolicyDenied)
+		}
+	}
+	return nil
+}
+
+func (s *Session) retainUITargetGraph(observationID string) (retainedUITargetGraph, bool) {
+	s.observationMu.Lock()
+	defer s.observationMu.Unlock()
+	record, ok := s.observations[observationID]
+	if !ok || record.uiTarget == nil || record.uiBackend == "" || len(record.uiTree) == 0 {
+		return retainedUITargetGraph{}, false
+	}
+	return retainedUITargetGraph{
+		target:     *record.uiTarget,
+		elements:   cloneRetainedUITargets(record.uiTree),
+		incomplete: record.uiResolutionIncomplete,
+		actionable: record.uiActionable,
+	}, true
+}
+
+func matchesTargetSpec(
+	candidate *retainedUITarget,
+	spec TargetSpec,
+	elements []retainedUITarget,
+	byID map[string]int,
+) (bool, bool) {
+	if candidate == nil || candidate.expected.Sensitive || candidate.expected.Role != spec.Role ||
+		candidate.expected.Name != spec.Name || !validUIBounds(candidate.expected.Bounds) ||
+		!slices.Contains(candidate.expected.States, UIStateEnabled) || len(candidate.expected.Actions) == 0 ||
+		!containsAllUIStates(candidate.expected.States, spec.RequiredStates) ||
+		!containsAllUIActions(candidate.expected.Actions, spec.RequiredActions) {
+		return false, false
+	}
+	parentID := candidate.parentID
+	for _, ancestor := range spec.Ancestors {
+		parentIndex, ok := byID[parentID]
+		if !ok {
+			return false, candidate.parentIncomplete
+		}
+		parent := &elements[parentIndex]
+		if parent.expected.Sensitive {
+			return false, true
+		}
+		if parent.expected.Role != ancestor.Role || parent.expected.Name != ancestor.Name ||
+			!containsAllUIStates(parent.expected.States, ancestor.RequiredStates) {
+			return false, false
+		}
+		candidate = parent
+		parentID = parent.parentID
+	}
+	return true, false
+}
+
+func containsAllUIStates(actual, required []UIState) bool {
+	for _, value := range required {
+		if !slices.Contains(actual, value) {
+			return false
+		}
+	}
+	return true
+}
+
+func containsAllUIActions(actual, required []UIAction) bool {
+	for _, value := range required {
+		if !slices.Contains(actual, value) {
+			return false
+		}
+	}
+	return true
+}
+
+func targetResolutionStrategy(spec TargetSpec) TargetResolutionStrategy {
+	if len(spec.Ancestors) > 0 {
+		return TargetResolutionStructuralSemantic
+	}
+	return TargetResolutionExactSemantic
+}
+
+func targetResolutionEvidence(spec TargetSpec) []TargetEvidence {
+	evidence := []TargetEvidence{
+		TargetEvidenceWindowIdentity,
+		TargetEvidenceRole,
+		TargetEvidenceName,
+	}
+	if len(spec.RequiredStates) > 0 {
+		evidence = append(evidence, TargetEvidenceStates)
+	}
+	if len(spec.RequiredActions) > 0 {
+		evidence = append(evidence, TargetEvidenceActions)
+	}
+	if len(spec.Ancestors) > 0 {
+		evidence = append(evidence, TargetEvidenceAncestors)
+	}
+	return evidence
+}
+
+func targetResolutionAuditEvent(kind AuditKind, result TargetResolutionResult, code ErrorCode) AuditEvent {
+	event := AuditEvent{
+		Kind: kind, Operation: OperationResolveUI, ObservationID: result.ObservationID,
+		TargetResolutionStrategy: result.Strategy,
+		TargetCandidateCount:     result.CandidateCount,
+		TargetRejectedCount:      result.RejectedCandidateCount,
+		TargetAmbiguous:          result.Ambiguous,
+		ErrorCode:                code,
+	}
+	if kind == AuditResolutionFinished {
+		event.TargetMatchedBy = append([]TargetEvidence(nil), result.MatchedBy...)
+	}
+	return event
+}
+
+func (s *Session) finishTargetResolution(
+	ctx context.Context,
+	result TargetResolutionResult,
+	operationErr error,
+) (TargetResolutionResult, error) {
+	auditCtx := ctx
+	cancel := func() {}
+	if ctx.Err() != nil {
+		auditCtx, cancel = context.WithTimeout(context.Background(), uiCompletionAuditTimeout)
+	}
+	defer cancel()
+	if auditErr := s.emitAudit(auditCtx, targetResolutionAuditEvent(
+		AuditResolutionFinished,
+		result,
+		classifyTargetResolutionError(operationErr),
+	)); auditErr != nil {
+		return clearTargetSelection(result), targetResolutionError(
+			ErrorAuditDelivery,
+			"semantic target resolution completed but audit delivery failed",
+			errors.Join(operationErr, auditErr),
+		)
+	}
+	return result, operationErr
+}
+
+func clearTargetSelection(result TargetResolutionResult) TargetResolutionResult {
+	result.ElementID = ""
+	if result.Expected != nil {
+		*result.Expected = UIElementExpectation{}
+		result.Expected = nil
+	}
+	return result
+}
+
+func cloneRetainedUITargets(source []retainedUITarget) []retainedUITarget {
+	result := make([]retainedUITarget, len(source))
+	for index := range source {
+		result[index] = retainedUITarget{
+			elementID:        source[index].elementID,
+			parentID:         source[index].parentID,
+			parentIncomplete: source[index].parentIncomplete,
+			expected:         cloneUIElementExpectation(source[index].expected),
+		}
+	}
+	return result
+}
+
+func clearRetainedUITargets(targets []retainedUITarget) {
+	for index := range targets {
+		clear(targets[index].expected.States)
+		clear(targets[index].expected.Actions)
+		targets[index] = retainedUITarget{}
+	}
+	clear(targets)
+}
+
+func targetResolutionError(code ErrorCode, message string, cause error) *ActionError {
+	return newActionError(code, OperationResolveUI, message, cause)
+}
+
+func targetResolutionOperationError(err error) error {
+	var actionErr *ActionError
+	if errors.As(err, &actionErr) {
+		return &ActionError{Code: actionErr.Code, Operation: OperationResolveUI, Message: actionErr.Message, cause: err}
+	}
+	code, message := classifyBackendError(err)
+	return targetResolutionError(code, message, err)
+}
+
+func targetResolutionContextError(ctx context.Context) error {
+	if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+		return targetResolutionError(ErrorTimedOut, "semantic target resolution deadline exceeded", ctx.Err())
+	}
+	return targetResolutionError(ErrorCanceled, "semantic target resolution canceled", ctx.Err())
+}
+
+func (s *Session) targetResolutionExecutionError(ctx context.Context) error {
+	if ctx.Err() != nil {
+		return targetResolutionContextError(ctx)
+	}
+	if s.ctx.Err() != nil {
+		return targetResolutionError(ErrorSessionClosed, "agent session is closed", ErrSessionClosed)
+	}
+	return nil
+}
+
+func classifyTargetResolutionError(err error) ErrorCode {
+	if err == nil {
+		return ""
+	}
+	var actionErr *ActionError
+	if errors.As(err, &actionErr) {
+		return actionErr.Code
+	}
+	code, _ := classifyBackendError(err)
+	return code
+}
