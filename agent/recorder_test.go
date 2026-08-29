@@ -8,9 +8,28 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 )
+
+type recorderOrderTraceSink struct {
+	calls          atomic.Int32
+	firstEntered   chan struct{}
+	secondReturned <-chan struct{}
+}
+
+func (sink *recorderOrderTraceSink) ExportTrace(_ context.Context, _ RobotGoTrace) error {
+	if sink.calls.Add(1) != 1 {
+		return nil
+	}
+	close(sink.firstEntered)
+	select {
+	case <-sink.secondReturned:
+	case <-time.After(500 * time.Millisecond):
+	}
+	return nil
+}
 
 func recorderPolicy() Policy {
 	policy := tracePolicy(false, TracePrivacyMetadataOnly)
@@ -202,6 +221,70 @@ func TestRecorderNeverRetainsActionValuesCoordinatesOrNativeReferences(t *testin
 		!containsRecorderReview(flow.Events[1].ReviewReasons, RecorderReviewSecretInputOmitted) ||
 		!containsRecorderReview(flow.Events[1].ReviewReasons, RecorderReviewDestructiveAction) {
 		t.Fatalf("review-only redaction events = %+v", flow.Events)
+	}
+}
+
+func TestRecorderPreservesSerializedActionOrderAcrossSlowTraceExport(t *testing.T) {
+	policy := recorderPolicy()
+	policy.AllowTraceExport = true
+	secondReturned := make(chan struct{})
+	sink := &recorderOrderTraceSink{
+		firstEntered: make(chan struct{}), secondReturned: secondReturned,
+	}
+	session, driver := newSemanticSession(t, policy, semanticSnapshot())
+	session.traceSink = sink
+	recorder, err := session.StartRecorder(t.Context(), RecorderRequest{SchemaVersion: SemanticRecorderSchemaVersion})
+	if err != nil {
+		t.Fatal(err)
+	}
+	observation, err := session.InspectUI(t.Context(), InspectUIRequest{Target: 42, Kind: WindowTargetProcess})
+	if err != nil {
+		t.Fatal(err)
+	}
+	button := observation.Elements[1]
+	request := ElementActionRequest{
+		ObservationID: observation.ObservationID, ElementID: button.ElementID,
+		Action: UIActionPress, Expected: expectationFromUIElement(&button), Confirmed: true,
+		Hint:  &RecorderActionHint{Impact: RecorderActionReversible},
+		Trace: &TraceRequest{SchemaVersion: TraceRequestSchemaVersion, Tier: TracePrivacyMetadataOnly, Export: true},
+	}
+	type outcome struct {
+		result ActionResult
+		err    error
+	}
+	firstResult := make(chan outcome, 1)
+	go func() {
+		result, actionErr := session.ActUIElement(context.Background(), request)
+		firstResult <- outcome{result: result, err: actionErr}
+	}()
+	select {
+	case <-sink.firstEntered:
+	case <-time.After(time.Second):
+		t.Fatal("first trace export did not start")
+	}
+	secondResult := make(chan outcome, 1)
+	go func() {
+		result, actionErr := session.ActUIElement(context.Background(), request)
+		secondResult <- outcome{result: result, err: actionErr}
+		close(secondReturned)
+	}()
+	first, second := <-firstResult, <-secondResult
+	if first.err != nil || second.err != nil {
+		t.Fatalf("concurrent actions failed: first=%v second=%v", first.err, second.err)
+	}
+	flow, err := recorder.Stop(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	var actionIDs []string
+	for _, event := range flow.Events {
+		if event.Kind == RecorderEventAction && event.Trace != nil {
+			actionIDs = append(actionIDs, event.Trace.TransactionID)
+		}
+	}
+	if len(actionIDs) != 2 || actionIDs[0] != first.result.ActionID || actionIDs[1] != second.result.ActionID ||
+		driver.actCalls != 2 {
+		t.Fatalf("recorded order=%v executed=%s,%s calls=%d", actionIDs, first.result.ActionID, second.result.ActionID, driver.actCalls)
 	}
 }
 

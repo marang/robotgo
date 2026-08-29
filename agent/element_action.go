@@ -129,7 +129,6 @@ func (robotGoDriver) CheckUIElement(ctx context.Context, request uiBackendElemen
 // shell behavior. Every return contains Action Proof v2.
 func (s *Session) ActUIElement(ctx context.Context, request ElementActionRequest) (result ActionResult, returnErr error) {
 	presentedLeaseID := request.CapabilityLeaseID
-	defer func() { s.recordElementAction(request, presentedLeaseID, result, returnErr) }()
 	started := time.Now()
 	id := fmt.Sprintf("action-%d", actionSerial.Add(1))
 	if ctx == nil {
@@ -159,6 +158,7 @@ func (s *Session) ActUIElement(ctx context.Context, request ElementActionRequest
 		proof.Cleanup.TransientResourcesReleased = true
 		result.DurationMillis = time.Since(started).Milliseconds()
 		returnErr = setElementActionFailure(&result, traceErr, ActionProofRejectedBeforeDispatch, false)
+		s.recordElementAction(request, presentedLeaseID, result, returnErr)
 		return result, returnErr
 	}
 
@@ -190,15 +190,16 @@ func (s *Session) ActUIElement(ctx context.Context, request ElementActionRequest
 		if intentAccepted {
 			result, returnErr = s.finishElementActionAudit(result, terminalPhase, returnErr)
 		}
-		if acquired {
-			s.release()
-		}
 		if traceRecorder != nil {
 			trace, traceErr := traceRecorder.finish(result, returnErr)
 			result.Trace = &trace
 			if traceErr != nil {
 				returnErr = errors.Join(returnErr, traceErr)
 			}
+		}
+		s.recordElementAction(request, presentedLeaseID, result, returnErr)
+		if acquired {
+			s.release()
 		}
 	}()
 
