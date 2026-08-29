@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"go/format"
 	"go/token"
+	"go/types"
 	"slices"
 	"sort"
 	"strings"
@@ -1327,6 +1328,9 @@ func validGeneratedFunctionName(value string) bool {
 }
 
 func generatedFunctionNameReserved(value string) bool {
+	if types.Universe.Lookup(value) != nil {
+		return true
+	}
 	switch value {
 	case "_", "init", "context", "errors", "agent", "flowSession",
 		"generatedFlowSchemaVersion", "generatedTargetSpecVersion",

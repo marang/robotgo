@@ -586,7 +586,7 @@ func TestRecordedFlowRejectsUnsupportedSchemasAndInvalidIdentifiers(t *testing.T
 		"generatedFlowSchemaVersion", "generatedTargetSpecVersion",
 		"generatedCapabilityLeaseVersion", "generatedActionProofVersion",
 		"generatedTraceRequestVersion", "generatedTraceVersion",
-		"verifyGeneratedActionResult",
+		"verifyGeneratedActionResult", "error", "int", "string", "bool", "nil", "len",
 	} {
 		t.Run("reserved-"+functionName, func(t *testing.T) {
 			request := FlowGenerationRequest{PackageName: "flow", FunctionName: functionName}
