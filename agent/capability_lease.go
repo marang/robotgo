@@ -42,6 +42,7 @@ type CapabilityLeaseStatus string
 
 const (
 	CapabilityLeaseNotRequired CapabilityLeaseStatus = "not-required"
+	CapabilityLeaseAbsent      CapabilityLeaseStatus = "absent"
 	CapabilityLeaseIssued      CapabilityLeaseStatus = "issued"
 	CapabilityLeaseReserved    CapabilityLeaseStatus = "reserved"
 	CapabilityLeaseConsumed    CapabilityLeaseStatus = "consumed"

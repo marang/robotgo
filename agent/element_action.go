@@ -140,7 +140,9 @@ func (s *Session) ActUIElement(ctx context.Context, request ElementActionRequest
 		Lease: &CapabilityLeaseProof{Required: s.policy.RequireCapabilityLease,
 			Presented: request.CapabilityLeaseID != "", Status: CapabilityLeaseNotRequired},
 	}
-	if request.CapabilityLeaseID != "" {
+	if s.policy.RequireCapabilityLease && request.CapabilityLeaseID == "" {
+		proof.Lease.Status = CapabilityLeaseAbsent
+	} else if request.CapabilityLeaseID != "" {
 		proof.Lease.Status = CapabilityLeaseInvalidated
 	}
 	result = ActionResult{
@@ -191,6 +193,8 @@ func (s *Session) ActUIElement(ctx context.Context, request ElementActionRequest
 	leaseReservation, leaseErr = s.reserveCapabilityLease(request)
 	if leaseErr != nil {
 		switch leaseErr.Code {
+		case ErrorLeaseRequired:
+			proof.Lease.Status = CapabilityLeaseAbsent
 		case ErrorLeaseExpired:
 			proof.Lease.Status = CapabilityLeaseExpired
 		case ErrorLeaseConsumed:

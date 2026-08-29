@@ -470,7 +470,10 @@ func adaptiveTargetScore(candidate *retainedUITarget, spec TargetSpec, elements 
 			return 0, nil, candidate.parentIncomplete
 		}
 		parent := &elements[parentIndex]
-		if parent.expected.Sensitive || parent.expected.Role != ancestor.Role ||
+		if parent.expected.Sensitive {
+			return 0, nil, true
+		}
+		if parent.expected.Role != ancestor.Role ||
 			!containsAllUIStates(parent.expected.States, ancestor.RequiredStates) {
 			return 0, nil, false
 		}

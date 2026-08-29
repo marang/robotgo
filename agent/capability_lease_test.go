@@ -143,12 +143,13 @@ func TestCapabilityLeaseExpiryMismatchObservationReleaseAndCloseFailClosed(t *te
 	t.Run("required", func(t *testing.T) {
 		session, driver, observation := inspectResolverFixture(t, capabilityLeasePolicy(), semanticSnapshot())
 		button := observation.Elements[1]
-		_, err := session.ActUIElement(t.Context(), ElementActionRequest{
+		result, err := session.ActUIElement(t.Context(), ElementActionRequest{
 			ObservationID: observation.ObservationID, ElementID: button.ElementID,
 			Expected: expectationFromUIElement(&button), Action: UIActionPress,
 		})
-		if !hasErrorCode(err, ErrorLeaseRequired) || driver.actCalls != 0 {
-			t.Fatalf("required err=%v calls=%d", err, driver.actCalls)
+		if !hasErrorCode(err, ErrorLeaseRequired) || result.Proof.Lease.Presented ||
+			result.Proof.Lease.Status != CapabilityLeaseAbsent || driver.actCalls != 0 {
+			t.Fatalf("required result=%+v err=%v calls=%d", result, err, driver.actCalls)
 		}
 	})
 	t.Run("resolver-required", func(t *testing.T) {
@@ -389,6 +390,29 @@ func TestAdaptiveAndReviewResolutionAreUniqueAndNonExecutable(t *testing.T) {
 		})
 		if !hasErrorCode(err, ErrorAmbiguousTarget) || !result.Ambiguous || result.CandidateCount != 2 || result.Lease != nil {
 			t.Fatalf("ambiguous result=%+v err=%v", result, err)
+		}
+	})
+	t.Run("sensitive-ancestor-fails-closed", func(t *testing.T) {
+		policy := capabilityLeasePolicy()
+		policy.AllowedUIRoles = append(policy.AllowedUIRoles, UIRoleGroup)
+		snapshot := uiBackendSnapshot{Backend: "fake-accessibility", Nodes: []uiBackendNode{
+			{StableID: []byte("window"), Parent: -1, Depth: 0, Role: UIRoleWindow, Name: "Fixture", States: []UIState{UIStateEnabled}},
+			{StableID: []byte("secret-group"), Parent: 0, Depth: 1, Role: UIRoleGroup, Name: "Section", Sensitive: true, States: []UIState{UIStateEnabled}},
+			{StableID: []byte("secret-button"), Parent: 1, Depth: 2, Role: UIRoleButton, Name: "Save", States: []UIState{UIStateEnabled}, Actions: []UIAction{UIActionPress}, Bounds: &UIBounds{Width: 40, Height: 20}},
+			{StableID: []byte("public-group"), Parent: 0, Depth: 1, Role: UIRoleGroup, Name: "Section", States: []UIState{UIStateEnabled}},
+			{StableID: []byte("public-button"), Parent: 3, Depth: 2, Role: UIRoleButton, Name: "Save", States: []UIState{UIStateEnabled}, Actions: []UIAction{UIActionPress}, Bounds: &UIBounds{Width: 40, Height: 20}},
+		}}
+		session, _, observation := inspectResolverFixture(t, policy, snapshot)
+		spec := targetSpec("Save")
+		spec.RequiredStates = []UIState{UIStateEnabled}
+		spec.RequiredActions = []UIAction{UIActionPress}
+		spec.Ancestors = []TargetAncestor{{Role: UIRoleGroup, Name: "Section", RequiredStates: []UIState{UIStateEnabled}}}
+		result, err := session.ResolveUITarget(t.Context(), ResolveUIRequest{
+			ObservationID: observation.ObservationID, Target: spec, Mode: TargetResolutionModeAdaptive,
+			Lease: &CapabilityLeaseRequest{SchemaVersion: CapabilityLeaseSchemaVersion, Action: UIActionPress, DurationMillis: 1000},
+		})
+		if !hasErrorCode(err, ErrorIncompleteObservation) || result.Lease != nil || result.CandidateCount != 1 {
+			t.Fatalf("sensitive ancestor result=%+v err=%v", result, err)
 		}
 	})
 }
