@@ -465,8 +465,18 @@ func TestRecordedFlowRejectsUnsupportedSchemasAndInvalidIdentifiers(t *testing.T
 			}
 		})
 	}
-	if _, err := flow.Generate(FlowGenerationRequest{PackageName: "package", FunctionName: "Run"}); err == nil || !hasErrorCode(err, ErrorInvalidInput) {
-		t.Fatalf("invalid identifier = %v", err)
+	for name, request := range map[string]FlowGenerationRequest{
+		"keyword package": {PackageName: "package", FunctionName: "Run"},
+		"blank package":   {PackageName: "_", FunctionName: "Run"},
+		"blank function":  {PackageName: "flow", FunctionName: "_"},
+		"init function":   {PackageName: "flow", FunctionName: "init"},
+		"main entrypoint": {PackageName: "main", FunctionName: "main"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			if _, err := flow.Generate(request); err == nil || !hasErrorCode(err, ErrorInvalidInput) {
+				t.Fatalf("invalid identifier = %v", err)
+			}
+		})
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()

@@ -543,7 +543,7 @@ func TestTraceCancellationAndLifetimeAreExplicit(t *testing.T) {
 		policy := tracePolicy(false, TracePrivacyMetadataOnly)
 		policy.TraceLifetimeMillis = 100
 		session, driver, request := inspectSemanticConditionFixture(t, policy)
-		clock := time.Date(2026, time.August, 29, 12, 0, 0, 0, time.UTC)
+		clock := session.now()
 		session.now = func() time.Time { return clock }
 		driver.checkResults = []uiBackendElementConditionResult{{Satisfied: true, CleanupComplete: true}}
 		driver.checkFinish = func(int) { clock = clock.Add(100 * time.Millisecond) }

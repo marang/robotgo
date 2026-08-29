@@ -936,7 +936,8 @@ func (flow RecordedFlow) Generate(request FlowGenerationRequest) (GeneratedFlowA
 	if err := validateRecordedFlow(flow); err != nil {
 		return GeneratedFlowArtifacts{}, err
 	}
-	if !validGeneratedIdentifier(request.PackageName) || !validGeneratedIdentifier(request.FunctionName) {
+	if !validGeneratedPackageName(request.PackageName) || !validGeneratedFunctionName(request.FunctionName) ||
+		request.PackageName == "main" && request.FunctionName == "main" {
 		return GeneratedFlowArtifacts{}, recorderActionError(ErrorInvalidInput, "invalid generated Go identifier", errors.New("package and function names must be identifiers"))
 	}
 	generationFlow := flowForGeneration(flow)
@@ -1268,6 +1269,14 @@ func flowForGeneration(source RecordedFlow) RecordedFlow {
 		ReviewReasons: []RecorderReviewReason{RecorderReviewTruncatedFlow},
 	})
 	return result
+}
+
+func validGeneratedPackageName(value string) bool {
+	return validGeneratedIdentifier(value) && value != "_"
+}
+
+func validGeneratedFunctionName(value string) bool {
+	return validGeneratedIdentifier(value) && value != "_" && value != "init"
 }
 
 func validGeneratedIdentifier(value string) bool {

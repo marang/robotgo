@@ -1132,7 +1132,11 @@ func TestExtendedActionRateAndSessionLifetimeAreBounded(t *testing.T) {
 	timeoutPolicy.SessionTimeoutMillis = 1
 	_ = session.Close()
 	timeoutSession := newTestSession(t, timeoutPolicy, &fakeDriver{})
-	time.Sleep(5 * time.Millisecond)
+	select {
+	case <-timeoutSession.ctx.Done():
+	case <-time.After(time.Second):
+		t.Fatal("session deadline did not expire")
+	}
 	_, err := timeoutSession.Execute(t.Context(), request)
 	var actionErr *ActionError
 	if !errors.As(err, &actionErr) || actionErr.Code != ErrorTimedOut {
