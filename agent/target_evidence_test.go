@@ -362,7 +362,7 @@ func TestTargetEvidenceThresholdsAndAmbiguityAreDeterministic(t *testing.T) {
 			Actions: []UIAction{UIActionPress}, Bounds: &UIBounds{X: 2, Y: 2, Width: 4, Height: 2},
 		})
 		session, driver := newSemanticSession(t, policy, snapshot)
-		driver.fakeDriver.captureImages = []image.Image{syntheticCapture(8, 6, 0)}
+		driver.captureImages = []image.Image{syntheticCapture(8, 6, 0)}
 		installFakeOCR(session, &fakeOCRAnalyzer{boxes: []rawOCRBox{{
 			text: []byte("Save"), bounds: image.Rect(1, 1, 3, 2), confidence: 0.9,
 		}}})
