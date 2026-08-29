@@ -635,6 +635,50 @@ func TestTargetEvidencePublicationIsRemovedOnAuditFailure(t *testing.T) {
 	}
 }
 
+func TestTargetEvidenceRetentionIsBoundedAndClearsEvictedRecords(t *testing.T) {
+	session, _ := targetEvidenceSession(t, targetEvidencePolicy(TargetEvidenceSourceOCR))
+	clock := time.Date(2026, time.August, 29, 12, 0, 0, 0, time.UTC)
+	session.now = func() time.Time { return clock }
+	view := createTargetEvidenceView(t, session)
+
+	var firstID string
+	firstLanguages := []string{"private-language"}
+	firstItems := []retainedTargetEvidenceItem{{
+		bounds: targetEvidenceAnalysisRegion, confidence: 0.9, kind: "private-kind",
+	}}
+	for index := 0; index <= maxRetainedTargetEvidenceRecords; index++ {
+		clock = clock.Add(time.Millisecond)
+		languages := []string{"eng"}
+		items := []retainedTargetEvidenceItem{{bounds: targetEvidenceAnalysisRegion, confidence: 0.9}}
+		if index == 0 {
+			languages = firstLanguages
+			items = firstItems
+		}
+		id, err := session.storeTargetEvidence(view.ObservationID, retainedTargetEvidence{
+			source: TargetEvidenceSourceOCR, region: targetEvidenceAnalysisRegion,
+			backend: "fake-memory-ocr", model: "fixture-v1", languages: languages,
+			createdAt: clock, items: items,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if index == 0 {
+			firstID = id
+		}
+	}
+
+	record, ok := session.observation(view.ObservationID)
+	if !ok || len(record.targetEvidence) != maxRetainedTargetEvidenceRecords {
+		t.Fatalf("retained evidence count=%d, want %d", len(record.targetEvidence), maxRetainedTargetEvidenceRecords)
+	}
+	if _, exists := record.targetEvidence[firstID]; exists {
+		t.Fatalf("oldest evidence %q was not evicted", firstID)
+	}
+	if firstLanguages[0] != "" || firstItems[0] != (retainedTargetEvidenceItem{}) {
+		t.Fatalf("evicted evidence was not cleared: languages=%q items=%+v", firstLanguages, firstItems)
+	}
+}
+
 func TestTargetEvidenceIsClearedWithObservation(t *testing.T) {
 	session, _ := targetEvidenceSession(t, targetEvidencePolicy(TargetEvidenceSourceOCR))
 	installFakeOCR(session, &fakeOCRAnalyzer{boxes: []rawOCRBox{{

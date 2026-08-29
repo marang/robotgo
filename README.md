@@ -964,7 +964,9 @@ evidence is consulted only when semantic adaptation finds no candidate; it can
 score existing candidates by geometry but never creates coordinate action
 authority or overrides incomplete or ambiguous semantic evidence. Policy must
 allow the exact source, backend/model, analysis region, confidence threshold,
-and maximum age. Redacted, downscaled, sanitized, truncated, clipped, stale,
+and maximum age. Each image observation retains at most the 16 most recent
+analysis-evidence results; an older opaque evidence ID becomes stale after
+eviction. Redacted, downscaled, sanitized, truncated, clipped, stale,
 or released image lineage fails closed. An evidence-backed lease expires no
 later than its oldest image/analysis evidence and is invalidated when either
 observation is released. Pointer, keyboard, and silent retry remain absent.

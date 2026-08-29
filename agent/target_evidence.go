@@ -13,6 +13,7 @@ const (
 	// reference used by TargetSpec v2.
 	TargetEvidenceClauseSchemaVersion = "1"
 	maxTargetEvidenceClauses          = 2
+	maxRetainedTargetEvidenceRecords  = 16
 	maxTargetEvidenceIdentifierBytes  = 128
 	targetEvidenceIDPrefix            = "target-evidence-"
 	targetEvidenceOCRScore            = 25
@@ -151,10 +152,37 @@ func (s *Session) storeTargetEvidence(observationID string, evidence retainedTar
 	if record.targetEvidence == nil {
 		record.targetEvidence = make(map[string]retainedTargetEvidence)
 	}
+	pruneRetainedTargetEvidence(
+		record.targetEvidence, s.now(), time.Duration(s.policy.MaxTargetEvidenceAgeMillis)*time.Millisecond,
+	)
 	evidence.id = newTargetEvidenceID()
 	record.targetEvidence[evidence.id] = evidence
 	s.observations[observationID] = record
 	return evidence.id, nil
+}
+
+func pruneRetainedTargetEvidence(records map[string]retainedTargetEvidence, now time.Time, maximumAge time.Duration) {
+	for id, evidence := range records {
+		age := now.Sub(evidence.createdAt)
+		if evidence.createdAt.IsZero() || age < 0 || age > maximumAge {
+			clearRetainedTargetEvidence(&evidence)
+			delete(records, id)
+		}
+	}
+	for len(records) >= maxRetainedTargetEvidenceRecords {
+		oldestID := ""
+		var oldestCreatedAt time.Time
+		for id, evidence := range records {
+			if oldestID == "" || evidence.createdAt.Before(oldestCreatedAt) ||
+				(evidence.createdAt.Equal(oldestCreatedAt) && id < oldestID) {
+				oldestID = id
+				oldestCreatedAt = evidence.createdAt
+			}
+		}
+		evidence := records[oldestID]
+		clearRetainedTargetEvidence(&evidence)
+		delete(records, oldestID)
+	}
 }
 
 func (s *Session) publishTargetEvidence(observationID string, evidence retainedTargetEvidence) (string, error) {
