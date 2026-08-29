@@ -1323,7 +1323,20 @@ func validGeneratedPackageName(value string) bool {
 }
 
 func validGeneratedFunctionName(value string) bool {
-	return validGeneratedIdentifier(value) && value != "_" && value != "init"
+	return validGeneratedIdentifier(value) && !generatedFunctionNameReserved(value)
+}
+
+func generatedFunctionNameReserved(value string) bool {
+	switch value {
+	case "_", "init", "context", "errors", "agent", "flowSession",
+		"generatedFlowSchemaVersion", "generatedTargetSpecVersion",
+		"generatedCapabilityLeaseVersion", "generatedActionProofVersion",
+		"generatedTraceRequestVersion", "generatedTraceVersion",
+		"verifyGeneratedActionResult":
+		return true
+	default:
+		return false
+	}
 }
 
 func validGeneratedIdentifier(value string) bool {

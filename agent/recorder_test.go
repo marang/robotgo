@@ -581,6 +581,20 @@ func TestRecordedFlowRejectsUnsupportedSchemasAndInvalidIdentifiers(t *testing.T
 			}
 		})
 	}
+	for _, functionName := range []string{
+		"context", "errors", "agent", "flowSession",
+		"generatedFlowSchemaVersion", "generatedTargetSpecVersion",
+		"generatedCapabilityLeaseVersion", "generatedActionProofVersion",
+		"generatedTraceRequestVersion", "generatedTraceVersion",
+		"verifyGeneratedActionResult",
+	} {
+		t.Run("reserved-"+functionName, func(t *testing.T) {
+			request := FlowGenerationRequest{PackageName: "flow", FunctionName: functionName}
+			if _, err := flow.Generate(request); err == nil || !hasErrorCode(err, ErrorInvalidInput) {
+				t.Fatalf("reserved generated identifier %q = %v", functionName, err)
+			}
+		})
+	}
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	policy := recorderPolicy()
