@@ -154,7 +154,7 @@ func TestCapabilityLeasePublicationRechecksObservationLiveness(t *testing.T) {
 		ObservationID: observation.ObservationID, Target: targetSpec("Save"), Mode: TargetResolutionModeStrict,
 		Lease: &CapabilityLeaseRequest{SchemaVersion: CapabilityLeaseSchemaVersion, Action: UIActionPress, DurationMillis: 1000},
 	}
-	lease, err := session.issueCapabilityLease(request, selected, time.Time{})
+	lease, err := session.issueCapabilityLease(request, selected, time.Time{}, retainedTraceResolution{})
 	if lease != nil || !errors.Is(err, ErrStaleTarget) || len(session.leases) != 0 || session.usedLeases != 0 {
 		t.Fatalf("post-release publication lease=%+v err=%v records=%d used=%d", lease, err, len(session.leases), session.usedLeases)
 	}

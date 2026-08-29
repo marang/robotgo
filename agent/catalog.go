@@ -106,6 +106,12 @@ func elementActCapability(policy Policy, capabilities robotgo.RuntimeCapabilitie
 		UIVerificationAttempts:       policy.UIVerificationAttempts,
 		UIVerificationIntervalMillis: policy.UIVerificationIntervalMillis,
 		UIVerificationTimeoutMillis:  policy.UIVerificationTimeoutMillis,
+		TraceSchemaVersion:           RobotGoTraceSchemaVersion,
+		TracePrivacyTiers:            append([]TracePrivacyTier(nil), policy.AllowedTraceTiers...),
+		MaxTraceEvents:               policy.MaxTraceEvents,
+		MaxTraceBytes:                policy.MaxTraceBytes,
+		TraceLifetimeMillis:          policy.TraceLifetimeMillis,
+		TraceExportAllowed:           policy.AllowTraceExport,
 	}
 }
 
@@ -455,6 +461,9 @@ func cloneCatalog(source OperationCatalog) OperationCatalog {
 		)
 		cloned.Operations[index].TargetEvidenceProviders = append(
 			[]TargetEvidenceProvider(nil), cloned.Operations[index].TargetEvidenceProviders...,
+		)
+		cloned.Operations[index].TracePrivacyTiers = append(
+			[]TracePrivacyTier(nil), cloned.Operations[index].TracePrivacyTiers...,
 		)
 	}
 	return cloned

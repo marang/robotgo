@@ -165,13 +165,38 @@ expire no later than the oldest evidence, and invalidate when either
 observation is released. The checked-in `target_evidence_review` example shows
 the non-executable visual path against a self-owned GUI.
 
+## LAB-84 privacy-tiered verified-transaction trace
+
+Catalog schema v14 adds Trace v1 to `desktop.element-act`. Capture requires an
+explicit per-action Trace request and immutable policy allow-listing of one of
+four fixed tiers: `metadata-only`, `semantic-redacted`, `visual-redacted`, or
+`full-explicit`. Event count, serialized bytes, capture lifetime, and optional
+sink export are independently bounded. With no allowed tier, capture and export
+remain denied.
+
+The timeline has stable event kinds and codes for transaction start, resolver
+outcome, authorization, backend selection, dispatch, verification,
+cancellation, cleanup, and terminal outcome. Capability leases carry only a
+defensive privacy-safe copy of their resolver provenance into the later action
+transaction. Lower tiers project observation and evidence detail away;
+visual-redacted exposes fixed source tokens but not exact provider identity,
+while full-explicit may expose the bounded provider metadata already approved
+by policy. Every tier excludes target/locator text, action values, credentials,
+clipboard data, pixels, native handles, unrestricted accessibility trees,
+lease tokens, and raw backend errors.
+
+Trace is output evidence only: it cannot be passed back as action input and
+cannot authorize, heal, retry, replay, or dispatch. Truncation, redaction,
+missing stages, lifetime expiry, cleanup, transaction error, and export status
+are explicit. Export receives one complete defensive copy after the action and
+audit terminal events; failure returns `trace-export-failed` without changing
+Action Proof or the recorded desktop outcome.
+
 ## Next slices
 
-1. privacy-tiered RobotGo Trace
-   ([`LAB-84`](https://linear.app/riotbox/issue/LAB-84/add-privacy-tiered-robotgo-trace-for-verified-transactions));
-2. semantic recorder/code generation
+1. semantic recorder/code generation
    ([`LAB-85`](https://linear.app/riotbox/issue/LAB-85/add-semantic-recorder-and-verified-flow-code-generation));
-3. side-effect-free capability planner
+2. side-effect-free capability planner
    ([`LAB-86`](https://linear.app/riotbox/issue/LAB-86/add-side-effect-free-verified-flow-capability-planner)).
 
 Each slice remains independently deny-by-default and must preserve exact target
