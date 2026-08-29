@@ -224,6 +224,49 @@ func TestRecorderNeverRetainsActionValuesCoordinatesOrNativeReferences(t *testin
 	}
 }
 
+func TestRecorderSanitizesRejectedCallerControlledVocabulary(t *testing.T) {
+	session, _ := newSemanticSession(t, recorderPolicy(), semanticSnapshot())
+	recorder, err := session.StartRecorder(t.Context(), RecorderRequest{SchemaVersion: SemanticRecorderSchemaVersion})
+	if err != nil {
+		t.Fatal(err)
+	}
+	const (
+		privateAction    = "private-semantic-action-sentinel"
+		privateState     = "private-condition-state-sentinel"
+		privateOperation = "private-operation-sentinel"
+	)
+	if _, actionErr := session.ActUIElement(t.Context(), ElementActionRequest{
+		Action: UIAction(privateAction), Value: "private-value-sentinel",
+		Postcondition: &UIElementCondition{Kind: UIElementConditionStatePresent, State: UIState(privateState)},
+	}); !hasErrorCode(actionErr, ErrorInvalidInput) {
+		t.Fatalf("invalid semantic action = %v", actionErr)
+	}
+	if _, actionErr := session.Execute(t.Context(), ActionRequest{Operation: Operation(privateOperation)}); !hasErrorCode(actionErr, ErrorInvalidInput) {
+		t.Fatalf("invalid operation = %v", actionErr)
+	}
+	flow, err := recorder.Stop(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	payload, err := json.Marshal(flow)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, forbidden := range []string{privateAction, privateState, privateOperation, "private-value-sentinel"} {
+		if strings.Contains(string(payload), forbidden) {
+			t.Fatalf("rejected request leaked %q: %s", forbidden, payload)
+		}
+	}
+	if len(flow.Events) != 2 || flow.Events[0].Kind != RecorderEventReview ||
+		flow.Events[0].Operation != OperationElementAct || flow.Events[1].Kind != RecorderEventReview ||
+		flow.Events[1].Operation != "" {
+		t.Fatalf("sanitized review events = %+v", flow.Events)
+	}
+	if _, err := flow.Generate(FlowGenerationRequest{PackageName: "flow", FunctionName: "Review"}); err != nil {
+		t.Fatalf("sanitized rejected flow did not generate: %v", err)
+	}
+}
+
 func TestRecorderPreservesSerializedActionOrderAcrossSlowTraceExport(t *testing.T) {
 	policy := recorderPolicy()
 	policy.AllowTraceExport = true
@@ -741,11 +784,19 @@ func TestRecorderMarksLocatorPatchesVisualEvidenceAndMissingProofForReview(t *te
 	}
 
 	session, _ := newSemanticSession(t, recorderPolicy(), semanticSnapshot())
+	observation, err := session.InspectUI(t.Context(), InspectUIRequest{Target: 42, Kind: WindowTargetProcess})
+	if err != nil {
+		t.Fatal(err)
+	}
+	button := observation.Elements[1]
 	recorder, err := session.StartRecorder(t.Context(), RecorderRequest{SchemaVersion: SemanticRecorderSchemaVersion})
 	if err != nil {
 		t.Fatal(err)
 	}
-	session.recordElementAction(ElementActionRequest{Action: UIActionPress}, "", ActionResult{
+	session.recordElementAction(ElementActionRequest{
+		ObservationID: observation.ObservationID, ElementID: button.ElementID,
+		Action: UIActionPress, Expected: expectationFromUIElement(&button), Confirmed: true,
+	}, "", ActionResult{
 		Operation: OperationElementAct, Status: ActionUnverified,
 	}, errors.New("private backend detail"))
 	flow, err := recorder.Stop(t.Context())

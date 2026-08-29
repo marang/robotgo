@@ -494,6 +494,17 @@ func (s *Session) recordElementAction(
 	if recorder == nil {
 		return
 	}
+	if validateElementActionRequest(request) != nil {
+		reviews := []RecorderReviewReason{RecorderReviewUnsupportedAction, RecorderReviewUnverifiedOutcome}
+		if request.Action == UIActionSetValue || request.Value != "" {
+			reviews = append(reviews, RecorderReviewSecretInputOmitted, RecorderReviewDestructiveAction)
+		}
+		recorder.appendEvent(RecorderEvent{
+			Kind: RecorderEventReview, Operation: OperationElementAct,
+			ReviewRequired: true, ReviewReasons: reviews,
+		})
+		return
+	}
 	binding, found := recorder.lookupBinding(presentedLeaseID, request.ObservationID, request.ElementID)
 	reviews := append([]RecorderReviewReason(nil), binding.reviews...)
 	if !found {
@@ -563,8 +574,12 @@ func (s *Session) recordNonSemanticAction(request ActionRequest, result ActionRe
 	if recorder == nil {
 		return
 	}
+	operation := result.Operation
+	if !knownOperation(operation) {
+		operation = ""
+	}
 	reasons := []RecorderReviewReason{RecorderReviewUnsupportedAction}
-	switch request.Operation {
+	switch operation {
 	case OperationMove, OperationClick, OperationScroll, OperationDrag:
 		reasons = append(reasons, RecorderReviewCoordinateInput)
 	case OperationTypeText, OperationKeyChord:
@@ -576,7 +591,7 @@ func (s *Session) recordNonSemanticAction(request ActionRequest, result ActionRe
 		reasons = appendRecorderReview(reasons, RecorderReviewUnverifiedOutcome)
 	}
 	recorder.appendEvent(RecorderEvent{
-		Kind: RecorderEventReview, Operation: request.Operation,
+		Kind: RecorderEventReview, Operation: operation,
 		ReviewRequired: true, ReviewReasons: reasons, Executable: false,
 	})
 }
@@ -1181,7 +1196,7 @@ func validateRecorderEvent(event RecorderEvent) error {
 			return recorderActionError(ErrorInvalidInput, "invalid action trace review", errors.New("missing incomplete trace review marker"))
 		}
 	case RecorderEventReview:
-		if !knownOperation(event.Operation) {
+		if event.Operation != "" && !knownOperation(event.Operation) {
 			return recorderActionError(ErrorInvalidInput, "invalid recorded review operation", errors.New("unknown operation"))
 		}
 	default:
