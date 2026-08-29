@@ -165,6 +165,18 @@ func (s *Session) issueCapabilityLease(request ResolveUIRequest, selected *retai
 	if request.Lease.Action == UIActionSetValue {
 		record.valueDigest, record.hasValueDigest = parseLeaseValueDigest(request.Lease.ActionValueSHA256)
 	}
+	// Lease publication and observation release share this lock order so a
+	// release cannot linearize between the liveness check and insertion.
+	s.observationMu.Lock()
+	defer s.observationMu.Unlock()
+	observation, ok := s.observations[request.ObservationID]
+	expected, expectedOK := observation.uiExpected[selected.elementID]
+	reference, referenceOK := observation.uiElements[selected.elementID]
+	if !ok || observation.uiTarget == nil || !observation.uiActionable ||
+		!expectedOK || !referenceOK || len(reference) == 0 ||
+		!equalUIExpectation(expected, selected.expected) {
+		return nil, ErrStaleTarget
+	}
 	s.leaseMu.Lock()
 	defer s.leaseMu.Unlock()
 	if s.closedLeases || s.usedLeases >= s.policy.MaxCapabilityLeases {

@@ -257,7 +257,9 @@ func (s *Session) ResolveUITarget(ctx context.Context, request ResolveUIRequest)
 			lease, err := s.issueCapabilityLease(request, selected)
 			if err != nil {
 				code := ErrorBackendFailure
-				if errors.Is(err, ErrPolicyDenied) {
+				if errors.Is(err, ErrStaleTarget) {
+					code = ErrorStaleTarget
+				} else if errors.Is(err, ErrPolicyDenied) {
 					code = ErrorPolicyDenied
 				}
 				operationErr := targetResolutionError(code, "semantic capability lease could not be issued", err)

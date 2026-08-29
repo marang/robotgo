@@ -139,6 +139,27 @@ func TestCapabilityLeaseConcurrentReplayDispatchesAtMostOnce(t *testing.T) {
 	}
 }
 
+func TestCapabilityLeasePublicationRechecksObservationLiveness(t *testing.T) {
+	session, _, observation := inspectResolverFixture(t, capabilityLeasePolicy(), semanticSnapshot())
+	graph, ok := session.retainUITargetGraph(observation.ObservationID)
+	if !ok {
+		t.Fatal("retain target graph")
+	}
+	defer clearRetainedUITargets(graph.elements)
+	selected := &graph.elements[1]
+	if err := session.ReleaseObservation(observation.ObservationID); err != nil {
+		t.Fatal(err)
+	}
+	request := ResolveUIRequest{
+		ObservationID: observation.ObservationID, Target: targetSpec("Save"), Mode: TargetResolutionModeStrict,
+		Lease: &CapabilityLeaseRequest{SchemaVersion: CapabilityLeaseSchemaVersion, Action: UIActionPress, DurationMillis: 1000},
+	}
+	lease, err := session.issueCapabilityLease(request, selected)
+	if lease != nil || !errors.Is(err, ErrStaleTarget) || len(session.leases) != 0 || session.usedLeases != 0 {
+		t.Fatalf("post-release publication lease=%+v err=%v records=%d used=%d", lease, err, len(session.leases), session.usedLeases)
+	}
+}
+
 func TestCapabilityLeaseExpiryMismatchObservationReleaseAndCloseFailClosed(t *testing.T) {
 	t.Run("required", func(t *testing.T) {
 		session, driver, observation := inspectResolverFixture(t, capabilityLeasePolicy(), semanticSnapshot())
