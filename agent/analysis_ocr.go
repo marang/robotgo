@@ -29,8 +29,8 @@ import (
 
 const (
 	ocrBackendAvailable = true
-	ocrBackendName      = "tesseract-memory"
-	ocrModelName        = "tesseract-word-boxes-v1"
+	ocrBackendName      = OCRAnalysisBackend
+	ocrModelName        = OCRAnalysisModel
 )
 
 type tesseractMemoryAnalyzer struct{}

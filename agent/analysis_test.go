@@ -128,7 +128,8 @@ func TestVisualDetectionReturnsDeterministicObservationBoundProposals(t *testing
 	}) {
 		t.Fatalf("visual proposal = %+v", got)
 	}
-	if result.Metadata.Backend != visualBackendName || result.Metadata.Model != visualModelName {
+	if result.Metadata.Backend != VisualAnalysisBackend || result.Metadata.Model != VisualAnalysisModel ||
+		result.Metadata.EvidenceID != "" {
 		t.Fatalf("visual metadata = %+v", result.Metadata)
 	}
 	record, ok := session.observation(view.Metadata.ObservationID)

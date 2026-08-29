@@ -6,7 +6,7 @@ import (
 )
 
 // AuditSchemaVersion identifies the payload-free audit event contract.
-const AuditSchemaVersion = "5"
+const AuditSchemaVersion = "6"
 
 // UIConditionPhase identifies which bounded semantic verification phase
 // produced a terminal audit event.
@@ -71,6 +71,8 @@ type AuditEvent struct {
 	TargetCandidateCount      uint32                   `json:"target_candidate_count,omitempty"`
 	TargetRejectedCount       uint32                   `json:"target_rejected_count,omitempty"`
 	TargetAmbiguous           bool                     `json:"target_ambiguous,omitempty"`
+	TargetEvidenceSources     []TargetEvidenceSource   `json:"target_evidence_sources,omitempty"`
+	TargetEvidenceAgeMillis   int64                    `json:"target_evidence_age_ms,omitempty"`
 	ErrorCode                 ErrorCode                `json:"error_code,omitempty"`
 }
 

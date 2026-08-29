@@ -1,6 +1,6 @@
 # Verified Adaptive Workflows Plan
 
-Status: P011 in progress; LAB-81 TargetSpec v1 and deterministic resolver complete
+Status: P011 in progress; LAB-83 policy-gated OCR/visual resolver evidence complete
 
 Linear coordination:
 
@@ -138,15 +138,40 @@ rewrite or dispatches. Action Proof v2 and Audit schema v5 expose fixed lease
 lifecycle and adaptive evidence without tokens, names, titles, values, native
 references, or policy payloads.
 
+## LAB-83 OCR and visual resolver evidence
+
+Catalog schema v13 and TargetSpec v2 add at most one OCR clause and one visual
+clause referencing opaque items from explicit prior analysis results. Both
+clauses must share one live image observation. Semantic-only TargetSpec v1
+remains accepted, and native accessibility candidates always keep precedence:
+analysis evidence is considered only when semantic adaptation produces no
+candidate and never overrides ambiguity or incomplete native evidence.
+
+Immutable policy independently allow-lists evidence sources, exact
+backend/model providers, analysis regions, minimum OCR/visual confidence, and
+maximum evidence age. Redacted or downscaled views and sanitized, truncated,
+clipped, future-dated, stale, released, or cross-observation analysis lineage
+fail closed. OCR contributes a fixed 25 points and visual proposals 15 points
+to an otherwise eligible native candidate whose bounds contain the selected
+item center; scores cap at 100 and every qualifying candidate still counts.
+There is no coordinate dispatch or implicit analysis.
+
+Resolver results and MCP output contain fixed source/provider/age provenance
+but no OCR text or pixels. Audit schema v6 records only source tokens and
+bounded age. Retained evidence keeps geometry, confidence, fixed provenance,
+and OCR language identifiers, and is cleared with its image observation or on
+analysis publication failure. Executable leases bind both observations,
+expire no later than the oldest evidence, and invalidate when either
+observation is released. The checked-in `target_evidence_review` example shows
+the non-executable visual path against a self-owned GUI.
+
 ## Next slices
 
-1. policy-gated OCR/visual evidence in the same resolver
-   ([`LAB-83`](https://linear.app/riotbox/issue/LAB-83/integrate-policy-gated-ocr-and-visual-evidence-into-targetspec));
-2. privacy-tiered RobotGo Trace
+1. privacy-tiered RobotGo Trace
    ([`LAB-84`](https://linear.app/riotbox/issue/LAB-84/add-privacy-tiered-robotgo-trace-for-verified-transactions));
-3. semantic recorder/code generation
+2. semantic recorder/code generation
    ([`LAB-85`](https://linear.app/riotbox/issue/LAB-85/add-semantic-recorder-and-verified-flow-code-generation));
-4. side-effect-free capability planner
+3. side-effect-free capability planner
    ([`LAB-86`](https://linear.app/riotbox/issue/LAB-86/add-side-effect-free-verified-flow-capability-planner)).
 
 Each slice remains independently deny-by-default and must preserve exact target

@@ -279,7 +279,7 @@ func TestResolveUITargetRejectsWrongWindowAndIncompleteObservation(t *testing.T)
 func TestResolveUITargetValidatesBeforeObservationReadAndEnforcesProperties(t *testing.T) {
 	valid := ResolveUIRequest{ObservationID: "observation-1", Target: targetSpec("Save")}
 	tests := map[string]func(*ResolveUIRequest){
-		"schema":      func(request *ResolveUIRequest) { request.Target.SchemaVersion = "2" },
+		"schema":      func(request *ResolveUIRequest) { request.Target.SchemaVersion = "3" },
 		"observation": func(request *ResolveUIRequest) { request.ObservationID = "private-caller-value" },
 		"window":      func(request *ResolveUIRequest) { request.Target.Window.Target = 0 },
 		"role":        func(request *ResolveUIRequest) { request.Target.Role = "unknown" },

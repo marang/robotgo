@@ -171,6 +171,9 @@ type observationRecord struct {
 	uiActionable           bool
 	uiResolutionIncomplete bool
 	redacted               bool
+	createdAt              time.Time
+	viewDownscaled         bool
+	targetEvidence         map[string]retainedTargetEvidence
 }
 
 func (record *observationRecord) close() error {
@@ -186,6 +189,13 @@ func (record *observationRecord) close() error {
 	record.uiBackend = ""
 	record.uiActionable = false
 	record.uiResolutionIncomplete = false
+	for id, evidence := range record.targetEvidence {
+		clearRetainedTargetEvidence(&evidence)
+		delete(record.targetEvidence, id)
+	}
+	record.targetEvidence = nil
+	record.createdAt = time.Time{}
+	record.viewDownscaled = false
 	return record.capture.close()
 }
 

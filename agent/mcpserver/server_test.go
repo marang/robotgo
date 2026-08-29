@@ -788,6 +788,59 @@ func TestResolveUIReturnsMutationReadySelectionWithoutPrivateEvidencePayload(t *
 	}
 }
 
+func TestResolveUITransportsOpaqueVisualEvidenceWithoutDesktopPayload(t *testing.T) {
+	const privateTitle = "private visual fixture title"
+	fake := &fakeSession{resolveFunc: func(_ context.Context, request agent.ResolveUIRequest) (agent.TargetResolutionResult, error) {
+		if len(request.Target.Evidence) != 1 || request.Target.Evidence[0].EvidenceID != "target-evidence-7" ||
+			request.Target.Evidence[0].Source != agent.TargetEvidenceSourceVisual {
+			return agent.TargetResolutionResult{}, errors.New("unexpected visual evidence request")
+		}
+		return agent.TargetResolutionResult{
+			SchemaVersion: agent.TargetResolutionSchemaVersion,
+			ObservationID: "observation-9", Strategy: agent.TargetResolutionVisualEvidence,
+			Mode: agent.TargetResolutionModeReview,
+			MatchedBy: []agent.TargetEvidence{
+				agent.TargetEvidenceWindowIdentity, agent.TargetEvidenceRole,
+				agent.TargetEvidenceImageObservation, agent.TargetEvidenceVisualItem,
+			},
+			CandidateCount: 1, AdaptiveScore: 90, AdaptiveThreshold: 90,
+			EvidenceSources: []agent.TargetEvidenceSource{agent.TargetEvidenceSourceVisual},
+			EvidenceProviders: []agent.TargetEvidenceProvider{{
+				Source:  agent.TargetEvidenceSourceVisual,
+				Backend: agent.VisualAnalysisBackend, Model: agent.VisualAnalysisModel,
+			}},
+			EvidenceAgeMillis: 12,
+			Patch: &agent.TargetPatchProposal{
+				SchemaVersion: agent.TargetPatchProposalSchemaVersion,
+				Changed:       []agent.TargetEvidence{agent.TargetEvidenceName},
+				Score:         90, Threshold: 90, Executable: false,
+			},
+		}, nil
+	}}
+	client := connectProtocol(t, newProtocolServer(t, fake))
+	result := callTool(t, client, ToolResolveUI, agent.ResolveUIRequest{
+		ObservationID: "observation-9", Mode: agent.TargetResolutionModeReview,
+		Target: agent.TargetSpec{
+			SchemaVersion: agent.TargetSpecSchemaVersion,
+			Window:        agent.TargetWindowSpec{Target: 42, Kind: agent.WindowTargetProcess, ExpectedTitle: privateTitle},
+			Role:          agent.UIRoleButton, Name: "former target name",
+			Evidence: []agent.TargetEvidenceClause{{
+				SchemaVersion: agent.TargetEvidenceClauseSchemaVersion,
+				ObservationID: "observation-8", EvidenceID: "target-evidence-7",
+				Source: agent.TargetEvidenceSourceVisual, ItemIndex: 0,
+			}},
+		},
+	})
+	output := decodeOutput[ResolveUIOutput](t, result)
+	serialized := serializedResult(t, result)
+	if result.IsError || output.Result == nil || output.Result.Patch == nil ||
+		output.Result.Strategy != agent.TargetResolutionVisualEvidence ||
+		len(output.Result.EvidenceProviders) != 1 ||
+		strings.Contains(serialized, privateTitle) || strings.Contains(serialized, "former target name") {
+		t.Fatalf("visual evidence MCP output=%+v %s", output, serialized)
+	}
+}
+
 func TestResolveUIAmbiguityReturnsCountsWithoutCandidateIDs(t *testing.T) {
 	fake := &fakeSession{resolveFunc: func(_ context.Context, _ agent.ResolveUIRequest) (agent.TargetResolutionResult, error) {
 		result := agent.TargetResolutionResult{

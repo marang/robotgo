@@ -10,7 +10,7 @@ import (
 )
 
 // CatalogSchemaVersion identifies the operation catalog JSON contract.
-const CatalogSchemaVersion = "12"
+const CatalogSchemaVersion = "13"
 
 // ActionProofSchemaVersion identifies the privacy-reduced semantic-action
 // proof contract. Proofs deliberately contain no request or desktop payload.
@@ -90,6 +90,13 @@ type OperationCapability struct {
 	MaxCapabilityLeaseMillis     int                        `json:"max_capability_lease_ms,omitempty"`
 	AdaptiveTargetThreshold      uint32                     `json:"adaptive_target_threshold,omitempty"`
 	MaxTargetAncestors           uint32                     `json:"max_target_ancestors,omitempty"`
+	TargetEvidenceClauseVersion  string                     `json:"target_evidence_clause_version,omitempty"`
+	TargetEvidenceSources        []TargetEvidenceSource     `json:"target_evidence_sources,omitempty"`
+	TargetEvidenceProviders      []TargetEvidenceProvider   `json:"target_evidence_providers,omitempty"`
+	MaxTargetEvidenceClauses     uint32                     `json:"max_target_evidence_clauses,omitempty"`
+	MaxTargetEvidenceAgeMillis   int                        `json:"max_target_evidence_age_ms,omitempty"`
+	MinTargetOCRConfidence       float64                    `json:"min_target_ocr_confidence,omitempty"`
+	MinTargetVisualConfidence    float64                    `json:"min_target_visual_confidence,omitempty"`
 }
 
 // ScrollAxis identifies an axis accepted by a scroll backend.

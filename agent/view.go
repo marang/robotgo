@@ -302,7 +302,7 @@ func (s *Session) View(ctx context.Context, request ViewRequest) (*View, error) 
 	}
 	metadata := ViewMetadata{
 		SchemaVersion: ViewSchemaVersion, ObservationID: newObservationID(),
-		CreatedAt: time.Now().UTC(), Region: region, Width: width, Height: height,
+		CreatedAt: s.now().UTC(), Region: region, Width: width, Height: height,
 		Backend: backend, MIMEType: ViewMIMEType,
 		CaptureDurationMillis: max(int64(0), s.now().Sub(started).Milliseconds()),
 		Downscaled:            downscaled, Redacted: redacted,
@@ -319,7 +319,7 @@ func (s *Session) View(ctx context.Context, request ViewRequest) (*View, error) 
 		_ = view.Close()
 		return s.finishViewFailure(ctx, nil, err)
 	}
-	s.storeViewObservation(view.Metadata.ObservationID, frame, redacted)
+	s.storeViewObservation(view.Metadata, frame, redacted)
 	s.trackView(view)
 	retained = true
 	if err := s.emitAudit(ctx, AuditEvent{
@@ -629,11 +629,13 @@ func (buffer *boundedViewBuffer) close() {
 
 var _ io.Writer = (*boundedViewBuffer)(nil)
 
-func (s *Session) storeViewObservation(id string, frame *capturedFrame, redacted bool) {
+func (s *Session) storeViewObservation(metadata ViewMetadata, frame *capturedFrame, redacted bool) {
 	s.observationMu.Lock()
-	s.observations[id] = observationRecord{
+	s.observations[metadata.ObservationID] = observationRecord{
 		capture: frame.buffer, region: frame.metadata.Region,
 		digest: frame.metadata.SHA256, hasCapture: true, source: OperationView, redacted: redacted,
+		createdAt: metadata.CreatedAt, viewDownscaled: metadata.Downscaled,
+		targetEvidence: make(map[string]retainedTargetEvidence),
 	}
 	s.observationMu.Unlock()
 }
