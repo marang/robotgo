@@ -21,6 +21,7 @@ func buildCatalog(policy Policy, capabilities robotgo.RuntimeCapabilities) Opera
 			analysisCapability(OperationOCR, policy),
 			analysisCapability(OperationDetectElements, policy),
 			inspectUICapability(policy, capabilities),
+			resolveUICapability(policy, capabilities),
 			elementActCapability(policy, capabilities),
 			findColorCapability(policy, capabilities),
 			waitColorCapability(policy, capabilities),
@@ -32,6 +33,37 @@ func buildCatalog(policy Policy, capabilities robotgo.RuntimeCapabilities) Opera
 			keyChordCapability(policy, capabilities),
 			activationCapability(policy, capabilities),
 		},
+	}
+}
+
+func resolveUICapability(policy Policy, capabilities robotgo.RuntimeCapabilities) OperationCapability {
+	_, confirmationRequired := policy.requireConfirmation[OperationResolveUI]
+	_, operationAllowed := policy.allowOperation[OperationResolveUI]
+	_, inspectAllowed := policy.allowOperation[OperationInspectUI]
+	policyAllowed := operationAllowed && inspectAllowed && len(policy.allowWindow) > 0 &&
+		len(policy.allowUIRole) > 0
+	for _, property := range []UIProperty{
+		UIPropertyRole, UIPropertyName, UIPropertyState, UIPropertyBounds, UIPropertyActions,
+	} {
+		if _, allowed := policy.allowUIProperty[property]; !allowed {
+			policyAllowed = false
+		}
+	}
+	feature := capabilities.Accessibility
+	remediation := feature.Notes
+	if remediation == "" {
+		remediation = feature.Reason
+	}
+	return OperationCapability{
+		Operation: OperationResolveUI, Available: feature.Available,
+		PolicyAllowed: policyAllowed, Backend: "retained-observation", Fallback: false,
+		Risk: RiskSensitiveRead, ConfirmationRequired: confirmationRequired,
+		Cancellation: CancellationCooperative, ProcessGlobalBackend: false,
+		ExclusiveAgentSession: true, Reason: feature.Reason, Remediation: remediation,
+		UnavailableCode:            featureUnavailableCode(feature),
+		TargetSpecVersion:          TargetSpecSchemaVersion,
+		TargetResolutionStrategies: append([]TargetResolutionStrategy(nil), allTargetResolutionStrategies...),
+		MaxTargetAncestors:         maxTargetSpecAncestors,
 	}
 }
 
@@ -396,6 +428,10 @@ func cloneCatalog(source OperationCatalog) OperationCatalog {
 		cloned.Operations[index].UIConditionKinds = append(
 			[]UIElementConditionKind(nil),
 			cloned.Operations[index].UIConditionKinds...,
+		)
+		cloned.Operations[index].TargetResolutionStrategies = append(
+			[]TargetResolutionStrategy(nil),
+			cloned.Operations[index].TargetResolutionStrategies...,
 		)
 	}
 	return cloned

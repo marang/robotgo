@@ -10,7 +10,7 @@ import (
 )
 
 // CatalogSchemaVersion identifies the operation catalog JSON contract.
-const CatalogSchemaVersion = "10"
+const CatalogSchemaVersion = "11"
 
 // ActionProofSchemaVersion identifies the privacy-reduced semantic-action
 // proof contract. Proofs deliberately contain no request or desktop payload.
@@ -32,6 +32,7 @@ const (
 	OperationOCR            Operation = "desktop.ocr"
 	OperationDetectElements Operation = "desktop.detect-elements"
 	OperationInspectUI      Operation = "desktop.inspect-ui"
+	OperationResolveUI      Operation = "desktop.resolve-ui"
 	OperationElementAct     Operation = "desktop.element-act"
 	OperationFindColor      Operation = "desktop.find-color"
 	OperationWaitColor      Operation = "desktop.wait-color"
@@ -56,30 +57,33 @@ const (
 
 // OperationCapability is one stable entry in an operation catalog.
 type OperationCapability struct {
-	Operation                    Operation                `json:"operation"`
-	Available                    bool                     `json:"available"`
-	PolicyAllowed                bool                     `json:"policy_allowed"`
-	Backend                      string                   `json:"backend,omitempty"`
-	Fallback                     bool                     `json:"fallback"`
-	Risk                         RiskClass                `json:"risk"`
-	ConfirmationRequired         bool                     `json:"confirmation_required"`
-	Cancellation                 CancellationSupport      `json:"cancellation"`
-	ProcessGlobalBackend         bool                     `json:"process_global_backend"`
-	ExclusiveAgentSession        bool                     `json:"exclusive_agent_session"`
-	Reason                       string                   `json:"reason,omitempty"`
-	Remediation                  string                   `json:"remediation,omitempty"`
-	UnavailableCode              ErrorCode                `json:"unavailable_code,omitempty"`
-	OptionalCapture              bool                     `json:"optional_capture,omitempty"`
-	CaptureAvailable             bool                     `json:"capture_available,omitempty"`
-	CapturePolicyAllowed         bool                     `json:"capture_policy_allowed,omitempty"`
-	CaptureFallback              bool                     `json:"capture_fallback,omitempty"`
-	CaptureBackend               string                   `json:"capture_backend,omitempty"`
-	ScrollAxes                   []ScrollAxis             `json:"scroll_axes,omitempty"`
-	ActionProofVersion           string                   `json:"action_proof_version,omitempty"`
-	UIConditionKinds             []UIElementConditionKind `json:"ui_condition_kinds,omitempty"`
-	UIVerificationAttempts       uint32                   `json:"ui_verification_attempts,omitempty"`
-	UIVerificationIntervalMillis int                      `json:"ui_verification_interval_ms,omitempty"`
-	UIVerificationTimeoutMillis  int                      `json:"ui_verification_timeout_ms,omitempty"`
+	Operation                    Operation                  `json:"operation"`
+	Available                    bool                       `json:"available"`
+	PolicyAllowed                bool                       `json:"policy_allowed"`
+	Backend                      string                     `json:"backend,omitempty"`
+	Fallback                     bool                       `json:"fallback"`
+	Risk                         RiskClass                  `json:"risk"`
+	ConfirmationRequired         bool                       `json:"confirmation_required"`
+	Cancellation                 CancellationSupport        `json:"cancellation"`
+	ProcessGlobalBackend         bool                       `json:"process_global_backend"`
+	ExclusiveAgentSession        bool                       `json:"exclusive_agent_session"`
+	Reason                       string                     `json:"reason,omitempty"`
+	Remediation                  string                     `json:"remediation,omitempty"`
+	UnavailableCode              ErrorCode                  `json:"unavailable_code,omitempty"`
+	OptionalCapture              bool                       `json:"optional_capture,omitempty"`
+	CaptureAvailable             bool                       `json:"capture_available,omitempty"`
+	CapturePolicyAllowed         bool                       `json:"capture_policy_allowed,omitempty"`
+	CaptureFallback              bool                       `json:"capture_fallback,omitempty"`
+	CaptureBackend               string                     `json:"capture_backend,omitempty"`
+	ScrollAxes                   []ScrollAxis               `json:"scroll_axes,omitempty"`
+	ActionProofVersion           string                     `json:"action_proof_version,omitempty"`
+	UIConditionKinds             []UIElementConditionKind   `json:"ui_condition_kinds,omitempty"`
+	UIVerificationAttempts       uint32                     `json:"ui_verification_attempts,omitempty"`
+	UIVerificationIntervalMillis int                        `json:"ui_verification_interval_ms,omitempty"`
+	UIVerificationTimeoutMillis  int                        `json:"ui_verification_timeout_ms,omitempty"`
+	TargetSpecVersion            string                     `json:"target_spec_version,omitempty"`
+	TargetResolutionStrategies   []TargetResolutionStrategy `json:"target_resolution_strategies,omitempty"`
+	MaxTargetAncestors           uint32                     `json:"max_target_ancestors,omitempty"`
 }
 
 // ScrollAxis identifies an axis accepted by a scroll backend.
@@ -316,21 +320,24 @@ type ActionProof struct {
 type ErrorCode string
 
 const (
-	ErrorInvalidInput     ErrorCode = "invalid-input"
-	ErrorPolicyDenied     ErrorCode = "policy-denied"
-	ErrorUnsupported      ErrorCode = "unsupported"
-	ErrorUnavailable      ErrorCode = "unavailable"
-	ErrorPermissionDenied ErrorCode = "permission-denied"
-	ErrorSessionClosed    ErrorCode = "session-closed"
-	ErrorSessionBusy      ErrorCode = "session-busy"
-	ErrorCanceled         ErrorCode = "canceled"
-	ErrorTimedOut         ErrorCode = "timed-out"
-	ErrorBackendFailure   ErrorCode = "backend-failure"
-	ErrorStaleTarget      ErrorCode = "stale-target"
-	ErrorVerification     ErrorCode = "verification-failed"
-	ErrorAuditDelivery    ErrorCode = "audit-delivery-failed"
-	ErrorConditionNotMet  ErrorCode = "condition-not-met"
-	ErrorCleanupFailed    ErrorCode = "cleanup-failed"
+	ErrorInvalidInput          ErrorCode = "invalid-input"
+	ErrorPolicyDenied          ErrorCode = "policy-denied"
+	ErrorUnsupported           ErrorCode = "unsupported"
+	ErrorUnavailable           ErrorCode = "unavailable"
+	ErrorPermissionDenied      ErrorCode = "permission-denied"
+	ErrorSessionClosed         ErrorCode = "session-closed"
+	ErrorSessionBusy           ErrorCode = "session-busy"
+	ErrorCanceled              ErrorCode = "canceled"
+	ErrorTimedOut              ErrorCode = "timed-out"
+	ErrorBackendFailure        ErrorCode = "backend-failure"
+	ErrorStaleTarget           ErrorCode = "stale-target"
+	ErrorVerification          ErrorCode = "verification-failed"
+	ErrorAuditDelivery         ErrorCode = "audit-delivery-failed"
+	ErrorConditionNotMet       ErrorCode = "condition-not-met"
+	ErrorCleanupFailed         ErrorCode = "cleanup-failed"
+	ErrorTargetNotFound        ErrorCode = "target-not-found"
+	ErrorAmbiguousTarget       ErrorCode = "ambiguous-target"
+	ErrorIncompleteObservation ErrorCode = "incomplete-observation"
 )
 
 // ActionError is safe to serialize: Message never contains action payloads.
@@ -360,14 +367,17 @@ type ActionResult struct {
 }
 
 var (
-	ErrSessionBusy     = errors.New("another agent session is already active")
-	ErrSessionClosed   = errors.New("agent session is closed")
-	ErrPolicyDenied    = errors.New("agent policy denied the action")
-	ErrStaleTarget     = errors.New("agent observation target is stale")
-	ErrVerification    = errors.New("agent action verification failed")
-	ErrAuditDelivery   = errors.New("agent audit delivery failed")
-	ErrConditionNotMet = errors.New("agent visual condition was not met")
-	ErrInputCleanup    = errors.New("agent input cleanup failed")
+	ErrSessionBusy           = errors.New("another agent session is already active")
+	ErrSessionClosed         = errors.New("agent session is closed")
+	ErrPolicyDenied          = errors.New("agent policy denied the action")
+	ErrStaleTarget           = errors.New("agent observation target is stale")
+	ErrVerification          = errors.New("agent action verification failed")
+	ErrAuditDelivery         = errors.New("agent audit delivery failed")
+	ErrConditionNotMet       = errors.New("agent visual condition was not met")
+	ErrInputCleanup          = errors.New("agent input cleanup failed")
+	ErrTargetNotFound        = errors.New("agent target was not found")
+	ErrAmbiguousTarget       = errors.New("agent target is ambiguous")
+	ErrIncompleteObservation = errors.New("agent observation is incomplete")
 )
 
 func newActionError(code ErrorCode, operation Operation, message string, cause error) *ActionError {

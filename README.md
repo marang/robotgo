@@ -932,8 +932,28 @@ query-interval, and session-lifetime limits. Element IDs are opaque and
 observation-scoped; platform handles and object paths remain private. Hidden and offscreen nodes
 are omitted, password/sensitive text is redacted, invalid backend identities
 fail closed, and `ReleaseObservation` or session close zeroes retained backend
-references. Inspection alone grants no element mutation. `Session.ActUIElement`
-and the `desktop.element-act` operation require a separate deny-by-default
+references. Inspection alone grants no element mutation.
+
+`Session.ResolveUITarget` and `desktop.resolve-ui` add a deny-by-default,
+read-only TargetSpec v1 resolver on top of one retained semantic observation.
+A spec binds the original process/window kind, numeric target, and exact
+policy-owned title to one exact role/name plus optional required states,
+required actions, and an immediate-parent-first ancestor chain. Matching is
+deterministic: identity and ancestors use exact equality, required state/action
+sets use containment, and hierarchy levels are never skipped. Exactly one
+match returns its opaque observation-scoped element ID and a defensive
+`UIElementExpectation` ready for the existing action API. Zero matches return
+`target-not-found`; multiple matches return `ambiguous-target` with counts but
+no candidate IDs. Incomplete candidate or identity data returns
+`incomplete-observation`. Hidden, sensitive, and policy-excluded content may
+still mark the public observation redacted/truncated without invalidating an
+otherwise complete allowed candidate set. Resolution calls no native backend,
+consumes no query, observation, or action quota, grants no mutation authority,
+and never uses fuzzy matching, healing, OCR, visual, pointer, or keyboard
+fallback. `ActUIElement` still performs its retained and live native gates.
+
+`Session.ActUIElement` and the `desktop.element-act` operation require a
+separate deny-by-default
 policy grant, then re-resolve the retained native identity and revalidate role,
 state, bounds, action, target process/window, and title before native semantic
 dispatch. An optional target-relative postcondition can require one state to be
@@ -972,10 +992,12 @@ remains `unverified-after-dispatch` even if a later probe happens to match, so
 callers are never invited to retry an uncertain mutation. Verification status
 `not-matched` requires a completed false probe; `failed` may have zero attempts
 when a requested probe could not start.
-Catalog schema v10 advertises the proof version, supported condition kinds, and
-fixed semantic-verification bounds. Audit schema v3 records only proof and
-execution status, condition kind/phase, final-gate status, and separate attempt
-counts.
+Catalog schema v11 additionally advertises TargetSpec v1, the exact and
+structural semantic strategies, and the maximum ancestor depth while retaining
+the proof version, condition kinds, and fixed semantic-verification bounds.
+Audit schema v4 adds payload-free resolver start/finish events with fixed
+strategy/evidence tokens, candidate/rejection counts, ambiguity, and stable
+error codes; it retains the v3 proof/execution and verification fields.
 
 On Linux, an already-active AT-SPI2 bus provides the first native
 adapter for exact process-and-title targets on GNOME, KDE, and other accessible
@@ -1059,8 +1081,8 @@ go run ./examples/agent_conditions -allow-capture -mode wait \
 ### Local MCP adapter for agents
 
 `robotgo-mcp` exposes the policy-gated session to a local MCP client over
-stdio. Its default surface has nine focused tools: `robotgo_capabilities`,
-`robotgo_observe`, `robotgo_inspect_ui`, `robotgo_element_act`, `robotgo_find`, `robotgo_wait`,
+stdio. Its default surface has ten focused tools: `robotgo_capabilities`,
+`robotgo_observe`, `robotgo_inspect_ui`, `robotgo_resolve_ui`, `robotgo_element_act`, `robotgo_find`, `robotgo_wait`,
 `robotgo_release_observation`, `robotgo_act`, and `robotgo_close`.
 `robotgo_view`, `robotgo_ocr`, and `robotgo_detect_elements` are registered
 only with the separate `-allow-image-content` startup grant. With no policy
@@ -1183,7 +1205,8 @@ Run the self-owned checkbox/switch example with:
 
 ```bash
 go run ./examples/semantic_element_action \
-  -pid 1234 -title 'Self-owned fixture' -toggle 'Enable sync' -confirm
+  -pid 1234 -title 'Self-owned fixture' -role checkbox \
+  -toggle 'Enable sync' -confirm
 ```
 
 Image observation is a separate, explicit sensitive-read boundary for GUIs

@@ -30,6 +30,8 @@ const (
 	ToolDetectElements = "robotgo_detect_elements"
 	// ToolInspectUI returns one bounded, privacy-reduced accessibility tree.
 	ToolInspectUI = "robotgo_inspect_ui"
+	// ToolResolveUI resolves one TargetSpec in a retained semantic observation.
+	ToolResolveUI = "robotgo_resolve_ui"
 	// ToolElementAct executes one observation-bound native semantic action.
 	ToolElementAct = "robotgo_element_act"
 	// ToolAct plans or executes one typed action.
@@ -74,6 +76,13 @@ type ObservationReleaseSession interface {
 type SemanticUISession interface {
 	ObservationReleaseSession
 	InspectUI(context.Context, agent.InspectUIRequest) (agent.UIObservation, error)
+}
+
+// SemanticResolverSession is the additive, read-only TargetSpec resolver
+// extension. It never grants mutation authority or calls a desktop backend.
+type SemanticResolverSession interface {
+	SemanticUISession
+	ResolveUITarget(context.Context, agent.ResolveUIRequest) (agent.TargetResolutionResult, error)
 }
 
 // SemanticActionSession is the additive observation-bound semantic mutation
@@ -264,6 +273,13 @@ type InspectUIOutput struct {
 	Error       *ToolError           `json:"error,omitempty"`
 }
 
+// ResolveUIOutput returns one unique observation-bound semantic target or one
+// stable payload-free error. Ambiguous results never contain element IDs.
+type ResolveUIOutput struct {
+	Result *agent.TargetResolutionResult `json:"result,omitempty"`
+	Error  *ToolError                    `json:"error,omitempty"`
+}
+
 // ElementActOutput is the payload-free result of robotgo_element_act.
 type ElementActOutput struct {
 	Result *agent.ActionResult `json:"result,omitempty"`
@@ -368,6 +384,14 @@ func (s *Server) registerTools() {
 			Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, OpenWorldHint: &openWorld},
 		}, s.inspectUI)
 	}
+	if _, ok := s.adapter.session.(SemanticResolverSession); ok {
+		mcp.AddTool(s.protocol, &mcp.Tool{
+			Name:        ToolResolveUI,
+			Title:       "Resolve semantic UI target",
+			Description: "Deterministically resolve one versioned exact or structural TargetSpec inside a retained semantic observation. The tool performs no desktop I/O or mutation and returns no candidate element IDs when resolution is missing or ambiguous.",
+			Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, IdempotentHint: true, OpenWorldHint: &closedWorld},
+		}, s.resolveUI)
+	}
 	if _, ok := s.adapter.session.(SemanticActionSession); ok {
 		mcp.AddTool(s.protocol, &mcp.Tool{
 			Name:        ToolElementAct,
@@ -445,6 +469,24 @@ func (s *Server) inspectUI(ctx context.Context, _ *mcp.CallToolRequest, input ag
 		return errorResult(), InspectUIOutput{Error: safeToolError(err)}, nil
 	}
 	return nil, InspectUIOutput{Observation: &observation}, nil
+}
+
+func (s *Server) resolveUI(ctx context.Context, _ *mcp.CallToolRequest, input agent.ResolveUIRequest) (*mcp.CallToolResult, ResolveUIOutput, error) {
+	session, toolErr := s.adapter.begin()
+	if toolErr != nil {
+		return errorResult(), ResolveUIOutput{Error: toolErr}, nil
+	}
+	resolver, ok := session.(SemanticResolverSession)
+	if !ok {
+		return errorResult(), ResolveUIOutput{Error: &ToolError{
+			Code: agent.ErrorUnsupported, Message: "semantic target resolution is unsupported",
+		}}, nil
+	}
+	resolution, err := resolver.ResolveUITarget(ctx, input)
+	if err != nil {
+		return errorResult(), ResolveUIOutput{Result: &resolution, Error: safeToolError(err)}, nil
+	}
+	return nil, ResolveUIOutput{Result: &resolution}, nil
 }
 
 func (s *Server) elementAct(ctx context.Context, _ *mcp.CallToolRequest, input agent.ElementActionRequest) (*mcp.CallToolResult, ElementActOutput, error) {

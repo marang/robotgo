@@ -531,7 +531,7 @@ func TestElementActionUIVerificationPolicyBoundsAreIndependent(t *testing.T) {
 	}
 }
 
-func TestElementActionCatalogV10PublishesDefensiveProofAndConditionBounds(t *testing.T) {
+func TestElementActionCatalogPublishesDefensiveProofAndConditionBounds(t *testing.T) {
 	policy := semanticVerificationPolicy()
 	session, _ := newSemanticSession(t, policy, semanticSnapshot())
 	catalog := session.Catalog()
@@ -542,7 +542,7 @@ func TestElementActionCatalogV10PublishesDefensiveProofAndConditionBounds(t *tes
 			break
 		}
 	}
-	if catalog.SchemaVersion != "10" || capability.ActionProofVersion != ActionProofSchemaVersion ||
+	if catalog.SchemaVersion != CatalogSchemaVersion || capability.ActionProofVersion != ActionProofSchemaVersion ||
 		capability.UIVerificationAttempts != policy.UIVerificationAttempts ||
 		capability.UIVerificationIntervalMillis != policy.UIVerificationIntervalMillis ||
 		capability.UIVerificationTimeoutMillis != policy.UIVerificationTimeoutMillis ||
@@ -624,7 +624,7 @@ func TestElementActionCancellationStillEmitsBoundedTerminalAudit(t *testing.T) {
 		t.Fatalf("terminal audit = %+v", sink.events)
 	}
 	for _, event := range sink.events[3:] {
-		if event.SchemaVersion != "3" || event.ActionProofStatus != ActionProofUnverifiedAfterDispatch ||
+		if event.SchemaVersion != AuditSchemaVersion || event.ActionProofStatus != ActionProofUnverifiedAfterDispatch ||
 			event.ActionExecutionStatus != ActionExecutionDispatched ||
 			event.UIConditionKind != UIElementConditionStatePresent ||
 			event.UIConditionPhase != UIConditionPhasePostDispatch || event.UIPrecheckAttempts != 1 ||
