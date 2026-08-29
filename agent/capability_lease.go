@@ -195,7 +195,7 @@ func (s *Session) issueCapabilityLease(request ResolveUIRequest, selected *retai
 		}
 		for _, clause := range request.Target.Evidence {
 			evidence, exists := evidenceObservation.targetEvidence[clause.EvidenceID]
-			if !exists || evidence.source != clause.Source || int(clause.ItemIndex) >= len(evidence.items) {
+			if !exists || evidence.source != clause.Source || clause.ItemIndex >= uint32(len(evidence.items)) {
 				return nil, ErrStaleTarget
 			}
 		}

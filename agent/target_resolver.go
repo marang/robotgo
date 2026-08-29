@@ -373,7 +373,7 @@ func validateResolveUIRequest(request ResolveUIRequest) error {
 	for _, clause := range request.Target.Evidence {
 		if clause.SchemaVersion != TargetEvidenceClauseSchemaVersion ||
 			!validObservationID(clause.ObservationID) || !validTargetEvidenceID(clause.EvidenceID) ||
-			!validTargetEvidenceSource(clause.Source) {
+			!validTargetEvidenceSource(clause.Source) || clause.ItemIndex >= uint32(maxAgentAnalysisBoxes) {
 			return errors.New("invalid target analysis evidence clause")
 		}
 		if evidenceObservationID == "" {

@@ -206,7 +206,7 @@ func (s *Session) retainTargetEvidenceBundle(clauses []TargetEvidenceClause) (re
 	}
 	for _, clause := range clauses {
 		evidence, exists := record.targetEvidence[clause.EvidenceID]
-		if !exists || evidence.source != clause.Source || int(clause.ItemIndex) >= len(evidence.items) {
+		if !exists || evidence.source != clause.Source || clause.ItemIndex >= uint32(len(evidence.items)) {
 			clearRetainedTargetEvidenceBundle(&bundle)
 			return retainedTargetEvidenceBundle{}, targetResolutionError(
 				ErrorStaleTarget, "target analysis evidence is unavailable", ErrStaleTarget)

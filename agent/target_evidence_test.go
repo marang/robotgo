@@ -541,6 +541,7 @@ func TestTargetEvidenceClauseValidationIsBoundedAndVersioned(t *testing.T) {
 		"strict-with-evidence": func(request *ResolveUIRequest) { request.Mode = TargetResolutionModeStrict },
 		"bad-evidence-id":      func(request *ResolveUIRequest) { request.Target.Evidence[0].EvidenceID = "caller-text" },
 		"bad-schema":           func(request *ResolveUIRequest) { request.Target.Evidence[0].SchemaVersion = "2" },
+		"oversized-item-index": func(request *ResolveUIRequest) { request.Target.Evidence[0].ItemIndex = 1 << 31 },
 		"duplicate-source": func(request *ResolveUIRequest) {
 			request.Target.Evidence = append(request.Target.Evidence, request.Target.Evidence[0])
 		},
@@ -566,6 +567,27 @@ func TestTargetEvidenceClauseValidationIsBoundedAndVersioned(t *testing.T) {
 	legacy.Target.Evidence = nil
 	if err := validateResolveUIRequest(legacy); err != nil {
 		t.Fatalf("semantic-only TargetSpec v1 changed behavior: %v", err)
+	}
+}
+
+func TestTargetEvidenceHugeItemIndexFailsWithoutNarrowingOrPanic(t *testing.T) {
+	session, _ := targetEvidenceSession(t, targetEvidencePolicy(TargetEvidenceSourceOCR))
+	installFakeOCR(session, &fakeOCRAnalyzer{boxes: []rawOCRBox{{
+		text: []byte("Save"), bounds: image.Rect(1, 1, 3, 2), confidence: 0.9,
+	}}})
+	view := createTargetEvidenceView(t, session)
+	ocr, err := session.OCR(t.Context(), OCRRequest{ObservationID: view.ObservationID,
+		Region: targetEvidenceAnalysisRegion, Languages: []string{"eng"}, MinConfidence: 0.8})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = session.retainTargetEvidenceBundle([]TargetEvidenceClause{{
+		SchemaVersion: TargetEvidenceClauseSchemaVersion,
+		ObservationID: view.ObservationID, EvidenceID: ocr.Metadata.EvidenceID,
+		Source: TargetEvidenceSourceOCR, ItemIndex: 1 << 31,
+	}})
+	if !hasErrorCode(err, ErrorStaleTarget) {
+		t.Fatalf("huge item index err=%v", err)
 	}
 }
 
