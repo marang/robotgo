@@ -873,7 +873,9 @@ func TestElementActReturnsResultWithoutEchoingSensitiveValue(t *testing.T) {
 		if request.ObservationID != "observation-9" || request.ElementID != "observation-9-element-1" ||
 			request.Action != agent.UIActionSetValue || request.Value != "private-value" ||
 			request.Postcondition == nil ||
-			request.Postcondition.Kind != agent.UIElementConditionValueEqualsActionValue {
+			request.Postcondition.Kind != agent.UIElementConditionValueEqualsActionValue ||
+			request.Trace == nil || request.Trace.SchemaVersion != agent.TraceRequestSchemaVersion ||
+			request.Trace.Tier != agent.TracePrivacySemanticRedacted {
 			return agent.ActionResult{}, errors.New("unexpected semantic request")
 		}
 		return agent.ActionResult{
@@ -900,6 +902,16 @@ func TestElementActReturnsResultWithoutEchoingSensitiveValue(t *testing.T) {
 				},
 				Cleanup: agent.ActionCleanupProof{TransientResourcesReleased: true},
 			},
+			Trace: &agent.RobotGoTrace{
+				SchemaVersion: agent.RobotGoTraceSchemaVersion, TransactionID: "action-7",
+				Tier: agent.TracePrivacySemanticRedacted, Redacted: true, CleanupComplete: true,
+				ExportStatus: agent.TraceExportNotRequested,
+				Events: []agent.TraceEvent{{
+					Sequence: 1, Kind: agent.TraceTransactionFinished, Code: agent.TraceCodeVerified,
+					TransactionID: "action-7", Operation: agent.OperationElementAct,
+					ActionStatus: agent.ActionSucceeded, ActionProofStatus: agent.ActionProofVerified,
+				}},
+			},
 		}, nil
 	}}
 	client := connectProtocol(t, newProtocolServer(t, fake))
@@ -914,12 +926,17 @@ func TestElementActReturnsResultWithoutEchoingSensitiveValue(t *testing.T) {
 		Postcondition: &agent.UIElementCondition{
 			Kind: agent.UIElementConditionValueEqualsActionValue,
 		},
+		Trace: &agent.TraceRequest{
+			SchemaVersion: agent.TraceRequestSchemaVersion, Tier: agent.TracePrivacySemanticRedacted,
+		},
 	})
 	output := decodeOutput[ElementActOutput](t, result)
 	serialized := serializedResult(t, result)
 	if result.IsError || output.Result == nil || output.Result.Status != agent.ActionSucceeded ||
 		output.Result.Proof == nil || output.Result.Proof.Status != agent.ActionProofVerified ||
 		output.Result.Proof.TransactionID != output.Result.ActionID ||
+		output.Result.Trace == nil || output.Result.Trace.TransactionID != output.Result.ActionID ||
+		output.Result.Trace.Tier != agent.TracePrivacySemanticRedacted ||
 		strings.Contains(serialized, "private-value") {
 		t.Fatalf("semantic action output = %+v, %s", output, serialized)
 	}

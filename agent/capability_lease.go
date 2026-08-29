@@ -86,6 +86,7 @@ type capabilityLeaseRecord struct {
 	valueDigest           [sha256.Size]byte
 	hasValueDigest        bool
 	expiresAt             time.Time
+	traceResolution       retainedTraceResolution
 }
 
 type capabilityLeaseReservation struct {
@@ -140,10 +141,16 @@ func parseLeaseValueDigest(value string) ([sha256.Size]byte, bool) {
 func cloneCapabilityLeaseRecord(record capabilityLeaseRecord) capabilityLeaseRecord {
 	record.expected = cloneUIElementExpectation(record.expected)
 	record.postcondition = cloneUIElementCondition(record.postcondition)
+	record.traceResolution = cloneRetainedTraceResolution(record.traceResolution)
 	return record
 }
 
-func (s *Session) issueCapabilityLease(request ResolveUIRequest, selected *retainedUITarget, evidenceExpiresAt time.Time) (*CapabilityLease, error) {
+func (s *Session) issueCapabilityLease(
+	request ResolveUIRequest,
+	selected *retainedUITarget,
+	evidenceExpiresAt time.Time,
+	traceResolution retainedTraceResolution,
+) (*CapabilityLease, error) {
 	if request.Lease == nil || selected == nil {
 		return nil, ErrLeaseInvalid
 	}
@@ -160,9 +167,16 @@ func (s *Session) issueCapabilityLease(request ResolveUIRequest, selected *retai
 		observationID: request.ObservationID, elementID: selected.elementID,
 		expected: cloneUIElementExpectation(selected.expected), targetDigest: targetSpecDigest(request.Target),
 		policyDigest: s.policyDigest, action: request.Lease.Action,
-		postcondition: cloneUIElementCondition(request.Lease.Postcondition),
-		expiresAt:     now.Add(time.Duration(request.Lease.DurationMillis) * time.Millisecond),
+		postcondition:   cloneUIElementCondition(request.Lease.Postcondition),
+		expiresAt:       now.Add(time.Duration(request.Lease.DurationMillis) * time.Millisecond),
+		traceResolution: cloneRetainedTraceResolution(traceResolution),
 	}
+	published := false
+	defer func() {
+		if !published {
+			clearRetainedTraceResolution(&record.traceResolution)
+		}
+	}()
 	if !evidenceExpiresAt.IsZero() && len(request.Target.Evidence) > 0 {
 		record.evidenceObservationID = request.Target.Evidence[0].ObservationID
 		if evidenceExpiresAt.Before(record.expiresAt) {
@@ -207,6 +221,7 @@ func (s *Session) issueCapabilityLease(request ResolveUIRequest, selected *retai
 	}
 	s.leases[key] = record
 	s.usedLeases++
+	published = true
 	return &CapabilityLease{SchemaVersion: CapabilityLeaseSchemaVersion, ID: token,
 		Mode: record.mode, Action: record.action, Postcondition: cloneUIElementCondition(record.postcondition), ExpiresAt: record.expiresAt.UTC()}, nil
 }
@@ -241,6 +256,7 @@ func (s *Session) reserveCapabilityLease(request ElementActionRequest) (*capabil
 	}
 	if !s.now().Before(record.expiresAt) {
 		record.status = CapabilityLeaseExpired
+		clearRetainedTraceResolution(&record.traceResolution)
 		s.leases[key] = record
 		return nil, leaseActionError(ErrorLeaseExpired, ErrLeaseExpired)
 	}
@@ -249,6 +265,7 @@ func (s *Session) reserveCapabilityLease(request ElementActionRequest) (*capabil
 	valueMatches := !record.hasValueDigest || subtle.ConstantTimeCompare(valueDigest[:], record.valueDigest[:]) == 1
 	if request.Action != record.action || !postconditionMatches || !valueMatches || record.policyDigest != s.policyDigest {
 		record.status = CapabilityLeaseInvalidated
+		clearRetainedTraceResolution(&record.traceResolution)
 		s.leases[key] = record
 		return nil, leaseActionError(ErrorLeaseMismatch, ErrLeaseMismatch)
 	}
@@ -278,11 +295,13 @@ func (s *Session) consumeCapabilityLease(reservation *capabilityLeaseReservation
 	}
 	if !s.now().Before(record.expiresAt) {
 		record.status = CapabilityLeaseExpired
+		clearRetainedTraceResolution(&record.traceResolution)
 		s.leases[reservation.key] = record
 		reservation.active = false
 		return ErrLeaseExpired
 	}
 	record.status = CapabilityLeaseConsumed
+	clearRetainedTraceResolution(&record.traceResolution)
 	s.leases[reservation.key] = record
 	reservation.active = false
 	return nil
@@ -295,6 +314,7 @@ func (s *Session) invalidateCapabilityLease(reservation *capabilityLeaseReservat
 	s.leaseMu.Lock()
 	if record, ok := s.leases[reservation.key]; ok && record.status == CapabilityLeaseReserved {
 		record.status = CapabilityLeaseInvalidated
+		clearRetainedTraceResolution(&record.traceResolution)
 		s.leases[reservation.key] = record
 	}
 	s.leaseMu.Unlock()
@@ -308,6 +328,7 @@ func (s *Session) invalidateObservationLeases(observationID string) {
 		if (record.observationID == observationID || record.evidenceObservationID == observationID) &&
 			(record.status == CapabilityLeaseIssued || record.status == CapabilityLeaseReserved) {
 			record.status = CapabilityLeaseInvalidated
+			clearRetainedTraceResolution(&record.traceResolution)
 			s.leases[key] = record
 		}
 	}
@@ -322,6 +343,7 @@ func (s *Session) invalidateIssuedCapabilityLease(id string) {
 	defer s.leaseMu.Unlock()
 	if record, ok := s.leases[key]; ok && record.status == CapabilityLeaseIssued {
 		record.status = CapabilityLeaseInvalidated
+		clearRetainedTraceResolution(&record.traceResolution)
 		s.leases[key] = record
 	}
 }
@@ -342,6 +364,7 @@ func (s *Session) closeCapabilityLeases() {
 	for key, record := range s.leases {
 		clear(record.expected.States)
 		clear(record.expected.Actions)
+		clearRetainedTraceResolution(&record.traceResolution)
 		delete(s.leases, key)
 	}
 }

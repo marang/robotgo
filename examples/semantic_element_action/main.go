@@ -1,8 +1,9 @@
 //go:build darwin || linux || windows
 
 // Command semantic_element_action inspects one self-owned accessible window,
-// resolves and toggles one uniquely named checkbox or switch, and verifies the opposite
-// checked state. It never falls back to pointer or keyboard input.
+// resolves and toggles one uniquely named checkbox or switch, verifies the
+// opposite checked state, and returns one explicitly requested privacy-tiered
+// RobotGo Trace. It never falls back to pointer or keyboard input.
 package main
 
 import (
@@ -31,6 +32,8 @@ func run() error {
 	toggleName := flag.String("toggle", "", "exact accessible name of the checkbox or switch to toggle")
 	toggleRole := flag.String("role", "", "exact semantic role: checkbox or switch")
 	confirm := flag.Bool("confirm", false, "confirm the observation-bound semantic toggle")
+	traceTier := flag.String("trace-tier", string(agent.TracePrivacyMetadataOnly),
+		"trace privacy tier: metadata-only, semantic-redacted, visual-redacted, or full-explicit")
 	flag.Parse()
 	if *pid <= 0 || *title == "" || *toggleName == "" || *toggleRole == "" {
 		return errors.New("positive -pid plus exact non-empty -title, -toggle, and -role are required")
@@ -41,6 +44,13 @@ func run() error {
 	role := agent.UIRole(*toggleRole)
 	if role != agent.UIRoleCheckbox && role != agent.UIRoleSwitch {
 		return errors.New("-role must be checkbox or switch")
+	}
+	tier := agent.TracePrivacyTier(*traceTier)
+	switch tier {
+	case agent.TracePrivacyMetadataOnly, agent.TracePrivacySemanticRedacted,
+		agent.TracePrivacyVisualRedacted, agent.TracePrivacyFullExplicit:
+	default:
+		return errors.New("invalid -trace-tier")
 	}
 	policy := agent.Policy{
 		AllowedOperations: []agent.Operation{
@@ -75,6 +85,10 @@ func run() error {
 		UIVerificationAttempts:       3,
 		UIVerificationIntervalMillis: 50,
 		UIVerificationTimeoutMillis:  3_000,
+		AllowedTraceTiers:            []agent.TracePrivacyTier{tier},
+		MaxTraceEvents:               16,
+		MaxTraceBytes:                16 * 1024,
+		TraceLifetimeMillis:          5_000,
 		SessionTimeoutMillis:         15_000,
 	}
 	session, err := agent.NewSession(agent.Config{Policy: policy})
@@ -129,6 +143,7 @@ func run() error {
 	result, err := session.ActUIElement(ctx, agent.ElementActionRequest{
 		CapabilityLeaseID: resolution.Lease.ID,
 		Action:            agent.UIActionToggle, Confirmed: true, Postcondition: postcondition,
+		Trace: &agent.TraceRequest{SchemaVersion: agent.TraceRequestSchemaVersion, Tier: tier},
 	})
 	if err != nil {
 		return err

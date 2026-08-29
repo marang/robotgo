@@ -1014,7 +1014,23 @@ remains `unverified-after-dispatch` even if a later probe happens to match, so
 callers are never invited to retry an uncertain mutation. Verification status
 `not-matched` requires a completed false probe; `failed` may have zero attempts
 when a requested probe could not start.
-Catalog schema v13 advertises TargetSpec v2, resolver modes, semantic and
+An optional Trace v1 request adds a bounded, replay-neutral timeline for that
+same semantic transaction. Capture remains deny-by-default: immutable policy
+must allow the requested `metadata-only`, `semantic-redacted`,
+`visual-redacted`, or `full-explicit` tier and set positive event-count,
+serialized-byte, and lifetime bounds. The request still cannot authorize,
+heal, retry, replay, or mutate anything. Every tier reports fixed lifecycle
+codes, backend selection, dispatch, verification counts, cancellation, cleanup,
+truncation, redaction, missing evidence, and export status. Higher tiers add
+only bounded semantic and image-evidence provenance; Trace v1 never contains
+locator text, action values, credentials, clipboard data, pixels, native
+handles, unrestricted accessibility trees, lease tokens, or raw backend
+errors. A configured `TraceSink` receives a defensive complete copy only when
+both request and policy allow export. Export failure is returned separately as
+`trace-export-failed` without rewriting Action Proof or the desktop outcome.
+
+Catalog schema v14 advertises Trace v1 tiers and resource/export bounds in
+addition to TargetSpec v2, resolver modes, semantic and
 reviewed OCR/visual strategies, provider/source/age/confidence bounds, lease
 schema and bounds, adaptive threshold, and maximum ancestor depth while
 retaining condition and verification bounds. Audit schema v6 adds payload-free
@@ -1214,6 +1230,10 @@ configured post-dispatch attempts:
   "ui_verification_attempts": 3,
   "ui_verification_interval_ms": 50,
   "ui_verification_timeout_ms": 3000,
+  "allowed_trace_tiers": ["metadata-only"],
+  "max_trace_events": 16,
+  "max_trace_bytes": 16384,
+  "trace_lifetime_ms": 5000,
   "min_action_interval_ms": 50,
   "max_observations": 8,
   "max_queries": 8,
@@ -1230,7 +1250,7 @@ Run the self-owned checkbox/switch example with:
 ```bash
 go run ./examples/semantic_element_action \
   -pid 1234 -title 'Self-owned fixture' -role checkbox \
-  -toggle 'Enable sync' -confirm
+  -toggle 'Enable sync' -trace-tier metadata-only -confirm
 ```
 
 Image observation is a separate, explicit sensitive-read boundary for GUIs
@@ -1522,6 +1542,7 @@ The checked-in examples use this fork's module path and track the current API:
 - [Bounded agent actions](examples/agent_actions/main.go)
 - [Privacy-safe agent visual conditions](examples/agent_conditions/main.go)
 - [Review-only TargetSpec visual evidence](examples/target_evidence_review/main.go)
+- [Verified semantic action with privacy-tiered Trace](examples/semantic_element_action/main.go)
 - [Linux capabilities](examples/linux_capabilities/main.go)
 - [Cross-platform runtime capabilities](examples/runtime_capabilities/main.go)
 - [Versioned runtime diagnostics](examples/runtime_diagnostics/main.go)

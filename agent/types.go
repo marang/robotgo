@@ -10,7 +10,7 @@ import (
 )
 
 // CatalogSchemaVersion identifies the operation catalog JSON contract.
-const CatalogSchemaVersion = "13"
+const CatalogSchemaVersion = "14"
 
 // ActionProofSchemaVersion identifies the privacy-reduced semantic-action
 // proof contract. Proofs deliberately contain no request or desktop payload.
@@ -97,6 +97,12 @@ type OperationCapability struct {
 	MaxTargetEvidenceAgeMillis   int                        `json:"max_target_evidence_age_ms,omitempty"`
 	MinTargetOCRConfidence       float64                    `json:"min_target_ocr_confidence,omitempty"`
 	MinTargetVisualConfidence    float64                    `json:"min_target_visual_confidence,omitempty"`
+	TraceSchemaVersion           string                     `json:"trace_schema_version,omitempty"`
+	TracePrivacyTiers            []TracePrivacyTier         `json:"trace_privacy_tiers,omitempty"`
+	MaxTraceEvents               uint32                     `json:"max_trace_events,omitempty"`
+	MaxTraceBytes                uint64                     `json:"max_trace_bytes,omitempty"`
+	TraceLifetimeMillis          int                        `json:"trace_lifetime_ms,omitempty"`
+	TraceExportAllowed           bool                       `json:"trace_export_allowed,omitempty"`
 }
 
 // ScrollAxis identifies an axis accepted by a scroll backend.
@@ -369,6 +375,7 @@ const (
 	ErrorLeaseExpired          ErrorCode = "capability-lease-expired"
 	ErrorLeaseConsumed         ErrorCode = "capability-lease-consumed"
 	ErrorLeaseMismatch         ErrorCode = "capability-lease-mismatch"
+	ErrorTraceExport           ErrorCode = "trace-export-failed"
 )
 
 // ActionError is safe to serialize: Message never contains action payloads.
@@ -383,7 +390,8 @@ func (e *ActionError) Error() string { return e.Message }
 func (e *ActionError) Unwrap() error { return e.cause }
 
 // ActionResult reports one planned or attempted action without retaining its
-// input payload.
+// input payload. Trace is present only for an explicit policy-approved Trace
+// request on a semantic action.
 type ActionResult struct {
 	ActionID                  string              `json:"action_id"`
 	Operation                 Operation           `json:"operation"`
@@ -395,6 +403,7 @@ type ActionResult struct {
 	PostObservationID         string              `json:"post_observation_id,omitempty"`
 	Verification              *VerificationResult `json:"verification,omitempty"`
 	Proof                     *ActionProof        `json:"proof,omitempty"`
+	Trace                     *RobotGoTrace       `json:"trace,omitempty"`
 }
 
 var (
@@ -414,11 +423,15 @@ var (
 	ErrLeaseExpired          = errors.New("agent capability lease is expired")
 	ErrLeaseConsumed         = errors.New("agent capability lease is consumed")
 	ErrLeaseMismatch         = errors.New("agent capability lease binding does not match")
+	ErrTraceExport           = errors.New("agent transaction trace export failed")
 )
 
 func newActionError(code ErrorCode, operation Operation, message string, cause error) *ActionError {
 	if code == ErrorAuditDelivery && !errors.Is(cause, ErrAuditDelivery) {
 		cause = errors.Join(ErrAuditDelivery, cause)
+	}
+	if code == ErrorTraceExport && !errors.Is(cause, ErrTraceExport) {
+		cause = errors.Join(ErrTraceExport, cause)
 	}
 	return &ActionError{Code: code, Operation: operation, Message: message, cause: cause}
 }

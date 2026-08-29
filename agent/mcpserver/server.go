@@ -396,7 +396,7 @@ func (s *Server) registerTools() {
 		mcp.AddTool(s.protocol, &mcp.Tool{
 			Name:        ToolElementAct,
 			Title:       "Act on observed semantic element",
-			Description: "Revalidate and execute at most one policy-approved native semantic action against a live observation-bound element or single-use capability lease, optionally verify one target-relative postcondition, and return Action Proof v2. Pointer and keyboard fallback are never used.",
+			Description: "Revalidate and execute at most one policy-approved native semantic action against a live observation-bound element or single-use capability lease, optionally verify one target-relative postcondition, and return Action Proof v2. An explicit policy-approved Trace v1 request can add a bounded privacy-tiered, replay-neutral timeline. Pointer and keyboard fallback are never used.",
 			Annotations: &mcp.ToolAnnotations{DestructiveHint: &destructive, OpenWorldHint: &openWorld},
 		}, s.elementAct)
 	}

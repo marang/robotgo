@@ -116,6 +116,7 @@ func robotGoKeyArguments(modifiers []KeyModifier) []interface{} {
 type Config struct {
 	Policy    Policy    `json:"policy"`
 	AuditSink AuditSink `json:"-"`
+	TraceSink TraceSink `json:"-"`
 }
 
 // Session serializes policy-gated desktop mutations. The underlying RobotGo
@@ -146,6 +147,7 @@ type Session struct {
 	usedQueries      uint64
 	auditSink        AuditSink
 	auditSequence    uint64
+	traceSink        TraceSink
 	pressedInputs    []pressedInput
 	inputTainted     bool
 	lastAction       time.Time
@@ -182,7 +184,7 @@ func NewSession(config Config) (*Session, error) {
 		return nil, err
 	}
 	capabilities := robotgo.GetRuntimeCapabilities()
-	return newSessionWithAudit(policy, robotGoDriver{}, capabilities, config.AuditSink)
+	return newSessionWithSinks(policy, robotGoDriver{}, capabilities, config.AuditSink, config.TraceSink)
 }
 
 func newSession(policy Policy, driver inputDriver, capabilities robotgo.RuntimeCapabilities) (*Session, error) {
@@ -190,6 +192,16 @@ func newSession(policy Policy, driver inputDriver, capabilities robotgo.RuntimeC
 }
 
 func newSessionWithAudit(policy Policy, driver inputDriver, capabilities robotgo.RuntimeCapabilities, auditSink AuditSink) (*Session, error) {
+	return newSessionWithSinks(policy, driver, capabilities, auditSink, nil)
+}
+
+func newSessionWithSinks(
+	policy Policy,
+	driver inputDriver,
+	capabilities robotgo.RuntimeCapabilities,
+	auditSink AuditSink,
+	traceSink TraceSink,
+) (*Session, error) {
 	var (
 		ctx    context.Context
 		cancel context.CancelFunc
@@ -203,12 +215,14 @@ func newSessionWithAudit(policy Policy, driver inputDriver, capabilities robotgo
 		ctx, cancel = context.WithCancel(context.Background())
 	}
 	s := &Session{
-		policy: policy, driver: driver, catalog: buildCatalog(policy, capabilities),
-		ctx: ctx, cancel: cancel, actionGate: make(chan struct{}, 1),
+		policy: policy, driver: driver,
+		catalog: buildCatalogWithTraceExport(policy, capabilities, traceSink != nil),
+		ctx:     ctx, cancel: cancel, actionGate: make(chan struct{}, 1),
 		observations: make(map[string]observationRecord), views: make(map[string]*View),
 		leases:       make(map[[32]byte]capabilityLeaseRecord),
 		policyDigest: policyCapabilityDigest(policy),
 		auditSink:    auditSink,
+		traceSink:    traceSink,
 		ocrAnalyzer:  defaultOCRAnalyzer(),
 		ocrBackend:   ocrBackendName,
 		ocrModel:     ocrModelName,

@@ -75,6 +75,15 @@ stale and transformed-lineage rejection, evidence-bound lease expiry, cleanup,
 and Audit schema v6 keep pixels and OCR text outside resolver, MCP, lease, and
 audit state. Semantic-only TargetSpec v1 remains compatible.
 
+Implementation checkpoint (LAB-84): catalog schema v14 and Trace v1 add an
+explicit, deny-by-default, privacy-tiered timeline to verified semantic action
+transactions. Fixed events correlate lease-bound resolver provenance,
+authorization, backend selection, dispatch, verification, cancellation,
+cleanup, and terminal Action Proof status. Immutable policy bounds tier, event
+count, serialized bytes, lifetime, and optional atomic export. Truncation,
+redaction, missing evidence, expiry, and export failure are explicit; the trace
+remains replay-neutral and excludes sensitive desktop payload in every tier.
+
 ## 1. Semantic and visual scene graph
 
 Combine available perception sources into one normalized, observation-bound UI
@@ -479,10 +488,10 @@ generation and revalidated target for a short lifetime. It binds the action,
 fallback ceiling, postcondition, policy digest, optional observation, expiry,
 and consumption state. Any target change or expiry makes the lease unusable.
 
-A later RobotGo Trace viewer should make the proof inspectable through a
-timeline, semantic before/after diff, resolver candidates, backend and
-fallback reason, policy decision, conditions, cancellation boundary, input
-ownership, and cleanup. Its privacy levels are explicit:
+RobotGo Trace now makes the proof machine-inspectable through a bounded
+timeline of resolver candidates, backend selection, policy decision,
+conditions, cancellation boundary, and cleanup. A later viewer may render this
+existing contract. Its privacy levels are explicit:
 
 1. `metadata-only`
 2. `semantic-redacted`
@@ -510,7 +519,7 @@ The recommended product sequence is:
    (`LAB-82`, complete)
 7. integrate image/OCR evidence into the same resolver and authorization
    contract (`LAB-83`, complete)
-8. add RobotGo Trace with explicit privacy levels
+8. add RobotGo Trace with explicit privacy levels (`LAB-84`, complete)
 9. add recorder and verified-flow code generation
 10. add a side-effect-free cross-platform capability planner
 11. add secure secret entry, local previews, and higher-level declarative

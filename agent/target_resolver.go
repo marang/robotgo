@@ -320,7 +320,12 @@ func (s *Session) ResolveUITarget(ctx context.Context, request ResolveUIRequest)
 			return s.finishTargetResolution(ctx, result, nil)
 		}
 		if request.Lease != nil {
-			lease, err := s.issueCapabilityLease(request, selected, evidenceBundle.expiresAt)
+			var traceResolution retainedTraceResolution
+			if len(s.policy.allowTraceTier) > 0 {
+				traceResolution = retainedTraceResolutionFromResult(result, evidenceBundle.observationID)
+			}
+			defer clearRetainedTraceResolution(&traceResolution)
+			lease, err := s.issueCapabilityLease(request, selected, evidenceBundle.expiresAt, traceResolution)
 			if err != nil {
 				code := ErrorBackendFailure
 				if errors.Is(err, ErrStaleTarget) {

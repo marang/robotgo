@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+- Added deny-by-default RobotGo Trace v1 for verified semantic action
+  transactions. Explicit per-action capture and immutable policy independently
+  bound four fixed privacy tiers, event count, serialized bytes, lifetime, and
+  optional atomic sink export. Stable events correlate resolver provenance,
+  authorization, backend selection, dispatch, verification, cancellation,
+  cleanup, and Action Proof without becoming replay or mutation authority.
+  Every tier excludes action values, locator text, credentials, clipboard
+  data, pixels, native handles, lease tokens, unrestricted accessibility
+  trees, and raw backend errors; truncation, redaction, missing evidence,
+  expiry, cleanup, and export failure remain explicit.
+
 - Made published release-evidence assets fail closed on filename collisions.
   The write-authorized release job serializes same-tag publishers, rejects
   either existing exact-tag filename before upload, and still checksum-verifies

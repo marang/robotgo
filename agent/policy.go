@@ -43,6 +43,11 @@ const (
 	maxAgentVerificationTimeoutMS    = 300_000
 	maxAgentCapabilityLeases         = maxAgentQueries
 	maxAgentCapabilityLeaseMillis    = maxAgentSessionTimeoutMS
+	minAgentTraceEvents              = 3
+	maxAgentTraceEvents              = 256
+	minAgentTraceBytes               = 2 << 10
+	maxAgentTraceBytes               = 1 << 20
+	maxAgentTraceLifetimeMS          = maxAgentSessionTimeoutMS
 	maxAgentWaitAttempts             = 100
 	maxAgentWaitIntervalMS           = 60_000
 	maxAgentWaitTimeoutMS            = 300_000
@@ -105,6 +110,11 @@ type Policy struct {
 	MaxTargetEvidenceAgeMillis     int                      `json:"max_target_evidence_age_ms,omitempty"`
 	MinTargetOCRConfidence         float64                  `json:"min_target_ocr_confidence,omitempty"`
 	MinTargetVisualConfidence      float64                  `json:"min_target_visual_confidence,omitempty"`
+	AllowedTraceTiers              []TracePrivacyTier       `json:"allowed_trace_tiers,omitempty"`
+	MaxTraceEvents                 uint32                   `json:"max_trace_events,omitempty"`
+	MaxTraceBytes                  uint64                   `json:"max_trace_bytes,omitempty"`
+	TraceLifetimeMillis            int                      `json:"trace_lifetime_ms,omitempty"`
+	AllowTraceExport               bool                     `json:"allow_trace_export,omitempty"`
 	AllowFullDisplayView           bool                     `json:"allow_full_display_view,omitempty"`
 	AllowPortalView                bool                     `json:"allow_portal_view,omitempty"`
 	MaxViewSourcePixels            uint64                   `json:"max_view_source_pixels,omitempty"`
@@ -144,6 +154,7 @@ type Policy struct {
 	allowTargetMode                map[TargetResolutionMode]struct{}
 	allowTargetEvidenceSource      map[TargetEvidenceSource]struct{}
 	allowTargetEvidenceProvider    map[TargetEvidenceProvider]struct{}
+	allowTraceTier                 map[TracePrivacyTier]struct{}
 	allowOCRLanguage               map[string]struct{}
 }
 
@@ -211,6 +222,18 @@ func preparePolicy(input Policy) (Policy, error) {
 	}
 	if input.MaxTargetEvidenceAgeMillis < 0 || input.MaxTargetEvidenceAgeMillis > maxAgentSessionTimeoutMS {
 		return Policy{}, fmt.Errorf("agent: target evidence age must be between 0 and %dms", maxAgentSessionTimeoutMS)
+	}
+	if input.MaxTraceEvents > maxAgentTraceEvents {
+		return Policy{}, fmt.Errorf("agent: max trace events exceeds hard limit %d", maxAgentTraceEvents)
+	}
+	if input.MaxTraceBytes > maxAgentTraceBytes {
+		return Policy{}, fmt.Errorf("agent: max trace bytes exceeds hard limit %d", maxAgentTraceBytes)
+	}
+	if input.TraceLifetimeMillis < 0 || input.TraceLifetimeMillis > maxAgentTraceLifetimeMS {
+		return Policy{}, fmt.Errorf("agent: trace lifetime must be between 0 and %dms", maxAgentTraceLifetimeMS)
+	}
+	if len(input.AllowedTraceTiers) > len(allTracePrivacyTiers) {
+		return Policy{}, fmt.Errorf("agent: trace tier count exceeds hard limit %d", len(allTracePrivacyTiers))
 	}
 	for name, confidence := range map[string]float64{
 		"OCR": input.MinTargetOCRConfidence, "visual": input.MinTargetVisualConfidence,
@@ -367,6 +390,11 @@ func preparePolicy(input Policy) (Policy, error) {
 		MaxTargetEvidenceAgeMillis:   input.MaxTargetEvidenceAgeMillis,
 		MinTargetOCRConfidence:       input.MinTargetOCRConfidence,
 		MinTargetVisualConfidence:    input.MinTargetVisualConfidence,
+		AllowedTraceTiers:            append([]TracePrivacyTier(nil), input.AllowedTraceTiers...),
+		MaxTraceEvents:               input.MaxTraceEvents,
+		MaxTraceBytes:                input.MaxTraceBytes,
+		TraceLifetimeMillis:          input.TraceLifetimeMillis,
+		AllowTraceExport:             input.AllowTraceExport,
 		AllowFullDisplayView:         input.AllowFullDisplayView,
 		AllowPortalView:              input.AllowPortalView,
 		MaxViewSourcePixels:          input.MaxViewSourcePixels,
@@ -406,6 +434,7 @@ func preparePolicy(input Policy) (Policy, error) {
 		allowTargetMode:              make(map[TargetResolutionMode]struct{}),
 		allowTargetEvidenceSource:    make(map[TargetEvidenceSource]struct{}),
 		allowTargetEvidenceProvider:  make(map[TargetEvidenceProvider]struct{}),
+		allowTraceTier:               make(map[TracePrivacyTier]struct{}),
 		allowOCRLanguage:             make(map[string]struct{}),
 	}
 	for _, operation := range prepared.AllowedOperations {
@@ -547,6 +576,30 @@ func preparePolicy(input Policy) (Policy, error) {
 			return Policy{}, fmt.Errorf("agent: duplicate target evidence provider")
 		}
 		prepared.allowTargetEvidenceProvider[provider] = struct{}{}
+	}
+	for _, tier := range prepared.AllowedTraceTiers {
+		if !validTracePrivacyTier(tier) {
+			return Policy{}, fmt.Errorf("agent: unknown trace privacy tier %q", tier)
+		}
+		if _, duplicate := prepared.allowTraceTier[tier]; duplicate {
+			return Policy{}, fmt.Errorf("agent: duplicate trace privacy tier %q", tier)
+		}
+		prepared.allowTraceTier[tier] = struct{}{}
+	}
+	if len(prepared.allowTraceTier) == 0 {
+		if prepared.MaxTraceEvents != 0 || prepared.MaxTraceBytes != 0 ||
+			prepared.TraceLifetimeMillis != 0 || prepared.AllowTraceExport {
+			return Policy{}, fmt.Errorf("agent: trace bounds or export require an allowed trace tier")
+		}
+	} else {
+		if prepared.MaxTraceEvents < minAgentTraceEvents || prepared.MaxTraceBytes < minAgentTraceBytes ||
+			prepared.TraceLifetimeMillis == 0 || prepared.SessionTimeoutMillis == 0 ||
+			prepared.TraceLifetimeMillis > prepared.SessionTimeoutMillis {
+			return Policy{}, fmt.Errorf("agent: trace capture requires bounded events, bytes, lifetime, and session lifetime")
+		}
+		if _, allowed := prepared.allowOperation[OperationElementAct]; !allowed {
+			return Policy{}, fmt.Errorf("agent: trace capture requires desktop.element-act")
+		}
 	}
 	for _, language := range prepared.AllowedOCRLanguages {
 		if !validOCRLanguage(language) {

@@ -63,7 +63,8 @@ type UIElementExpectation struct {
 }
 
 // ElementActionRequest performs at most one native semantic action. Value is
-// accepted only for set-value and is never retained in results or audit data.
+// accepted only for set-value and is never retained in results, traces, or
+// audit data. Trace requests add evidence only and grant no action authority.
 type ElementActionRequest struct {
 	ObservationID     string               `json:"observation_id,omitempty"`
 	ElementID         string               `json:"element_id,omitempty"`
@@ -73,6 +74,7 @@ type ElementActionRequest struct {
 	Postcondition     *UIElementCondition  `json:"postcondition,omitempty"`
 	Value             string               `json:"value,omitempty"`
 	Confirmed         bool                 `json:"confirmed,omitempty"`
+	Trace             *TraceRequest        `json:"trace,omitempty"`
 }
 
 type uiBackendElementAction struct {
@@ -148,6 +150,14 @@ func (s *Session) ActUIElement(ctx context.Context, request ElementActionRequest
 	result = ActionResult{
 		ActionID: id, Operation: OperationElementAct, Status: ActionFailed, Proof: proof,
 	}
+	traceRecorder, traceErr := s.prepareActionTrace(id, request.Trace)
+	if traceErr != nil {
+		s.invalidatePresentedCapabilityLease(request.CapabilityLeaseID)
+		proof.Cleanup.TransientResourcesReleased = true
+		result.DurationMillis = time.Since(started).Milliseconds()
+		returnErr = setElementActionFailure(&result, traceErr, ActionProofRejectedBeforeDispatch, false)
+		return result, returnErr
+	}
 
 	var (
 		acquired               bool
@@ -161,6 +171,9 @@ func (s *Session) ActUIElement(ctx context.Context, request ElementActionRequest
 	defer func() {
 		leaseWasActive := leaseReservation != nil && leaseReservation.active
 		s.invalidateCapabilityLease(leaseReservation)
+		if leaseReservation != nil {
+			clearRetainedTraceResolution(&leaseReservation.record.traceResolution)
+		}
 		if leaseWasActive && proof.Lease != nil {
 			proof.Lease.Status = CapabilityLeaseInvalidated
 		}
@@ -176,6 +189,13 @@ func (s *Session) ActUIElement(ctx context.Context, request ElementActionRequest
 		}
 		if acquired {
 			s.release()
+		}
+		if traceRecorder != nil {
+			trace, traceErr := traceRecorder.finish(result, returnErr)
+			result.Trace = &trace
+			if traceErr != nil {
+				returnErr = errors.Join(returnErr, traceErr)
+			}
 		}
 	}()
 
@@ -206,6 +226,7 @@ func (s *Session) ActUIElement(ctx context.Context, request ElementActionRequest
 		return result, returnErr
 	}
 	if leaseReservation != nil {
+		traceRecorder.setResolution(leaseReservation.record.traceResolution)
 		if request.ObservationID != "" || request.ElementID != "" || !emptyUIElementExpectation(request.Expected) {
 			returnErr = setElementActionFailure(&result, leaseActionError(ErrorLeaseMismatch, ErrLeaseMismatch), ActionProofRejectedBeforeDispatch, false)
 			return result, returnErr
