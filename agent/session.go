@@ -135,6 +135,11 @@ type Session struct {
 	cleanupComplete  bool
 	observationMu    sync.Mutex
 	observations     map[string]observationRecord
+	leaseMu          sync.Mutex
+	leases           map[[32]byte]capabilityLeaseRecord
+	usedLeases       uint64
+	closedLeases     bool
+	policyDigest     [32]byte
 	viewMu           sync.Mutex
 	views            map[string]*View
 	usedObservations uint64
@@ -201,11 +206,13 @@ func newSessionWithAudit(policy Policy, driver inputDriver, capabilities robotgo
 		policy: policy, driver: driver, catalog: buildCatalog(policy, capabilities),
 		ctx: ctx, cancel: cancel, actionGate: make(chan struct{}, 1),
 		observations: make(map[string]observationRecord), views: make(map[string]*View),
-		auditSink:   auditSink,
-		ocrAnalyzer: defaultOCRAnalyzer(),
-		ocrBackend:  ocrBackendName,
-		ocrModel:    ocrModelName,
-		now:         time.Now,
+		leases:       make(map[[32]byte]capabilityLeaseRecord),
+		policyDigest: policyCapabilityDigest(policy),
+		auditSink:    auditSink,
+		ocrAnalyzer:  defaultOCRAnalyzer(),
+		ocrBackend:   ocrBackendName,
+		ocrModel:     ocrModelName,
+		now:          time.Now,
 	}
 	s.actionGate <- struct{}{}
 	ownerMu.Lock()
@@ -235,6 +242,7 @@ func (s *Session) Close() error {
 		s.cancel()
 		<-s.actionGate
 		s.closeViews()
+		s.closeCapabilityLeases()
 		s.closeObservations()
 		s.actionGate <- struct{}{}
 	})
@@ -809,6 +817,16 @@ func classifyBackendError(err error) (ErrorCode, string) {
 		return ErrorPolicyDenied, "agent policy denied the action"
 	case errors.Is(err, ErrStaleTarget):
 		return ErrorStaleTarget, "agent observation target is stale"
+	case errors.Is(err, ErrLeaseRequired):
+		return ErrorLeaseRequired, "semantic capability lease is required"
+	case errors.Is(err, ErrLeaseInvalid):
+		return ErrorLeaseInvalid, "semantic capability lease is invalid"
+	case errors.Is(err, ErrLeaseExpired):
+		return ErrorLeaseExpired, "semantic capability lease is expired"
+	case errors.Is(err, ErrLeaseConsumed):
+		return ErrorLeaseConsumed, "semantic capability lease is consumed"
+	case errors.Is(err, ErrLeaseMismatch):
+		return ErrorLeaseMismatch, "semantic capability lease binding does not match"
 	case errors.Is(err, ErrInputCleanup):
 		return ErrorCleanupFailed, "pressed input cleanup failed; do not retry the action"
 	case errors.Is(err, context.DeadlineExceeded):

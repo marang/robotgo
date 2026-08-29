@@ -112,6 +112,7 @@ func accessibilityElementActionRequest(
 		Target: target, Reference: request.Reference, Expected: expected,
 		Action: string(request.Action), Value: request.Value,
 		BeforeFinalGate: request.BeforeFinalGate,
+		BeforeDispatch:  request.BeforeDispatch,
 	}
 	if request.Postcondition != nil {
 		nativeRequest.Postcondition = &accessibility.ElementCondition{

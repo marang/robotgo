@@ -265,6 +265,7 @@ func finalAccessibilityActionGate(
 
 func dispatchAccessibilityMutation(
 	ctx context.Context,
+	beforeDispatch func(context.Context) error,
 	mutation func() error,
 ) (AccessibilityActionResult, error) {
 	if err := ctx.Err(); err != nil {
@@ -272,6 +273,11 @@ func dispatchAccessibilityMutation(
 	}
 	if mutation == nil {
 		return AccessibilityActionResult{}, ErrAccessibilityInvalidTree
+	}
+	if beforeDispatch != nil {
+		if err := beforeDispatch(ctx); err != nil {
+			return AccessibilityActionResult{}, err
+		}
 	}
 	err := mutation()
 	return AccessibilityActionResult{Dispatched: true}, err

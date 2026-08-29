@@ -327,7 +327,7 @@ func TestProtocolInitializesAndListsFocusedTools(t *testing.T) {
 			if marshalErr != nil {
 				t.Fatalf("marshal element-act schema: %v", marshalErr)
 			}
-			for _, field := range []string{"postcondition", "kind", "state"} {
+			for _, field := range []string{"capability_lease_id", "postcondition", "kind", "state"} {
 				if !strings.Contains(string(schema), `"`+field+`"`) {
 					t.Errorf("robotgo_element_act schema omitted %q: %s", field, schema)
 				}
@@ -338,14 +338,14 @@ func TestProtocolInitializesAndListsFocusedTools(t *testing.T) {
 			if marshalErr != nil {
 				t.Fatalf("marshal resolve-ui schema: %v", marshalErr)
 			}
-			for _, field := range []string{"schema_version", "window", "required_states", "required_actions", "ancestors"} {
+			for _, field := range []string{"schema_version", "window", "required_states", "required_actions", "ancestors", "mode", "lease", "action_value_sha256"} {
 				if !strings.Contains(string(schema), `"`+field+`"`) {
 					t.Errorf("robotgo_resolve_ui schema omitted %q: %s", field, schema)
 				}
 			}
 		}
 		switch tool.Name {
-		case ToolFind, ToolWait, ToolInspectUI, ToolResolveUI, ToolView, ToolOCR, ToolDetectElements:
+		case ToolFind, ToolWait, ToolInspectUI, ToolView, ToolOCR, ToolDetectElements:
 			if tool.Annotations == nil || !tool.Annotations.ReadOnlyHint {
 				t.Errorf("tool %q is not marked read-only", tool.Name)
 			}

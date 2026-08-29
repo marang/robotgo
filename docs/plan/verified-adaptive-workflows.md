@@ -117,17 +117,36 @@ is no fuzzy matching, healing, locator patching, OCR/visual evidence, or input
 fallback in this slice. Audit schema v4 adds resolver start/finish evidence
 without target names, titles, values, native references, or tree payloads.
 
+## LAB-82 capability leases and controlled semantic healing
+
+Catalog schema v12 adds fixed `strict`, `adaptive`, and `review` modes plus
+Capability Lease v1. A lease is bound privately to one session, policy digest,
+TargetSpec digest, retained observation element, exact action, optional
+postcondition, optional set-value SHA-256 binding, expiry, and one native
+dispatch. Only a SHA-256 hash of its random bearer token is retained. Replay,
+expiry, wrong session, wrong binding, observation release, close, cancellation,
+and pre-dispatch audit failure fail closed; concurrent callers can cross the
+native dispatch boundary at most once.
+
+Adaptive resolution uses semantic and structural evidence only. Role, required
+state/action sets, enabled state, bounds, and hierarchy shape remain exact;
+only target or ancestor names may drift under the deterministic 0-100 policy
+threshold. Every qualifying candidate counts, so more than one is always
+`ambiguous-target` and score ties never select by tree order. Review returns a
+payload-free, non-executable changed-clause proposal and never stores a locator
+rewrite or dispatches. Action Proof v2 and Audit schema v5 expose fixed lease
+lifecycle and adaptive evidence without tokens, names, titles, values, native
+references, or policy payloads.
+
 ## Next slices
 
-1. single-use capability leases and strict/adaptive/review healing modes
-   ([`LAB-82`](https://linear.app/riotbox/issue/LAB-82/add-single-use-capability-leases-and-controlled-semantic-healing));
-2. policy-gated OCR/visual evidence in the same resolver
+1. policy-gated OCR/visual evidence in the same resolver
    ([`LAB-83`](https://linear.app/riotbox/issue/LAB-83/integrate-policy-gated-ocr-and-visual-evidence-into-targetspec));
-3. privacy-tiered RobotGo Trace
+2. privacy-tiered RobotGo Trace
    ([`LAB-84`](https://linear.app/riotbox/issue/LAB-84/add-privacy-tiered-robotgo-trace-for-verified-transactions));
-4. semantic recorder/code generation
+3. semantic recorder/code generation
    ([`LAB-85`](https://linear.app/riotbox/issue/LAB-85/add-semantic-recorder-and-verified-flow-code-generation));
-5. side-effect-free capability planner
+4. side-effect-free capability planner
    ([`LAB-86`](https://linear.app/riotbox/issue/LAB-86/add-side-effect-free-verified-flow-capability-planner)).
 
 Each slice remains independently deny-by-default and must preserve exact target

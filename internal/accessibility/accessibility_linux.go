@@ -747,6 +747,12 @@ func dispatchATSPIAction(
 		}
 		return target, nil, nil
 	}
+	beforeDispatch := func() error {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		return runFinalGateCallback(ctx, request.BeforeDispatch)
+	}
 	switch request.Action {
 	case "focus":
 		if !interfaces[atspiShortComponent] {
@@ -756,6 +762,9 @@ func dispatchATSPIAction(
 			return ActionResult{}, err
 		} else if result != nil {
 			return *result, nil
+		}
+		if err := beforeDispatch(); err != nil {
+			return ActionResult{}, err
 		}
 		ok, err := query.grabFocus(ctx, reference)
 		if err != nil {
@@ -771,6 +780,9 @@ func dispatchATSPIAction(
 				return ActionResult{}, err
 			} else if result != nil {
 				return *result, nil
+			}
+			if err := beforeDispatch(); err != nil {
+				return ActionResult{}, err
 			}
 			ok, err := query.setTextContents(ctx, reference, string(request.Value))
 			if err != nil {
@@ -814,6 +826,9 @@ func dispatchATSPIAction(
 			return ActionResult{}, err
 		} else if result != nil {
 			return *result, nil
+		}
+		if err := beforeDispatch(); err != nil {
+			return ActionResult{}, err
 		}
 		if err := query.setCurrentValue(ctx, reference, value); err != nil {
 			return dispatched, normalizeATSPIError(err)
@@ -871,6 +886,9 @@ func dispatchATSPIAction(
 		} else if result != nil {
 			return *result, nil
 		}
+		if err := beforeDispatch(); err != nil {
+			return ActionResult{}, err
+		}
 		if err := query.setCurrentValue(ctx, reference, next); err != nil {
 			return dispatched, normalizeATSPIError(err)
 		}
@@ -894,6 +912,9 @@ func dispatchATSPIAction(
 			return ActionResult{}, ErrStaleTarget
 		}
 		if err := validateWindow(); err != nil {
+			return ActionResult{}, err
+		}
+		if err := beforeDispatch(); err != nil {
 			return ActionResult{}, err
 		}
 		ok, err := query.doAction(ctx, reference, target.actionIndex)

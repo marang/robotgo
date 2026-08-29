@@ -771,6 +771,7 @@ func (s *Session) ReleaseObservation(id string) error {
 		return observationActionError(ErrorInvalidInput, "invalid RobotGo observation ID", nil)
 	}
 	s.releaseView(id)
+	s.invalidateObservationLeases(id)
 	s.observationMu.Lock()
 	record, ok := s.observations[id]
 	if ok {

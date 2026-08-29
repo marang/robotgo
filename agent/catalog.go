@@ -63,6 +63,12 @@ func resolveUICapability(policy Policy, capabilities robotgo.RuntimeCapabilities
 		UnavailableCode:            featureUnavailableCode(feature),
 		TargetSpecVersion:          TargetSpecSchemaVersion,
 		TargetResolutionStrategies: append([]TargetResolutionStrategy(nil), allTargetResolutionStrategies...),
+		TargetResolutionModes:      append([]TargetResolutionMode(nil), policy.AllowedTargetModes...),
+		CapabilityLeaseVersion:     CapabilityLeaseSchemaVersion,
+		CapabilityLeaseRequired:    policy.RequireCapabilityLease,
+		MaxCapabilityLeases:        policy.MaxCapabilityLeases,
+		MaxCapabilityLeaseMillis:   policy.MaxCapabilityLeaseMillis,
+		AdaptiveTargetThreshold:    policy.AdaptiveTargetThreshold,
 		MaxTargetAncestors:         min(policy.MaxUITreeDepth, uint32(maxTargetSpecAncestors)),
 	}
 }
@@ -432,6 +438,9 @@ func cloneCatalog(source OperationCatalog) OperationCatalog {
 		cloned.Operations[index].TargetResolutionStrategies = append(
 			[]TargetResolutionStrategy(nil),
 			cloned.Operations[index].TargetResolutionStrategies...,
+		)
+		cloned.Operations[index].TargetResolutionModes = append(
+			[]TargetResolutionMode(nil), cloned.Operations[index].TargetResolutionModes...,
 		)
 	}
 	return cloned

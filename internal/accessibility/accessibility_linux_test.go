@@ -663,6 +663,7 @@ func TestActATSPIRevalidatesExactObservedElementBeforeDispatch(t *testing.T) {
 	})
 	query.apps = []atspiReference{application}
 	query.pids[application.Bus] = 42
+	dispatchBoundaries := 0
 	request := ActionRequest{
 		Target:    Target{ProcessID: 42, ExpectedTitle: "Fixture"},
 		Reference: []byte(referenceKey(button)), Action: "press",
@@ -671,17 +672,18 @@ func TestActATSPIRevalidatesExactObservedElementBeforeDispatch(t *testing.T) {
 			Bounds:  &Bounds{X: 20, Y: 40, Width: 80, Height: 30},
 			Actions: []string{"press", "focus"},
 		},
+		BeforeDispatch: func(context.Context) error { dispatchBoundaries++; return nil },
 	}
 	result, err := actATSPI(t.Context(), query, request, button)
 	if err != nil || !result.Dispatched || len(query.mutationCalls) != 1 ||
-		!strings.HasSuffix(query.mutationCalls[0], ":0") {
+		!strings.HasSuffix(query.mutationCalls[0], ":0") || dispatchBoundaries != 1 {
 		t.Fatalf("semantic press = %+v, %v, calls=%v", result, err, query.mutationCalls)
 	}
 
 	query.mutationCalls = nil
 	query.objects[referenceKey(button)].properties[atspiPropertyName] = "Delete"
 	result, err = actATSPI(t.Context(), query, request, button)
-	if !errors.Is(err, ErrStaleTarget) || result.Dispatched || len(query.mutationCalls) != 0 {
+	if !errors.Is(err, ErrStaleTarget) || result.Dispatched || len(query.mutationCalls) != 0 || dispatchBoundaries != 1 {
 		t.Fatalf("stale semantic press = %+v, %v, calls=%v", result, err, query.mutationCalls)
 	}
 
@@ -700,7 +702,7 @@ func TestActATSPIRevalidatesExactObservedElementBeforeDispatch(t *testing.T) {
 	}
 	result, err = actATSPI(t.Context(), query, request, button)
 	if err != nil || !result.Dispatched || len(query.mutationCalls) != 1 ||
-		!strings.HasSuffix(query.mutationCalls[0], ":1") {
+		!strings.HasSuffix(query.mutationCalls[0], ":1") || dispatchBoundaries != 2 {
 		t.Fatalf("reordered semantic press = %+v, %v, calls=%v", result, err, query.mutationCalls)
 	}
 

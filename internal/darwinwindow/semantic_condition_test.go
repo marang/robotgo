@@ -207,20 +207,30 @@ func TestDispatchAccessibilityMutationChecksCancellationAtCallBoundary(t *testin
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
 	called := false
-	result, err := dispatchAccessibilityMutation(ctx, func() error {
+	authorized := false
+	result, err := dispatchAccessibilityMutation(ctx, func(context.Context) error {
+		authorized = true
+		return nil
+	}, func() error {
 		called = true
 		return nil
 	})
-	if !errors.Is(err, context.Canceled) || result.Dispatched || called {
-		t.Fatalf("canceled mutation = %+v, %v, called=%t", result, err, called)
+	if !errors.Is(err, context.Canceled) || result.Dispatched || called || authorized {
+		t.Fatalf("canceled mutation = %+v, %v, called=%t authorized=%t", result, err, called, authorized)
 	}
 
 	backendErr := errors.New("native AX call failed")
-	result, err = dispatchAccessibilityMutation(t.Context(), func() error {
+	result, err = dispatchAccessibilityMutation(t.Context(), func(context.Context) error {
+		if called {
+			t.Fatal("mutation crossed before dispatch authorization")
+		}
+		authorized = true
+		return nil
+	}, func() error {
 		called = true
 		return backendErr
 	})
-	if !errors.Is(err, backendErr) || !result.Dispatched || !called {
+	if !errors.Is(err, backendErr) || !result.Dispatched || !called || !authorized {
 		t.Fatalf("crossed mutation boundary = %+v, %v, called=%t", result, err, called)
 	}
 }

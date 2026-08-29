@@ -48,9 +48,11 @@ func (driver *semanticFakeDriver) ActUIElement(ctx context.Context, request uiBa
 	driver.actRef = string(request.Reference)
 	driver.actValue = request.Value
 	beforeFinalGate := request.BeforeFinalGate
+	beforeDispatch := request.BeforeDispatch
 	request.Reference = nil
 	request.Value = nil
 	request.BeforeFinalGate = nil
+	request.BeforeDispatch = nil
 	driver.act = request
 	if driver.actStart != nil {
 		driver.actStart()
@@ -73,6 +75,11 @@ func (driver *semanticFakeDriver) ActUIElement(ctx context.Context, request uiBa
 	if driver.actBlock {
 		<-ctx.Done()
 		return uiBackendElementActionResult{CleanupComplete: true}, ctx.Err()
+	}
+	if driver.dispatch && !driver.alreadySatisfied && beforeDispatch != nil {
+		if err := beforeDispatch(ctx); err != nil {
+			return uiBackendElementActionResult{CleanupComplete: true}, err
+		}
 	}
 	return uiBackendElementActionResult{
 		Dispatched: driver.dispatch, AlreadySatisfied: driver.alreadySatisfied,

@@ -113,6 +113,7 @@ type ActionRequest struct {
 	Value           []byte
 	Postcondition   *ElementCondition
 	BeforeFinalGate func(context.Context) error
+	BeforeDispatch  func(context.Context) error
 }
 
 type finalGateCallbackError struct{ cause error }

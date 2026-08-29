@@ -58,6 +58,14 @@ dispatched backend error remains unverified even if a later check matches. The
 proof and audit schema expose only fixed outcomes and counts; values, target
 text, native references, policy payloads, and raw errors remain private.
 
+Implementation checkpoint (LAB-82): catalog schema v12 adds strict, adaptive,
+and review resolution plus single-use Capability Lease v1. Executable leases
+bind one session/policy window, TargetSpec digest, exact action, optional
+postcondition and value digest, expiry, and one native dispatch. Adaptive
+healing admits only deterministic semantic name drift above a policy threshold;
+all qualifying candidates count and review proposals are non-executable. Action
+Proof v2 and Audit schema v5 expose fixed lifecycle and evidence only.
+
 ## 1. Semantic and visual scene graph
 
 Combine available perception sources into one normalized, observation-bound UI
