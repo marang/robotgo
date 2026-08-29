@@ -196,11 +196,12 @@ func (robotGoDriver) InspectUI(ctx context.Context, target uiBackendTarget, limi
 
 // InspectUI returns one policy-scoped semantic tree. It never opens a desktop
 // permission prompt and consumes both query and observation quota on attempt.
-func (s *Session) InspectUI(ctx context.Context, request InspectUIRequest) (UIObservation, error) {
+func (s *Session) InspectUI(ctx context.Context, request InspectUIRequest) (result UIObservation, returnErr error) {
+	defer func() { s.recordSemanticObservation(result, returnErr) }()
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	result := UIObservation{SchemaVersion: UISchemaVersion, CreatedAt: time.Now().UTC()}
+	result = UIObservation{SchemaVersion: UISchemaVersion, CreatedAt: time.Now().UTC()}
 	if request.Target <= 0 || !validWindowTargetKind(request.Kind) {
 		return result, uiError(ErrorInvalidInput, "invalid UI inspection target", nil)
 	}

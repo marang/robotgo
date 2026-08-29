@@ -2,8 +2,9 @@
 
 // Command semantic_element_action inspects one self-owned accessible window,
 // resolves and toggles one uniquely named checkbox or switch, verifies the
-// opposite checked state, and returns one explicitly requested privacy-tiered
-// RobotGo Trace. It never falls back to pointer or keyboard input.
+// opposite checked state, records the semantic workflow, and returns both the
+// privacy-tiered Trace and deterministic Go/MCP flow artifacts. It never falls
+// back to pointer or keyboard input.
 package main
 
 import (
@@ -89,6 +90,10 @@ func run() error {
 		MaxTraceEvents:               16,
 		MaxTraceBytes:                16 * 1024,
 		TraceLifetimeMillis:          5_000,
+		AllowRecorder:                true,
+		MaxRecorderEvents:            32,
+		MaxRecorderBytes:             64 * 1024,
+		RecorderLifetimeMillis:       15_000,
 		SessionTimeoutMillis:         15_000,
 	}
 	session, err := agent.NewSession(agent.Config{Policy: policy})
@@ -98,6 +103,13 @@ func run() error {
 	defer func() { _ = session.Close() }()
 	ctx, cancel := context.WithTimeout(context.Background(), 12*time.Second)
 	defer cancel()
+	recorder, err := session.StartRecorder(ctx, agent.RecorderRequest{
+		SchemaVersion: agent.SemanticRecorderSchemaVersion,
+	})
+	if err != nil {
+		return err
+	}
+	defer func() { _ = recorder.Close() }()
 	observation, err := session.InspectUI(ctx, agent.InspectUIRequest{
 		Target: *pid, Kind: agent.WindowTargetProcess,
 	})
@@ -143,10 +155,25 @@ func run() error {
 	result, err := session.ActUIElement(ctx, agent.ElementActionRequest{
 		CapabilityLeaseID: resolution.Lease.ID,
 		Action:            agent.UIActionToggle, Confirmed: true, Postcondition: postcondition,
+		Hint:  &agent.RecorderActionHint{Impact: agent.RecorderActionReversible},
 		Trace: &agent.TraceRequest{SchemaVersion: agent.TraceRequestSchemaVersion, Tier: tier},
 	})
 	if err != nil {
 		return err
 	}
-	return json.NewEncoder(os.Stdout).Encode(result)
+	flow, err := recorder.Stop(ctx)
+	if err != nil {
+		return err
+	}
+	artifacts, err := flow.Generate(agent.FlowGenerationRequest{
+		PackageName: "recordedflow", FunctionName: "RunVerifiedFlow",
+	})
+	if err != nil {
+		return err
+	}
+	return json.NewEncoder(os.Stdout).Encode(struct {
+		Result    agent.ActionResult           `json:"result"`
+		Flow      agent.RecordedFlow           `json:"flow"`
+		Artifacts agent.GeneratedFlowArtifacts `json:"artifacts"`
+	}{Result: result, Flow: flow, Artifacts: artifacts})
 }

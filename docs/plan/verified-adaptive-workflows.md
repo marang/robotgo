@@ -192,11 +192,41 @@ are explicit. Export receives one complete defensive copy after the action and
 audit terminal events; failure returns `trace-export-failed` without changing
 Action Proof or the recorded desktop outcome.
 
+## LAB-85 semantic recorder and verified-flow generation
+
+Catalog schema v15 adds Recorded Flow v1 and immutable recorder event, retained
+byte, and lifetime bounds. Recording remains independently deny-by-default and
+requires explicit operator `StartRecorder` and `Stop`; only one recorder can be
+active per process-exclusive agent session. Stop transfers a defensive flow
+and clears temporary resolver bindings. Cancellation, expiry, recorder close,
+and session close clear the same state without returning partial artifacts.
+
+The recorder captures bounded semantic observation shape, payload-free
+resolver evidence, reusable TargetSpecs without their native window identity,
+semantic action and postcondition kinds, terminal proof shape, and privacy-safe
+Trace lineage. It never copies coordinates, action values, capability IDs,
+native window/element references, pixels, clipboard data, unrestricted trees,
+or raw backend errors. Repeated locators share one stable `target-N` identity.
+Observation and window references become stable `source-N` and `window-N`
+aliases whose concrete values remain operator-owned replay inputs.
+
+Go and MCP generators are deterministic and pin the recorded TargetSpec,
+capability-lease, Trace-request, Action Proof, and flow schema versions. They
+state policy prerequisites but never create policy or confirmation. Executable
+steps accept the operator-owned window, resolve a fresh single-use lease, and
+then issue exactly one semantic request. Coordinate input, omitted values,
+native-reference operations, locator patches, OCR/visual evidence, destructive
+or unknown-impact actions, missing postconditions, incomplete Trace,
+truncation, and unverified outcomes remain explicit non-executable review
+items. Golden and self-owned fixture tests prove
+record → generate → compile without invoking generated mutations. Generated Go
+and MCP result contracts require verified Action Proof v2, matched
+postconditions, completed cleanup, and complete transaction-matched Trace v1
+evidence.
+
 ## Next slices
 
-1. semantic recorder/code generation
-   ([`LAB-85`](https://linear.app/riotbox/issue/LAB-85/add-semantic-recorder-and-verified-flow-code-generation));
-2. side-effect-free capability planner
+1. side-effect-free capability planner
    ([`LAB-86`](https://linear.app/riotbox/issue/LAB-86/add-side-effect-free-verified-flow-capability-planner)).
 
 Each slice remains independently deny-by-default and must preserve exact target

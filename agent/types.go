@@ -10,7 +10,7 @@ import (
 )
 
 // CatalogSchemaVersion identifies the operation catalog JSON contract.
-const CatalogSchemaVersion = "14"
+const CatalogSchemaVersion = "15"
 
 // ActionProofSchemaVersion identifies the privacy-reduced semantic-action
 // proof contract. Proofs deliberately contain no request or desktop payload.
@@ -103,6 +103,11 @@ type OperationCapability struct {
 	MaxTraceBytes                uint64                     `json:"max_trace_bytes,omitempty"`
 	TraceLifetimeMillis          int                        `json:"trace_lifetime_ms,omitempty"`
 	TraceExportAllowed           bool                       `json:"trace_export_allowed,omitempty"`
+	RecorderSchemaVersion        string                     `json:"recorder_schema_version,omitempty"`
+	RecorderAllowed              bool                       `json:"recorder_allowed,omitempty"`
+	MaxRecorderEvents            uint32                     `json:"max_recorder_events,omitempty"`
+	MaxRecorderBytes             uint64                     `json:"max_recorder_bytes,omitempty"`
+	RecorderLifetimeMillis       int                        `json:"recorder_lifetime_ms,omitempty"`
 }
 
 // ScrollAxis identifies an axis accepted by a scroll backend.
@@ -376,6 +381,9 @@ const (
 	ErrorLeaseConsumed         ErrorCode = "capability-lease-consumed"
 	ErrorLeaseMismatch         ErrorCode = "capability-lease-mismatch"
 	ErrorTraceExport           ErrorCode = "trace-export-failed"
+	ErrorRecorderActive        ErrorCode = "recorder-active"
+	ErrorRecorderStopped       ErrorCode = "recorder-stopped"
+	ErrorRecorderExpired       ErrorCode = "recorder-expired"
 )
 
 // ActionError is safe to serialize: Message never contains action payloads.
@@ -424,6 +432,9 @@ var (
 	ErrLeaseConsumed         = errors.New("agent capability lease is consumed")
 	ErrLeaseMismatch         = errors.New("agent capability lease binding does not match")
 	ErrTraceExport           = errors.New("agent transaction trace export failed")
+	ErrRecorderActive        = errors.New("agent semantic recorder is already active")
+	ErrRecorderStopped       = errors.New("agent semantic recorder is stopped")
+	ErrRecorderExpired       = errors.New("agent semantic recorder expired")
 )
 
 func newActionError(code ErrorCode, operation Operation, message string, cause error) *ActionError {

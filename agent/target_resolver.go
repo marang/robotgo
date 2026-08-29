@@ -149,12 +149,13 @@ type retainedUITargetGraph struct {
 // ResolveUITarget deterministically resolves one exact semantic or structural
 // TargetSpec against a retained sanitized observation. It never calls a
 // desktop backend and consumes no query, observation, or action quota.
-func (s *Session) ResolveUITarget(ctx context.Context, request ResolveUIRequest) (TargetResolutionResult, error) {
+func (s *Session) ResolveUITarget(ctx context.Context, request ResolveUIRequest) (result TargetResolutionResult, returnErr error) {
+	defer func() { s.recordTargetResolution(request, result, returnErr) }()
 	if ctx == nil {
 		ctx = context.Background()
 	}
 	mode := normalizeTargetResolutionMode(request.Mode)
-	result := TargetResolutionResult{SchemaVersion: TargetResolutionSchemaVersion, Mode: mode}
+	result = TargetResolutionResult{SchemaVersion: TargetResolutionSchemaVersion, Mode: mode}
 	if err := validateResolveUIRequest(request); err != nil {
 		return result, targetResolutionError(ErrorInvalidInput, "invalid semantic target specification", err)
 	}

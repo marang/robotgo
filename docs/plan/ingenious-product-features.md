@@ -84,6 +84,18 @@ count, serialized bytes, lifetime, and optional atomic export. Truncation,
 redaction, missing evidence, expiry, and export failure are explicit; the trace
 remains replay-neutral and excludes sensitive desktop payload in every tier.
 
+Implementation checkpoint (LAB-85): catalog schema v15 and Recorded Flow v1
+add one explicitly started/stopped semantic recorder with independent event,
+retained-byte, lifetime, and session bounds. It retains reusable semantic
+locators without native window identity, action/postcondition shape, terminal
+proof status, and privacy-safe Trace lineage. Coordinates, values, pixels,
+capability tokens, native references, and raw errors remain absent. Deterministic
+Go and MCP generators pin schema versions and state prerequisites without
+creating policy or approval; unresolved, visual, destructive, or unverified
+steps remain non-executable review items. Captured observation/window identity
+is replaced by replay-bound aliases, and only explicitly reversible actions
+with complete proof and Trace evidence become executable templates.
+
 ## 1. Semantic and visual scene graph
 
 Combine available perception sources into one normalized, observation-bound UI
@@ -498,9 +510,9 @@ existing contract. Its privacy levels are explicit:
 3. `visual-redacted`
 4. `full-explicit`
 
-Recorder and code generation come after the transaction contract. They should
-record semantic target evidence and observed effects, not merely global input
-coordinates.
+Recorded Flow v1 now builds on that transaction contract. It records semantic
+target evidence and observed effects instead of global input coordinates, then
+generates reviewable Go and MCP templates without executing them.
 
 ## Recommended delivery sequence
 
@@ -520,7 +532,7 @@ The recommended product sequence is:
 7. integrate image/OCR evidence into the same resolver and authorization
    contract (`LAB-83`, complete)
 8. add RobotGo Trace with explicit privacy levels (`LAB-84`, complete)
-9. add recorder and verified-flow code generation
+9. add recorder and verified-flow code generation (`LAB-85`, complete)
 10. add a side-effect-free cross-platform capability planner
 11. add secure secret entry, local previews, and higher-level declarative
     workflows on the same transaction contract

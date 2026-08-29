@@ -148,6 +148,8 @@ type Session struct {
 	auditSink        AuditSink
 	auditSequence    uint64
 	traceSink        TraceSink
+	recorderMu       sync.Mutex
+	recorder         *SemanticRecorder
 	pressedInputs    []pressedInput
 	inputTainted     bool
 	lastAction       time.Time
@@ -256,6 +258,7 @@ func (s *Session) Close() error {
 		s.cancel()
 		<-s.actionGate
 		s.closeViews()
+		s.closeRecorder()
 		s.closeCapabilityLeases()
 		s.closeObservations()
 		s.actionGate <- struct{}{}
@@ -294,7 +297,7 @@ func (s *Session) Execute(ctx context.Context, request ActionRequest) (ActionRes
 	return s.run(ctx, request, false)
 }
 
-func (s *Session) run(ctx context.Context, request ActionRequest, dryRun bool) (ActionResult, error) {
+func (s *Session) run(ctx context.Context, request ActionRequest, dryRun bool) (result ActionResult, returnErr error) {
 	started := time.Now()
 	id := fmt.Sprintf("action-%d", actionSerial.Add(1))
 	resultOperation := request.Operation
@@ -306,12 +309,25 @@ func (s *Session) run(ctx context.Context, request ActionRequest, dryRun bool) (
 	}
 	select {
 	case <-ctx.Done():
-		return contextFailure(ctx, id, resultOperation, started)
+		result, returnErr = contextFailure(ctx, id, resultOperation, started)
+		if !dryRun {
+			s.recordNonSemanticAction(request, result, returnErr)
+		}
+		return result, returnErr
 	case <-s.ctx.Done():
-		return s.sessionFailure(id, resultOperation, started)
+		result, returnErr = s.sessionFailure(id, resultOperation, started)
+		if !dryRun {
+			s.recordNonSemanticAction(request, result, returnErr)
+		}
+		return result, returnErr
 	case <-s.actionGate:
 	}
-	defer func() { s.actionGate <- struct{}{} }()
+	defer func() {
+		if !dryRun {
+			s.recordNonSemanticAction(request, result, returnErr)
+		}
+		s.actionGate <- struct{}{}
+	}()
 	if err := ctx.Err(); err != nil {
 		return contextFailure(ctx, id, resultOperation, started)
 	}
@@ -436,7 +452,7 @@ func (s *Session) run(ctx context.Context, request ActionRequest, dryRun bool) (
 		return s.finishFailedActionAudit(ctx, result, actionErr)
 	}
 	lineage.release()
-	result := ActionResult{
+	result = ActionResult{
 		ActionID: id, Operation: request.Operation, Status: ActionSucceeded,
 		Backend: capability.Backend, PreconditionObservationID: preconditionID(request),
 	}

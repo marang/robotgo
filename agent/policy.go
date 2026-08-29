@@ -48,6 +48,10 @@ const (
 	minAgentTraceBytes               = 2 << 10
 	maxAgentTraceBytes               = 1 << 20
 	maxAgentTraceLifetimeMS          = maxAgentSessionTimeoutMS
+	maxAgentRecorderEvents           = 1024
+	minAgentRecorderBytes            = 2 << 10
+	maxAgentRecorderBytes            = 2 << 20
+	maxAgentRecorderLifetimeMS       = maxAgentSessionTimeoutMS
 	maxAgentWaitAttempts             = 100
 	maxAgentWaitIntervalMS           = 60_000
 	maxAgentWaitTimeoutMS            = 300_000
@@ -115,6 +119,10 @@ type Policy struct {
 	MaxTraceBytes                  uint64                   `json:"max_trace_bytes,omitempty"`
 	TraceLifetimeMillis            int                      `json:"trace_lifetime_ms,omitempty"`
 	AllowTraceExport               bool                     `json:"allow_trace_export,omitempty"`
+	AllowRecorder                  bool                     `json:"allow_recorder,omitempty"`
+	MaxRecorderEvents              uint32                   `json:"max_recorder_events,omitempty"`
+	MaxRecorderBytes               uint64                   `json:"max_recorder_bytes,omitempty"`
+	RecorderLifetimeMillis         int                      `json:"recorder_lifetime_ms,omitempty"`
 	AllowFullDisplayView           bool                     `json:"allow_full_display_view,omitempty"`
 	AllowPortalView                bool                     `json:"allow_portal_view,omitempty"`
 	MaxViewSourcePixels            uint64                   `json:"max_view_source_pixels,omitempty"`
@@ -234,6 +242,15 @@ func preparePolicy(input Policy) (Policy, error) {
 	}
 	if len(input.AllowedTraceTiers) > len(allTracePrivacyTiers) {
 		return Policy{}, fmt.Errorf("agent: trace tier count exceeds hard limit %d", len(allTracePrivacyTiers))
+	}
+	if input.MaxRecorderEvents > maxAgentRecorderEvents {
+		return Policy{}, fmt.Errorf("agent: max recorder events exceeds hard limit %d", maxAgentRecorderEvents)
+	}
+	if input.MaxRecorderBytes > maxAgentRecorderBytes {
+		return Policy{}, fmt.Errorf("agent: max recorder bytes exceeds hard limit %d", maxAgentRecorderBytes)
+	}
+	if input.RecorderLifetimeMillis < 0 || input.RecorderLifetimeMillis > maxAgentRecorderLifetimeMS {
+		return Policy{}, fmt.Errorf("agent: recorder lifetime must be between 0 and %dms", maxAgentRecorderLifetimeMS)
 	}
 	for name, confidence := range map[string]float64{
 		"OCR": input.MinTargetOCRConfidence, "visual": input.MinTargetVisualConfidence,
@@ -395,6 +412,10 @@ func preparePolicy(input Policy) (Policy, error) {
 		MaxTraceBytes:                input.MaxTraceBytes,
 		TraceLifetimeMillis:          input.TraceLifetimeMillis,
 		AllowTraceExport:             input.AllowTraceExport,
+		AllowRecorder:                input.AllowRecorder,
+		MaxRecorderEvents:            input.MaxRecorderEvents,
+		MaxRecorderBytes:             input.MaxRecorderBytes,
+		RecorderLifetimeMillis:       input.RecorderLifetimeMillis,
 		AllowFullDisplayView:         input.AllowFullDisplayView,
 		AllowPortalView:              input.AllowPortalView,
 		MaxViewSourcePixels:          input.MaxViewSourcePixels,
@@ -599,6 +620,23 @@ func preparePolicy(input Policy) (Policy, error) {
 		}
 		if _, allowed := prepared.allowOperation[OperationElementAct]; !allowed {
 			return Policy{}, fmt.Errorf("agent: trace capture requires desktop.element-act")
+		}
+	}
+	if !prepared.AllowRecorder {
+		if prepared.MaxRecorderEvents != 0 || prepared.MaxRecorderBytes != 0 ||
+			prepared.RecorderLifetimeMillis != 0 {
+			return Policy{}, fmt.Errorf("agent: recorder bounds require explicit recorder permission")
+		}
+	} else {
+		if prepared.MaxRecorderEvents == 0 || prepared.MaxRecorderBytes < minAgentRecorderBytes ||
+			prepared.RecorderLifetimeMillis == 0 || prepared.SessionTimeoutMillis == 0 ||
+			prepared.RecorderLifetimeMillis > prepared.SessionTimeoutMillis {
+			return Policy{}, fmt.Errorf("agent: recorder requires bounded events, bytes, lifetime, and session lifetime")
+		}
+		for _, operation := range []Operation{OperationInspectUI, OperationResolveUI, OperationElementAct} {
+			if _, allowed := prepared.allowOperation[operation]; !allowed {
+				return Policy{}, fmt.Errorf("agent: recorder requires %s", operation)
+			}
 		}
 	}
 	for _, language := range prepared.AllowedOCRLanguages {

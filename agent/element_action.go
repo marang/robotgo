@@ -75,6 +75,7 @@ type ElementActionRequest struct {
 	Value             string               `json:"value,omitempty"`
 	Confirmed         bool                 `json:"confirmed,omitempty"`
 	Trace             *TraceRequest        `json:"trace,omitempty"`
+	Hint              *RecorderActionHint  `json:"recorder_hint,omitempty"`
 }
 
 type uiBackendElementAction struct {
@@ -127,6 +128,7 @@ func (robotGoDriver) CheckUIElement(ctx context.Context, request uiBackendElemen
 // semantic action. It never falls back to pointer, keyboard, capture, OCR, or
 // shell behavior. Every return contains Action Proof v2.
 func (s *Session) ActUIElement(ctx context.Context, request ElementActionRequest) (result ActionResult, returnErr error) {
+	presentedLeaseID := request.CapabilityLeaseID
 	started := time.Now()
 	id := fmt.Sprintf("action-%d", actionSerial.Add(1))
 	if ctx == nil {
@@ -156,6 +158,7 @@ func (s *Session) ActUIElement(ctx context.Context, request ElementActionRequest
 		proof.Cleanup.TransientResourcesReleased = true
 		result.DurationMillis = time.Since(started).Milliseconds()
 		returnErr = setElementActionFailure(&result, traceErr, ActionProofRejectedBeforeDispatch, false)
+		s.recordElementAction(request, presentedLeaseID, result, returnErr)
 		return result, returnErr
 	}
 
@@ -187,7 +190,9 @@ func (s *Session) ActUIElement(ctx context.Context, request ElementActionRequest
 		if intentAccepted {
 			result, returnErr = s.finishElementActionAudit(result, terminalPhase, returnErr)
 		}
+		reservation := recorderEventReservation{}
 		if acquired {
+			reservation = s.reserveRecorderEvent(OperationElementAct)
 			s.release()
 		}
 		if traceRecorder != nil {
@@ -197,6 +202,7 @@ func (s *Session) ActUIElement(ctx context.Context, request ElementActionRequest
 				returnErr = errors.Join(returnErr, traceErr)
 			}
 		}
+		s.recordElementActionReserved(reservation, request, presentedLeaseID, result, returnErr)
 	}()
 
 	if err := s.acquire(ctx); err != nil {
