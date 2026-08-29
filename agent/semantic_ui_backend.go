@@ -67,7 +67,10 @@ func inspectAccessibilityUI(
 
 func agentAccessibilityError(err error) error {
 	switch {
-	case errors.Is(err, ErrPolicyDenied):
+	case errors.Is(err, ErrPolicyDenied),
+		errors.Is(err, ErrLeaseRequired), errors.Is(err, ErrLeaseInvalid),
+		errors.Is(err, ErrLeaseExpired), errors.Is(err, ErrLeaseConsumed),
+		errors.Is(err, ErrLeaseMismatch):
 		return err
 	case errors.Is(err, accessibility.ErrStaleTarget):
 		return ErrStaleTarget

@@ -5,6 +5,7 @@ package agent
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 
 	robotgo "github.com/marang/robotgo"
@@ -41,5 +42,10 @@ func TestAgentAccessibilityErrorPreservesStableClasses(t *testing.T) {
 		!errors.Is(agentAccessibilityError(accessibility.ErrUnsupported), robotgo.ErrNotSupported) ||
 		!errors.Is(agentAccessibilityError(context.Canceled), context.Canceled) {
 		t.Fatal("accessibility error mapping lost a stable error class")
+	}
+	for _, leaseErr := range []error{ErrLeaseRequired, ErrLeaseInvalid, ErrLeaseExpired, ErrLeaseConsumed, ErrLeaseMismatch} {
+		if !errors.Is(agentAccessibilityError(fmt.Errorf("native callback: %w", leaseErr)), leaseErr) {
+			t.Fatalf("accessibility mapping lost lease error %v", leaseErr)
+		}
 	}
 }

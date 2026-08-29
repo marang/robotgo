@@ -77,10 +77,11 @@ func elementActCapability(policy Policy, capabilities robotgo.RuntimeCapabilitie
 	_, confirmationRequired := policy.requireConfirmation[OperationElementAct]
 	_, operationAllowed := policy.allowOperation[OperationElementAct]
 	_, inspectAllowed := policy.allowOperation[OperationInspectUI]
+	_, resolveAllowed := policy.allowOperation[OperationResolveUI]
 	policyAllowed := operationAllowed && inspectAllowed && len(policy.allowWindow) > 0 &&
 		len(policy.allowUIAction) > 0 && policy.MaxActions > 0 &&
 		policy.MinActionIntervalMillis > 0 && policy.UIActionTimeoutMillis > 0 &&
-		policy.SessionTimeoutMillis > 0
+		policy.SessionTimeoutMillis > 0 && (!policy.RequireCapabilityLease || resolveAllowed)
 	feature := capabilities.Accessibility
 	remediation := feature.Notes
 	if remediation == "" {

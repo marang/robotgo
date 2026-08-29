@@ -51,6 +51,15 @@ func TestCapabilityLeasePolicyAndCatalogExposeBoundedContract(t *testing.T) {
 			}
 		})
 	}
+	t.Run("lease-action-without-resolver", func(t *testing.T) {
+		policy := semanticActionPolicy()
+		policy.RequireCapabilityLease = true
+		policy.MaxCapabilityLeases = 1
+		policy.MaxCapabilityLeaseMillis = 1000
+		if _, err := preparePolicy(policy); err == nil {
+			t.Fatalf("unusable lease action policy accepted: %+v", policy)
+		}
+	})
 	session, _ := newSemanticSession(t, capabilityLeasePolicy(), resolverSnapshot())
 	for _, capability := range session.Catalog().Operations {
 		if capability.Operation != OperationResolveUI {

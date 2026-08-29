@@ -578,6 +578,9 @@ func preparePolicy(input Policy) (Policy, error) {
 		if _, inspectAllowed := prepared.allowOperation[OperationInspectUI]; !inspectAllowed {
 			return Policy{}, fmt.Errorf("agent: desktop.element-act requires desktop.inspect-ui")
 		}
+		if _, resolveAllowed := prepared.allowOperation[OperationResolveUI]; prepared.RequireCapabilityLease && !resolveAllowed {
+			return Policy{}, fmt.Errorf("agent: lease-required desktop.element-act requires desktop.resolve-ui")
+		}
 		if len(prepared.allowUIAction) == 0 || prepared.MaxActions == 0 || prepared.UIActionTimeoutMillis == 0 ||
 			prepared.MinActionIntervalMillis == 0 || prepared.SessionTimeoutMillis == 0 {
 			return Policy{}, fmt.Errorf("agent: desktop.element-act requires allowed semantic actions and bounded action count, rate, action duration, and lifetime")
