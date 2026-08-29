@@ -276,6 +276,9 @@ func TestRecorderPreservesSerializedActionOrderAcrossSlowTraceExport(t *testing.
 	}
 	session, driver := newSemanticSession(t, policy, semanticSnapshot())
 	session.traceSink = sink
+	base := time.Date(2026, time.August, 29, 12, 0, 0, 0, time.UTC)
+	var ticks atomic.Int64
+	session.now = func() time.Time { return base.Add(time.Duration(ticks.Add(5)) * time.Millisecond) }
 	recorder, err := session.StartRecorder(t.Context(), RecorderRequest{SchemaVersion: SemanticRecorderSchemaVersion})
 	if err != nil {
 		t.Fatal(err)

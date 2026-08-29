@@ -208,6 +208,12 @@ type recordedTargetBinding struct {
 	reviews        []RecorderReviewReason
 }
 
+type recorderEventReservation struct {
+	recorder *SemanticRecorder
+	sequence uint32
+	bound    bool
+}
+
 // SemanticRecorder is one explicitly started session-owned recorder.
 type SemanticRecorder struct {
 	session *Session
@@ -439,6 +445,17 @@ func (s *Session) activeRecorder() *SemanticRecorder {
 	return recorder
 }
 
+func (s *Session) reserveRecorderEvent(operation Operation) recorderEventReservation {
+	reservation := recorderEventReservation{bound: true}
+	recorder := s.activeRecorder()
+	if recorder == nil {
+		return reservation
+	}
+	reservation.recorder = recorder
+	reservation.sequence = recorder.reserveEvent(operation)
+	return reservation
+}
+
 func (s *Session) recordTargetResolution(request ResolveUIRequest, result TargetResolutionResult, operationErr error) {
 	recorder := s.activeRecorder()
 	if recorder == nil {
@@ -490,16 +507,38 @@ func (s *Session) recordElementAction(
 	result ActionResult,
 	operationErr error,
 ) {
-	recorder := s.activeRecorder()
+	s.recordElementActionReserved(recorderEventReservation{}, request, presentedLeaseID, result, operationErr)
+}
+
+func (s *Session) recordElementActionReserved(
+	reservation recorderEventReservation,
+	request ElementActionRequest,
+	presentedLeaseID string,
+	result ActionResult,
+	operationErr error,
+) {
+	recorder := reservation.recorder
+	if !reservation.bound {
+		recorder = s.activeRecorder()
+	}
 	if recorder == nil {
 		return
+	}
+	appendEvent := recorder.appendEvent
+	if reservation.bound {
+		if reservation.sequence == 0 {
+			return
+		}
+		appendEvent = func(event RecorderEvent) {
+			recorder.replaceReservedEvent(reservation.sequence, event)
+		}
 	}
 	if validateElementActionRequest(request) != nil {
 		reviews := []RecorderReviewReason{RecorderReviewUnsupportedAction, RecorderReviewUnverifiedOutcome}
 		if request.Action == UIActionSetValue || request.Value != "" {
 			reviews = append(reviews, RecorderReviewSecretInputOmitted, RecorderReviewDestructiveAction)
 		}
-		recorder.appendEvent(RecorderEvent{
+		appendEvent(RecorderEvent{
 			Kind: RecorderEventReview, Operation: OperationElementAct,
 			ReviewRequired: true, ReviewReasons: reviews,
 		})
@@ -566,7 +605,7 @@ func (s *Session) recordElementAction(
 	if request.Hint != nil && (request.Hint.Impact == RecorderActionReversible || request.Hint.Impact == RecorderActionDestructive) {
 		event.Impact = request.Hint.Impact
 	}
-	recorder.appendEvent(event)
+	appendEvent(event)
 }
 
 func (s *Session) recordNonSemanticAction(request ActionRequest, result ActionResult, operationErr error) {
@@ -725,6 +764,54 @@ func (r *SemanticRecorder) appendEvent(event RecorderEvent) {
 		return
 	}
 	r.events = append(r.events, cloneRecorderEvent(event))
+	r.usedBytes = prospectiveBytes
+}
+
+func (r *SemanticRecorder) reserveEvent(operation Operation) uint32 {
+	if r == nil {
+		return 0
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if !r.active {
+		return 0
+	}
+	event := RecorderEvent{
+		Sequence: uint32(len(r.events) + 1), Kind: RecorderEventReview, Operation: operation,
+		ReviewRequired: true,
+		ReviewReasons:  []RecorderReviewReason{RecorderReviewUnverifiedOutcome, RecorderReviewMissingTrace},
+	}
+	prospectiveEvents := append(r.events, event)
+	prospectiveBytes := recorderRetainedSize(r.startedAt, r.targets, prospectiveEvents) + r.bindingBytes
+	if uint32(len(r.events)) >= r.maxEvents || prospectiveBytes > r.maxBytes {
+		r.truncated = true
+		return 0
+	}
+	r.events = append(r.events, cloneRecorderEvent(event))
+	r.usedBytes = prospectiveBytes
+	return event.Sequence
+}
+
+func (r *SemanticRecorder) replaceReservedEvent(sequence uint32, event RecorderEvent) {
+	if r == nil || sequence == 0 {
+		return
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	index := int(sequence - 1)
+	if !r.active || index >= len(r.events) || r.events[index].Sequence != sequence {
+		return
+	}
+	event.Sequence = sequence
+	prospectiveEvents := append([]RecorderEvent(nil), r.events...)
+	prospectiveEvents[index] = event
+	prospectiveBytes := recorderRetainedSize(r.startedAt, r.targets, prospectiveEvents) + r.bindingBytes
+	if prospectiveBytes > r.maxBytes {
+		r.truncated = true
+		return
+	}
+	clearRecorderEvent(&r.events[index])
+	r.events[index] = cloneRecorderEvent(event)
 	r.usedBytes = prospectiveBytes
 }
 

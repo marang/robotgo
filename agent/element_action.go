@@ -190,6 +190,11 @@ func (s *Session) ActUIElement(ctx context.Context, request ElementActionRequest
 		if intentAccepted {
 			result, returnErr = s.finishElementActionAudit(result, terminalPhase, returnErr)
 		}
+		reservation := recorderEventReservation{}
+		if acquired {
+			reservation = s.reserveRecorderEvent(OperationElementAct)
+			s.release()
+		}
 		if traceRecorder != nil {
 			trace, traceErr := traceRecorder.finish(result, returnErr)
 			result.Trace = &trace
@@ -197,10 +202,7 @@ func (s *Session) ActUIElement(ctx context.Context, request ElementActionRequest
 				returnErr = errors.Join(returnErr, traceErr)
 			}
 		}
-		s.recordElementAction(request, presentedLeaseID, result, returnErr)
-		if acquired {
-			s.release()
-		}
+		s.recordElementActionReserved(reservation, request, presentedLeaseID, result, returnErr)
 	}()
 
 	if err := s.acquire(ctx); err != nil {
