@@ -106,7 +106,22 @@ on merged `main` commit
 multi-output bounds rows. This manual candidate evidence does not alter the
 immutable assets of an already published release.
 
-The latest published bundle is attached to
+Stable `v1.0.0` was published at `2026-10-03T10:06:31Z` on source commit
+`2c2c17bb66a042eccf78d0100dcd7ba110d7ae74`, tree
+`bb52cfeca94e9ad924318d4860b2953330ccf335`, tag ref `refs/tags/v1.0.0`.
+Its authoritative [exact-tag run 37115300291](https://github.com/marang/robotgo/actions/runs/37115300291)
+must pass all 17 jobs and attach both fresh checksum-bound assets before the
+release is accepted. Use the stable assets, not an RC bundle:
+
+- [`robotgo-release-evidence-v1.0.0-2c2c17bb66a0.tar.gz`](https://github.com/marang/robotgo/releases/download/v1.0.0/robotgo-release-evidence-v1.0.0-2c2c17bb66a0.tar.gz)
+- [`robotgo-release-evidence-v1.0.0-2c2c17bb66a0.tar.gz.sha256`](https://github.com/marang/robotgo/releases/download/v1.0.0/robotgo-release-evidence-v1.0.0-2c2c17bb66a0.tar.gz.sha256)
+
+Require the downloaded checksum, all six snapshot identities and all 29 checks
+to match this source and run. Both default and direct module resolution have
+been verified as `v1.0.0`. Final acceptance and the verified archive digest are
+recorded in [LAB-68](https://linear.app/riotbox/issue/LAB-68).
+
+The most recent published RC bundle remains attached to
 [`v1.0.0-rc.2`](https://github.com/marang/robotgo/releases/tag/v1.0.0-rc.2):
 
 - [`robotgo-release-evidence-v1.0.0-rc.2-60aa3a445224.tar.gz`](https://github.com/marang/robotgo/releases/download/v1.0.0-rc.2/robotgo-release-evidence-v1.0.0-rc.2-60aa3a445224.tar.gz)

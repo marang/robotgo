@@ -29,7 +29,7 @@ The July 2026 hardening work establishes the foundation for this roadmap:
 - CI covers lint, default tests on Linux/macOS/Windows, non-CGO, Wayland, portal,
   Weston integration, race, vet, and native sanitizer/leak variants.
 
-## Execution Status (2026-07-29)
+## Execution Status (2026-10-03)
 
 | Area | Status | Delivered | Exit criteria still open |
 |---|---|---|---|
@@ -38,7 +38,7 @@ The July 2026 hardening work establishes the foundation for this roadmap:
 | 2. Capture | Complete for the scoped production and evidence contract | Reliable one-shot paths plus one consent-aware ScreenCast session, reusable PipeWire frames with static-desktop reuse, logical region crop, raw pixel conversion, metadata/restore tokens, cleanup, hosted GNOME/KDE single- and multi-output persistent-capture execution, non-skipping geometry/transform CI, sanitizer-backed native ownership gates, isolated hosted Sway native/multi-output evidence, and exact-release promotion | Keep runtime and release gates green; extend only for newly scoped formats/backends |
 | 3. Pure-Go | X11 complete; Windows input/window CI-evidenced; macOS capture/display/input and window implementation delivered; Wayland logical output enumeration plus Weston, hosted Sway, and hosted GNOME/KDE multi-output evidence delivered; broader phase partial | Build and feature-level introspection; non-CGO macOS CoreGraphics capture/display, Quartz input, and Accessibility window inspection/control with explicit gaps; Windows capture, `SendInput` keyboard/pointer, and Win32 window control with blocking runtime probes; X11 capture, XGB/XTEST input, and X11/EWMH window introspection/control; Wayland portal capture/input plus bounded native `wl_output`/`xdg-output` geometry; permission/error contracts; shared behavioral parity; reproducible balanced benchmark tooling; optimized guardian-path decision evidence; explicit decision to retain native CGO as the X11 default; race-testable internal X11 core; re-exec guardian with application-`SIGKILL` recovery; protected three-OS CI | Collect opt-in real macOS input and self-owned-window evidence and assess further backends selectively |
 | 4. API/compositor gaps | Parity surface delivered; runtime support partial | Window-state, geometry, and active-identity error APIs, bitmap string helpers, `FindColorCS`, hook/event capability reporting, Sway/Hyprland/wlroots resolver, Sway active node/client geometry and PID, Hyprland active compositor-reported geometry/PID, provider-aware Hyprland 0.55+ Lua window dispatch, bounded process-group-owned compositor helpers with lifecycle evidence | Further trustworthy compositor-backed state/geometry operations and cross-platform/runtime matrix coverage |
-| 5. Reliability product | Partial | Capability APIs, versioned sanitized runtime diagnostics/example, compatibility matrix v1, expanded CI variants, blocking ASan/LeakSanitizer ownership gates, six-cell checksummed release snapshots, fail-closed real-compositor contracts, promoted Sway, GNOME/KDE portal, bounds, and Hyprland exact-release gates, a blocking reviewable public Go API freeze, authoritative origin release preflight, historical exact-tag [`v1.0.0-beta.2`](https://github.com/marang/robotgo/releases/tag/v1.0.0-beta.2) evidence, and published [`v1.0.0-rc.2`](https://github.com/marang/robotgo/releases/tag/v1.0.0-rc.2) with a passing 29-check exact-tag bundle | Complete evidence-based qualification after the explicit maintainer time-only waiver (2026-10-03) and remaining [stable-release gates](stable-release-readiness.md) for `v1.0.0`; keep open Phase 3/4 runtime gaps explicit |
+| 5. Reliability product | Stable published | Capability APIs, versioned sanitized runtime diagnostics/example, compatibility matrix v1, expanded CI variants, blocking ASan/LeakSanitizer ownership gates, six-cell checksummed release snapshots, fail-closed real-compositor contracts, promoted Sway, GNOME/KDE portal, bounds, and Hyprland exact-release gates, a blocking reviewable public Go API freeze, authoritative origin release preflight, historical exact-tag [`v1.0.0-beta.2`](https://github.com/marang/robotgo/releases/tag/v1.0.0-beta.2) evidence, and published [`v1.0.0-rc.2`](https://github.com/marang/robotgo/releases/tag/v1.0.0-rc.2) with a passing 29-check exact-tag bundle | Accept and maintain the published `v1.0.0` contract under the [exact-evidence gates](stable-release-readiness.md); keep open Phase 3/4 runtime gaps explicit |
 
 No delivery phase is complete until all of its exit criteria are blocking and
 green. Phases 1 and 2 now have implementation, real-compositor validation, and
@@ -474,6 +474,18 @@ schema contract. GitHub published it at `2026-10-03T08:41:23Z`. The maintainer
 waived the elapsed-time interval on 2026-10-03; stable remains gated on
 successful final qualification, review, CI and new exact-tag evidence under
 LAB-68, without any runtime or platform-scope expansion.
+
+Stable [`v1.0.0`](https://github.com/marang/robotgo/releases/tag/v1.0.0) was
+published at `2026-10-03T10:06:31Z` on
+`2c2c17bb66a042eccf78d0100dcd7ba110d7ae74`, after all eight main workflows and
+verified manual [release evidence](https://github.com/marang/robotgo/actions/runs/37113829726)
+passed. Its runtime, API signatures, schemas and support scope are unchanged
+from rc.2; only release Version metadata changes. Default and direct `@latest`
+resolve stable. Final tag-specific evidence is tracked in
+[run 37115300291](https://github.com/marang/robotgo/actions/runs/37115300291)
+and [LAB-68](https://linear.app/riotbox/issue/LAB-68); acceptance requires the
+complete verified six-cell / 29-check bundle. LAB-69 remains externally blocked,
+and LAB-71 is the separate post-stable architecture follow-up.
 
 Releases require:
 

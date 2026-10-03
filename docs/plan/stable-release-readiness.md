@@ -16,10 +16,11 @@ The independent `github.com/marang/robotgo` module will use:
 2. `v1.0.0-rc.2` to re-freeze the expanded post-rc.1 public contract.
 3. `v1.0.0` for the first stable release after fresh rc.2 qualification.
 
-At stable preparation, authoritative `marang/robotgo` origin contains the published,
-annotated `v1.0.0-rc.2` and `v1.0.0-rc.1` tags in addition to `v1.0.0-beta.1`
-and `v1.0.0-beta.2`; `v1.0.0` is still unused at that point. Final publication
-state, exact evidence and consumer verification are recorded in
+Authoritative `marang/robotgo` origin contains published stable `v1.0.0`,
+annotated `v1.0.0-rc.2` and `v1.0.0-rc.1`, plus the independent beta tags.
+Stable was published at `2026-10-03T10:06:31Z` after the maintainer's time-only
+waiver and verified final-source manual evidence. Final publication
+state, exact-tag evidence and consumer verification are recorded in
 [LAB-68](https://linear.app/riotbox/issue/LAB-68) and the
 [stable release](https://github.com/marang/robotgo/releases/tag/v1.0.0).
 Development clones can also contain
@@ -42,6 +43,17 @@ unresolved critical/high regression, and new exact-source release evidence.
 
 ## Current evidence
 
+- Published stable `v1.0.0` is repository Latest, not a prerelease. Annotated
+  tag object `49f7ebbf7f5163fc60e54909bcac4c4e63c88db0` peels to
+  `2c2c17bb66a042eccf78d0100dcd7ba110d7ae74`, tree
+  `bb52cfeca94e9ad924318d4860b2953330ccf335`. Both default and direct `@latest`
+  resolve `v1.0.0`; direct resolution identifies that exact commit.
+  Manual [run 37113829726](https://github.com/marang/robotgo/actions/runs/37113829726)
+  passed before publication; its downloaded archive, six snapshots and
+  29-check manifest were independently verified. Stable's final exact-tag
+  [run 37115300291](https://github.com/marang/robotgo/actions/runs/37115300291)
+  and public assets must satisfy the unchanged acceptance contract in
+  [Release Evidence v1](../compatibility/release-evidence-v1.md).
 - Published `v1.0.0-rc.2` peels to
   `60aa3a44522492a341e6d5b55df7a2fa99ef57b1`, tree
   `873854b0d18d4b780a8fbbbfe835bc25fbadebdd`.
@@ -50,7 +62,8 @@ unresolved critical/high regression, and new exact-source release evidence.
   assets were downloaded and independently verified against the exact
   tag/commit/tree/run; archive SHA-256 is
   `e416ca7a980e19f3b25642fef33c6e964453384d366c5f628d4ccb6923a8f2b6`.
-  Default proxy and `GOPROXY=direct` both resolve `@latest` to rc.2.
+  Default proxy and `GOPROXY=direct` both resolved `@latest` to rc.2 before
+  stable publication; that evidence remains historical and unchanged.
 - `scripts/preflight-origin-release.sh` proved that neither `v1.0.0-rc.1` nor
   `v1.0.0` existed in the fork before publication, bound the selected commit to
   authoritative `origin/main`, and rejected a non-fork remote. The resulting
@@ -104,6 +117,7 @@ unresolved critical/high regression, and new exact-source release evidence.
 | 2026-10-03T08:41:23Z | GitHub published annotated `v1.0.0-rc.2` on `60aa3a44522492a341e6d5b55df7a2fa99ef57b1` after manual evidence run `37109789051` passed | Fresh qualification window opened; stable not before `2026-10-10T08:41:23Z` |
 | 2026-10-03T08:55Z | Exact-tag run `37110542971`, public archive/checksum, all six snapshots, 29 successful checks, and default/direct module resolution independently verified | Pass — LAB-228 complete |
 | 2026-10-03 | Maintainer explicitly requested immediate stable release after clarification of the project-defined wait | Seven-day duration waived in LAB-68; frozen-contract, review, CI, exact-evidence and no-critical/high-defect gates unchanged |
+| 2026-10-03T10:06:31Z | GitHub published stable `v1.0.0` on `2c2c17bb66a042eccf78d0100dcd7ba110d7ae74` after clean review/CI, origin preflight and independently verified manual run `37113829726` | Stable / Latest; default and direct module resolution verified; exact-tag evidence tracked in run `37115300291` |
 
 GitHub Issues are disabled for this repository, so qualification findings are
 triaged in the Linear RobotGo project. LAB-68 stays open until publication and
@@ -220,7 +234,7 @@ and requalified. Historical log entries above retain the prior policy.
 | G3 Platform claims | Every supported row backed by blocking/approved evidence; pending rows explicit | [LAB-66](https://linear.app/riotbox/issue/LAB-66/resolve-stable-platform-support-claims-and-macos-evidence-scope) | Complete — checked runtime-v1 contract; macOS permission scope pending under LAB-69 | M1 Contract and API Freeze |
 | G4 Release candidate | Clean origin `v1.0.0-rc.1` tag, exact evidence, notes, migration, checksums | [LAB-67](https://linear.app/riotbox/issue/LAB-67/prepare-and-publish-robotgo-v100-rc1) | Complete — published tag, 29-check exact evidence, checksummed assets, and module resolution verified | M2 v1.0.0 Release Candidate |
 | G4b Re-freeze expanded API | Clean origin `v1.0.0-rc.2`, reviewed API contract, exact evidence, notes, checksums, and module resolution | [LAB-228](https://linear.app/riotbox/issue/LAB-228/publish-v100-rc2-after-post-rc-public-api-expansion) | Complete — fresh exact-tag evidence and module resolution recorded above | M3 v1.0.0 Stable Qualification |
-| G5 Stable qualification | Explicit maintainer duration waiver; no unresolved critical/high regression, no further API drift except release Version, final exact evidence | [LAB-68](https://linear.app/riotbox/issue/LAB-68/qualify-and-publish-robotgo-v100-stable) | Stable preparation — time-only waiver recorded; publication and final evidence still required | M3 v1.0.0 Stable Qualification |
+| G5 Stable qualification | Explicit maintainer duration waiver; no unresolved critical/high regression, no further API drift except release Version, final exact evidence | [LAB-68](https://linear.app/riotbox/issue/LAB-68/qualify-and-publish-robotgo-v100-stable) | Stable published — exact-tag acceptance evidence and consumer verification linked above; LAB-68 closes only after all checks pass | M3 v1.0.0 Stable Qualification |
 
 ## RC and stable rules
 
