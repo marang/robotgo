@@ -54,6 +54,7 @@ var (
 		"num_lock": vkNumLock, "numpad_lock": vkNumLock,
 		"num.": vkDecimal, "num+": vkAdd, "num-": vkSubtract,
 		"num*": vkMultiply, "num/": vkDivide, "num_enter": vkReturn,
+		"num_clear":   vkClear,
 		"num_equal":   vkOEMPlus,
 		"scroll_lock": vkScroll, "pause_break": vkPause,
 		"audio_mute": vkVolumeMute, "audio_vol_down": vkVolumeDown,
@@ -231,15 +232,62 @@ func appendUniqueKey(keys []uint16, key uint16) []uint16 {
 }
 
 func (backend *Backend) resolveModifiersLocked(names []string, implicit []uint16) ([]uint16, error) {
-	result := append([]uint16(nil), implicit...)
+	var explicit []uint16
 	for _, name := range names {
 		key, err := modifierVirtualKey(name)
 		if err != nil {
 			return nil, err
 		}
+		explicit = appendUniqueKey(explicit, key)
+	}
+	// An explicit side satisfies its generic family. Keep two deliberately
+	// requested sides distinct, but never add an implicit generic press too.
+	var selected []uint16
+	for _, key := range explicit {
+		if key == modifierFamily(key) {
+			hasSide := false
+			for _, candidate := range explicit {
+				if candidate != key && modifierFamily(candidate) == key {
+					hasSide = true
+					break
+				}
+			}
+			if hasSide {
+				continue
+			}
+		}
+		selected = append(selected, key)
+	}
+	var result []uint16
+	for _, key := range implicit {
+		matched := false
+		for _, candidate := range selected {
+			if modifierFamily(candidate) == modifierFamily(key) {
+				result = appendUniqueKey(result, candidate)
+				matched = true
+			}
+		}
+		if !matched {
+			result = appendUniqueKey(result, key)
+		}
+	}
+	for _, key := range selected {
 		result = appendUniqueKey(result, key)
 	}
 	return result, nil
+}
+
+func modifierFamily(key uint16) uint16 {
+	switch key {
+	case vkShift, vkLShift, vkRShift:
+		return vkShift
+	case vkControl, vkLControl, vkRControl:
+		return vkControl
+	case vkMenu, vkLMenu, vkRMenu:
+		return vkMenu
+	default:
+		return key
+	}
 }
 
 func (backend *Backend) temporaryModifierInputsLocked(modifiers []uint16, main uint16) (down, up []trackedInput) {
@@ -275,7 +323,7 @@ func (backend *Backend) Key(event KeyEvent) error {
 		return err
 	}
 	modifierDown, modifierUp := backend.temporaryModifierInputsLocked(modifiers, main)
-	mainExtended := strings.EqualFold(event.Key, "num_enter")
+	mainExtended := extendedVirtualKey(main) || strings.EqualFold(event.Key, "num_enter")
 	mainInput := func(down bool) trackedInput {
 		return trackedKeyInputExtended(main, down, mainExtended)
 	}
