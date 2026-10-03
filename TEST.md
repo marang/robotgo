@@ -464,7 +464,9 @@ synthetic desktop artifact. Its stable `x11-default-suite` check is required by
 Pure-Go Windows input has hermetic tests for Win32 `INPUT` layout,
 foreground-layout key mapping, Unicode surrogate pairs, partial-injection
 rollback, ownership, buttons, scrolling, movement, clipboard-paste sequencing,
-legacy drag release-on-failure, and pixel-at-pointer dispatch. They run in the
+legacy drag release-on-failure, physical scan metadata, extended main-key and
+cleanup flags, caller-sided modifier families, `NumClear`, non-BMP key
+rejection, and pixel-at-pointer dispatch. They run in the
 Windows non-CGO CI leg. The same leg runs a real input-desktop pointer and
 pixel-color probe and restores the original global cursor position:
 
@@ -570,6 +572,11 @@ Purpose:
   `xdg-output` geometry, stable display indices, scale, and all transforms
 - Hermetic native absolute-pointer mapping for negative aggregate origins and
   exclusive desktop edges
+- Synthetic screencopy `YInvert` frames with asymmetric padded rows, logical
+  crops/scale, and SHM/DMA-BUF pixel-format adapters; no real-compositor
+  inversion flag is claimed by these fixtures
+- Mock native virtual-pointer wire checks for both horizontal scroll
+  directions, discrete/continuous agreement, and unchanged vertical signs
 - Bounded Wayland input flush retries for transient `EAGAIN`, interrupted
   waits, explicit still-queued delivery errors, and permanent transport
   failures
@@ -580,6 +587,7 @@ Typical command:
 ```bash
 go test -tags "wayland test" ./screen -run TestScreencopy -v
 go test -tags "wayland test" . -run 'Test(DrmFindRenderNode|Wayland)' -v
+go test -tags "wayland test" ./screen -run '^TestNativeWaylandScrollDirections$' -v
 ```
 
 Prerequisites:

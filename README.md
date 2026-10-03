@@ -573,13 +573,19 @@ Capture selection is:
 
 Native screencopy converts ARGB/XRGB and ABGR/XBGR buffers into RobotGo's BGRA
 bitmap layout for both `wl_shm` and DMA-BUF, whose protocol format identifiers
-are intentionally handled separately. An unknown format returns
+are intentionally handled separately. Compositor-marked `YInvert` buffers
+are normalized after logical crop mapping, preserving top-to-bottom image
+coordinates. An unknown format returns
 `ErrWaylandPixelFormat`, so callers receive an explicit error and the normal
 safe fallback policy can continue instead of returning color-corrupted pixels.
 
 The portal may prompt the user. Native screencopy and virtual input are most
 useful on wlroots compositors; availability is probed at runtime rather than
 inferred from environment variables alone.
+
+Native Wayland and high-level portal scrolling follow the public direction
+contract: positive horizontal steps mean left and positive vertical steps
+mean up. Low-level portal protocol-axis APIs retain their protocol semantics.
 
 For repeated GNOME/KDE capture, build with `-tags pipewire`, explicitly open
 one consent session, then read as many frames as required without creating a
