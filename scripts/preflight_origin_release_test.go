@@ -10,9 +10,9 @@ import (
 
 const (
 	releaseCommit                = "0123456789abcdef0123456789abcdef01234567"
-	stableQualificationBoundary  = "1791621683"
-	stableQualificationTooEarly  = "1791621682"
-	stableQualificationAfterGate = "1791621684"
+	stableQualificationBoundary  = "1791016883"
+	stableQualificationTooEarly  = "1791016882"
+	stableQualificationAfterGate = "1791016884"
 )
 
 func TestOriginReleasePreflight(t *testing.T) {
@@ -33,8 +33,16 @@ func TestOriginReleasePreflight(t *testing.T) {
 			name: "clean stable release after qualification boundary",
 			tag:  "v1.0.0",
 			environment: map[string]string{
-				"FAKE_GITHUB_DATE":  "Sat, 10 Oct 2026 08:41:24 GMT",
+				"FAKE_GITHUB_DATE":  "Sat, 03 Oct 2026 08:41:24 GMT",
 				"FAKE_GITHUB_EPOCH": stableQualificationAfterGate,
+			},
+		},
+		{
+			name: "maintainer-approved stable release without seven-day wait",
+			tag:  "v1.0.0",
+			environment: map[string]string{
+				"FAKE_GITHUB_DATE":  "Sat, 03 Oct 2026 09:30:00 GMT",
+				"FAKE_GITHUB_EPOCH": "1791019800",
 			},
 		},
 		{
@@ -48,7 +56,7 @@ func TestOriginReleasePreflight(t *testing.T) {
 			name: "stable release before qualification boundary",
 			tag:  "v1.0.0",
 			environment: map[string]string{
-				"FAKE_GITHUB_DATE":  "Sat, 10 Oct 2026 08:41:22 GMT",
+				"FAKE_GITHUB_DATE":  "Sat, 03 Oct 2026 08:41:22 GMT",
 				"FAKE_GITHUB_EPOCH": stableQualificationTooEarly,
 			},
 			wantError: "stable qualification window is still open",
@@ -187,7 +195,7 @@ func TestOriginReleasePreflight(t *testing.T) {
 				if test.tag == "v1.0.0" &&
 					!strings.Contains(
 						output,
-						"stable-not-before=2026-10-10T08:41:23Z",
+						"stable-not-before=2026-10-03T08:41:23Z",
 					) {
 					t.Fatalf(
 						"stable preflight output missing qualification boundary:\n%s",
@@ -286,9 +294,9 @@ case "$2" in
     printf 'HTTP/2.0 200 OK\n'
     if [[ -z "${FAKE_GITHUB_DATE_MISSING:-}" ]]; then
       printf 'Date: %s\n' \
-        "${FAKE_GITHUB_DATE:-Sat, 10 Oct 2026 08:41:23 GMT}"
+        "${FAKE_GITHUB_DATE:-Sat, 03 Oct 2026 08:41:23 GMT}"
       if [[ -n "${FAKE_GITHUB_DATE_DUPLICATE:-}" ]]; then
-        printf 'date: Sat, 10 Oct 2026 08:41:24 GMT\n'
+        printf 'date: Sat, 03 Oct 2026 08:41:24 GMT\n'
       fi
     fi
     printf '\n'
@@ -306,7 +314,7 @@ esac
 `)
 	writeExecutable(t, dateStub, `#!/usr/bin/env bash
 set -euo pipefail
-expected_date="${FAKE_GITHUB_DATE:-Sat, 10 Oct 2026 08:41:23 GMT}"
+expected_date="${FAKE_GITHUB_DATE:-Sat, 03 Oct 2026 08:41:23 GMT}"
 if (($# == 4)) &&
   [[ "$1" == "-u" && "$2" == "-d" && "$3" == "$expected_date" && "$4" == "+%s" ]]; then
   if [[ -n "${FAKE_GNU_DATE_STATUS:-}" ]]; then
@@ -323,7 +331,7 @@ fi
 if [[ -n "${FAKE_DATE_STATUS:-}" ]]; then
   exit "$FAKE_DATE_STATUS"
 fi
-printf '%s\n' "${FAKE_GITHUB_EPOCH:-1791621683}"
+printf '%s\n' "${FAKE_GITHUB_EPOCH:-1791016883}"
 `)
 
 	environment := append(os.Environ(),

@@ -1416,24 +1416,37 @@ test "$(go list -m -f '{{.Version}}' github.com/marang/robotgo@latest)" = v1.0.0
 test "$(GOPROXY=direct go list -m -f '{{.Version}}' github.com/marang/robotgo@latest)" = v1.0.0-rc.2
 ```
 
-Only after those checks pass, record GitHub's authoritative RC2 `published_at`
-timestamp and exactly seven full days later in a reviewed follow-up. LAB-235
-records publication at `2026-10-03T08:41:23Z` and stable not-before
-`2026-10-10T08:41:23Z` (epoch `1791621683`) in
-`preflight-origin-release.sh`, together with the before/at/after-boundary and
-remote clock lookup/parsing regression cases. The preflight uses GitHub's Date
-header and rejects early stable publication even when the local clock is ahead.
+LAB-235 originally recorded a seven-day boundary after RC2 publication at
+`2026-10-03T08:41:23Z`. On 2026-10-03 the maintainer explicitly requested
+immediate stable publication and waived only this observation interval in
+LAB-68. The preflight now uses the actual RC2 publication timestamp (epoch
+`1791016883`) as its earliest boundary, while preserving before/at/after and
+remote clock lookup/parsing regression coverage. It still fails closed on
+missing, ambiguous, invalid or unavailable authoritative GitHub time.
 LAB-228 closes only after the exact tag, assets, checksum, and both module
 resolution paths are verified.
 
-Before creating the stable tag, complete that new seven-day window with no
-unresolved critical/high regression. A reviewed stable-preparation PR must
+Before creating the stable tag, require no unresolved critical/high regression
+and verify that only release metadata changed from the frozen rc.2 contract.
+A reviewed stable-preparation PR must
 update the package version, tests, changelog, and add the non-empty
 `docs/releases/v1.0.0.md` release notes. After that PR is merged, repeat the
 clean-main checks above with `v1.0.0`, run exact manual release evidence, create
 and verify only the annotated `v1.0.0` ref, push that one ref, and create the
 GitHub release with `--verify-tag`. The publication event must attach a fresh
 checksum-bound stable evidence bundle before the release is accepted.
+
+Publish without `--prerelease`:
+
+```bash
+gh release create v1.0.0 --repo marang/robotgo --verify-tag --latest \
+  --title "RobotGo v1.0.0" --notes-file docs/releases/v1.0.0.md
+```
+
+Verify the stable archive/checksum, all six snapshot identities,
+and exactly 29 successful manifest checks before closing LAB-68. Refresh the
+explicit stable module version if the default proxy has not indexed it yet;
+both default and `GOPROXY=direct` `@latest` must resolve to `v1.0.0`.
 
 The versioned schema, matrix, release-asset behavior, and consumer verification
 commands are documented in

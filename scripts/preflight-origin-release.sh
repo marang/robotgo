@@ -8,9 +8,10 @@ readonly git_bin="${ROBOTGO_RELEASE_GIT_BIN:-git}"
 readonly gh_bin="${ROBOTGO_RELEASE_GH_BIN:-gh}"
 readonly date_bin="${ROBOTGO_RELEASE_DATE_BIN:-date}"
 readonly stable_qualification_release="v1.0.0-rc.2"
-# GitHub published rc.2 at 2026-10-03T08:41:23Z. Require seven full days.
-readonly stable_qualification_not_before="2026-10-10T08:41:23Z"
-readonly stable_qualification_not_before_epoch="1791621683"
+# The maintainer waived the seven-day wait on 2026-10-03 (LAB-68).
+# Keep fail-closed clock validation; stable cannot precede rc.2 publication.
+readonly stable_qualification_not_before="2026-10-03T08:41:23Z"
+readonly stable_qualification_not_before_epoch="1791016883"
 
 usage() {
   printf 'usage: %s <tag> <40-character-origin-main-commit>\n' \
