@@ -5,6 +5,10 @@ package robotgo
 /*
 #cgo CFLAGS: -DROBOTGO_WAYLAND_TEST
 #include <stdint.h>
+#include <stddef.h>
+
+int robotgo_wayland_buffer_layout(uint32_t width, uint32_t height,
+                                  uint32_t stride, size_t limit, size_t *size);
 
 int robotgo_wayland_pixel_to_bitmap_bgra(uint8_t *dst, const uint8_t *src,
                                          uint32_t format, int using_dmabuf);
@@ -23,6 +27,12 @@ int robotgo_wayland_buffer_pixel_to_bitmap_bgra(uint8_t *dst, const uint8_t *src
 #define ROBOTGO_DRM_FORMAT_XBGR8888 0x34324258
 */
 import "C"
+
+func testWaylandBufferLayout(width, height, stride uint32, limit uint64) (uint64, bool) {
+	var size C.size_t
+	ok := C.robotgo_wayland_buffer_layout(C.uint32_t(width), C.uint32_t(height), C.uint32_t(stride), C.size_t(limit), &size)
+	return uint64(size), ok != 0
+}
 
 const (
 	testWaylandFormatARGB = iota

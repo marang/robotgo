@@ -32,12 +32,26 @@
 #define MOCK_MODE_PIXELS_Y_INVERT 5
 #define MOCK_MODE_PIXELS_Y_INVERT_SCALE 6
 #define MOCK_MODE_POINTER 7
+#define MOCK_MODE_BUFFER_METADATA 8
+#define MOCK_MODE_DMABUF_METADATA 9
+#define MOCK_MODE_SHM_THEN_DMABUF 10
+#define MOCK_MODE_DMABUF_THEN_SHM 11
+#define MOCK_MODE_DUPLICATE_BUFFER 12
+#define MOCK_MODE_FAIL_AFTER_SHM_COPY 13
+#define MOCK_MODE_SHM_VERSION_ONE 14
+#define MOCK_MODE_SHM_VERSION_TWO 15
+
 
 static struct wl_display *mock_display;
 static dev_t mock_dev;
 static uint64_t mock_modifier;
 static int use_shm;
 static uint32_t mock_mode;
+static int mock_legacy_shm(void) {
+    return mock_mode == MOCK_MODE_SHM_VERSION_ONE || mock_mode == MOCK_MODE_SHM_VERSION_TWO;
+}
+static uint32_t mock_buffer_width, mock_buffer_height, mock_buffer_stride;
+static _Atomic uint32_t mock_pool_requests, mock_copy_requests;
 static _Atomic int mock_stop_requested;
 static _Atomic uint32_t mock_pointer_frames;
 static _Atomic uint32_t mock_pointer_source_count;
@@ -63,6 +77,12 @@ struct zwlr_screencopy_manager_v1_interface {
 };
 
 static void frame_copy(struct wl_client *client, struct wl_resource *resource, struct wl_resource *buffer) {
+    atomic_fetch_add(&mock_copy_requests, 1);
+    if (mock_mode == MOCK_MODE_FAIL_AFTER_SHM_COPY) {
+        wl_resource_post_event(resource, ZWLR_SCREENCOPY_FRAME_V1_FAILED);
+        wl_display_flush_clients(mock_display);
+        return;
+    }
     if (mock_has_pixels()) {
         struct wl_shm_buffer *shm_buffer = wl_shm_buffer_get(buffer);
         if (!shm_buffer) {
@@ -109,7 +129,8 @@ static const struct zwlr_screencopy_frame_v1_interface frame_impl = {
 };
 
 static void handle_capture_output(struct wl_client *client, struct wl_resource *resource, uint32_t id, struct wl_resource *output) {
-    struct wl_resource *frame = wl_resource_create(client, &zwlr_screencopy_frame_v1_interface, 3, id);
+    uint32_t version = mock_legacy_shm() ? wl_resource_get_version(resource) : 3;
+    struct wl_resource *frame = wl_resource_create(client, &zwlr_screencopy_frame_v1_interface, version, id);
     wl_resource_set_implementation(frame, &frame_impl, NULL, frame_resource_destroy);
     if (mock_mode == MOCK_MODE_STALL) {
         return;
@@ -120,8 +141,36 @@ static void handle_capture_output(struct wl_client *client, struct wl_resource *
         wl_display_flush_clients(mock_display);
         return;
     }
+    if (mock_mode == MOCK_MODE_DMABUF_METADATA) {
+        wl_resource_post_event(frame, ZWLR_SCREENCOPY_FRAME_V1_LINUX_DMABUF,
+            MOCK_DRM_FORMAT_ARGB8888, mock_buffer_width, mock_buffer_height);
+        wl_resource_post_event(frame, ZWLR_SCREENCOPY_FRAME_V1_BUFFER_DONE);
+        return;
+    }
+    if (mock_mode == MOCK_MODE_SHM_THEN_DMABUF || mock_mode == MOCK_MODE_DMABUF_THEN_SHM) {
+        if (mock_mode == MOCK_MODE_DMABUF_THEN_SHM) {
+            wl_resource_post_event(frame, ZWLR_SCREENCOPY_FRAME_V1_LINUX_DMABUF,
+                MOCK_DRM_FORMAT_ARGB8888, 0x80000000u, 0);
+        }
+        wl_resource_post_event(frame, ZWLR_SCREENCOPY_FRAME_V1_BUFFER, WL_SHM_FORMAT_ARGB8888, 64, 64, 256);
+        if (mock_mode == MOCK_MODE_SHM_THEN_DMABUF) {
+            wl_resource_post_event(frame, ZWLR_SCREENCOPY_FRAME_V1_LINUX_DMABUF,
+                MOCK_DRM_FORMAT_ARGB8888, 0x80000000u, 0);
+        }
+        wl_resource_post_event(frame, ZWLR_SCREENCOPY_FRAME_V1_BUFFER_DONE);
+        return;
+    }
+    if (mock_mode == MOCK_MODE_DUPLICATE_BUFFER) {
+        wl_resource_post_event(frame, ZWLR_SCREENCOPY_FRAME_V1_BUFFER, WL_SHM_FORMAT_ARGB8888, 64, 64, 256);
+        wl_resource_post_event(frame, ZWLR_SCREENCOPY_FRAME_V1_BUFFER, WL_SHM_FORMAT_ARGB8888, 1, 1, 4);
+        wl_resource_post_event(frame, ZWLR_SCREENCOPY_FRAME_V1_BUFFER_DONE);
+        return;
+    }
     if (use_shm) {
-        if (mock_has_pixels()) {
+        if (mock_mode == MOCK_MODE_BUFFER_METADATA) {
+            wl_resource_post_event(frame, ZWLR_SCREENCOPY_FRAME_V1_BUFFER, WL_SHM_FORMAT_ARGB8888,
+                mock_buffer_width, mock_buffer_height, mock_buffer_stride);
+        } else if (mock_has_pixels()) {
             wl_resource_post_event(frame, ZWLR_SCREENCOPY_FRAME_V1_BUFFER, WL_SHM_FORMAT_ARGB8888, 4, 4, 24);
         } else {
             wl_resource_post_event(frame, ZWLR_SCREENCOPY_FRAME_V1_BUFFER, WL_SHM_FORMAT_ARGB8888, 64, 64, 256);
@@ -129,7 +178,9 @@ static void handle_capture_output(struct wl_client *client, struct wl_resource *
     } else {
         wl_resource_post_event(frame, ZWLR_SCREENCOPY_FRAME_V1_LINUX_DMABUF, MOCK_DRM_FORMAT_ARGB8888, 64, 64);
     }
-    wl_resource_post_event(frame, ZWLR_SCREENCOPY_FRAME_V1_BUFFER_DONE);
+    if (!mock_legacy_shm()) {
+        wl_resource_post_event(frame, ZWLR_SCREENCOPY_FRAME_V1_BUFFER_DONE);
+    }
 }
 
 static const struct zwlr_screencopy_manager_v1_interface screencopy_impl = {
@@ -139,7 +190,7 @@ static const struct zwlr_screencopy_manager_v1_interface screencopy_impl = {
 };
 
 static void bind_screencopy_manager(struct wl_client *client, void *data, uint32_t version, uint32_t id) {
-    struct wl_resource *res = wl_resource_create(client, &zwlr_screencopy_manager_v1_interface, 3, id);
+    struct wl_resource *res = wl_resource_create(client, &zwlr_screencopy_manager_v1_interface, mock_legacy_shm() ? version : 3, id);
     wl_resource_set_implementation(res, &screencopy_impl, NULL, NULL);
 }
 
@@ -208,7 +259,7 @@ static void dmabuf_get_default_feedback(struct wl_client *client, struct wl_reso
 }
 
 static const struct zwp_linux_dmabuf_v1_interface dmabuf_impl = {
-    .destroy = NULL,
+    .destroy = params_destroy,
     .create_params = dmabuf_create_params,
     .get_default_feedback = dmabuf_get_default_feedback,
 };
@@ -326,6 +377,7 @@ static const struct wl_shm_pool_interface shm_pool_impl = {
 };
 
 static void shm_create_pool(struct wl_client *client, struct wl_resource *resource, uint32_t id, int32_t fd, int32_t size) {
+    atomic_fetch_add(&mock_pool_requests, 1);
     close(fd);
     struct wl_resource *pool = wl_resource_create(client, &wl_shm_pool_interface, 1, id);
     wl_resource_set_implementation(pool, &shm_pool_impl, NULL, NULL);
@@ -340,10 +392,16 @@ static void bind_shm(struct wl_client *client, void *data, uint32_t version, uin
     wl_resource_set_implementation(res, &shm_impl, NULL, NULL);
 }
 
-void run_mock_server_mode(const char *socket, uint32_t maj, uint32_t min, uint64_t modifier, uint32_t mode) {
+void run_mock_server_buffer_metadata(const char *socket, uint32_t maj, uint32_t min, uint64_t modifier, uint32_t mode,
+    uint32_t width, uint32_t height, uint32_t stride) {
     mock_dev = makedev(maj, min);
     mock_modifier = modifier;
     mock_mode = mode;
+    mock_buffer_width = width;
+    mock_buffer_height = height;
+    mock_buffer_stride = stride;
+    atomic_store(&mock_pool_requests, 0);
+    atomic_store(&mock_copy_requests, 0);
     mock_stop_requested = 0;
     atomic_store(&mock_pointer_frames, 0);
     atomic_store(&mock_pointer_source_count, 0);
@@ -357,9 +415,11 @@ void run_mock_server_mode(const char *socket, uint32_t maj, uint32_t min, uint64
     mock_display = wl_display_create();
     wl_display_add_socket(mock_display, socket);
     wl_global_create(mock_display, &wl_output_interface, 2, NULL, bind_output);
-    if (!use_shm) {
+    if (!use_shm || mock_mode == MOCK_MODE_DMABUF_METADATA ||
+        mock_mode == MOCK_MODE_SHM_THEN_DMABUF || mock_mode == MOCK_MODE_DMABUF_THEN_SHM) {
         wl_global_create(mock_display, &zwp_linux_dmabuf_v1_interface, 4, NULL, bind_dmabuf);
-    } else {
+    }
+    if (use_shm) {
         if (mock_has_pixels()) {
             wl_display_init_shm(mock_display);
         } else {
@@ -370,7 +430,9 @@ void run_mock_server_mode(const char *socket, uint32_t maj, uint32_t min, uint64
         wl_global_create(mock_display, &wl_seat_interface, 1, NULL, bind_pointer_seat);
         wl_global_create(mock_display, &zwlr_virtual_pointer_manager_v1_interface, 1, NULL, bind_pointer_manager);
     }
-    wl_global_create(mock_display, &zwlr_screencopy_manager_v1_interface, 3, NULL, bind_screencopy_manager);
+    uint32_t screencopy_version = mock_mode == MOCK_MODE_SHM_VERSION_ONE ? 1 :
+        mock_mode == MOCK_MODE_SHM_VERSION_TWO ? 2 : 3;
+    wl_global_create(mock_display, &zwlr_screencopy_manager_v1_interface, screencopy_version, NULL, bind_screencopy_manager);
     if (mock_mode == MOCK_MODE_REGISTRY_STALL) {
         while (!mock_stop_requested) {
             usleep(1000);
@@ -387,6 +449,13 @@ void run_mock_server_mode(const char *socket, uint32_t maj, uint32_t min, uint64
     wl_display_destroy(mock_display);
     mock_display = NULL;
 }
+
+void run_mock_server_mode(const char *socket, uint32_t maj, uint32_t min, uint64_t modifier, uint32_t mode) {
+    run_mock_server_buffer_metadata(socket, maj, min, modifier, mode, 64, 64, 256);
+}
+
+uint32_t mock_pool_request_count(void) { return atomic_load(&mock_pool_requests); }
+uint32_t mock_copy_request_count(void) { return atomic_load(&mock_copy_requests); }
 
 void run_mock_server(const char *socket, uint32_t maj, uint32_t min, uint64_t modifier) {
     run_mock_server_mode(socket, maj, min, modifier, MOCK_MODE_NORMAL);

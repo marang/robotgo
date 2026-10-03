@@ -578,6 +578,10 @@ are normalized after logical crop mapping, preserving top-to-bottom image
 coordinates. An unknown format returns
 `ErrWaylandPixelFormat`, so callers receive an explicit error and the normal
 safe fallback policy can continue instead of returning color-corrupted pixels.
+Native capture validates dimensions, row stride and allocation bounds before
+using compositor or GBM metadata. Invalid selected buffers fail explicitly;
+the existing fallback policy is unchanged. SHM mappings retain their actual
+length for cleanup, and unselected buffer offers cannot overwrite ownership.
 
 The portal may prompt the user. Native screencopy and virtual input are most
 useful on wlroots compositors; availability is probed at runtime rather than

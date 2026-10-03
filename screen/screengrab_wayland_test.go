@@ -19,13 +19,19 @@ import (
 )
 
 const (
-	mockModeStall           = 1
-	mockModeFailAfterDmabuf = 2
-	mockModeRegistryStall   = 3
-	mockModePixels          = 4
-	mockModePixelsYInvert   = 5
-	mockModePixelsYScale    = 6
-	mockModePointer         = 7
+	mockModeStall            = 1
+	mockModeFailAfterDmabuf  = 2
+	mockModeRegistryStall    = 3
+	mockModePixels           = 4
+	mockModePixelsYInvert    = 5
+	mockModePixelsYScale     = 6
+	mockModePointer          = 7
+	mockModeShmThenDmabuf    = 10
+	mockModeDmabufThenShm    = 11
+	mockModeDuplicateBuffer  = 12
+	mockModeFailAfterShmCopy = 13
+	mockModeShmVersionOne    = 14
+	mockModeShmVersionTwo    = 15
 )
 
 func cleanupMockServer(t *testing.T, done <-chan struct{}) {
@@ -132,6 +138,211 @@ func TestScreencopyWlShm(t *testing.T) {
 		t.Fatalf("backend = %q, want %q", got, robotgo.BackendScreencopy)
 	}
 
+}
+
+func TestScreencopyRejectsInvalidBufferMetadata(t *testing.T) {
+	for _, test := range []struct {
+		name                  string
+		width, height, stride uint32
+		dmabuf                bool
+	}{
+		{"short row", 1024, 2, 4, false},
+		{"zero width", 0, 2, 4, false},
+		{"zero height", 1, 0, 4, false},
+		{"zero stride", 1, 1, 0, false},
+		{"unsigned width", 0x80000000, 1, 4, false},
+		{"unsigned height", 1, 0x80000000, 4, false},
+		{"unsigned stride", 1, 1, 0x80000000, false},
+		{"row overflow", 0x40000000, 1, 4, false},
+		{"signed pool overflow", 1, 0x20000000, 4, false},
+		{"product overflow", 1, 0x7fffffff, 0x7fffffff, false},
+		{"dmabuf zero width", 0, 1, 0, true},
+		{"dmabuf zero height", 1, 0, 0, true},
+		{"dmabuf unsigned width", 0x80000000, 1, 0, true},
+		{"dmabuf unsigned height", 1, 0x80000000, 0, true},
+		{"dmabuf row overflow", 0x40000000, 1, 0, true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			dir := t.TempDir()
+			const socket = "wl"
+			t.Setenv("XDG_RUNTIME_DIR", dir)
+			t.Setenv("WAYLAND_DISPLAY", socket)
+			t.Setenv("DISPLAY", "")
+			t.Setenv("ROBOTGO_DISABLE_PORTAL", "1")
+			robotgo.SetWaylandBackend(robotgo.WaylandBackendWlShm)
+			if test.dmabuf {
+				robotgo.SetWaylandBackend(robotgo.WaylandBackendDmabuf)
+			}
+			t.Cleanup(func() { robotgo.SetWaylandBackend(robotgo.WaylandBackendAuto) })
+			done := make(chan struct{})
+			startMockServerBufferMetadata(socket, test.width, test.height, test.stride, test.dmabuf, done)
+			t.Cleanup(func() { cleanupMockServer(t, done) })
+			waitForMockServer(t, dir, socket)
+			bitmap, err := CaptureScreen()
+			if bitmap != nil {
+				robotgo.FreeBitmap(bitmap)
+				t.Fatal("invalid buffer metadata produced a bitmap")
+			}
+			if !errors.Is(err, robotgo.ErrWaylandFailed) {
+				t.Fatalf("invalid metadata error = %v, want explicit native failure", err)
+			}
+			cleanupMockServer(t, done)
+			if pools, copies := mockBufferRequestCounts(); pools != 0 || copies != 0 {
+				t.Fatalf("invalid metadata allocated a pool or copied: pools=%d copies=%d", pools, copies)
+			}
+			assertNoScreencopyMapping(t)
+		})
+	}
+}
+
+func assertNoScreencopyMapping(t *testing.T) {
+	t.Helper()
+	maps, err := os.ReadFile("/proc/self/maps")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(maps), "memfd:robotgo-wl") {
+		t.Fatal("capture left an SHM mapping behind")
+	}
+	fds, err := os.ReadDir("/proc/self/fd")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, fd := range fds {
+		target, _ := os.Readlink(filepath.Join("/proc/self/fd", fd.Name()))
+		if strings.Contains(target, "memfd:robotgo-wl") {
+			t.Fatal("capture left an SHM file descriptor behind")
+		}
+	}
+}
+
+func TestScreencopyBufferAnnouncementsKeepSelectedOwnership(t *testing.T) {
+	for _, mode := range []uint32{mockModeShmThenDmabuf, mockModeDmabufThenShm, mockModeDuplicateBuffer} {
+		t.Run(map[uint32]string{mockModeShmThenDmabuf: "SHM then DMA-BUF", mockModeDmabufThenShm: "DMA-BUF then SHM", mockModeDuplicateBuffer: "duplicate SHM"}[mode], func(t *testing.T) {
+			dir := t.TempDir()
+			const socket = "wl"
+			t.Setenv("XDG_RUNTIME_DIR", dir)
+			t.Setenv("WAYLAND_DISPLAY", socket)
+			t.Setenv("DISPLAY", "")
+			t.Setenv("ROBOTGO_DISABLE_PORTAL", "1")
+			robotgo.SetWaylandBackend(robotgo.WaylandBackendWlShm)
+			t.Cleanup(func() { robotgo.SetWaylandBackend(robotgo.WaylandBackendAuto) })
+			done := make(chan struct{})
+			startMockServerMode(socket, 0, 0, 0, mode, done)
+			t.Cleanup(func() { cleanupMockServer(t, done) })
+			waitForMockServer(t, dir, socket)
+			bitmap, err := CaptureScreen()
+			if bitmap != nil {
+				robotgo.FreeBitmap(bitmap)
+			}
+			if mode == mockModeDuplicateBuffer {
+				if bitmap != nil || err == nil {
+					t.Fatal("duplicate selected buffer offer was accepted")
+				}
+			} else if bitmap == nil || err != nil {
+				t.Fatalf("unselected metadata broke SHM capture: %v", err)
+			}
+			cleanupMockServer(t, done)
+			want := uint32(1)
+			if mode == mockModeDuplicateBuffer {
+				want = 0
+			}
+			if pools, copies := mockBufferRequestCounts(); pools != want || copies != want {
+				t.Fatalf("buffer requests = (%d,%d), want (%d,%d)", pools, copies, want, want)
+			}
+			assertNoScreencopyMapping(t)
+		})
+	}
+}
+
+func TestScreencopyFailureAfterShmAllocationCleansMapping(t *testing.T) {
+	dir := t.TempDir()
+	const socket = "wl"
+	t.Setenv("XDG_RUNTIME_DIR", dir)
+	t.Setenv("WAYLAND_DISPLAY", socket)
+	t.Setenv("DISPLAY", "")
+	t.Setenv("ROBOTGO_DISABLE_PORTAL", "1")
+	robotgo.SetWaylandBackend(robotgo.WaylandBackendWlShm)
+	t.Cleanup(func() { robotgo.SetWaylandBackend(robotgo.WaylandBackendAuto) })
+	done := make(chan struct{})
+	startMockServerMode(socket, 0, 0, 0, mockModeFailAfterShmCopy, done)
+	t.Cleanup(func() { cleanupMockServer(t, done) })
+	waitForMockServer(t, dir, socket)
+	bitmap, err := CaptureScreen()
+	if bitmap != nil {
+		robotgo.FreeBitmap(bitmap)
+		t.Fatal("failed frame produced a bitmap")
+	}
+	if !errors.Is(err, robotgo.ErrWaylandFailed) {
+		t.Fatalf("capture error = %v, want native failure", err)
+	}
+	cleanupMockServer(t, done)
+	if pools, copies := mockBufferRequestCounts(); pools != 1 || copies != 1 {
+		t.Fatalf("failure did not follow allocation/copy: pools=%d copies=%d", pools, copies)
+	}
+	assertNoScreencopyMapping(t)
+}
+
+func TestScreencopyLegacyShmProtocols(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		mode uint32
+	}{{"version one", mockModeShmVersionOne}, {"version two", mockModeShmVersionTwo}} {
+		t.Run(test.name, func(t *testing.T) {
+			dir := t.TempDir()
+			const socket = "wl"
+			t.Setenv("XDG_RUNTIME_DIR", dir)
+			t.Setenv("WAYLAND_DISPLAY", socket)
+			t.Setenv("DISPLAY", "")
+			t.Setenv("ROBOTGO_DISABLE_PORTAL", "1")
+			robotgo.SetWaylandBackend(robotgo.WaylandBackendWlShm)
+			t.Cleanup(func() { robotgo.SetWaylandBackend(robotgo.WaylandBackendAuto) })
+			done := make(chan struct{})
+			startMockServerMode(socket, 0, 0, 0, test.mode, done)
+			t.Cleanup(func() { cleanupMockServer(t, done) })
+			waitForMockServer(t, dir, socket)
+			bitmap, err := CaptureScreen()
+			if bitmap != nil {
+				robotgo.FreeBitmap(bitmap)
+			}
+			if bitmap == nil || err != nil {
+				t.Fatalf("legacy SHM capture without buffer_done failed: %v", err)
+			}
+			cleanupMockServer(t, done)
+			if pools, copies := mockBufferRequestCounts(); pools != 1 || copies != 1 {
+				t.Fatalf("legacy SHM requests = (%d,%d), want (1,1)", pools, copies)
+			}
+			assertNoScreencopyMapping(t)
+		})
+	}
+}
+
+func TestScreencopyInvalidMetadataPreservesPortalFallback(t *testing.T) {
+	dir := t.TempDir()
+	const socket = "wl"
+	t.Setenv("XDG_RUNTIME_DIR", dir)
+	t.Setenv("WAYLAND_DISPLAY", socket)
+	t.Setenv("DISPLAY", "")
+	t.Setenv("ROBOTGO_DISABLE_PORTAL", "1")
+	t.Setenv("ROBOTGO_PORTAL_STUB_GREEN", "1")
+	robotgo.SetWaylandBackend(robotgo.WaylandBackendWlShm)
+	t.Cleanup(func() { robotgo.SetWaylandBackend(robotgo.WaylandBackendAuto) })
+	done := make(chan struct{})
+	startMockServerBufferMetadata(socket, 1024, 2, 4, false, done)
+	t.Cleanup(func() { cleanupMockServer(t, done) })
+	waitForMockServer(t, dir, socket)
+	img, err := robotgo.CaptureImg()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if robotgo.LastBackend() != robotgo.BackendPortal || color.RGBAModel.Convert(img.At(0, 0)).(color.RGBA).G != 0xff {
+		t.Fatal("invalid native metadata did not use the existing portal fallback")
+	}
+	cleanupMockServer(t, done)
+	if pools, copies := mockBufferRequestCounts(); pools != 0 || copies != 0 {
+		t.Fatalf("invalid metadata allocated before fallback: pools=%d copies=%d", pools, copies)
+	}
+	assertNoScreencopyMapping(t)
 }
 
 func TestScreencopyYInvertPreservesLogicalCrop(t *testing.T) {

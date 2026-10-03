@@ -70,4 +70,7 @@ Separate existing defects discovered by the audit remain explicit follow-ups:
 buffer dimensions/stride/pool sizes before allocation and copy;
 [LAB-238](https://linear.app/riotbox/issue/LAB-238) closes CGO display-mode/DC
 scale-query ownership gaps. Upstream does not fix these defects; neither is
-claimed repaired by this refresh.
+claimed repaired by the upstream refresh itself. Subsequent LAB-237 hardening
+adds checked row/pool/destination bounds, selected-offer isolation and exact
+SHM mapping-length cleanup, with hermetic malformed-metadata and ownership
+regressions. LAB-238 remains a separate outstanding follow-up.

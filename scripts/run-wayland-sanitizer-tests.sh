@@ -3,11 +3,17 @@
 set -euo pipefail
 
 readonly go_bin="${ROBOTGO_GO_BIN:-go}"
-readonly test_pattern='^TestScreencopy(WlShm|TimeoutIsBounded|DmabufFailureDoesNotCloseStdin)$'
+readonly test_pattern='^TestScreencopy(WlShm|TimeoutIsBounded|DmabufFailureDoesNotCloseStdin|RejectsInvalidBufferMetadata|YInvertPreservesLogicalCrop|BufferAnnouncementsKeepSelectedOwnership|FailureAfterShmAllocationCleansMapping|InvalidMetadataPreservesPortalFallback|LegacyShmProtocols)$'
 
 expected="$(printf '%s\n' \
+  TestScreencopyBufferAnnouncementsKeepSelectedOwnership \
   TestScreencopyDmabufFailureDoesNotCloseStdin \
+  TestScreencopyFailureAfterShmAllocationCleansMapping \
+  TestScreencopyInvalidMetadataPreservesPortalFallback \
+  TestScreencopyLegacyShmProtocols \
+  TestScreencopyRejectsInvalidBufferMetadata \
   TestScreencopyTimeoutIsBounded \
+  TestScreencopyYInvertPreservesLogicalCrop \
   TestScreencopyWlShm | LC_ALL=C sort)"
 readonly expected
 
