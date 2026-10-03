@@ -8,7 +8,12 @@ import (
 	"testing"
 )
 
-const releaseCommit = "0123456789abcdef0123456789abcdef01234567"
+const (
+	releaseCommit                = "0123456789abcdef0123456789abcdef01234567"
+	stableQualificationBoundary  = "1791621683"
+	stableQualificationTooEarly  = "1791621682"
+	stableQualificationAfterGate = "1791621684"
+)
 
 func TestOriginReleasePreflight(t *testing.T) {
 	t.Parallel()
@@ -21,9 +26,80 @@ func TestOriginReleasePreflight(t *testing.T) {
 	}{
 		{name: "clean authoritative origin"},
 		{
-			name:      "stable release waits for the rc2 qualification boundary",
-			tag:       "v1.0.0",
-			wantError: "stable qualification boundary for v1.0.0-rc.2 has not been recorded",
+			name: "clean stable release at qualification boundary",
+			tag:  "v1.0.0",
+		},
+		{
+			name: "clean stable release after qualification boundary",
+			tag:  "v1.0.0",
+			environment: map[string]string{
+				"FAKE_GITHUB_DATE":  "Sat, 10 Oct 2026 08:41:24 GMT",
+				"FAKE_GITHUB_EPOCH": stableQualificationAfterGate,
+			},
+		},
+		{
+			name: "clean stable release with BSD date parser",
+			tag:  "v1.0.0",
+			environment: map[string]string{
+				"FAKE_GNU_DATE_STATUS": "1",
+			},
+		},
+		{
+			name: "stable release before qualification boundary",
+			tag:  "v1.0.0",
+			environment: map[string]string{
+				"FAKE_GITHUB_DATE":  "Sat, 10 Oct 2026 08:41:22 GMT",
+				"FAKE_GITHUB_EPOCH": stableQualificationTooEarly,
+			},
+			wantError: "stable qualification window is still open",
+		},
+		{
+			name: "stable release rejects missing GitHub date header",
+			tag:  "v1.0.0",
+			environment: map[string]string{
+				"FAKE_GITHUB_DATE_MISSING": "1",
+			},
+			wantError: "did not contain exactly one Date header",
+		},
+		{
+			name: "stable release rejects duplicate GitHub date headers",
+			tag:  "v1.0.0",
+			environment: map[string]string{
+				"FAKE_GITHUB_DATE_DUPLICATE": "1",
+			},
+			wantError: "did not contain exactly one Date header",
+		},
+		{
+			name: "stable release rejects invalid authoritative time",
+			tag:  "v1.0.0",
+			environment: map[string]string{
+				"FAKE_GITHUB_EPOCH": "not-an-epoch",
+			},
+			wantError: "invalid authoritative GitHub epoch",
+		},
+		{
+			name: "stable release rejects overflowing authoritative time",
+			tag:  "v1.0.0",
+			environment: map[string]string{
+				"FAKE_GITHUB_EPOCH": "99999999999",
+			},
+			wantError: "invalid authoritative GitHub epoch",
+		},
+		{
+			name: "stable release fails closed when GitHub time lookup fails",
+			tag:  "v1.0.0",
+			environment: map[string]string{
+				"FAKE_GITHUB_CLOCK_STATUS": "17",
+			},
+			wantError: "failed to obtain authoritative GitHub time",
+		},
+		{
+			name: "stable release fails closed when GitHub time parsing fails",
+			tag:  "v1.0.0",
+			environment: map[string]string{
+				"FAKE_DATE_STATUS": "17",
+			},
+			wantError: "failed to parse authoritative GitHub time",
 		},
 		{
 			name: "release candidate does not require stable qualification time",
@@ -50,6 +126,14 @@ func TestOriginReleasePreflight(t *testing.T) {
 			name: "local release candidate tag collision",
 			environment: map[string]string{
 				"FAKE_LOCAL_TAG": "v1.0.0-rc.2",
+			},
+			wantError: "refusing existing local tag collision",
+		},
+		{
+			name: "local stable tag collision",
+			tag:  "v1.0.0",
+			environment: map[string]string{
+				"FAKE_LOCAL_TAG": "v1.0.0",
 			},
 			wantError: "refusing existing local tag collision",
 		},
@@ -99,6 +183,16 @@ func TestOriginReleasePreflight(t *testing.T) {
 				if !strings.Contains(output, "release preflight passed") ||
 					!strings.Contains(output, "commit="+releaseCommit) {
 					t.Fatalf("preflight output missing success identity:\n%s", output)
+				}
+				if test.tag == "v1.0.0" &&
+					!strings.Contains(
+						output,
+						"stable-not-before=2026-10-10T08:41:23Z",
+					) {
+					t.Fatalf(
+						"stable preflight output missing qualification boundary:\n%s",
+						output,
+					)
 				}
 				return
 			}
@@ -192,9 +286,9 @@ case "$2" in
     printf 'HTTP/2.0 200 OK\n'
     if [[ -z "${FAKE_GITHUB_DATE_MISSING:-}" ]]; then
       printf 'Date: %s\n' \
-        "${FAKE_GITHUB_DATE:-Wed, 05 Aug 2026 10:13:46 GMT}"
+        "${FAKE_GITHUB_DATE:-Sat, 10 Oct 2026 08:41:23 GMT}"
       if [[ -n "${FAKE_GITHUB_DATE_DUPLICATE:-}" ]]; then
-        printf 'date: Wed, 05 Aug 2026 10:13:47 GMT\n'
+        printf 'date: Sat, 10 Oct 2026 08:41:24 GMT\n'
       fi
     fi
     printf '\n'
@@ -212,7 +306,7 @@ esac
 `)
 	writeExecutable(t, dateStub, `#!/usr/bin/env bash
 set -euo pipefail
-expected_date="${FAKE_GITHUB_DATE:-Wed, 05 Aug 2026 10:13:46 GMT}"
+expected_date="${FAKE_GITHUB_DATE:-Sat, 10 Oct 2026 08:41:23 GMT}"
 if (($# == 4)) &&
   [[ "$1" == "-u" && "$2" == "-d" && "$3" == "$expected_date" && "$4" == "+%s" ]]; then
   if [[ -n "${FAKE_GNU_DATE_STATUS:-}" ]]; then
@@ -229,7 +323,7 @@ fi
 if [[ -n "${FAKE_DATE_STATUS:-}" ]]; then
   exit "$FAKE_DATE_STATUS"
 fi
-printf '%s\n' "${FAKE_GITHUB_EPOCH:-1785924826}"
+printf '%s\n' "${FAKE_GITHUB_EPOCH:-1791621683}"
 `)
 
 	environment := append(os.Environ(),

@@ -1273,8 +1273,8 @@ can be packaged.
 The last pre-API-freeze 28-check contract passes on exact merged `main` in
 [`Release Evidence` run 30272753885](https://github.com/marang/robotgo/actions/runs/30272753885).
 The current post-freeze 29-check contract passes on the exact published tag in
-[`v1.0.0-rc.1` Release Evidence run 30442843617](https://github.com/marang/robotgo/actions/runs/30442843617)
-at commit `281d8cee29d696e334fe9d4a6f6a7069ab291083`.
+[`v1.0.0-rc.2` Release Evidence run 37110542971](https://github.com/marang/robotgo/actions/runs/37110542971)
+at commit `60aa3a44522492a341e6d5b55df7a2fa99ef57b1`.
 
 On a clean Linux native checkout, reproduce the generator/verifier path with:
 
@@ -1311,9 +1311,11 @@ go run ./internal/cmd/releaseevidence verify \
   -expected-test-command "$test_command"
 ```
 
-The public contract expanded after `v1.0.0-rc.1`, so stable publication now
-requires `v1.0.0-rc.2` and a fresh qualification window. After the reviewed
-RC2-preparation PR is merged, run from the clean `main` worktree:
+The public contract expanded after `v1.0.0-rc.1`, so `v1.0.0-rc.2` was
+published with a fresh qualification window. The following is the completed
+rc.2 operator procedure, retained as a reference for future candidates.
+Do not rerun its publication commands against the existing immutable tag;
+preflight will reject that collision. The procedure starts from clean `main`:
 
 ```bash
 set -euo pipefail
@@ -1415,11 +1417,14 @@ test "$(GOPROXY=direct go list -m -f '{{.Version}}' github.com/marang/robotgo@la
 ```
 
 Only after those checks pass, record GitHub's authoritative RC2 `published_at`
-timestamp and exactly seven full days later in a reviewed follow-up. Until both
-values are pinned in `preflight-origin-release.sh`, the stable preflight fails
-closed. Restore the before/at/after-boundary plus remote clock lookup/parsing
-regression cases in the same follow-up. LAB-228 remains open until the exact
-tag, assets, checksum, and both module-resolution paths are verified.
+timestamp and exactly seven full days later in a reviewed follow-up. LAB-235
+records publication at `2026-10-03T08:41:23Z` and stable not-before
+`2026-10-10T08:41:23Z` (epoch `1791621683`) in
+`preflight-origin-release.sh`, together with the before/at/after-boundary and
+remote clock lookup/parsing regression cases. The preflight uses GitHub's Date
+header and rejects early stable publication even when the local clock is ahead.
+LAB-228 closes only after the exact tag, assets, checksum, and both module
+resolution paths are verified.
 
 Before creating the stable tag, complete that new seven-day window with no
 unresolved critical/high regression. A reviewed stable-preparation PR must
