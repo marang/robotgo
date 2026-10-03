@@ -1243,6 +1243,17 @@ personal desktop: portal cells intentionally request real screen/input consent
 and belong only on the disposable fixture images with the protected operator
 handoff.
 
+The repository base-image URL and digest can be checked through the production
+HTTPS client without building or starting a guest. This opt-in test downloads
+the roughly 600 MiB image into `t.TempDir()` and removes it automatically:
+
+```bash
+ROBOTGO_REQUIRE_PORTAL_RUNNER_ARTIFACT_INTEGRATION=1 \
+  go test ./internal/portalrunner \
+  -run '^TestRepositoryBaseImageSourceIntegration$' \
+  -count=1 -timeout=20m -v
+```
+
 ## Release Evidence
 
 The `Release evidence` workflow validates its schema on every pull request and

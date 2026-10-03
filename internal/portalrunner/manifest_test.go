@@ -18,8 +18,9 @@ func validManifest() Manifest {
 		Labels:        []string{"self-hosted", "linux", "wayland", "gnome"},
 		BaseImage: Artifact{
 			Version: "ubuntu-24.04-20260705",
-			URL:     "https://cloud-images.ubuntu.com/noble/20260705/image.img",
-			SHA256:  strings.Repeat("a", 64),
+			URL: "https://s3.amazonaws.com/cloud-images-archive.ubuntu.com/releases/noble/" +
+				"release-20260705/ubuntu-24.04-server-cloudimg-amd64.img",
+			SHA256: strings.Repeat("a", 64),
 		},
 		APTSnapshot: "https://snapshot.ubuntu.com/ubuntu/20260705T000000Z/",
 		Go: Artifact{
@@ -211,6 +212,42 @@ func TestManifestRejectsUnsafeContract(t *testing.T) {
 				manifest.BaseImage.URL = "https://example.com/image.img"
 			},
 			want: "not a pinned HTTPS source",
+		},
+		{
+			name: "roll-off-prone daily image",
+			change: func(manifest *Manifest) {
+				manifest.BaseImage.URL =
+					"https://cloud-images.ubuntu.com/noble/20260705/" +
+						"noble-server-cloudimg-amd64.img"
+			},
+			want: "not a pinned HTTPS source",
+		},
+		{
+			name: "redirecting archive front door",
+			change: func(manifest *Manifest) {
+				manifest.BaseImage.URL =
+					"https://cloud-images.ubuntu.com/releases/noble/" +
+						"release-20260705/ubuntu-24.04-server-cloudimg-amd64.img"
+			},
+			want: "not a pinned HTTPS source",
+		},
+		{
+			name: "wrong archive bucket",
+			change: func(manifest *Manifest) {
+				manifest.BaseImage.URL =
+					"https://s3.amazonaws.com/untrusted/releases/noble/" +
+						"release-20260705/ubuntu-24.04-server-cloudimg-amd64.img"
+			},
+			want: "matching archived Ubuntu release",
+		},
+		{
+			name: "archive date mismatches version",
+			change: func(manifest *Manifest) {
+				manifest.BaseImage.URL =
+					"https://s3.amazonaws.com/cloud-images-archive.ubuntu.com/releases/noble/" +
+						"release-20260706/ubuntu-24.04-server-cloudimg-amd64.img"
+			},
+			want: "matching archived Ubuntu release",
 		},
 		{
 			name: "weak digest",

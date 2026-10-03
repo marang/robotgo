@@ -4,12 +4,41 @@ package portalrunner
 
 import (
 	"bytes"
+	"context"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 )
+
+const requirePortalRunnerArtifactIntegration = "ROBOTGO_REQUIRE_PORTAL_RUNNER_ARTIFACT_INTEGRATION"
+
+func TestRepositoryBaseImageSourceIntegration(t *testing.T) {
+	if os.Getenv(requirePortalRunnerArtifactIntegration) != "1" {
+		t.Skip("set " + requirePortalRunnerArtifactIntegration + "=1 to download and verify the repository base image")
+	}
+
+	manifestRoot := filepath.Join("..", "..", "infrastructure", "portal-runner")
+	gnome, err := LoadManifest(filepath.Join(manifestRoot, portalLaneGNOME, "manifest.json"))
+	if err != nil {
+		t.Fatalf("load GNOME manifest: %v", err)
+	}
+	kde, err := LoadManifest(filepath.Join(manifestRoot, portalLaneKDE, "manifest.json"))
+	if err != nil {
+		t.Fatalf("load KDE manifest: %v", err)
+	}
+	if gnome.BaseImage != kde.BaseImage {
+		t.Fatal("GNOME and KDE base-image artifacts differ")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
+	defer cancel()
+	path := filepath.Join(t.TempDir(), "ubuntu-base.img")
+	if err := ensureArtifact(ctx, secureHTTPClient(), gnome.BaseImage, path); err != nil {
+		t.Fatalf("download and verify repository base image: %v", err)
+	}
+}
 
 func TestBuildFailureLogTailIsBounded(t *testing.T) {
 	t.Parallel()

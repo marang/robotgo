@@ -9,6 +9,11 @@ after the post-rc.1 agent, accessibility, image-observation, verification,
 Trace, recorder, and planning work. It also raises the minimum toolchain to Go
 1.26 and retains the same evidence-backed platform support scope.
 
+- Restored hosted GNOME/KDE evidence after the dated Ubuntu Daily image URL
+  expired by switching to the archive bucket's direct HTTPS S3 path for the
+  exact existing SHA-256-pinned image. Manifest validation now rejects both
+  roll-off-prone Daily paths and the archive front door's insecure redirect.
+
 - Added Verified Flow Plan v1 and the read-only `robotgo_plan_flow` MCP tool.
   A bounded, version-pinned resolve-act-verify description is evaluated against
   the session's immutable catalog and policy, retained semantic and reviewed
