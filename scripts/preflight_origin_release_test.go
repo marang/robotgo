@@ -8,12 +8,7 @@ import (
 	"testing"
 )
 
-const (
-	releaseCommit                = "0123456789abcdef0123456789abcdef01234567"
-	stableQualificationBoundary  = "1785924826"
-	stableQualificationTooEarly  = "1785924825"
-	stableQualificationAfterGate = "1785924827"
-)
+const releaseCommit = "0123456789abcdef0123456789abcdef01234567"
 
 func TestOriginReleasePreflight(t *testing.T) {
 	t.Parallel()
@@ -26,80 +21,9 @@ func TestOriginReleasePreflight(t *testing.T) {
 	}{
 		{name: "clean authoritative origin"},
 		{
-			name: "clean stable release at qualification boundary",
-			tag:  "v1.0.0",
-		},
-		{
-			name: "clean stable release after qualification boundary",
-			tag:  "v1.0.0",
-			environment: map[string]string{
-				"FAKE_GITHUB_DATE":  "Wed, 05 Aug 2026 10:13:47 GMT",
-				"FAKE_GITHUB_EPOCH": stableQualificationAfterGate,
-			},
-		},
-		{
-			name: "clean stable release with BSD date parser",
-			tag:  "v1.0.0",
-			environment: map[string]string{
-				"FAKE_GNU_DATE_STATUS": "1",
-			},
-		},
-		{
-			name: "stable release before qualification boundary",
-			tag:  "v1.0.0",
-			environment: map[string]string{
-				"FAKE_GITHUB_DATE":  "Wed, 05 Aug 2026 10:13:45 GMT",
-				"FAKE_GITHUB_EPOCH": stableQualificationTooEarly,
-			},
-			wantError: "stable qualification window is still open",
-		},
-		{
-			name: "stable release rejects missing GitHub date header",
-			tag:  "v1.0.0",
-			environment: map[string]string{
-				"FAKE_GITHUB_DATE_MISSING": "1",
-			},
-			wantError: "did not contain exactly one Date header",
-		},
-		{
-			name: "stable release rejects duplicate GitHub date headers",
-			tag:  "v1.0.0",
-			environment: map[string]string{
-				"FAKE_GITHUB_DATE_DUPLICATE": "1",
-			},
-			wantError: "did not contain exactly one Date header",
-		},
-		{
-			name: "stable release rejects invalid authoritative time",
-			tag:  "v1.0.0",
-			environment: map[string]string{
-				"FAKE_GITHUB_EPOCH": "not-an-epoch",
-			},
-			wantError: "invalid authoritative GitHub epoch",
-		},
-		{
-			name: "stable release rejects overflowing authoritative time",
-			tag:  "v1.0.0",
-			environment: map[string]string{
-				"FAKE_GITHUB_EPOCH": "99999999999",
-			},
-			wantError: "invalid authoritative GitHub epoch",
-		},
-		{
-			name: "stable release fails closed when GitHub time lookup fails",
-			tag:  "v1.0.0",
-			environment: map[string]string{
-				"FAKE_GITHUB_CLOCK_STATUS": "17",
-			},
-			wantError: "failed to obtain authoritative GitHub time",
-		},
-		{
-			name: "stable release fails closed when GitHub time parsing fails",
-			tag:  "v1.0.0",
-			environment: map[string]string{
-				"FAKE_DATE_STATUS": "17",
-			},
-			wantError: "failed to parse authoritative GitHub time",
+			name:      "stable release waits for the rc2 qualification boundary",
+			tag:       "v1.0.0",
+			wantError: "stable qualification boundary for v1.0.0-rc.2 has not been recorded",
 		},
 		{
 			name: "release candidate does not require stable qualification time",
@@ -123,10 +47,9 @@ func TestOriginReleasePreflight(t *testing.T) {
 			wantError: "release commit is not authoritative origin/main",
 		},
 		{
-			name: "local stable tag collision",
-			tag:  "v1.0.0",
+			name: "local release candidate tag collision",
 			environment: map[string]string{
-				"FAKE_LOCAL_TAG": "v1.0.0",
+				"FAKE_LOCAL_TAG": "v1.0.0-rc.2",
 			},
 			wantError: "refusing existing local tag collision",
 		},
@@ -140,21 +63,21 @@ func TestOriginReleasePreflight(t *testing.T) {
 		{
 			name: "origin tag already exists",
 			environment: map[string]string{
-				"FAKE_ORIGIN_TAGS": releaseCommit + "\trefs/tags/v1.0.0-rc.1\n",
+				"FAKE_ORIGIN_TAGS": releaseCommit + "\trefs/tags/v1.0.0-rc.2\n",
 			},
 			wantError: "refusing existing authoritative origin tag",
 		},
 		{
 			name: "GitHub tag already exists",
 			environment: map[string]string{
-				"FAKE_GITHUB_TAGS": "refs/tags/v1.0.0-rc.1\n",
+				"FAKE_GITHUB_TAGS": "refs/tags/v1.0.0-rc.2\n",
 			},
 			wantError: "refusing existing GitHub tag ref",
 		},
 		{
 			name: "GitHub release already exists",
 			environment: map[string]string{
-				"FAKE_GITHUB_RELEASES": "v1.0.0-rc.1\n",
+				"FAKE_GITHUB_RELEASES": "v1.0.0-rc.2\n",
 			},
 			wantError: "refusing existing GitHub release",
 		},
@@ -177,16 +100,6 @@ func TestOriginReleasePreflight(t *testing.T) {
 					!strings.Contains(output, "commit="+releaseCommit) {
 					t.Fatalf("preflight output missing success identity:\n%s", output)
 				}
-				if test.tag == "v1.0.0" &&
-					!strings.Contains(
-						output,
-						"stable-not-before=2026-08-05T10:13:46Z",
-					) {
-					t.Fatalf(
-						"stable preflight output missing qualification boundary:\n%s",
-						output,
-					)
-				}
 				return
 			}
 			if err == nil {
@@ -206,7 +119,7 @@ func TestOriginReleasePreflightRejectsMalformedInputs(t *testing.T) {
 	for _, arguments := range [][]string{
 		{"v1.0.0-beta.3", releaseCommit},
 		{"v1.0.0-rc.0", releaseCommit},
-		{"v1.0.0-rc.1", "not-a-commit"},
+		{"v1.0.0-rc.2", "not-a-commit"},
 	} {
 		command := exec.Command("bash", append([]string{script}, arguments...)...)
 		output, err := command.CombinedOutput()
@@ -223,7 +136,7 @@ func runOriginReleasePreflight(
 ) (string, error) {
 	t.Helper()
 	if tag == "" {
-		tag = "v1.0.0-rc.1"
+		tag = "v1.0.0-rc.2"
 	}
 
 	temporaryDirectory := t.TempDir()

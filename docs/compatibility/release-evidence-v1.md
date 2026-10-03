@@ -87,6 +87,11 @@ bundle SHA-256, exact commit/tree/ref, six evidence documents, and 29-check
 manifest were independently reverified from the public release streams without
 persisting a local verification directory.
 
+That bundle remains immutable historical evidence. The public API and schema
+contract expanded afterward, so `v1.0.0-rc.2` must produce a new exact-tag
+six-cell bundle and 29-check manifest before its fresh stable qualification
+window can begin.
+
 The preceding pre-API-freeze 28-check exact-candidate contract passes in
 [`Release Evidence` run 30272753885](https://github.com/marang/robotgo/actions/runs/30272753885)
 on merged `main` commit

@@ -13,20 +13,23 @@ Decision issue:
 The independent `github.com/marang/robotgo` module will use:
 
 1. `v1.0.0-rc.1` for the first stable-line release candidate.
-2. `v1.0.0` for the first stable release after qualification.
+2. `v1.0.0-rc.2` to re-freeze the expanded post-rc.1 public contract.
+3. `v1.0.0` for the first stable release after fresh rc.2 qualification.
 
 The authoritative `marang/robotgo` origin now contains the published,
 annotated `v1.0.0-rc.1` tag in addition to `v1.0.0-beta.1` and
-`v1.0.0-beta.2`; `v1.0.0` remains unused. Development clones can also contain
+`v1.0.0-beta.2`; `v1.0.0-rc.2` and `v1.0.0` remain unused. Development clones can also contain
 `v1.0.0`, `v1.0.1`, and `v1.0.2` tags fetched from the separate
 `go-vgo/robotgo` upstream remote. Local tag names are therefore not evidence
 of origin state. Release preflight must use `git ls-remote --tags origin` and
 the GitHub repository API, and must never push an upstream-derived local tag.
 
-The release candidate changed package `Version`, tests, notes, tag, and
-evidence together to `v1.0.0-rc.1`. Stable qualification started at its
-publication time, `2026-07-29T10:13:46Z`; stable publication is no earlier
-than `2026-08-05T10:13:46Z`.
+The first release candidate changed package `Version`, tests, notes, tag, and
+evidence together to `v1.0.0-rc.1`. Subsequent feature work intentionally
+expanded and changed the checked public contract, including exported agent
+schemas and root capability structures. The original qualification window can
+therefore no longer authorize stable publication. LAB-228 prepares
+`v1.0.0-rc.2`; its GitHub publication time will start a new seven-day window.
 
 ## Current evidence
 
@@ -35,11 +38,10 @@ than `2026-08-05T10:13:46Z`.
   authoritative `origin/main`, and rejected a non-fork remote. The resulting
   annotated RC tag peels to
   `281d8cee29d696e334fe9d4a6f6a7069ab291083`; `v1.0.0` remains absent.
-- The same preflight now rejects `v1.0.0` before
-  `2026-08-05T10:13:46Z` and fails closed when UTC time cannot be obtained or
-  parsed from GitHub's authoritative API `Date` header. Deterministic tests
-  cover missing/duplicate headers, the second before the boundary, the exact
-  boundary, and later execution without applying the stable gate to RC tags.
+- The preflight now permits an unused `v1.0.0-rc.2` candidate while rejecting
+  `v1.0.0` until rc.2's authoritative GitHub publication timestamp and exact
+  seven-day boundary are pinned in a reviewed follow-up. RC preflight remains
+  independent of the stable time gate.
 - `go list -m -json github.com/marang/robotgo@latest` resolved
   `v1.0.0-rc.1` with the default proxy and `GOPROXY=direct` on 2026-07-29.
   `proxy.golang.org` identifies the exact tag commit and `sum.golang.org`
@@ -61,9 +63,11 @@ than `2026-08-05T10:13:46Z`.
   two-file upload can still leave an incomplete same-run pair after a transport
   failure; later reruns fail closed rather than repairing it implicitly.
 - P005 is complete with all five milestones at 100%.
-- `go doc` currently exposes 259 root declarations, 44 `agent` declarations,
-  and 12 `input/portal` declarations. That breadth makes an automated API
-  freeze a stable-release requirement.
+- Before the rc.2 version-metadata change, the checked Linux CGO manifest had
+  511 additions and 13 removals or replacements after `rc.1`. The final rc.2
+  candidate adds the public `Version` transition itself, for 512 additions and
+  14 removals or replacements. That breadth makes a fresh reviewed candidate
+  and automated API freeze a stable-release requirement.
 
 ## Stable qualification log
 
@@ -76,6 +80,7 @@ than `2026-08-05T10:13:46Z`.
 | 2026-07-29T10:34Z | Linear RobotGo audit found no unresolved critical/high defect; LAB-69 remains a medium, explicitly unsupported-scope evidence task | Pass |
 | 2026-07-29T12:38Z | LAB-69 was classified externally blocked with four explicit reactivation paths; permission-granted macOS scopes remain evidence-pending and non-blocking for stable | Pass |
 | 2026-07-29T15:35Z | Stable preflight rejected an actual early `v1.0.0` attempt; deterministic before/at/after-boundary and clock-failure tests passed | Pass |
+| 2026-10-03T07:33Z | Qualification audit found 511 added and 13 removed/replaced manifest lines after `rc.1`, including exported APIs, public fields, and schema values | Stable no-go; LAB-228 opened for `rc.2` |
 
 GitHub Issues are disabled for this repository, so qualification findings are
 triaged in the Linear RobotGo project. LAB-68 stays open through the full
@@ -84,6 +89,20 @@ critical/high regression resets the release decision to no-go until resolved
 and requalified.
 
 ## Codebase review findings
+
+### Active in LAB-228
+
+1. **Post-rc.1 public contract invalidated the original stable window**
+   - Location: `api/compat/linux-cgo.api`, `docs/CHANGELOG.md`
+   - Category: release correctness
+   - Severity: release-blocking
+   - Before rc.2 metadata, the reviewed manifest had 511 added and 13 removed
+     or replaced lines since `rc.1`, including public fields and schema
+     constants. The rc.2 `Version` transition makes the final candidate 512/14.
+     These changes may be intentional and source-compatible, but they are not
+     the immutable contract that completed the original RC evidence run.
+   - Resolution: publish `rc.2` from the final reviewed contract, rerun exact
+     evidence, verify module resolution, and start a new seven-day window.
 
 ### Resolved in LAB-64
 
@@ -175,20 +194,21 @@ and requalified.
 | G2 API freeze | Checked-in public API baseline plus blocking compatibility CI | [LAB-65](https://linear.app/riotbox/issue/LAB-65/add-a-stable-public-go-api-compatibility-gate) | Complete — 14 variants and exact 29-check evidence | M1 Contract and API Freeze |
 | G3 Platform claims | Every supported row backed by blocking/approved evidence; pending rows explicit | [LAB-66](https://linear.app/riotbox/issue/LAB-66/resolve-stable-platform-support-claims-and-macos-evidence-scope) | Complete — checked runtime-v1 contract; macOS permission scope pending under LAB-69 | M1 Contract and API Freeze |
 | G4 Release candidate | Clean origin `v1.0.0-rc.1` tag, exact evidence, notes, migration, checksums | [LAB-67](https://linear.app/riotbox/issue/LAB-67/prepare-and-publish-robotgo-v100-rc1) | Complete — published tag, 29-check exact evidence, checksummed assets, and module resolution verified | M2 v1.0.0 Release Candidate |
-| G5 Stable qualification | At least seven calendar days, no unresolved critical/high regression, no API drift, final exact evidence | [LAB-68](https://linear.app/riotbox/issue/LAB-68/qualify-and-publish-robotgo-v100-stable) | In progress — fail-closed preflight enforces the window opened 2026-07-29T10:13:46Z; earliest stable 2026-08-05T10:13:46Z | M3 v1.0.0 Stable Qualification |
+| G4b Re-freeze expanded API | Clean origin `v1.0.0-rc.2`, reviewed API contract, exact evidence, notes, checksums, and module resolution | [LAB-228](https://linear.app/riotbox/issue/LAB-228/publish-v100-rc2-after-post-rc-public-api-expansion) | In progress — preparation blocks stable and requires fresh exact-tag evidence | M3 v1.0.0 Stable Qualification |
+| G5 Stable qualification | At least seven calendar days from rc.2, no unresolved critical/high regression, no further API drift, final exact evidence | [LAB-68](https://linear.app/riotbox/issue/LAB-68/qualify-and-publish-robotgo-v100-stable) | Blocked by LAB-228 — stable preflight fails closed until rc.2 publication and its new boundary are recorded | M3 v1.0.0 Stable Qualification |
 
 ## RC and stable rules
 
-`v1.0.0-rc.1` is no-go when any API, supported-platform, exact-evidence,
+`v1.0.0-rc.2` is no-go when any API, supported-platform, exact-evidence,
 cleanup, security, or documentation gate is missing, skipped unexpectedly, or
 stale. The RC tag and GitHub prerelease must identify the same commit and
 checksummed evidence bundle. Origin preflight must prove that neither the RC
 nor stable tag exists there and that the selected tag object targets the exact
 fork commit rather than a local upstream-derived ref.
 
-`v1.0.0` is no-go until the RC has completed at least seven calendar days of
+`v1.0.0` is no-go until rc.2 has completed at least seven calendar days of
 qualification with no unresolved critical/high regression. The final stable
 commit may contain only qualification fixes and release metadata relative to
-the approved RC API baseline. Final evidence is rerun on the stable tag commit,
+the approved rc.2 API baseline. Final evidence is rerun on the stable tag commit,
 and `go list -m github.com/marang/robotgo@latest` must resolve `v1.0.0` with
 both the default proxy and `GOPROXY=direct`.

@@ -7,9 +7,9 @@ Use the following documents as the primary entry points:
 - [Test guide](../TEST.md) for validation commands and runtime prerequisites.
 - [Product roadmap](plan/product-roadmap.md) for delivery phases.
 - [Stable release readiness](plan/stable-release-readiness.md) for the
-  `v1.0.0-rc.1` to `v1.0.0` decision, API freeze, platform claims, and
+  `v1.0.0-rc.2` to `v1.0.0` decision, API freeze, platform claims, and
   exact-evidence gates.
-- [v1.0.0-rc.1 notes](releases/v1.0.0-rc.1.md) for installation,
+- [v1.0.0-rc.2 notes](releases/v1.0.0-rc.2.md) for installation,
   support-scope, migration, privacy, and final tag-evidence requirements.
 - [Public Go API compatibility](compatibility/public-api.md) for stable package
   discovery, platform/build-tag manifests, the blocking CI gate, and the
