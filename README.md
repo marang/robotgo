@@ -5,7 +5,7 @@
 [![Go Reference](https://pkg.go.dev/badge/github.com/marang/robotgo.svg)](https://pkg.go.dev/github.com/marang/robotgo)
 
 <p align="center">
-  <img src="docs/assets/robotgo-hero.png" alt="RobotGo desktop automation" width="100%">
+  <img src="docs/assets/robotgo-hero-transparent.png" alt="RobotGo desktop automation" width="100%">
 </p>
 
 RobotGo is a cross-platform desktop automation library for Go. It controls the
