@@ -1,7 +1,7 @@
 # Ingenious RobotGo Product Features
 
-Status: Product strategy proposal; P010 complete and P011/LAB-79 semantic
-conditions and Action Proof v1 slice complete
+Status: Product strategy proposal; P010 and P011 complete through the
+side-effect-free verified-flow capability planner
 
 ## Product thesis
 
@@ -95,6 +95,16 @@ creating policy or approval; unresolved, visual, destructive, or unverified
 steps remain non-executable review items. Captured observation/window identity
 is replaced by replay-bound aliases, and only explicitly reversible actions
 with complete proof and Trace evidence become executable templates.
+
+Implementation checkpoint (LAB-86): catalog schema v16 and Verified Flow Plan
+v1 add a side-effect-free advisory preflight for bounded resolve-act-verify
+descriptions. It evaluates immutable policy/catalog facts, current retained
+semantic and reviewed visual evidence, exact/adaptive target cardinality,
+backend/check support, confirmation, single-use lease, Trace, cleanup, and
+aggregate quota requirements. Ordered fixed-vocabulary reports expose blockers
+and remediation without granting authority or echoing desktop payload. Planning
+does not rediscover the runtime, prompt, query a backend, emit audit/Trace data,
+record events, issue leases, consume quota, heal locators, or dispatch input.
 
 ## 1. Semantic and visual scene graph
 

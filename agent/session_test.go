@@ -326,8 +326,8 @@ func newTestSession(t *testing.T, input Policy, driver inputDriver) *Session {
 func TestCatalogIsStableAndDefensive(t *testing.T) {
 	session := newTestSession(t, testPolicy(), &fakeDriver{})
 	catalog := session.Catalog()
-	if catalog.SchemaVersion != CatalogSchemaVersion {
-		t.Fatalf("schema = %q", catalog.SchemaVersion)
+	if catalog.SchemaVersion != CatalogSchemaVersion || catalog.FlowPlannerSchemaVersion != VerifiedFlowPlanSchemaVersion {
+		t.Fatalf("schema = %+v", catalog)
 	}
 	want := []Operation{
 		OperationObserve, OperationView, OperationOCR, OperationDetectElements,

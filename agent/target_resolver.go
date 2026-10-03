@@ -354,43 +354,17 @@ func (s *Session) ResolveUITarget(ctx context.Context, request ResolveUIRequest)
 
 func validateResolveUIRequest(request ResolveUIRequest) error {
 	mode := normalizeTargetResolutionMode(request.Mode)
-	if !validObservationID(request.ObservationID) ||
-		(request.Target.SchemaVersion != TargetSpecSchemaVersion && request.Target.SchemaVersion != TargetSpecLegacySchemaVersion) {
-		return errors.New("invalid observation ID or target schema version")
+	if !validObservationID(request.ObservationID) {
+		return errors.New("invalid observation ID")
 	}
-	if request.Target.SchemaVersion == TargetSpecLegacySchemaVersion && len(request.Target.Evidence) != 0 {
-		return errors.New("TargetSpec v1 cannot contain analysis evidence")
-	}
-	if !validTargetResolutionMode(mode) {
-		return errors.New("invalid semantic target mode")
+	if err := validateTargetSpecForMode(request.Target, mode); err != nil {
+		return err
 	}
 	if mode == TargetResolutionModeAdaptive && request.Lease == nil {
 		return errors.New("adaptive resolution requires a single-use capability lease")
 	}
 	if mode == TargetResolutionModeReview && request.Lease != nil {
 		return errors.New("review resolution cannot issue executable authority")
-	}
-	if len(request.Target.Evidence) > maxTargetEvidenceClauses ||
-		(mode == TargetResolutionModeStrict && len(request.Target.Evidence) != 0) {
-		return errors.New("target analysis evidence requires bounded adaptive or review mode")
-	}
-	seenEvidenceSources := make(map[TargetEvidenceSource]struct{}, len(request.Target.Evidence))
-	evidenceObservationID := ""
-	for _, clause := range request.Target.Evidence {
-		if clause.SchemaVersion != TargetEvidenceClauseSchemaVersion ||
-			!validObservationID(clause.ObservationID) || !validTargetEvidenceID(clause.EvidenceID) ||
-			!validTargetEvidenceSource(clause.Source) || clause.ItemIndex >= uint32(maxAgentAnalysisBoxes) {
-			return errors.New("invalid target analysis evidence clause")
-		}
-		if evidenceObservationID == "" {
-			evidenceObservationID = clause.ObservationID
-		} else if evidenceObservationID != clause.ObservationID {
-			return errors.New("target analysis evidence must share one image observation")
-		}
-		if _, duplicate := seenEvidenceSources[clause.Source]; duplicate {
-			return errors.New("target analysis evidence source is duplicated")
-		}
-		seenEvidenceSources[clause.Source] = struct{}{}
 	}
 	if request.Lease != nil {
 		if request.Lease.SchemaVersion != CapabilityLeaseSchemaVersion || !validUIAction(request.Lease.Action) ||
@@ -406,21 +380,56 @@ func validateResolveUIRequest(request ResolveUIRequest) error {
 			return errors.New("only set-value accepts a value binding")
 		}
 	}
-	window := request.Target.Window
+	return nil
+}
+
+func validateTargetSpecForMode(target TargetSpec, mode TargetResolutionMode) error {
+	if target.SchemaVersion != TargetSpecSchemaVersion && target.SchemaVersion != TargetSpecLegacySchemaVersion {
+		return errors.New("invalid target schema version")
+	}
+	if target.SchemaVersion == TargetSpecLegacySchemaVersion && len(target.Evidence) != 0 {
+		return errors.New("TargetSpec v1 cannot contain analysis evidence")
+	}
+	if !validTargetResolutionMode(mode) {
+		return errors.New("invalid semantic target mode")
+	}
+	if len(target.Evidence) > maxTargetEvidenceClauses ||
+		(mode == TargetResolutionModeStrict && len(target.Evidence) != 0) {
+		return errors.New("target analysis evidence requires bounded adaptive or review mode")
+	}
+	seenEvidenceSources := make(map[TargetEvidenceSource]struct{}, len(target.Evidence))
+	evidenceObservationID := ""
+	for _, clause := range target.Evidence {
+		if clause.SchemaVersion != TargetEvidenceClauseSchemaVersion ||
+			!validObservationID(clause.ObservationID) || !validTargetEvidenceID(clause.EvidenceID) ||
+			!validTargetEvidenceSource(clause.Source) || clause.ItemIndex >= uint32(maxAgentAnalysisBoxes) {
+			return errors.New("invalid target analysis evidence clause")
+		}
+		if evidenceObservationID == "" {
+			evidenceObservationID = clause.ObservationID
+		} else if evidenceObservationID != clause.ObservationID {
+			return errors.New("target analysis evidence must share one image observation")
+		}
+		if _, duplicate := seenEvidenceSources[clause.Source]; duplicate {
+			return errors.New("target analysis evidence source is duplicated")
+		}
+		seenEvidenceSources[clause.Source] = struct{}{}
+	}
+	window := target.Window
 	if window.Target <= 0 || !validWindowTargetKind(window.Kind) || window.ExpectedTitle == "" ||
 		!utf8.ValidString(window.ExpectedTitle) || utf8.RuneCountInString(window.ExpectedTitle) > maxAgentWindowTitleRunes {
 		return errors.New("invalid target window identity")
 	}
-	totalNameBytes := len(request.Target.Name)
-	if !validTargetIdentity(request.Target.Role, request.Target.Name, request.Target.RequiredStates) ||
-		len(request.Target.RequiredActions) > maxUIActionsPerNode ||
-		!validUniqueUIActions(request.Target.RequiredActions) {
+	totalNameBytes := len(target.Name)
+	if !validTargetIdentity(target.Role, target.Name, target.RequiredStates) ||
+		len(target.RequiredActions) > maxUIActionsPerNode ||
+		!validUniqueUIActions(target.RequiredActions) {
 		return errors.New("invalid target semantic identity")
 	}
-	if len(request.Target.Ancestors) > maxTargetSpecAncestors {
+	if len(target.Ancestors) > maxTargetSpecAncestors {
 		return errors.New("target ancestor chain exceeds the hard limit")
 	}
-	for _, ancestor := range request.Target.Ancestors {
+	for _, ancestor := range target.Ancestors {
 		if len(ancestor.Name) > maxAgentUIStringBytes-totalNameBytes {
 			return errors.New("target identity text exceeds the hard aggregate limit")
 		}
@@ -472,11 +481,7 @@ func (s *Session) authorizeTargetResolution(request ResolveUIRequest) *ActionErr
 			return targetResolutionError(ErrorPolicyDenied, "agent policy denied the semantic capability lease action", ErrPolicyDenied)
 		}
 	}
-	totalNameBytes := len(request.Target.Name)
-	for _, ancestor := range request.Target.Ancestors {
-		totalNameBytes += len(ancestor.Name)
-	}
-	if totalNameBytes > int(s.policy.MaxUIStringBytes) || len(request.Target.Ancestors) > int(s.policy.MaxUITreeDepth) {
+	if targetSpecExceedsPolicyBounds(request.Target, s.policy) {
 		return targetResolutionError(ErrorPolicyDenied, "semantic target specification exceeds UI policy bounds", ErrPolicyDenied)
 	}
 	for _, property := range []UIProperty{
@@ -502,9 +507,21 @@ func (s *Session) authorizeTargetResolution(request ResolveUIRequest) *ActionErr
 	return nil
 }
 
+func targetSpecExceedsPolicyBounds(target TargetSpec, policy Policy) bool {
+	totalNameBytes := len(target.Name)
+	for _, ancestor := range target.Ancestors {
+		totalNameBytes += len(ancestor.Name)
+	}
+	return totalNameBytes > int(policy.MaxUIStringBytes) || len(target.Ancestors) > int(policy.MaxUITreeDepth)
+}
+
 func (s *Session) retainUITargetGraph(observationID string) (retainedUITargetGraph, bool) {
 	s.observationMu.Lock()
 	defer s.observationMu.Unlock()
+	return s.retainUITargetGraphLocked(observationID)
+}
+
+func (s *Session) retainUITargetGraphLocked(observationID string) (retainedUITargetGraph, bool) {
 	record, ok := s.observations[observationID]
 	if !ok || record.uiTarget == nil || record.uiBackend == "" || len(record.uiTree) == 0 {
 		return retainedUITargetGraph{}, false

@@ -29,6 +29,7 @@ type fakeSession struct {
 	releaseFunc    func(string) error
 	inspectFunc    func(context.Context, agent.InspectUIRequest) (agent.UIObservation, error)
 	resolveFunc    func(context.Context, agent.ResolveUIRequest) (agent.TargetResolutionResult, error)
+	planFlowFunc   func(context.Context, agent.VerifiedFlowPlanRequest) (agent.VerifiedFlowPlanReport, error)
 	elementActFunc func(context.Context, agent.ElementActionRequest) (agent.ActionResult, error)
 	viewFunc       func(context.Context, agent.ViewRequest) (*agent.View, error)
 	ocrFunc        func(context.Context, agent.OCRRequest) (agent.OCRResult, error)
@@ -44,6 +45,7 @@ type fakeSession struct {
 	releases    int
 	inspects    int
 	resolves    int
+	flowPlans   int
 	elementActs int
 	views       int
 	ocrs        int
@@ -134,6 +136,16 @@ func (f *fakeSession) ResolveUITarget(ctx context.Context, request agent.Resolve
 		return f.resolveFunc(ctx, request)
 	}
 	return agent.TargetResolutionResult{}, errors.New("unused")
+}
+
+func (f *fakeSession) PlanVerifiedFlow(ctx context.Context, request agent.VerifiedFlowPlanRequest) (agent.VerifiedFlowPlanReport, error) {
+	f.mu.Lock()
+	f.flowPlans++
+	f.mu.Unlock()
+	if f.planFlowFunc != nil {
+		return f.planFlowFunc(ctx, request)
+	}
+	return agent.VerifiedFlowPlanReport{}, errors.New("unused")
 }
 
 func (f *fakeSession) ActUIElement(ctx context.Context, request agent.ElementActionRequest) (agent.ActionResult, error) {
@@ -344,8 +356,19 @@ func TestProtocolInitializesAndListsFocusedTools(t *testing.T) {
 				}
 			}
 		}
+		if tool.Name == ToolPlanFlow {
+			schema, marshalErr := json.Marshal(tool.InputSchema)
+			if marshalErr != nil {
+				t.Fatalf("marshal plan-flow schema: %v", marshalErr)
+			}
+			for _, field := range []string{"catalog_version", "target_spec_version", "capability_lease_version", "action_proof_version", "trace_version", "steps", "postcondition", "capability_lease_duration_ms"} {
+				if !strings.Contains(string(schema), `"`+field+`"`) {
+					t.Errorf("robotgo_plan_flow schema omitted %q: %s", field, schema)
+				}
+			}
+		}
 		switch tool.Name {
-		case ToolFind, ToolWait, ToolInspectUI, ToolView, ToolOCR, ToolDetectElements:
+		case ToolFind, ToolWait, ToolInspectUI, ToolPlanFlow, ToolView, ToolOCR, ToolDetectElements:
 			if tool.Annotations == nil || !tool.Annotations.ReadOnlyHint {
 				t.Errorf("tool %q is not marked read-only", tool.Name)
 			}
@@ -358,7 +381,7 @@ func TestProtocolInitializesAndListsFocusedTools(t *testing.T) {
 	}
 	slices.Sort(names)
 	want := []string{
-		ToolAct, ToolCapabilities, ToolClose, ToolElementAct, ToolFind, ToolInspectUI, ToolResolveUI, ToolObserve,
+		ToolAct, ToolCapabilities, ToolClose, ToolElementAct, ToolFind, ToolInspectUI, ToolPlanFlow, ToolResolveUI, ToolObserve,
 		ToolReleaseObservation, ToolWait,
 	}
 	slices.Sort(want)
@@ -785,6 +808,74 @@ func TestResolveUIReturnsMutationReadySelectionWithoutPrivateEvidencePayload(t *
 		output.Result.Expected.Name != "Save" || output.Result.ElementID != "observation-9-element-2" ||
 		strings.Contains(serialized, "private-window-title") || strings.Count(string(structured), "Save") != 1 {
 		t.Fatalf("resolve UI output = %+v, %s", output, serialized)
+	}
+}
+
+func TestPlanFlowReturnsOnlyAdvisoryPrivacyReducedReport(t *testing.T) {
+	const privateName = "private-planner-target-sentinel"
+	fake := &fakeSession{planFlowFunc: func(_ context.Context, request agent.VerifiedFlowPlanRequest) (agent.VerifiedFlowPlanReport, error) {
+		if len(request.Steps) != 1 || request.Steps[0].Target.Name != privateName {
+			return agent.VerifiedFlowPlanReport{}, errors.New("unexpected planner request")
+		}
+		return agent.VerifiedFlowPlanReport{
+			SchemaVersion: agent.VerifiedFlowPlanSchemaVersion, CatalogVersion: agent.CatalogSchemaVersion,
+			Status: agent.FlowFeasible, AdvisoryOnly: true,
+			Steps: []agent.FlowPlanStepReport{{Sequence: 1, Status: agent.FlowFeasible, CandidateCount: 1}},
+		}, nil
+	}}
+	client := connectProtocol(t, newProtocolServer(t, fake))
+	result := callTool(t, client, ToolPlanFlow, agent.VerifiedFlowPlanRequest{
+		SchemaVersion: agent.VerifiedFlowPlanSchemaVersion, CatalogVersion: agent.CatalogSchemaVersion,
+		TargetSpecVersion: agent.TargetSpecSchemaVersion, CapabilityLeaseVersion: agent.CapabilityLeaseSchemaVersion,
+		ActionProofVersion: agent.ActionProofSchemaVersion, TraceVersion: agent.RobotGoTraceSchemaVersion,
+		Steps: []agent.VerifiedFlowPlanStep{{
+			Target: agent.TargetSpec{
+				SchemaVersion: agent.TargetSpecSchemaVersion,
+				Window:        agent.TargetWindowSpec{Target: 42, Kind: agent.WindowTargetProcess, ExpectedTitle: "private-window-title"},
+				Role:          agent.UIRoleButton, Name: privateName, RequiredActions: []agent.UIAction{agent.UIActionPress},
+			},
+			Action: agent.UIActionPress,
+		}},
+	})
+	output := decodeOutput[PlanFlowOutput](t, result)
+	serialized := serializedResult(t, result)
+	if result.IsError || output.Plan == nil || !output.Plan.AdvisoryOnly || output.Plan.Status != agent.FlowFeasible ||
+		strings.Contains(serialized, privateName) || strings.Contains(serialized, "private-window-title") {
+		t.Fatalf("plan flow output = %+v, %s", output, serialized)
+	}
+	fake.mu.Lock()
+	flowPlans := fake.flowPlans
+	fake.mu.Unlock()
+	if flowPlans != 1 || fake.resolves != 0 || fake.elementActs != 0 || fake.inspects != 0 {
+		t.Fatalf("planner calls=%d resolve=%d act=%d inspect=%d", flowPlans, fake.resolves, fake.elementActs, fake.inspects)
+	}
+}
+
+func TestPlanFlowMalformedArgumentsDoNotEchoPrivateValues(t *testing.T) {
+	const privateValue = "private-planner-payload-sentinel"
+	fake := &fakeSession{}
+	client := connectProtocol(t, newProtocolServer(t, fake))
+	result := callTool(t, client, ToolPlanFlow, map[string]any{
+		"schema_version":           agent.VerifiedFlowPlanSchemaVersion,
+		"catalog_version":          agent.CatalogSchemaVersion,
+		"target_spec_version":      agent.TargetSpecSchemaVersion,
+		"capability_lease_version": agent.CapabilityLeaseSchemaVersion,
+		"action_proof_version":     agent.ActionProofSchemaVersion,
+		"trace_version":            agent.RobotGoTraceSchemaVersion,
+		"steps":                    privateValue,
+	})
+	if !result.IsError || strings.Contains(serializedResult(t, result), privateValue) {
+		t.Fatalf("malformed planner result leaked input: %s", serializedResult(t, result))
+	}
+	output := decodeOutput[PlanFlowOutput](t, result)
+	if output.Error == nil || output.Error.Code != agent.ErrorInvalidInput {
+		t.Fatalf("malformed planner error = %+v", output.Error)
+	}
+	fake.mu.Lock()
+	flowPlans := fake.flowPlans
+	fake.mu.Unlock()
+	if flowPlans != 0 {
+		t.Fatalf("malformed planner request reached session %d times", flowPlans)
 	}
 }
 
@@ -1299,13 +1390,15 @@ func TestCloseIsIdempotentAndLaterCallsFailClosed(t *testing.T) {
 		}
 	}
 
-	for _, tool := range []string{ToolCapabilities, ToolObserve, ToolInspectUI, ToolResolveUI, ToolElementAct, ToolFind, ToolWait, ToolReleaseObservation, ToolAct} {
+	for _, tool := range []string{ToolCapabilities, ToolObserve, ToolInspectUI, ToolResolveUI, ToolPlanFlow, ToolElementAct, ToolFind, ToolWait, ToolReleaseObservation, ToolAct} {
 		arguments := any(map[string]any{})
 		switch tool {
 		case ToolInspectUI:
 			arguments = agent.InspectUIRequest{Target: 1, Kind: agent.WindowTargetProcess}
 		case ToolResolveUI:
 			arguments = agent.ResolveUIRequest{ObservationID: "observation-1"}
+		case ToolPlanFlow:
+			arguments = agent.VerifiedFlowPlanRequest{SchemaVersion: agent.VerifiedFlowPlanSchemaVersion}
 		case ToolElementAct:
 			arguments = agent.ElementActionRequest{ObservationID: "observation-1", ElementID: "observation-1-element-1"}
 		case ToolFind:

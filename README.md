@@ -1062,7 +1062,30 @@ desktop operation. The verified
 semantic example demonstrates record → generate after one explicitly
 confirmed self-owned toggle.
 
-Catalog schema v15 advertises Recorded Flow v1 and recorder resource bounds in
+`Session.PlanVerifiedFlow` evaluates a bounded versioned sequence of future
+resolve → act → verify transactions before any desktop side effect. It checks
+the immutable catalog and policy, retained semantic observations and reviewed
+OCR/visual evidence, target ambiguity, backend support, confirmation and
+single-use lease requirements, Trace configuration, and conservative aggregate
+action/query/observation/lease capacity. Fixed assumptions and timing fields
+make current action/query rate gates, the minimum verified-flow schedule, and
+remaining session lifetime explicit without treating worst-case quota as
+mandatory runtime. Each ordered step is reported as
+`feasible`, `conditionally-feasible`, `unsupported`, `policy-denied`,
+`ambiguous`, `stale`, or `evidence-required` with fixed blocker and remediation
+tokens. Reports are advisory only: planning never rediscovers the runtime,
+opens a permission prompt, calls a desktop or analysis backend, emits audit or
+Trace output, records an event, issues or reserves a lease, consumes quota,
+heals a locator, or claims that future live verification succeeded. Target
+names, window titles, observation/evidence IDs, native references, action
+values, tokens, pixels, backend errors, and policy payloads are not echoed.
+Malformed MCP arguments are also reduced to a fixed invalid-input response
+rather than echoing the rejected value.
+The `verified_flow_planner` example intentionally omits a live observation and
+shows the resulting evidence requirement without reading or mutating the
+desktop.
+
+Catalog schema v16 advertises Verified Flow Plan v1, Recorded Flow v1, and recorder resource bounds in
 addition to Trace v1 tiers and resource/export bounds, TargetSpec v2, resolver
 modes, semantic and
 reviewed OCR/visual strategies, provider/source/age/confidence bounds, lease
@@ -1155,8 +1178,9 @@ go run ./examples/agent_conditions -allow-capture -mode wait \
 ### Local MCP adapter for agents
 
 `robotgo-mcp` exposes the policy-gated session to a local MCP client over
-stdio. Its default surface has ten focused tools: `robotgo_capabilities`,
-`robotgo_observe`, `robotgo_inspect_ui`, `robotgo_resolve_ui`, `robotgo_element_act`, `robotgo_find`, `robotgo_wait`,
+stdio. Its default surface has eleven focused tools: `robotgo_capabilities`,
+`robotgo_observe`, `robotgo_inspect_ui`, `robotgo_resolve_ui`,
+`robotgo_plan_flow`, `robotgo_element_act`, `robotgo_find`, `robotgo_wait`,
 `robotgo_release_observation`, `robotgo_act`, and `robotgo_close`.
 `robotgo_view`, `robotgo_ocr`, and `robotgo_detect_elements` are registered
 only with the separate `-allow-image-content` startup grant. With no policy

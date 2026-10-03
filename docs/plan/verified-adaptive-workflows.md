@@ -1,6 +1,6 @@
 # Verified Adaptive Workflows Plan
 
-Status: P011 in progress; LAB-83 policy-gated OCR/visual resolver evidence complete
+Status: P011 complete through LAB-86 side-effect-free capability planning
 
 Linear coordination:
 
@@ -224,10 +224,48 @@ and MCP result contracts require verified Action Proof v2, matched
 postconditions, completed cleanup, and complete transaction-matched Trace v1
 evidence.
 
-## Next slices
+## LAB-86 side-effect-free verified-flow capability planner
+
+Catalog schema v16 advertises Verified Flow Plan v1, exposed in Go through
+`Session.PlanVerifiedFlow` and through the read-only `robotgo_plan_flow` MCP
+tool. A version-pinned bounded description groups each future TargetSpec
+resolution, semantic action, private value size, target-relative postcondition,
+lease lifetime, and Trace request into one ordered transaction. The planner
+evaluates the immutable session catalog and policy, retained semantic
+observations and reviewed OCR/visual evidence, exact/adaptive target
+cardinality, backend/check support, confirmation and lease requirements, Trace
+configuration, and conservative whole-flow action/query/observation/lease
+capacity.
+
+Step and overall results use fixed `feasible`, `conditionally-feasible`,
+`unsupported`, `policy-denied`, `ambiguous`, `stale`, and
+`evidence-required` states plus fixed blockers and remediation hints. Output
+identifies required operations, roles, properties, actions, modes, evidence
+sources, Trace tiers, confirmations, backends, cleanup duties, quota budgets,
+fixed runtime assumptions, rate-gate timing, minimum verified-flow duration,
+remaining session lifetime, and platform limitations without echoing target/window text, observation or
+evidence IDs, action values, native references, tokens, pixels, policy
+payloads, or raw backend errors. The report is always advisory and cannot be
+used as mutation authority.
+
+Planning reads one serialized defensive session snapshot only. It never calls
+runtime discovery, accessibility/capture/analysis/action backends, permission
+or portal prompts, audit or Trace sinks, or recorder hooks; it never issues or
+reserves a capability lease, consumes quota, updates rate timestamps, heals a
+locator, dispatches input, or claims a live postcondition. Missing or expired
+observations/evidence, ambiguity, catalog/schema drift, closed sessions, and
+insufficient aggregate capacity stay explicit and fail closed.
+Concurrent observation release cannot split a multi-step report across
+different snapshots, and caller/session cancellation is rechecked after
+snapshot evaluation. Timing denial uses only mandatory verification reads;
+the larger worst-case read budget remains quota evidence and cannot create a
+false session-lifetime denial. Malformed MCP values return a fixed
+privacy-reduced invalid-input result.
+
+## Delivered slices
 
 1. side-effect-free capability planner
-   ([`LAB-86`](https://linear.app/riotbox/issue/LAB-86/add-side-effect-free-verified-flow-capability-planner)).
+   ([`LAB-86`](https://linear.app/riotbox/issue/LAB-86/add-side-effect-free-verified-flow-capability-planner)) complete.
 
 Each slice remains independently deny-by-default and must preserve exact target
 scope, explicit fallback provenance, sensitive-data cleanup, and truthful
