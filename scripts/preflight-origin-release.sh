@@ -36,17 +36,15 @@ readonly tag="$1"
 readonly expected_commit="$2"
 readonly stable_tag="v1.0.0"
 
-case "$tag" in
-  v1.0.0-rc.[1-9]*|v1.0.0)
-    ;;
-  *)
-    printf 'refusing unexpected stable-line tag: %s\n' "$tag" >&2
-    exit 1
-    ;;
-esac
-if [[ ! "$tag" =~ ^v1\.0\.0(-rc\.[1-9][0-9]*)?$ ]]; then
+if [[ ! "$tag" =~ ^v1\.0\.(0(-rc\.[1-9][0-9]*)?|[1-9][0-9]*)$ ]]; then
   printf 'refusing malformed stable-line tag: %s\n' "$tag" >&2
   exit 1
+fi
+# Initial RCs/stable must not collide with the first stable publication.
+# Maintenance patches inspect only their own identity: v1.0.0 remains immutable.
+collision_tags=("$tag")
+if [[ "$tag" == "$stable_tag" || "$tag" == v1.0.0-rc.* ]]; then
+  collision_tags+=("$stable_tag")
 fi
 if [[ ! "$expected_commit" =~ ^[0-9a-f]{40}$ ]]; then
   printf 'expected commit must be a lowercase 40-character Git SHA\n' >&2
@@ -138,10 +136,12 @@ else
   fi
 fi
 
+remote_tag_patterns=()
+for collision_tag in "${collision_tags[@]}"; do
+  remote_tag_patterns+=("refs/tags/$collision_tag" "refs/tags/$collision_tag^{}")
+done
 remote_tag_rows="$(
-  "$git_bin" ls-remote --tags "$remote" \
-    "refs/tags/$tag" "refs/tags/$tag^{}" \
-    "refs/tags/$stable_tag" "refs/tags/$stable_tag^{}"
+  "$git_bin" ls-remote --tags "$remote" "${remote_tag_patterns[@]}"
 )"
 if [[ -n "$remote_tag_rows" ]]; then
   printf 'refusing existing authoritative origin tag:\n%s\n' \
@@ -149,9 +149,15 @@ if [[ -n "$remote_tag_rows" ]]; then
   exit 1
 fi
 
+tag_filter=".[] | select(.ref == \"refs/tags/$tag\") | .ref"
+release_filter=".[] | select(.tag_name == \"$tag\") | .tag_name"
+if ((${#collision_tags[@]} > 1)); then
+  tag_filter=".[] | select(.ref == \"refs/tags/$tag\" or .ref == \"refs/tags/$stable_tag\") | .ref"
+  release_filter=".[] | select(.tag_name == \"$tag\" or .tag_name == \"$stable_tag\") | .tag_name"
+fi
 github_tag_refs="$(
-  "$gh_bin" api "repos/$repository/git/matching-refs/tags/v1.0.0" \
-    --jq ".[] | select(.ref == \"refs/tags/$tag\" or .ref == \"refs/tags/$stable_tag\") | .ref"
+  "$gh_bin" api "repos/$repository/git/matching-refs/tags/v1.0." \
+    --paginate --jq "$tag_filter"
 )"
 if [[ -n "$github_tag_refs" ]]; then
   printf 'refusing existing GitHub tag ref:\n%s\n' "$github_tag_refs" >&2
@@ -160,7 +166,7 @@ fi
 
 github_releases="$(
   "$gh_bin" api "repos/$repository/releases?per_page=100" \
-    --jq ".[] | select(.tag_name == \"$tag\" or .tag_name == \"$stable_tag\") | .tag_name"
+    --paginate --jq "$release_filter"
 )"
 if [[ -n "$github_releases" ]]; then
   printf 'refusing existing GitHub release:\n%s\n' "$github_releases" >&2
