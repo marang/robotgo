@@ -7,8 +7,12 @@ readonly remote="origin"
 readonly git_bin="${ROBOTGO_RELEASE_GIT_BIN:-git}"
 readonly gh_bin="${ROBOTGO_RELEASE_GH_BIN:-gh}"
 readonly date_bin="${ROBOTGO_RELEASE_DATE_BIN:-date}"
-readonly stable_qualification_not_before="2026-08-05T10:13:46Z"
-readonly stable_qualification_not_before_epoch=1785924826
+readonly stable_qualification_release="v1.0.0-rc.2"
+# Set these together in a reviewed follow-up after GitHub publishes the
+# immutable qualification release. Stable publication must fail closed until
+# the new seven-day boundary is known exactly.
+readonly stable_qualification_not_before=""
+readonly stable_qualification_not_before_epoch=""
 
 usage() {
   printf 'usage: %s <tag> <40-character-origin-main-commit>\n' \
@@ -65,6 +69,12 @@ case "$remote_url" in
 esac
 
 if [[ "$tag" == "$stable_tag" ]]; then
+  if [[ -z "$stable_qualification_not_before" ]] ||
+    [[ -z "$stable_qualification_not_before_epoch" ]]; then
+    printf 'stable qualification boundary for %s has not been recorded\n' \
+      "$stable_qualification_release" >&2
+    exit 1
+  fi
   if ! github_headers="$(
     "$gh_bin" api "repos/$repository" --include --jq empty
   )"; then
@@ -162,6 +172,7 @@ printf 'release preflight passed\n'
 printf 'repository=%s\nremote=%s\ntag=%s\ncommit=%s\n' \
   "$repository" "$remote" "$tag" "$expected_commit"
 if [[ "$tag" == "$stable_tag" ]]; then
+  printf 'stable-qualification-release=%s\n' "$stable_qualification_release"
   printf 'stable-not-before=%s\n' "$stable_qualification_not_before"
 fi
 printf 'publish only the explicit tag ref; never use git push --tags\n'

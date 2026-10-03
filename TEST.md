@@ -1300,60 +1300,124 @@ go run ./internal/cmd/releaseevidence verify \
   -expected-test-command "$test_command"
 ```
 
-Before creating the stable tag, complete the documented seven-day RC
-qualification window with no unresolved critical/high regression. A reviewed
-stable-preparation PR must update the package version, tests, changelog, and
-add the non-empty `docs/releases/v1.0.0.md` release notes. After that PR is
-merged, run from the clean `main` worktree:
+The public contract expanded after `v1.0.0-rc.1`, so stable publication now
+requires `v1.0.0-rc.2` and a fresh qualification window. After the reviewed
+RC2-preparation PR is merged, run from the clean `main` worktree:
 
 ```bash
 set -euo pipefail
 git pull --ff-only origin main
 test "$(git branch --show-current)" = main
 test -z "$(git status --porcelain --untracked-files=all)"
-test -s docs/releases/v1.0.0.md
+test -s docs/releases/v1.0.0-rc.2.md
 commit="$(git rev-parse HEAD)"
 test "$(git ls-remote --heads origin refs/heads/main | awk '{print $1}')" = "$commit"
-./scripts/preflight-origin-release.sh v1.0.0 "$commit"
+./scripts/preflight-origin-release.sh v1.0.0-rc.2 "$commit"
 ```
-
-For `v1.0.0`, the preflight fails closed before
-`2026-08-05T10:13:46Z`, the first instant after seven full days from the
-published RC. It obtains the current time from the authoritative GitHub API
-`Date` header over the existing authenticated HTTPS path rather than trusting
-the operator machine's clock. Its regression suite covers one second before
-the boundary, the exact boundary, later execution, missing or duplicate remote
-time headers, malformed parsed time output, and remote/time-parser failure.
-RC-tag preflight remains independent of the stable qualification gate.
 
 The preflight checks `origin/main`, exact origin tag refs, GitHub tag refs, and
 GitHub releases. It rejects a non-`marang/robotgo` remote. A colliding local
 tag may have been fetched from `go-vgo/robotgo`; the preflight rejects it
 without treating it as origin evidence. Inspect and explicitly delete that
 non-authoritative local ref before rerunning the preflight, and never
-force-replace it. Only after the stable-preparation PR, review, CI, and an exact
-manual release-evidence run on that merged commit pass may a release operator
-create the annotated tag, verify its peeled commit, and push that one ref:
+force-replace it. Only after review, CI, and an exact manual release-evidence
+run on that merged commit pass may a release operator create the annotated RC2
+tag, verify its peeled commit, and push that one ref:
 
 ```bash
 set -euo pipefail
-git tag -a v1.0.0 "$commit" -m "RobotGo v1.0.0"
-test "$(git rev-parse 'v1.0.0^{}')" = "$commit"
-git push origin refs/tags/v1.0.0:refs/tags/v1.0.0
+git fetch origin main
+test "$(git branch --show-current)" = main
+test -z "$(git status --porcelain --untracked-files=all)"
+test "$(git rev-parse HEAD)" = "$commit"
+test "$(git ls-remote --heads origin refs/heads/main | awk '{print $1}')" = "$commit"
+./scripts/preflight-origin-release.sh v1.0.0-rc.2 "$commit"
+git tag -a v1.0.0-rc.2 "$commit" -m "RobotGo v1.0.0-rc.2"
+test "$(git rev-parse 'v1.0.0-rc.2^{}')" = "$commit"
+git push origin refs/tags/v1.0.0-rc.2:refs/tags/v1.0.0-rc.2
 ```
 
-Never use `git push --tags`. Create the GitHub stable release with
-`--verify-tag`; its `release.published` event reruns exact-tag evidence and
-attaches the checksum-bound archive:
+These checks are deliberately repeated immediately before tagging. If `main`
+advanced while the manual evidence run was executing, stop, qualify the new
+commit, and rerun exact evidence; never publish the previously selected SHA.
+
+Never use `git push --tags`. Create the GitHub prerelease with `--verify-tag`;
+its `release.published` event reruns exact-tag evidence and attaches the
+checksum-bound archive:
 
 ```bash
 set -euo pipefail
-gh release create v1.0.0 \
+gh release create v1.0.0-rc.2 \
   --repo marang/robotgo \
   --verify-tag \
-  --title "RobotGo v1.0.0" \
-  --notes-file docs/releases/v1.0.0.md
+  --prerelease \
+  --title "RobotGo v1.0.0-rc.2" \
+  --notes-file docs/releases/v1.0.0-rc.2.md
 ```
+
+Wait for the `release.published` exact-tag workflow and verify that it belongs
+to the tagged commit. Then download only the two expected assets into a fresh
+temporary directory, verify their names and checksum, and confirm that both
+default and direct module resolution return rc.2:
+
+```bash
+set -euo pipefail
+run_id="$(gh run list \
+  --repo marang/robotgo \
+  --workflow release-evidence.yml \
+  --branch v1.0.0-rc.2 \
+  --event release \
+  --limit 1 \
+  --json databaseId \
+  --jq '.[0].databaseId')"
+test -n "$run_id"
+gh run watch "$run_id" --repo marang/robotgo --exit-status
+test "$(gh run view "$run_id" --repo marang/robotgo --json headSha --jq .headSha)" = "$commit"
+
+short_commit="$(printf '%s' "$commit" | cut -c1-12)"
+archive="robotgo-release-evidence-v1.0.0-rc.2-${short_commit}.tar.gz"
+checksum="${archive}.sha256"
+published_assets="$(gh release view v1.0.0-rc.2 \
+  --repo marang/robotgo --json assets --jq '.assets[].name')"
+test "$(wc -l <<<"$published_assets")" -eq 2
+test "$(grep -Fxc "$archive" <<<"$published_assets")" -eq 1
+test "$(grep -Fxc "$checksum" <<<"$published_assets")" -eq 1
+
+verification_dir="$(mktemp -d "${TMPDIR:-/tmp}/robotgo-rc2-verify.XXXXXX")"
+cleanup_release_verification() {
+  rm -rf -- "$verification_dir"
+}
+trap cleanup_release_verification EXIT INT TERM
+chmod 700 "$verification_dir"
+gh release download v1.0.0-rc.2 \
+  --repo marang/robotgo \
+  --pattern "$archive" \
+  --pattern "$checksum" \
+  --dir "$verification_dir"
+(
+  cd "$verification_dir"
+  sha256sum -c "$checksum"
+)
+
+test "$(go list -m -f '{{.Version}}' github.com/marang/robotgo@latest)" = v1.0.0-rc.2
+test "$(GOPROXY=direct go list -m -f '{{.Version}}' github.com/marang/robotgo@latest)" = v1.0.0-rc.2
+```
+
+Only after those checks pass, record GitHub's authoritative RC2 `published_at`
+timestamp and exactly seven full days later in a reviewed follow-up. Until both
+values are pinned in `preflight-origin-release.sh`, the stable preflight fails
+closed. Restore the before/at/after-boundary plus remote clock lookup/parsing
+regression cases in the same follow-up. LAB-228 remains open until the exact
+tag, assets, checksum, and both module-resolution paths are verified.
+
+Before creating the stable tag, complete that new seven-day window with no
+unresolved critical/high regression. A reviewed stable-preparation PR must
+update the package version, tests, changelog, and add the non-empty
+`docs/releases/v1.0.0.md` release notes. After that PR is merged, repeat the
+clean-main checks above with `v1.0.0`, run exact manual release evidence, create
+and verify only the annotated `v1.0.0` ref, push that one ref, and create the
+GitHub release with `--verify-tag`. The publication event must attach a fresh
+checksum-bound stable evidence bundle before the release is accepted.
 
 The versioned schema, matrix, release-asset behavior, and consumer verification
 commands are documented in

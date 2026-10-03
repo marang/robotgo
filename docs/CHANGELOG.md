@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+## RobotGo v1.0.0-rc.2 — 2026-10-03
+
+This second stable-line release candidate re-freezes the reviewed public API
+after the post-rc.1 agent, accessibility, image-observation, verification,
+Trace, recorder, and planning work. It also raises the minimum toolchain to Go
+1.26 and retains the same evidence-backed platform support scope.
+
 - Added Verified Flow Plan v1 and the read-only `robotgo_plan_flow` MCP tool.
   A bounded, version-pinned resolve-act-verify description is evaluated against
   the session's immutable catalog and policy, retained semantic and reviewed
@@ -204,7 +211,9 @@
   `2026-08-05T10:13:46Z`; the gate validates GitHub's authoritative API time
   instead of trusting the operator clock, and deterministic boundary/error
   tests prevent remote clock lookup or parsing failures from silently
-  permitting publication.
+  permitting publication. The later post-rc.1 public-contract expansion
+  supersedes that historical boundary: stable now remains fail-closed until
+  rc.2 is published and its fresh seven-day boundary is recorded.
 - Classified permission-granted macOS runtime evidence as an externally blocked,
   non-release-blocking promotion under LAB-69. Native and Pure-Go permission
   scopes remain implemented/evidence-pending until an isolated project-owned,
