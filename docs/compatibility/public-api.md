@@ -4,10 +4,10 @@ Status: Active
 Schema: RobotGo public API manifest v1
 
 RobotGo first froze its importable public library API before `v1.0.0-rc.1`.
-Intentional post-rc.1 additions and schema changes now require
-`v1.0.0-rc.2`, which re-freezes the complete reviewed contract before a fresh
-stable qualification window. The blocking `api-compat` CI job compares the
-current source tree with a human-reviewable full manifest and validated
+Intentional post-rc.1 additions and schema changes were re-frozen in
+`v1.0.0-rc.2`. Stable `v1.0.0` preserves that contract; only the public
+`Version` value changes as release metadata. The blocking `api-compat` CI job
+compares the current source tree with a human-reviewable full manifest and validated
 platform/build-tag deltas in `api/compat`.
 
 ## Stable package discovery

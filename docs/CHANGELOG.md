@@ -2,6 +2,23 @@
 
 ## Unreleased
 
+## RobotGo v1.0.0 — 2026-10-03
+
+Promotes the reviewed `v1.0.0-rc.2` API and evidence-backed platform contract
+to the first stable release of the independent `github.com/marang/robotgo`
+module. Go 1.26 or newer is required. No runtime implementation, API signature,
+agent schema, backend default, or platform support claim changes from rc.2;
+the public `Version` constant changes to `v1.0.0`.
+
+The maintainer explicitly waived the seven-day observation interval on
+2026-10-03 and requested immediate publication. Current-head review, complete
+CI, exact-source release evidence, immutable-tag/collision checks, checksum
+verification, and zero unresolved critical/high defects remain required.
+This release does not claim that seven days of observation elapsed.
+
+See the [stable release notes](releases/v1.0.0.md) for installation, migration,
+support limits, evidence verification, and maintenance policy.
+
 ## RobotGo v1.0.0-rc.2 — 2026-10-03
 
 This second stable-line release candidate re-freezes the reviewed public API

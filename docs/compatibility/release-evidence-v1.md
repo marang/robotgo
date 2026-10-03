@@ -93,8 +93,10 @@ contract is re-frozen by
 all six snapshots and 29 checks passed on
 `60aa3a44522492a341e6d5b55df7a2fa99ef57b1`. Its public archive/checksum and
 each snapshot's exact tag, commit, tree, and run were independently verified.
-GitHub publication at `2026-10-03T08:41:23Z` starts the fresh seven-day stable
-qualification window, ending no earlier than `2026-10-10T08:41:23Z`.
+GitHub published rc.2 at `2026-10-03T08:41:23Z`. The maintainer explicitly
+waived the seven-day observation interval for stable on 2026-10-03 (LAB-68);
+this does not reuse RC evidence as stable evidence. Stable must pass fresh
+manual and exact-tag runs and independently verified checksum-bound assets.
 
 The preceding pre-API-freeze 28-check exact-candidate contract passes in
 [`Release Evidence` run 30272753885](https://github.com/marang/robotgo/actions/runs/30272753885)
