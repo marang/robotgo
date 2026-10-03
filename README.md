@@ -816,6 +816,11 @@ CGO-enabled Linux keeps the legacy `Capture` helper and bounds on the selected
 session path (native protocol or its documented Wayland fallback), so a
 Wayland-primary path never falls through to X11.
 
+In CGO-enabled macOS and Windows builds, `SysScale` returns `0` when a
+display-mode/device-context query is unavailable or returns invalid widths/DPI.
+Windows `ScaleX` keeps `0` as its failure sentinel. Valid scales, display-ID
+selection, and the existing `ScaleF` fallback remain unchanged.
+
 Use `CaptureImg()` with no arguments for a full-screen capture. Region capture
 requires at least `x, y, width, height`; partial argument lists, non-positive
 region dimensions other than the explicit `0x0` full-screen request,
