@@ -10,7 +10,7 @@
   ],
   "base_image": {
     "version": "ubuntu-24.04-20260705",
-    "url": "https://cloud-images.ubuntu.com/noble/20260705/noble-server-cloudimg-amd64.img",
+    "url": "https://s3.amazonaws.com/cloud-images-archive.ubuntu.com/releases/noble/release-20260705/ubuntu-24.04-server-cloudimg-amd64.img",
     "sha256": "ffe6203da54deeb6db5d2a98a83f9ec8e55f149d3f7ba622e1abe5fa966ee3d6"
   },
   "apt_snapshot": "https://snapshot.ubuntu.com/ubuntu/20260705T000000Z/",

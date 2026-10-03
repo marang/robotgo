@@ -44,15 +44,18 @@ const (
 	portalLaneGNOME = "gnome"
 	portalLaneKDE   = "kde"
 
-	maxManifestBytes = 64 * 1024
-	minimumCPUs      = 2
-	maximumCPUs      = 32
-	minimumMemoryMiB = 4096
-	maximumMemoryMiB = 64 * 1024
-	minimumDiskGiB   = 20
-	maximumDiskGiB   = 256
-	minimumLifetime  = 10 * time.Minute
-	maximumLifetime  = time.Hour
+	maxManifestBytes             = 64 * 1024
+	minimumCPUs                  = 2
+	maximumCPUs                  = 32
+	minimumMemoryMiB             = 4096
+	maximumMemoryMiB             = 64 * 1024
+	minimumDiskGiB               = 20
+	maximumDiskGiB               = 256
+	minimumLifetime              = 10 * time.Minute
+	maximumLifetime              = time.Hour
+	ubuntuArchiveImageHost       = "s3.amazonaws.com"
+	ubuntuReleaseImagePathPrefix = "/cloud-images-archive.ubuntu.com/releases/noble/release-"
+	ubuntuReleaseImageFilename   = "/ubuntu-24.04-server-cloudimg-amd64.img"
 
 	minimumHostedOutputSize = 640
 	maximumHostedOutputSize = 8192
@@ -63,7 +66,10 @@ var (
 	repositoryPattern = regexp.MustCompile(
 		`^[A-Za-z0-9](?:[A-Za-z0-9._-]{0,99})/[A-Za-z0-9](?:[A-Za-z0-9._-]{0,99})$`,
 	)
-	versionPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._+-]{0,63}$`)
+	versionPattern                = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._+-]{0,63}$`)
+	ubuntuBaseImageVersionPattern = regexp.MustCompile(
+		`^ubuntu-24\.04-([0-9]{8})$`,
+	)
 	kernelPattern  = regexp.MustCompile(`^[0-9]+\.[0-9]+\.[0-9]+-[0-9]+-generic$`)
 	packagePattern = regexp.MustCompile(`^[a-z0-9][a-z0-9+.-]{0,127}$`)
 	hostPattern    = regexp.MustCompile(
@@ -179,11 +185,7 @@ func (manifest Manifest) Validate() error {
 		return errors.New("portal runner labels must be the exact protected lane label set")
 	}
 
-	if err := validateArtifact(
-		"base image",
-		manifest.BaseImage,
-		"cloud-images.ubuntu.com",
-	); err != nil {
+	if err := validateUbuntuBaseImage(manifest.BaseImage); err != nil {
 		return err
 	}
 	if err := validateArtifact("Go", manifest.Go, "go.dev"); err != nil {
@@ -477,6 +479,30 @@ func validateArtifact(name string, artifact Artifact, expectedHost string) error
 	digest, err := hex.DecodeString(artifact.SHA256)
 	if err != nil || hex.EncodeToString(digest) != artifact.SHA256 {
 		return fmt.Errorf("%s SHA-256 digest is invalid", name)
+	}
+	return nil
+}
+
+func validateUbuntuBaseImage(artifact Artifact) error {
+	const artifactName = "base image"
+	if err := validateArtifact(
+		artifactName,
+		artifact,
+		ubuntuArchiveImageHost,
+	); err != nil {
+		return err
+	}
+	versionMatch := ubuntuBaseImageVersionPattern.FindStringSubmatch(
+		artifact.Version,
+	)
+	if len(versionMatch) != 2 {
+		return errors.New("base image version is not a pinned Ubuntu 24.04 release")
+	}
+	parsed, _ := url.Parse(artifact.URL)
+	expectedPath := ubuntuReleaseImagePathPrefix + versionMatch[1] +
+		ubuntuReleaseImageFilename
+	if parsed.Path != expectedPath {
+		return errors.New("base image URL must identify the matching archived Ubuntu release")
 	}
 	return nil
 }
