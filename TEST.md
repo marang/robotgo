@@ -566,6 +566,9 @@ Some tests are intentionally gated because they require OS-specific runtime depe
 
 Purpose:
 - Linux Wayland screencopy/mock-server coverage
+- Malformed SHM/DMA-BUF metadata, signed row/pool limits, buffer-offer ownership,
+  v1/v2 immediate copying, explicit failure/fallback and SHM mapping/FD cleanup;
+  the hosted sanitizer runner includes these hermetic ownership paths
 - Hermetic native crop mapping for multi-output coordinates, fractional scale,
   overflow boundaries, and all eight output transforms
 - Hermetic aggregate/per-output bounds for negative origins, fractional

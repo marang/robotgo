@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Hardened native Wayland capture against invalid compositor/GBM dimensions,
+  short or oversized strides and allocation overflow. SHM mappings retain
+  their actual length; selected buffer metadata cannot be overwritten by
+  other offers. Explicit errors and the existing fallback order are preserved.
+
 - Adapted compatible fixes from upstream `go-vgo/robotgo` through `12f16b7c`:
   Pure-Go Windows physical-key scan metadata, extended main-key flags,
   caller-sided modifier deduplication and `NumClear`; native Wayland

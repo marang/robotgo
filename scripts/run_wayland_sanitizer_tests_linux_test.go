@@ -10,12 +10,24 @@ import (
 )
 
 const (
-	sanitizerExpectedList = "TestScreencopyDmabufFailureDoesNotCloseStdin\n" +
+	sanitizerExpectedList = "TestScreencopyBufferAnnouncementsKeepSelectedOwnership\n" +
+		"TestScreencopyDmabufFailureDoesNotCloseStdin\n" +
+		"TestScreencopyFailureAfterShmAllocationCleansMapping\n" +
+		"TestScreencopyInvalidMetadataPreservesPortalFallback\n" +
+		"TestScreencopyLegacyShmProtocols\n" +
+		"TestScreencopyRejectsInvalidBufferMetadata\n" +
 		"TestScreencopyTimeoutIsBounded\n" +
 		"TestScreencopyWlShm\n" +
+		"TestScreencopyYInvertPreservesLogicalCrop\n" +
 		"ok\tgithub.com/marang/robotgo/screen\t0.001s"
 	sanitizerPassingOutput = "=== RUN   TestScreencopyDmabufFailureDoesNotCloseStdin\n" +
+		"--- PASS: TestScreencopyBufferAnnouncementsKeepSelectedOwnership (0.00s)\n" +
 		"--- PASS: TestScreencopyDmabufFailureDoesNotCloseStdin (0.00s)\n" +
+		"--- PASS: TestScreencopyFailureAfterShmAllocationCleansMapping (0.00s)\n" +
+		"--- PASS: TestScreencopyInvalidMetadataPreservesPortalFallback (0.00s)\n" +
+		"--- PASS: TestScreencopyLegacyShmProtocols (0.00s)\n" +
+		"--- PASS: TestScreencopyRejectsInvalidBufferMetadata (0.00s)\n" +
+		"--- PASS: TestScreencopyYInvertPreservesLogicalCrop (0.00s)\n" +
 		"=== RUN   TestScreencopyTimeoutIsBounded\n" +
 		"--- PASS: TestScreencopyTimeoutIsBounded (0.01s)\n" +
 		"=== RUN   TestScreencopyWlShm\n" +
