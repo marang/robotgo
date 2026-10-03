@@ -514,9 +514,10 @@ func tryRemoteDesktopClick(name string, double bool) (bool, error) {
 
 func tryRemoteDesktopScroll(x, y int) (bool, error) {
 	return withRemoteDesktopInput(inputportal.DevicePointer, func(session remoteDesktopInputSession) error {
+		// RobotGo's positive wheel steps scroll left/up; the portal uses right/down.
 		if x != 0 {
 			if err := remoteDesktopEvent(func(ctx context.Context) error {
-				return session.PointerAxisDiscrete(ctx, inputportal.PointerAxisHorizontal, int32(x))
+				return session.PointerAxisDiscrete(ctx, inputportal.PointerAxisHorizontal, int32(-x))
 			}); err != nil {
 				return err
 			}

@@ -35,10 +35,10 @@ func TestNonCGOHighLevelPortalInput(t *testing.T) {
 	if err := ClickImmediateE("left"); err != nil {
 		t.Fatalf("ClickImmediateE error: %v", err)
 	}
-	if err := ScrollE(0, 2, 7); err != nil {
+	if err := ScrollE(2, 2, 7); err != nil {
 		t.Fatalf("ScrollE error: %v", err)
 	}
-	if err := ScrollImmediateE(0, 2); err != nil {
+	if err := ScrollImmediateE(-2, -2); err != nil {
 		t.Fatalf("ScrollImmediateE error: %v", err)
 	}
 	if err := TypeStrE("x"); err != nil {
@@ -62,8 +62,14 @@ func TestNonCGOHighLevelPortalInput(t *testing.T) {
 	}
 	assertRemoteDesktopMouseDelays(t, *delays, []int{23, 23, 23, 30})
 	events, _ := session.snapshot()
-	if len(events) != 26 {
-		t.Fatalf("events = %#v, want 26", events)
+	if len(events) != 28 {
+		t.Fatalf("events = %#v, want 28", events)
+	}
+	wantScroll := []string{"axis:1:-2", "axis:0:-2", "axis:1:2", "axis:0:2"}
+	for i, want := range wantScroll {
+		if got := events[6+i]; got != want {
+			t.Fatalf("scroll event %d = %q, want %q (all=%#v)", i, got, want, events)
+		}
 	}
 	wantTail := []string{
 		"keysym:65507:true",
