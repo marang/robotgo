@@ -22,7 +22,7 @@ func buildCatalogWithTraceExport(
 	traceExportConfigured bool,
 ) OperationCatalog {
 	return OperationCatalog{
-		SchemaVersion: CatalogSchemaVersion,
+		SchemaVersion: CatalogSchemaVersion, FlowPlannerSchemaVersion: VerifiedFlowPlanSchemaVersion,
 		Operations: []OperationCapability{
 			observationCapability(policy, capabilities),
 			viewCapability(policy, capabilities),
@@ -454,8 +454,9 @@ func featureUnavailableCode(feature robotgo.FeatureCapability) ErrorCode {
 
 func cloneCatalog(source OperationCatalog) OperationCatalog {
 	cloned := OperationCatalog{
-		SchemaVersion: source.SchemaVersion,
-		Operations:    append([]OperationCapability(nil), source.Operations...),
+		SchemaVersion:            source.SchemaVersion,
+		FlowPlannerSchemaVersion: source.FlowPlannerSchemaVersion,
+		Operations:               append([]OperationCapability(nil), source.Operations...),
 	}
 	for index := range cloned.Operations {
 		cloned.Operations[index].ScrollAxes = append(

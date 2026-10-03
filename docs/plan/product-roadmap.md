@@ -68,10 +68,12 @@ privacy-preserving MCP projection; neither effort broadens platform backend
 support or replaces phase exit gates.
 The completed [Autonomous GUI Control Plan](autonomous-gui-control.md) provides
 deny-by-default typed input plus accessibility-first and separately authorized
-image/OCR perception. The active
+image/OCR perception. The completed
 [Verified Adaptive Workflows Plan](verified-adaptive-workflows.md) builds on it
 with observation-bound native semantic actions, single-use capability leases,
-and policy-gated OCR/visual evidence inside the longer
+policy-gated OCR/visual evidence, privacy-tiered traces, semantic flow
+recording/code generation, and side-effect-free whole-flow capability planning
+inside the longer
 resolve/validate/authorize/execute/verify/prove contract.
 
 ## Delivery Order

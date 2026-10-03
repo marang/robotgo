@@ -217,6 +217,21 @@ go test ./agent -run '^(TestRecorder|TestRecordedFlow|TestGeneratedFlow)' -count
 go test -race ./agent -run '^(TestRecorder|TestRecordedFlow|TestGeneratedFlow)' -count=1
 ```
 
+Verified Flow Plan v1 coverage uses only retained in-memory observations and
+analysis evidence. The tests freeze runtime capabilities and time, assert
+deterministic privacy-reduced serialization and conservative quota arithmetic,
+and prove that planning invokes no desktop, analysis, audit, Trace-export, or
+mutation path and does not issue leases or consume counters. Lifecycle tests
+also cover one whole-flow observation/evidence snapshot under concurrent
+release, caller/session cancellation, rate gates, session-lifetime
+impossibility, and privacy-safe malformed MCP input:
+
+```bash
+go test ./agent -run '^TestVerifiedFlowPlan' -count=1 -v
+go test -race ./agent -run '^TestVerifiedFlowPlan' -count=20 -timeout=120s
+go test ./agent/mcpserver -run '^(TestPlanFlow|TestProtocolInitializes)' -count=1 -v
+```
+
 The Linux AT-SPI unit suite uses an in-memory query fixture to verify exact
 process/title/object-ancestry matching, role/property minimization,
 hidden-subtree pruning, fixed role/state/action mapping, pre-dispatch semantic

@@ -10,7 +10,7 @@ import (
 )
 
 // CatalogSchemaVersion identifies the operation catalog JSON contract.
-const CatalogSchemaVersion = "15"
+const CatalogSchemaVersion = "16"
 
 // ActionProofSchemaVersion identifies the privacy-reduced semantic-action
 // proof contract. Proofs deliberately contain no request or desktop payload.
@@ -120,8 +120,9 @@ const (
 
 // OperationCatalog is an immutable snapshot of operation availability.
 type OperationCatalog struct {
-	SchemaVersion string                `json:"schema_version"`
-	Operations    []OperationCapability `json:"operations"`
+	SchemaVersion            string                `json:"schema_version"`
+	FlowPlannerSchemaVersion string                `json:"flow_planner_schema_version"`
+	Operations               []OperationCapability `json:"operations"`
 }
 
 // MouseButton is a validated pointer button name.

@@ -222,12 +222,16 @@ func (s *Session) removeTargetEvidence(observationID, evidenceID string) {
 }
 
 func (s *Session) retainTargetEvidenceBundle(clauses []TargetEvidenceClause) (retainedTargetEvidenceBundle, error) {
+	s.observationMu.Lock()
+	defer s.observationMu.Unlock()
+	return s.retainTargetEvidenceBundleLocked(clauses)
+}
+
+func (s *Session) retainTargetEvidenceBundleLocked(clauses []TargetEvidenceClause) (retainedTargetEvidenceBundle, error) {
 	var bundle retainedTargetEvidenceBundle
 	if len(clauses) == 0 {
 		return bundle, nil
 	}
-	s.observationMu.Lock()
-	defer s.observationMu.Unlock()
 	record, ok := s.observations[clauses[0].ObservationID]
 	if !ok || record.source != OperationView || !record.hasCapture || record.capture == nil || !record.capture.usable() {
 		return bundle, targetResolutionError(ErrorStaleTarget, "target image observation is no longer live", ErrObservationClosed)
@@ -266,6 +270,10 @@ func targetEvidenceSourceRank(source TargetEvidenceSource) int {
 }
 
 func (s *Session) authorizeTargetEvidence(bundle *retainedTargetEvidenceBundle) error {
+	return s.authorizeTargetEvidenceAt(bundle, s.now())
+}
+
+func (s *Session) authorizeTargetEvidenceAt(bundle *retainedTargetEvidenceBundle, now time.Time) error {
 	if bundle == nil || len(bundle.evidence) == 0 {
 		return nil
 	}
@@ -273,7 +281,6 @@ func (s *Session) authorizeTargetEvidence(bundle *retainedTargetEvidenceBundle) 
 		return targetResolutionError(ErrorIncompleteObservation,
 			"target image evidence has redacted or transformed lineage", ErrIncompleteObservation)
 	}
-	now := s.now()
 	maximumAge := time.Duration(s.policy.MaxTargetEvidenceAgeMillis) * time.Millisecond
 	viewAge := now.Sub(bundle.viewCreatedAt)
 	if viewAge < 0 || viewAge > maximumAge {

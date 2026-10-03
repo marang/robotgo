@@ -2,6 +2,21 @@
 
 ## Unreleased
 
+- Added Verified Flow Plan v1 and the read-only `robotgo_plan_flow` MCP tool.
+  A bounded, version-pinned resolve-act-verify description is evaluated against
+  the session's immutable catalog and policy, retained semantic and reviewed
+  OCR/visual evidence, backend support, confirmation/lease/Trace requirements,
+  target ambiguity, conservative aggregate quota capacity, rate gates, and
+  session lifetime. Ordered reports use fixed feasibility, blocker,
+  remediation, assumption, backend, cleanup, and platform vocabularies and are
+  always advisory. One defensive snapshot covers the whole flow; concurrent
+  release/cancellation and malformed MCP inputs fail closed without leaking
+  rejected values. Planning performs no runtime discovery,
+  permission prompt, desktop or analysis call, audit/Trace export, recording,
+  lease issuance/reservation, quota consumption, locator healing, or action.
+  Reports omit target/window text, observation/evidence IDs, action values,
+  native references, tokens, pixels, policy payloads, and raw backend errors.
+
 - Added the deny-by-default Semantic Recorder and Recorded Flow v1. Explicit
   start/stop plus immutable event, retained-byte, and lifetime bounds capture
   only semantic observation shape, payload-free resolver evidence, action and

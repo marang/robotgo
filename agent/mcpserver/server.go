@@ -4,14 +4,18 @@
 package mcpserver
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"reflect"
 	"sync"
 	"sync/atomic"
 	"time"
 
+	"github.com/google/jsonschema-go/jsonschema"
 	robotgo "github.com/marang/robotgo"
 	"github.com/marang/robotgo/agent"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -32,6 +36,8 @@ const (
 	ToolInspectUI = "robotgo_inspect_ui"
 	// ToolResolveUI resolves one TargetSpec in a retained semantic observation.
 	ToolResolveUI = "robotgo_resolve_ui"
+	// ToolPlanFlow evaluates one bounded verified flow without side effects.
+	ToolPlanFlow = "robotgo_plan_flow"
 	// ToolElementAct executes one observation-bound native semantic action.
 	ToolElementAct = "robotgo_element_act"
 	// ToolAct plans or executes one typed action.
@@ -83,6 +89,14 @@ type SemanticUISession interface {
 type SemanticResolverSession interface {
 	SemanticUISession
 	ResolveUITarget(context.Context, agent.ResolveUIRequest) (agent.TargetResolutionResult, error)
+}
+
+// VerifiedFlowPlannerSession is the additive advisory planning extension. It
+// must not perform runtime discovery, prompt, audit, issue authority, or call a
+// desktop backend.
+type VerifiedFlowPlannerSession interface {
+	Session
+	PlanVerifiedFlow(context.Context, agent.VerifiedFlowPlanRequest) (agent.VerifiedFlowPlanReport, error)
 }
 
 // SemanticActionSession is the additive observation-bound semantic mutation
@@ -280,6 +294,12 @@ type ResolveUIOutput struct {
 	Error  *ToolError                    `json:"error,omitempty"`
 }
 
+// PlanFlowOutput contains only the privacy-reduced advisory feasibility report.
+type PlanFlowOutput struct {
+	Plan  *agent.VerifiedFlowPlanReport `json:"plan,omitempty"`
+	Error *ToolError                    `json:"error,omitempty"`
+}
+
 // ElementActOutput is the payload-free result of robotgo_element_act.
 type ElementActOutput struct {
 	Result *agent.ActionResult `json:"result,omitempty"`
@@ -392,6 +412,20 @@ func (s *Server) registerTools() {
 			Annotations: &mcp.ToolAnnotations{OpenWorldHint: &closedWorld},
 		}, s.resolveUI)
 	}
+	if _, ok := s.adapter.session.(VerifiedFlowPlannerSession); ok {
+		inputSchema, inputErr := jsonschema.For[agent.VerifiedFlowPlanRequest](nil)
+		outputSchema, outputErr := jsonschema.For[PlanFlowOutput](nil)
+		if inputErr != nil || outputErr != nil {
+			panic("derive verified-flow planner MCP schema")
+		}
+		s.protocol.AddTool(&mcp.Tool{
+			Name:        ToolPlanFlow,
+			Title:       "Plan verified flow capabilities",
+			Description: "Evaluate a bounded resolve-act-verify flow against the immutable catalog, policy, retained evidence, quotas, and backend support. The advisory plan never prompts, calls a desktop backend, issues authority, or claims live execution success.",
+			Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, IdempotentHint: true, OpenWorldHint: &closedWorld},
+			InputSchema: inputSchema, OutputSchema: outputSchema,
+		}, s.planFlowRaw)
+	}
 	if _, ok := s.adapter.session.(SemanticActionSession); ok {
 		mcp.AddTool(s.protocol, &mcp.Tool{
 			Name:        ToolElementAct,
@@ -487,6 +521,64 @@ func (s *Server) resolveUI(ctx context.Context, _ *mcp.CallToolRequest, input ag
 		return errorResult(), ResolveUIOutput{Result: &resolution, Error: safeToolError(err)}, nil
 	}
 	return nil, ResolveUIOutput{Result: &resolution}, nil
+}
+
+func (s *Server) planFlow(ctx context.Context, _ *mcp.CallToolRequest, input agent.VerifiedFlowPlanRequest) (*mcp.CallToolResult, PlanFlowOutput, error) {
+	session, toolErr := s.adapter.begin()
+	if toolErr != nil {
+		return errorResult(), PlanFlowOutput{Error: toolErr}, nil
+	}
+	planner, ok := session.(VerifiedFlowPlannerSession)
+	if !ok {
+		return errorResult(), PlanFlowOutput{Error: &ToolError{
+			Code: agent.ErrorUnsupported, Message: "verified-flow capability planning is unsupported",
+		}}, nil
+	}
+	plan, err := planner.PlanVerifiedFlow(ctx, input)
+	if err != nil {
+		return errorResult(), PlanFlowOutput{Error: safeToolError(err)}, nil
+	}
+	return nil, PlanFlowOutput{Plan: &plan}, nil
+}
+
+// planFlowRaw owns planner argument decoding so malformed caller values never
+// reach the SDK's schema-error formatter, which may echo rejected instances.
+func (s *Server) planFlowRaw(ctx context.Context, request *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	var input agent.VerifiedFlowPlanRequest
+	if arguments := request.Params.Arguments; len(arguments) > 0 {
+		decoder := json.NewDecoder(bytes.NewReader(arguments))
+		decoder.DisallowUnknownFields()
+		if err := decoder.Decode(&input); err != nil {
+			return marshalPlanFlowOutput(errorResult(), invalidPlanFlowInput()), nil
+		}
+		if err := decoder.Decode(&struct{}{}); err != io.EOF {
+			return marshalPlanFlowOutput(errorResult(), invalidPlanFlowInput()), nil
+		}
+	}
+	result, output, _ := s.planFlow(ctx, request, input)
+	return marshalPlanFlowOutput(result, output), nil
+}
+
+func invalidPlanFlowInput() PlanFlowOutput {
+	return PlanFlowOutput{Error: &ToolError{
+		Code: agent.ErrorInvalidInput, Message: "invalid verified-flow plan input",
+	}}
+}
+
+func marshalPlanFlowOutput(result *mcp.CallToolResult, output PlanFlowOutput) *mcp.CallToolResult {
+	payload, err := json.Marshal(output)
+	if err != nil {
+		payload = []byte(`{"error":{"code":"backend-failure","message":"RobotGo agent operation failed"}}`)
+		result = errorResult()
+	}
+	var structured map[string]any
+	_ = json.Unmarshal(payload, &structured)
+	if result == nil {
+		result = &mcp.CallToolResult{}
+	}
+	result.Content = []mcp.Content{&mcp.TextContent{Text: string(payload)}}
+	result.StructuredContent = structured
+	return result
 }
 
 func (s *Server) elementAct(ctx context.Context, _ *mcp.CallToolRequest, input agent.ElementActionRequest) (*mcp.CallToolResult, ElementActOutput, error) {
