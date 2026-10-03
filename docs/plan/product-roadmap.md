@@ -11,6 +11,14 @@ Compatibility remains a hard requirement: existing public APIs stay stable
 unless a change is intentional and documented. New error-returning APIs are
 preferred when legacy signatures cannot report failures safely.
 
+The [strict interfaces and CGO decomposition plan](strict-api-migration.md)
+defines P013's compatibility-preserving native-owner split and checked migration
+for every root helper that hides operational errors. Its frozen-variant
+inventory is the planning baseline; the structural LAB-255 slice, strict input
+and lifecycle LAB-256 slice, and display/window/image plus guard LAB-257 slice
+have distinct acceptance evidence. This work does not expand runtime support
+claims or relax the existing exact public declaration gate.
+
 ## Current Baseline
 
 The July 2026 hardening work establishes the foundation for this roadmap:

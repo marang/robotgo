@@ -1,0 +1,637 @@
+{
+  "schema": 1,
+  "scope": "All exported top-level root package helper functions; not constants, variables, types or methods",
+  "sourceCommit": "8b4a6ced",
+  "authority": "api/compat/config.json and fully reconstructed manifest/deltas; source paths and conditions refer to sourceCommit",
+  "status": "Planning inventory, not an enforced guard or a claim that proposed exports exist",
+  "variants": {
+    "linux-cgo": {
+      "goos": "linux",
+      "goarch": "amd64",
+      "cgo": true,
+      "tags": [],
+      "baseline": "linux-cgo.api"
+    },
+    "linux-cgo-wayland": {
+      "goos": "linux",
+      "goarch": "amd64",
+      "cgo": true,
+      "tags": [
+        "wayland"
+      ],
+      "baseline": "linux-cgo.api"
+    },
+    "linux-cgo-portal": {
+      "goos": "linux",
+      "goarch": "amd64",
+      "cgo": true,
+      "tags": [
+        "portal"
+      ],
+      "baseline": "linux-cgo-portal.delta",
+      "base": "linux-cgo.api"
+    },
+    "linux-cgo-pipewire": {
+      "goos": "linux",
+      "goarch": "amd64",
+      "cgo": true,
+      "tags": [
+        "pipewire"
+      ],
+      "baseline": "linux-cgo.api"
+    },
+    "linux-cgo-full": {
+      "goos": "linux",
+      "goarch": "amd64",
+      "cgo": true,
+      "tags": [
+        "pipewire",
+        "portal",
+        "wayland"
+      ],
+      "baseline": "linux-cgo-portal.delta",
+      "base": "linux-cgo.api"
+    },
+    "linux-cgo-ocr": {
+      "goos": "linux",
+      "goarch": "amd64",
+      "cgo": true,
+      "tags": [
+        "ocr"
+      ],
+      "baseline": "linux-cgo.api"
+    },
+    "windows-cgo": {
+      "goos": "windows",
+      "goarch": "amd64",
+      "cgo": true,
+      "tags": [],
+      "baseline": "windows-cgo.delta",
+      "base": "linux-cgo.api"
+    },
+    "darwin-cgo": {
+      "goos": "darwin",
+      "goarch": "arm64",
+      "cgo": true,
+      "tags": [],
+      "baseline": "darwin-cgo.delta",
+      "base": "linux-cgo.api"
+    },
+    "linux-nocgo": {
+      "goos": "linux",
+      "goarch": "amd64",
+      "cgo": false,
+      "tags": [],
+      "baseline": "linux-nocgo.delta",
+      "base": "linux-cgo.api"
+    },
+    "linux-nocgo-arm64": {
+      "goos": "linux",
+      "goarch": "arm64",
+      "cgo": false,
+      "tags": [],
+      "baseline": "linux-nocgo.delta",
+      "base": "linux-cgo.api"
+    },
+    "windows-nocgo": {
+      "goos": "windows",
+      "goarch": "amd64",
+      "cgo": false,
+      "tags": [],
+      "baseline": "windows-nocgo.delta",
+      "base": "linux-cgo.api"
+    },
+    "windows-nocgo-arm64": {
+      "goos": "windows",
+      "goarch": "arm64",
+      "cgo": false,
+      "tags": [],
+      "baseline": "windows-nocgo.delta",
+      "base": "linux-cgo.api"
+    },
+    "darwin-nocgo": {
+      "goos": "darwin",
+      "goarch": "arm64",
+      "cgo": false,
+      "tags": [],
+      "baseline": "darwin-nocgo.delta",
+      "base": "linux-cgo.api"
+    },
+    "darwin-nocgo-amd64": {
+      "goos": "darwin",
+      "goarch": "amd64",
+      "cgo": false,
+      "tags": [],
+      "baseline": "darwin-nocgo.delta",
+      "base": "linux-cgo.api"
+    }
+  },
+  "variantSets": {
+    "all": [
+      "linux-cgo",
+      "linux-cgo-wayland",
+      "linux-cgo-portal",
+      "linux-cgo-pipewire",
+      "linux-cgo-full",
+      "linux-cgo-ocr",
+      "windows-cgo",
+      "darwin-cgo",
+      "linux-nocgo",
+      "linux-nocgo-arm64",
+      "windows-nocgo",
+      "windows-nocgo-arm64",
+      "darwin-nocgo",
+      "darwin-nocgo-amd64"
+    ],
+    "linux-cgo-or-purego": [
+      "linux-cgo",
+      "linux-cgo-wayland",
+      "linux-cgo-portal",
+      "linux-cgo-pipewire",
+      "linux-cgo-full",
+      "linux-cgo-ocr",
+      "linux-nocgo",
+      "linux-nocgo-arm64",
+      "windows-nocgo",
+      "windows-nocgo-arm64",
+      "darwin-nocgo",
+      "darwin-nocgo-amd64"
+    ],
+    "cgo": [
+      "linux-cgo",
+      "linux-cgo-wayland",
+      "linux-cgo-portal",
+      "linux-cgo-pipewire",
+      "linux-cgo-full",
+      "linux-cgo-ocr",
+      "windows-cgo",
+      "darwin-cgo"
+    ],
+    "purego": [
+      "linux-nocgo",
+      "linux-nocgo-arm64",
+      "windows-nocgo",
+      "windows-nocgo-arm64",
+      "darwin-nocgo",
+      "darwin-nocgo-amd64"
+    ],
+    "find-window": [
+      "windows-cgo",
+      "linux-nocgo",
+      "linux-nocgo-arm64",
+      "windows-nocgo",
+      "windows-nocgo-arm64",
+      "darwin-nocgo",
+      "darwin-nocgo-amd64"
+    ],
+    "windows": [
+      "windows-cgo",
+      "windows-nocgo",
+      "windows-nocgo-arm64"
+    ],
+    "linux-cgo": [
+      "linux-cgo",
+      "linux-cgo-wayland",
+      "linux-cgo-portal",
+      "linux-cgo-pipewire",
+      "linux-cgo-full",
+      "linux-cgo-ocr"
+    ]
+  },
+  "sourceConditions": {
+    "backend_info.go": {
+      "build": "all",
+      "implicitCGO": false
+    },
+    "bitmap_common.go": {
+      "build": "all",
+      "implicitCGO": false
+    },
+    "clipboard_context.go": {
+      "build": "all",
+      "implicitCGO": false
+    },
+    "img.go": {
+      "build": "all",
+      "implicitCGO": false
+    },
+    "key.go": {
+      "build": "all",
+      "implicitCGO": true
+    },
+    "keycode.go": {
+      "build": "all",
+      "implicitCGO": false
+    },
+    "ps.go": {
+      "build": "all",
+      "implicitCGO": false
+    },
+    "remote_desktop_input.go": {
+      "build": "all",
+      "implicitCGO": false
+    },
+    "remote_desktop_input_status.go": {
+      "build": "all",
+      "implicitCGO": false
+    },
+    "remote_desktop_input_stream.go": {
+      "build": "all",
+      "implicitCGO": false
+    },
+    "robotgo.go": {
+      "build": "all",
+      "implicitCGO": true
+    },
+    "robotgo_fn_v1.go": {
+      "build": "cgo",
+      "implicitCGO": false
+    },
+    "robotgo_linux.go": {
+      "build": "linux && wayland",
+      "implicitCGO": true
+    },
+    "robotgo_linux_alert.go": {
+      "build": "linux",
+      "implicitCGO": false
+    },
+    "robotgo_linux_x11.go": {
+      "build": "linux && !wayland && cgo",
+      "implicitCGO": false
+    },
+    "robotgo_mac.go": {
+      "build": "darwin",
+      "implicitCGO": true
+    },
+    "robotgo_mac_unix.go": {
+      "build": "!windows",
+      "implicitCGO": false
+    },
+    "robotgo_mac_win.go": {
+      "build": "darwin || windows",
+      "implicitCGO": true
+    },
+    "robotgo_nocgo.go": {
+      "build": "!cgo",
+      "implicitCGO": false
+    },
+    "robotgo_nocgo_alert.go": {
+      "build": "!cgo && !linux",
+      "implicitCGO": false
+    },
+    "robotgo_nocgo_capture.go": {
+      "build": "!cgo",
+      "implicitCGO": false
+    },
+    "robotgo_nocgo_nonwindows.go": {
+      "build": "!cgo && !windows",
+      "implicitCGO": false
+    },
+    "robotgo_nocgo_parity.go": {
+      "build": "!cgo",
+      "implicitCGO": false
+    },
+    "robotgo_ocr.go": {
+      "build": "ocr && cgo",
+      "implicitCGO": false
+    },
+    "robotgo_ocr_cli.go": {
+      "build": "!ocr || !cgo",
+      "implicitCGO": false
+    },
+    "robotgo_win.go": {
+      "build": "windows",
+      "implicitCGO": false
+    },
+    "runtime_config.go": {
+      "build": "all",
+      "implicitCGO": false
+    },
+    "runtime_diagnostics.go": {
+      "build": "all",
+      "implicitCGO": false
+    },
+    "screen.go": {
+      "build": "all",
+      "implicitCGO": false
+    },
+    "screen_bounds_error.go": {
+      "build": "all",
+      "implicitCGO": false
+    },
+    "screencast_capture.go": {
+      "build": "all",
+      "implicitCGO": false
+    },
+    "upstream_compat.go": {
+      "build": "all",
+      "implicitCGO": false
+    },
+    "window_close_kill_nocgo.go": {
+      "build": "!cgo",
+      "implicitCGO": false
+    }
+  },
+  "classes": {
+    "error-returning": "Existing error signature; note exceptions where underlying causes still require repair",
+    "legacy-existing": "Legacy behavior loses operational errors; current canonical strict interface or documented composition exists",
+    "legacy-planned": "Legacy behavior loses operational errors; future canonical strict interface is required",
+    "pure": "Computation or timing with no operational error result being discarded; unsafe preconditions still apply",
+    "observation": "Configuration, availability, diagnostics or state observation rather than operational success",
+    "raw-status": "Explicit low-level C/native pointer, borrowed-view or native status interface; see plan for preconditions, status and ownership",
+    "variant-dependent": "Must be classified per build variant, never blanket-exempted",
+    "validation-loss": "Checked conversion error is hidden; planned checked conversion counterpart"
+  },
+  "counts": {
+    "uniqueFunctions": 261,
+    "byClass": {
+      "error-returning": 124,
+      "legacy-existing": 50,
+      "pure": 19,
+      "raw-status": 22,
+      "legacy-planned": 31,
+      "observation": 12,
+      "variant-dependent": 2,
+      "validation-loss": 1
+    },
+    "byVariant": {
+      "linux-cgo": 249,
+      "linux-cgo-wayland": 249,
+      "linux-cgo-portal": 249,
+      "linux-cgo-pipewire": 249,
+      "linux-cgo-full": 249,
+      "linux-cgo-ocr": 249,
+      "windows-cgo": 257,
+      "darwin-cgo": 245,
+      "linux-nocgo": 240,
+      "linux-nocgo-arm64": 240,
+      "windows-nocgo": 251,
+      "windows-nocgo-arm64": 251,
+      "darwin-nocgo": 240,
+      "darwin-nocgo-amd64": 240
+    }
+  },
+  "functions": [
+    {"name":"ActiveName","variants":"all","class":"error-returning","sources":["robotgo.go","robotgo_nocgo.go"]},
+    {"name":"ActivePid","variants":"all","class":"error-returning","sources":["robotgo_linux.go","robotgo_linux_x11.go","robotgo_mac_win.go","robotgo_nocgo.go"]},
+    {"name":"ActivePidC","variants":"linux-cgo-or-purego","class":"error-returning","sources":["robotgo_linux.go","robotgo_linux_x11.go","robotgo_nocgo_parity.go"]},
+    {"name":"Alert","variants":"all","class":"legacy-existing","sources":["robotgo_linux_alert.go","robotgo_mac_win.go","robotgo_nocgo_alert.go"],"canonical":{"existing":"AlertE"}},
+    {"name":"AlertE","variants":"all","class":"error-returning","sources":["robotgo_linux_alert.go","robotgo_mac_win.go","robotgo_nocgo_alert.go"]},
+    {"name":"BitmapFromStr","variants":"all","class":"error-returning","sources":["bitmap_common.go"]},
+    {"name":"ByteToCBitmap","variants":"all","class":"legacy-existing","sources":["robotgo.go","robotgo_nocgo.go"],"canonical":{"existing":"ByteToCBitmapE"},"nativeTypes":"cgo-only; manifest declarations and aliases are authoritative"},
+    {"name":"ByteToCBitmapE","variants":"all","class":"error-returning","sources":["robotgo.go","robotgo_nocgo.go"],"nativeTypes":"cgo-only; manifest declarations and aliases are authoritative"},
+    {"name":"ByteToImg","variants":"all","class":"error-returning","sources":["img.go"]},
+    {"name":"Capture","variants":"all","class":"error-returning","sources":["screen.go"]},
+    {"name":"Capture1","variants":"all","class":"error-returning","sources":["upstream_compat.go"]},
+    {"name":"CaptureBitmapStr","variants":"all","class":"error-returning","sources":["bitmap_common.go"]},
+    {"name":"CaptureGo","variants":"all","class":"error-returning","sources":["robotgo.go","robotgo_nocgo_capture.go"],"note":"Error signature does not establish all failure fidelity; LAB-254 capture/conversion repair remains separate."},
+    {"name":"CaptureImg","variants":"all","class":"error-returning","sources":["robotgo.go","robotgo_nocgo_capture.go"]},
+    {"name":"CaptureImgNative","variants":"all","class":"error-returning","sources":["robotgo.go","robotgo_nocgo_capture.go"],"note":"Error signature does not establish all failure fidelity; LAB-254 capture/conversion repair remains separate."},
+    {"name":"CaptureImgNativeContext","variants":"all","class":"error-returning","sources":["robotgo.go","robotgo_nocgo_capture.go"],"note":"Error signature does not establish all failure fidelity; LAB-254 capture/conversion repair remains separate."},
+    {"name":"CaptureScreen","variants":"all","class":"error-returning","sources":["robotgo.go","robotgo_nocgo_capture.go"],"nativeTypes":"cgo-only; manifest declarations and aliases are authoritative"},
+    {"name":"CaptureScreenCast","variants":"all","class":"error-returning","sources":["screencast_capture.go"]},
+    {"name":"CaptureScreenCastDisplay","variants":"all","class":"error-returning","sources":["screencast_capture.go"]},
+    {"name":"CharCodeAt","variants":"all","class":"pure","sources":["key.go","robotgo_nocgo.go"]},
+    {"name":"CheckMouse","variants":"cgo","class":"raw-status","sources":["robotgo.go"],"nativeTypes":"cgo-only; manifest declarations and aliases are authoritative"},
+    {"name":"Click","variants":"all","class":"legacy-existing","sources":["robotgo.go","robotgo_nocgo.go"],"canonical":{"existing":"ClickE"}},
+    {"name":"ClickE","variants":"all","class":"error-returning","sources":["robotgo.go","robotgo_nocgo.go"]},
+    {"name":"ClickImmediateE","variants":"all","class":"error-returning","sources":["robotgo.go","robotgo_nocgo.go"]},
+    {"name":"ClickV1","variants":"all","class":"legacy-existing","sources":["upstream_compat.go"],"canonical":{"existing":"ClickE"}},
+    {"name":"CloseMainDisplay","variants":"all","class":"legacy-existing","sources":["robotgo.go","robotgo_nocgo_parity.go"],"canonical":{"existing":"CloseMainDisplayE"}},
+    {"name":"CloseMainDisplayE","variants":"all","class":"error-returning","sources":["robotgo.go","robotgo_nocgo_parity.go"]},
+    {"name":"CloseRemoteDesktopInput","variants":"all","class":"error-returning","sources":["remote_desktop_input.go"]},
+    {"name":"CloseScreenCastCapture","variants":"all","class":"error-returning","sources":["screencast_capture.go"]},
+    {"name":"CloseWaylandInput","variants":"all","class":"legacy-planned","sources":["robotgo.go","robotgo_nocgo.go"],"canonical":{"planned":"CloseWaylandInputE"}},
+    {"name":"CloseWindow","variants":"all","class":"legacy-existing","sources":["robotgo.go","robotgo_nocgo.go"],"canonical":{"existing":"CloseWindowE"}},
+    {"name":"CloseWindowE","variants":"all","class":"error-returning","sources":["robotgo.go","robotgo_nocgo_parity.go"]},
+    {"name":"CloseWindowKill","variants":"all","class":"error-returning","sources":["robotgo.go","window_close_kill_nocgo.go"],"note":"Returns error but CGO implementation still hides selection/PID/probe failures; follow-up repair requires characterization."},
+    {"name":"CmdCtrl","variants":"all","class":"pure","sources":["key.go","robotgo_nocgo_parity.go"]},
+    {"name":"CmdV","variants":"all","class":"error-returning","sources":["upstream_compat.go"]},
+    {"name":"CurrentSpecialTable","variants":"all","class":"pure","sources":["keycode.go"]},
+    {"name":"DecodeImg","variants":"all","class":"error-returning","sources":["img.go"]},
+    {"name":"DetectDisplayServer","variants":"all","class":"observation","sources":["robotgo.go","robotgo_nocgo.go"]},
+    {"name":"DisplaysNum","variants":"all","class":"legacy-existing","sources":["robotgo_linux.go","robotgo_linux_x11.go","robotgo_mac_win.go","robotgo_nocgo.go"],"canonical":{"existing":"DisplaysNumE"}},
+    {"name":"DisplaysNumE","variants":"all","class":"error-returning","sources":["screen_bounds_error.go"]},
+    {"name":"Drag","variants":"all","class":"legacy-planned","sources":["robotgo.go","robotgo_nocgo_parity.go"],"canonical":{"planned":"DragE"}},
+    {"name":"DragMouse","variants":"all","class":"legacy-planned","sources":["robotgo_fn_v1.go","robotgo_nocgo_parity.go"],"canonical":{"planned":"DragSmoothE"}},
+    {"name":"DragSmooth","variants":"all","class":"legacy-planned","sources":["robotgo.go","robotgo_nocgo.go"],"canonical":{"planned":"DragSmoothE"}},
+    {"name":"FindBitmapStr","variants":"all","class":"error-returning","sources":["bitmap_common.go"]},
+    {"name":"FindcolorCS","variants":"all","class":"error-returning","sources":["bitmap_common.go"]},
+    {"name":"FindColorCS","variants":"all","class":"error-returning","sources":["bitmap_common.go"]},
+    {"name":"FindIds","variants":"all","class":"error-returning","sources":["ps.go"]},
+    {"name":"FindName","variants":"all","class":"error-returning","sources":["ps.go"]},
+    {"name":"FindNames","variants":"all","class":"error-returning","sources":["ps.go"]},
+    {"name":"FindPath","variants":"all","class":"error-returning","sources":["ps.go"]},
+    {"name":"FindWindow","variants":"find-window","class":"legacy-planned","sources":["robotgo_nocgo_nonwindows.go","robotgo_win.go"],"canonical":{"planned":"FindWindowE"}},
+    {"name":"FreeBitmap","variants":"all","class":"raw-status","sources":["robotgo.go","robotgo_nocgo.go"],"nativeTypes":"cgo-only; manifest declarations and aliases are authoritative"},
+    {"name":"FreeBitmapArr","variants":"all","class":"raw-status","sources":["robotgo.go","robotgo_nocgo_parity.go"],"nativeTypes":"cgo-only; manifest declarations and aliases are authoritative"},
+    {"name":"GetActive","variants":"all","class":"legacy-existing","sources":["robotgo.go","robotgo_nocgo.go"],"canonical":{"existing":"GetActiveE"},"nativeTypes":"cgo-only; manifest declarations and aliases are authoritative"},
+    {"name":"GetActiveC","variants":"cgo","class":"legacy-existing","sources":["robotgo.go"],"canonical":{"existing":"GetActiveE + C.MData conversion"},"nativeTypes":"cgo-only; manifest declarations and aliases are authoritative"},
+    {"name":"GetActiveE","variants":"all","class":"error-returning","sources":["robotgo.go","robotgo_nocgo.go"]},
+    {"name":"GetBHandle","variants":"all","class":"variant-dependent","sources":["robotgo.go","robotgo_nocgo_parity.go"],"classificationByVariant":{"cgo":"raw-status","purego":"legacy-planned"},"canonical":{"planned":"GetBHandleE"},"note":"CGO reads raw selected pub_mData. Pure-Go discards backend-resolution failure and, when selection is empty, active-window failure; GetActiveE alone does not preserve selected-state precedence."},
+    {"name":"GetBounds","variants":"all","class":"legacy-existing","sources":["robotgo_linux.go","robotgo_linux_x11.go","robotgo_mac_win.go","robotgo_nocgo.go"],"canonical":{"existing":"GetBoundsE"}},
+    {"name":"GetBoundsE","variants":"all","class":"error-returning","sources":["robotgo_linux.go","robotgo_linux_x11.go","robotgo_mac_win.go","robotgo_nocgo.go"]},
+    {"name":"GetClient","variants":"all","class":"legacy-existing","sources":["robotgo_linux.go","robotgo_linux_x11.go","robotgo_mac_win.go","robotgo_nocgo.go"],"canonical":{"existing":"GetClientE"}},
+    {"name":"GetClientE","variants":"all","class":"error-returning","sources":["robotgo_linux.go","robotgo_linux_x11.go","robotgo_mac_win.go","robotgo_nocgo.go"]},
+    {"name":"GetDesktopWindow","variants":"windows","class":"raw-status","sources":["robotgo_win.go"]},
+    {"name":"GetDisplayBounds","variants":"all","class":"legacy-existing","sources":["screen.go"],"canonical":{"existing":"GetDisplayBoundsE"}},
+    {"name":"GetDisplayBoundsE","variants":"all","class":"error-returning","sources":["screen.go"]},
+    {"name":"GetDisplayRect","variants":"all","class":"legacy-existing","sources":["screen.go"],"canonical":{"existing":"GetDisplayBoundsE + Rect construction"}},
+    {"name":"GetDPI","variants":"windows","class":"raw-status","sources":["robotgo_win.go"]},
+    {"name":"GetHandById","variants":"all","class":"legacy-planned","sources":["robotgo.go","robotgo_nocgo_parity.go"],"canonical":{"planned":"GetHandByPidE + explicit target mode"},"nativeTypes":"cgo-only; manifest declarations and aliases are authoritative"},
+    {"name":"GetHandByPid","variants":"all","class":"legacy-planned","sources":["robotgo.go","robotgo_nocgo_parity.go"],"canonical":{"planned":"GetHandByPidE"},"nativeTypes":"cgo-only; manifest declarations and aliases are authoritative"},
+    {"name":"GetHandByPidC","variants":"cgo","class":"raw-status","sources":["robotgo.go"],"nativeTypes":"cgo-only; manifest declarations and aliases are authoritative","note":"Native MData constructor with platform-dependent reference and ownership; planned GetHandByPidE supplies checked construction."},
+    {"name":"GetHandle","variants":"all","class":"legacy-existing","sources":["robotgo.go","robotgo_nocgo.go"],"canonical":{"existing":"GetActiveE + platform identity extraction"}},
+    {"name":"GetHandPid","variants":"all","class":"legacy-planned","sources":["robotgo.go","robotgo_nocgo_parity.go"],"canonical":{"planned":"GetHandByPidE"},"nativeTypes":"cgo-only; manifest declarations and aliases are authoritative"},
+    {"name":"GetHWND","variants":"windows","class":"raw-status","sources":["robotgo_win.go"]},
+    {"name":"GetHWNDByPid","variants":"all","class":"legacy-existing","sources":["robotgo.go","robotgo_nocgo_parity.go"],"canonical":{"existing":"ResolveWindowHandleE (integer window identity)"},"note":"CGO exposes a native numeric lookup/status; Pure-Go discards resolution errors. Existing checked integer resolution validates identity and returns explicit unsupported for macOS CGO, which cannot expose a serializable exact native reference."},
+    {"name":"GetLinuxCapabilities","variants":"all","class":"observation","sources":["robotgo.go","robotgo_nocgo.go"]},
+    {"name":"GetLocationColor","variants":"all","class":"error-returning","sources":["robotgo.go","robotgo_nocgo_parity.go"]},
+    {"name":"GetMain","variants":"windows","class":"raw-status","sources":["robotgo_win.go"]},
+    {"name":"GetMainDPI","variants":"windows","class":"raw-status","sources":["robotgo_win.go"]},
+    {"name":"GetMainId","variants":"all","class":"legacy-planned","sources":["robotgo_linux.go","robotgo_linux_x11.go","robotgo_mac.go","robotgo_nocgo_nonwindows.go","robotgo_win.go"],"canonical":{"planned":"GetMainIdE"}},
+    {"name":"GetMousePos","variants":"all","class":"legacy-existing","sources":["robotgo_fn_v1.go","robotgo_nocgo_parity.go"],"canonical":{"existing":"LocationE"}},
+    {"name":"GetPid","variants":"all","class":"legacy-existing","sources":["robotgo.go","robotgo_nocgo.go"],"canonical":{"existing":"GetPidE"}},
+    {"name":"GetPidE","variants":"all","class":"error-returning","sources":["robotgo.go","robotgo_nocgo.go"]},
+    {"name":"GetPixelColor","variants":"all","class":"error-returning","sources":["robotgo.go","robotgo_nocgo.go"]},
+    {"name":"GetPxColor","variants":"all","class":"error-returning","sources":["robotgo.go","robotgo_nocgo.go"],"nativeTypes":"cgo-only; manifest declarations and aliases are authoritative"},
+    {"name":"GetRemoteDesktopInputStatus","variants":"all","class":"error-returning","sources":["remote_desktop_input_status.go"]},
+    {"name":"GetRuntimeBackendInfo","variants":"all","class":"observation","sources":["backend_info.go"]},
+    {"name":"GetRuntimeCapabilities","variants":"all","class":"observation","sources":["backend_info.go"]},
+    {"name":"GetRuntimeConfig","variants":"all","class":"observation","sources":["runtime_config.go"]},
+    {"name":"GetRuntimeDiagnostics","variants":"all","class":"observation","sources":["runtime_diagnostics.go"]},
+    {"name":"GetScaleSize","variants":"all","class":"legacy-planned","sources":["robotgo.go","robotgo_nocgo.go"],"canonical":{"planned":"GetScreenSizeE + ScaleFE (CGO), SysScaleE (Pure-Go macOS); size alone (Pure-Go Linux/Windows)"}},
+    {"name":"GetScreenRect","variants":"all","class":"legacy-existing","sources":["robotgo.go","robotgo_nocgo.go"],"canonical":{"existing":"GetScreenRectE"}},
+    {"name":"GetScreenRectE","variants":"all","class":"error-returning","sources":["screen_bounds_error.go"]},
+    {"name":"GetScreenSize","variants":"all","class":"legacy-existing","sources":["robotgo.go","robotgo_nocgo.go"],"canonical":{"existing":"GetScreenSizeE"}},
+    {"name":"GetScreenSizeE","variants":"all","class":"error-returning","sources":["screen_bounds_error.go"]},
+    {"name":"GetSysDPI","variants":"windows","class":"raw-status","sources":["robotgo_win.go"]},
+    {"name":"GetText","variants":"all","class":"error-returning","sources":["robotgo_ocr.go","robotgo_ocr_cli.go"]},
+    {"name":"GetTextContext","variants":"all","class":"error-returning","sources":["robotgo_ocr.go","robotgo_ocr_cli.go"]},
+    {"name":"GetTextImg","variants":"all","class":"error-returning","sources":["img.go"]},
+    {"name":"GetTextImgContext","variants":"all","class":"error-returning","sources":["img.go"]},
+    {"name":"GetTitle","variants":"all","class":"legacy-existing","sources":["robotgo.go","robotgo_nocgo.go"],"canonical":{"existing":"GetTitleE"}},
+    {"name":"GetTitleE","variants":"all","class":"error-returning","sources":["robotgo.go","robotgo_nocgo_parity.go"]},
+    {"name":"GetTitleTargetE","variants":"all","class":"error-returning","sources":["robotgo.go","robotgo_nocgo_parity.go"]},
+    {"name":"GetVersion","variants":"all","class":"observation","sources":["robotgo.go","robotgo_nocgo.go"]},
+    {"name":"GetXDisplayName","variants":"all","class":"legacy-planned","sources":["robotgo.go","robotgo_nocgo_parity.go"],"canonical":{"planned":"GetXDisplayNameE"}},
+    {"name":"GetXid","variants":"linux-cgo","class":"error-returning","sources":["robotgo_linux.go","robotgo_linux_x11.go"]},
+    {"name":"GetXidByPid","variants":"linux-cgo","class":"error-returning","sources":["robotgo_linux.go","robotgo_linux_x11.go"]},
+    {"name":"GetXidFromPid","variants":"linux-cgo","class":"error-returning","sources":["robotgo_linux.go","robotgo_linux_x11.go"]},
+    {"name":"GoString","variants":"cgo","class":"raw-status","sources":["robotgo.go"],"nativeTypes":"cgo-only; manifest declarations and aliases are authoritative"},
+    {"name":"Height","variants":"all","class":"pure","sources":["img.go"]},
+    {"name":"HexToRgb","variants":"all","class":"raw-status","sources":["robotgo.go","robotgo_nocgo.go"],"nativeTypes":"cgo-only; manifest declarations and aliases are authoritative"},
+    {"name":"ImgSize","variants":"all","class":"error-returning","sources":["img.go"]},
+    {"name":"ImgToBitmap","variants":"all","class":"legacy-existing","sources":["img.go"],"canonical":{"existing":"ImgToBitmapE"}},
+    {"name":"ImgToBitmapE","variants":"all","class":"error-returning","sources":["img.go"]},
+    {"name":"ImgToCBitmap","variants":"all","class":"legacy-existing","sources":["robotgo.go","robotgo_nocgo.go"],"canonical":{"existing":"ImgToCBitmapE"},"nativeTypes":"cgo-only; manifest declarations and aliases are authoritative"},
+    {"name":"ImgToCBitmapE","variants":"all","class":"error-returning","sources":["robotgo.go","robotgo_nocgo.go"],"nativeTypes":"cgo-only; manifest declarations and aliases are authoritative"},
+    {"name":"InvalidateScreenBoundsCache","variants":"all","class":"observation","sources":["robotgo.go","robotgo_nocgo_parity.go"]},
+    {"name":"Is64Bit","variants":"all","class":"pure","sources":["robotgo.go","robotgo_nocgo_parity.go"]},
+    {"name":"IsMain","variants":"all","class":"legacy-planned","sources":["robotgo.go","robotgo_nocgo_parity.go"],"canonical":{"planned":"GetMainIdE + comparison"}},
+    {"name":"IsMaximized","variants":"all","class":"legacy-existing","sources":["robotgo.go","robotgo_nocgo_parity.go"],"canonical":{"existing":"IsMaximizedE"}},
+    {"name":"IsMaximizedE","variants":"all","class":"error-returning","sources":["robotgo.go","robotgo_nocgo_parity.go"]},
+    {"name":"IsMinimized","variants":"all","class":"legacy-existing","sources":["robotgo.go","robotgo_nocgo_parity.go"],"canonical":{"existing":"IsMinimizedE"}},
+    {"name":"IsMinimizedE","variants":"all","class":"error-returning","sources":["robotgo.go","robotgo_nocgo_parity.go"]},
+    {"name":"IsTopMost","variants":"all","class":"legacy-existing","sources":["robotgo.go","robotgo_nocgo_parity.go"],"canonical":{"existing":"IsTopMostE"}},
+    {"name":"IsTopMostE","variants":"all","class":"error-returning","sources":["robotgo.go","robotgo_nocgo_parity.go"]},
+    {"name":"IsValid","variants":"all","class":"variant-dependent","sources":["robotgo.go","robotgo_nocgo_parity.go"],"classificationByVariant":{"cgo":"raw-status","purego":"legacy-existing"},"canonical":{"existing":"GetActiveE (Pure-Go active-window check)","native":"CGO raw validity probe; selection side effects retained"},"note":"Pure-Go hides active-window errors; CGO raw bool may mutate native selection. Do not equate the two."},
+    {"name":"KeyboardReady","variants":"all","class":"error-returning","sources":["key.go","robotgo_nocgo.go"]},
+    {"name":"KeyDown","variants":"all","class":"error-returning","sources":["key.go","robotgo_nocgo.go"]},
+    {"name":"KeyPress","variants":"all","class":"error-returning","sources":["key.go","robotgo_nocgo.go"]},
+    {"name":"KeyTap","variants":"all","class":"error-returning","sources":["key.go","robotgo_nocgo.go"]},
+    {"name":"KeyToggle","variants":"all","class":"error-returning","sources":["key.go","robotgo_nocgo.go"]},
+    {"name":"KeyToggleImmediate","variants":"all","class":"error-returning","sources":["key.go","robotgo_nocgo.go"]},
+    {"name":"KeyUp","variants":"all","class":"error-returning","sources":["key.go","robotgo_nocgo.go"]},
+    {"name":"Kill","variants":"all","class":"error-returning","sources":["ps.go"]},
+    {"name":"LastBackend","variants":"all","class":"observation","sources":["robotgo.go","robotgo_nocgo_capture.go"]},
+    {"name":"Location","variants":"all","class":"legacy-existing","sources":["robotgo.go","robotgo_nocgo.go"],"canonical":{"existing":"LocationE"}},
+    {"name":"LocationE","variants":"all","class":"error-returning","sources":["robotgo.go","robotgo_nocgo.go"]},
+    {"name":"MaxWindow","variants":"all","class":"legacy-existing","sources":["robotgo.go","robotgo_nocgo.go"],"canonical":{"existing":"MaxWindowE"}},
+    {"name":"MaxWindowE","variants":"all","class":"error-returning","sources":["robotgo.go","robotgo_nocgo_parity.go"]},
+    {"name":"MicroSleep","variants":"all","class":"pure","sources":["robotgo.go","robotgo_nocgo_parity.go"]},
+    {"name":"MilliSleep","variants":"all","class":"pure","sources":["robotgo.go","robotgo_nocgo.go"]},
+    {"name":"MinWindow","variants":"all","class":"legacy-existing","sources":["robotgo.go","robotgo_nocgo.go"],"canonical":{"existing":"MinWindowE"}},
+    {"name":"MinWindowE","variants":"all","class":"error-returning","sources":["robotgo.go","robotgo_nocgo_parity.go"]},
+    {"name":"MouseClick","variants":"all","class":"legacy-existing","sources":["robotgo_fn_v1.go","robotgo_nocgo_parity.go"],"canonical":{"existing":"ClickE"}},
+    {"name":"MouseDown","variants":"all","class":"error-returning","sources":["robotgo.go","robotgo_nocgo_parity.go"]},
+    {"name":"MouseReady","variants":"all","class":"error-returning","sources":["robotgo.go","robotgo_nocgo.go"]},
+    {"name":"MouseUp","variants":"all","class":"error-returning","sources":["robotgo.go","robotgo_nocgo_parity.go"]},
+    {"name":"Move","variants":"all","class":"legacy-existing","sources":["robotgo.go","robotgo_nocgo.go"],"canonical":{"existing":"MoveE"}},
+    {"name":"MoveArgs","variants":"all","class":"legacy-existing","sources":["robotgo.go","robotgo_nocgo_parity.go"],"canonical":{"existing":"LocationE + coordinate addition"}},
+    {"name":"MoveClick","variants":"all","class":"legacy-planned","sources":["robotgo.go","robotgo_nocgo_parity.go"],"canonical":{"planned":"MoveClickE"}},
+    {"name":"MoveE","variants":"all","class":"error-returning","sources":["robotgo.go","robotgo_nocgo.go"]},
+    {"name":"MoveImmediateE","variants":"all","class":"error-returning","sources":["robotgo.go","robotgo_nocgo.go"]},
+    {"name":"MoveMouse","variants":"all","class":"legacy-existing","sources":["robotgo_fn_v1.go","robotgo_nocgo_parity.go"],"canonical":{"existing":"MoveE"}},
+    {"name":"MoveMouseSmooth","variants":"all","class":"legacy-planned","sources":["robotgo_fn_v1.go","robotgo_nocgo_parity.go"],"canonical":{"planned":"MoveSmoothE"}},
+    {"name":"MoveRelative","variants":"all","class":"legacy-existing","sources":["robotgo.go","robotgo_nocgo.go"],"canonical":{"existing":"MoveRelativeE"}},
+    {"name":"MoveRelativeE","variants":"all","class":"error-returning","sources":["robotgo.go","robotgo_nocgo.go"]},
+    {"name":"MoveScale","variants":"all","class":"legacy-planned","sources":["robotgo.go","robotgo_nocgo_parity.go"],"canonical":{"planned":"ScaleFE + existing coordinate conversion (CGO); identity (Pure-Go)"}},
+    {"name":"MovesClick","variants":"all","class":"legacy-planned","sources":["robotgo.go","robotgo_nocgo_parity.go"],"canonical":{"planned":"MovesClickE"}},
+    {"name":"MoveSmooth","variants":"all","class":"legacy-planned","sources":["robotgo.go","robotgo_nocgo.go"],"canonical":{"planned":"MoveSmoothE"}},
+    {"name":"MoveSmoothRelative","variants":"all","class":"legacy-planned","sources":["robotgo.go","robotgo_nocgo.go"],"canonical":{"planned":"MoveSmoothRelativeE"}},
+    {"name":"Mul","variants":"all","class":"legacy-planned","sources":["robotgo_fn_v1.go","robotgo_nocgo_parity.go"],"canonical":{"planned":"SysScaleE or ScaleFE + variant-specific arithmetic"}},
+    {"name":"MultiClick","variants":"all","class":"error-returning","sources":["upstream_compat.go"]},
+    {"name":"NewBitmap","variants":"all","class":"error-returning","sources":["bitmap_common.go"]},
+    {"name":"OpenImg","variants":"all","class":"error-returning","sources":["img.go"]},
+    {"name":"PadHex","variants":"all","class":"raw-status","sources":["robotgo.go","robotgo_nocgo.go"],"nativeTypes":"cgo-only; manifest declarations and aliases are authoritative"},
+    {"name":"PadHexs","variants":"all","class":"pure","sources":["robotgo.go","robotgo_nocgo_parity.go"],"nativeTypes":"cgo-only; manifest declarations and aliases are authoritative"},
+    {"name":"Paste","variants":"all","class":"error-returning","sources":["upstream_compat.go"]},
+    {"name":"PasteStr","variants":"all","class":"error-returning","sources":["key.go","robotgo_nocgo.go"]},
+    {"name":"PidExists","variants":"all","class":"error-returning","sources":["ps.go"]},
+    {"name":"Pids","variants":"all","class":"error-returning","sources":["ps.go"]},
+    {"name":"Process","variants":"all","class":"error-returning","sources":["ps.go"]},
+    {"name":"Read","variants":"all","class":"error-returning","sources":["img.go"]},
+    {"name":"ReadAll","variants":"all","class":"error-returning","sources":["key.go","robotgo_nocgo.go"]},
+    {"name":"ReadAllContext","variants":"all","class":"error-returning","sources":["clipboard_context.go"]},
+    {"name":"RemoteDesktopInputReady","variants":"all","class":"error-returning","sources":["remote_desktop_input.go"]},
+    {"name":"RemoteDesktopInputRestoreToken","variants":"all","class":"observation","sources":["remote_desktop_input_stream.go"]},
+    {"name":"RemoteDesktopInputStreams","variants":"all","class":"error-returning","sources":["remote_desktop_input_stream.go"]},
+    {"name":"RemoteDesktopTouchDown","variants":"all","class":"error-returning","sources":["remote_desktop_input_stream.go"]},
+    {"name":"RemoteDesktopTouchMotion","variants":"all","class":"error-returning","sources":["remote_desktop_input_stream.go"]},
+    {"name":"RemoteDesktopTouchUp","variants":"all","class":"error-returning","sources":["remote_desktop_input_stream.go"]},
+    {"name":"ResolveWindowHandleE","variants":"all","class":"error-returning","sources":["robotgo_linux.go","robotgo_linux_x11.go","robotgo_mac_win.go","robotgo_nocgo.go"]},
+    {"name":"RGBAToBitmap","variants":"all","class":"legacy-existing","sources":["img.go"],"canonical":{"existing":"RGBAToBitmapE"}},
+    {"name":"RGBAToBitmapE","variants":"all","class":"error-returning","sources":["img.go"]},
+    {"name":"RgbToHex","variants":"all","class":"pure","sources":["robotgo.go","robotgo_nocgo.go"],"nativeTypes":"cgo-only; manifest declarations and aliases are authoritative"},
+    {"name":"Run","variants":"all","class":"error-returning","sources":["ps.go"]},
+    {"name":"Save","variants":"all","class":"error-returning","sources":["img.go"]},
+    {"name":"SaveCapture","variants":"all","class":"error-returning","sources":["screen.go"]},
+    {"name":"SaveCaptureGo","variants":"all","class":"error-returning","sources":["upstream_compat.go"]},
+    {"name":"SaveImg","variants":"all","class":"error-returning","sources":["img.go"]},
+    {"name":"SaveJpeg","variants":"all","class":"error-returning","sources":["img.go"]},
+    {"name":"SavePng","variants":"all","class":"error-returning","sources":["img.go"]},
+    {"name":"Scale0","variants":"all","class":"legacy-planned","sources":["robotgo_fn_v1.go","robotgo_nocgo_parity.go"],"canonical":{"planned":"SysScaleE or ScaleFE + variant-specific arithmetic"}},
+    {"name":"Scale1","variants":"all","class":"legacy-planned","sources":["robotgo_fn_v1.go","robotgo_nocgo_parity.go"],"canonical":{"planned":"SysScaleE or ScaleFE + variant-specific arithmetic"}},
+    {"name":"Scaled","variants":"all","class":"legacy-planned","sources":["robotgo.go","robotgo_nocgo_parity.go"],"canonical":{"planned":"ScaleFE + Scaled0"}},
+    {"name":"Scaled0","variants":"all","class":"pure","sources":["robotgo.go","robotgo_nocgo_parity.go"]},
+    {"name":"Scaled1","variants":"all","class":"pure","sources":["robotgo.go","robotgo_nocgo_parity.go"]},
+    {"name":"ScaleF","variants":"all","class":"legacy-planned","sources":["robotgo_mac_unix.go","robotgo_win.go"],"canonical":{"planned":"ScaleFE"}},
+    {"name":"ScaleX","variants":"all","class":"legacy-planned","sources":["robotgo.go","robotgo_nocgo_parity.go"],"canonical":{"planned":"SysScaleE (global X DPI on CGO Windows), ScaleFE(-2) (desktop HWND on Pure-Go Windows) + existing DPI arithmetic"}},
+    {"name":"ScreenCastCaptureReady","variants":"all","class":"error-returning","sources":["screencast_capture.go"]},
+    {"name":"ScreenCastCaptureRestoreToken","variants":"all","class":"observation","sources":["screencast_capture.go"]},
+    {"name":"ScreenCastCaptureStreams","variants":"all","class":"error-returning","sources":["screencast_capture.go"]},
+    {"name":"Scroll","variants":"all","class":"legacy-existing","sources":["robotgo.go","robotgo_nocgo.go"],"canonical":{"existing":"ScrollE"}},
+    {"name":"ScrollDir","variants":"all","class":"legacy-existing","sources":["robotgo.go","robotgo_nocgo.go"],"canonical":{"existing":"ScrollE + documented direction mapping"}},
+    {"name":"ScrollE","variants":"all","class":"error-returning","sources":["robotgo.go","robotgo_nocgo.go"]},
+    {"name":"ScrollImmediateE","variants":"all","class":"error-returning","sources":["robotgo.go","robotgo_nocgo.go"]},
+    {"name":"ScrollRelative","variants":"all","class":"legacy-planned","sources":["robotgo.go","robotgo_nocgo_parity.go"],"canonical":{"planned":"ScrollRelativeE"}},
+    {"name":"ScrollSmooth","variants":"all","class":"legacy-planned","sources":["robotgo.go","robotgo_nocgo_parity.go"],"canonical":{"planned":"ScrollSmoothE"}},
+    {"name":"SendInput","variants":"windows","class":"raw-status","sources":["robotgo_win.go"]},
+    {"name":"SendMsg","variants":"windows","class":"raw-status","sources":["robotgo_win.go"]},
+    {"name":"SetActive","variants":"all","class":"legacy-existing","sources":["robotgo.go","robotgo_nocgo.go"],"canonical":{"existing":"SetActiveE"},"nativeTypes":"cgo-only; manifest declarations and aliases are authoritative"},
+    {"name":"SetActiveC","variants":"cgo","class":"legacy-existing","sources":["robotgo.go"],"canonical":{"existing":"SetActiveE + Handle conversion"},"nativeTypes":"cgo-only; manifest declarations and aliases are authoritative"},
+    {"name":"SetActiveE","variants":"all","class":"error-returning","sources":["robotgo.go","robotgo_nocgo.go"]},
+    {"name":"SetActiveWindow","variants":"windows","class":"raw-status","sources":["robotgo_win.go"]},
+    {"name":"SetDelay","variants":"all","class":"legacy-existing","sources":["key.go","robotgo_nocgo_parity.go"],"canonical":{"existing":"GetRuntimeConfig + SetRuntimeConfig"}},
+    {"name":"SetFocus","variants":"windows","class":"raw-status","sources":["robotgo_win.go"]},
+    {"name":"SetForeg","variants":"windows","class":"raw-status","sources":["robotgo_win.go"]},
+    {"name":"SetHandle","variants":"all","class":"legacy-planned","sources":["robotgo.go","robotgo_nocgo_parity.go"],"canonical":{"planned":"SelectWindowE"}},
+    {"name":"SetHandlePid","variants":"all","class":"legacy-planned","sources":["robotgo.go","robotgo_nocgo_parity.go"],"canonical":{"planned":"SelectWindowE"}},
+    {"name":"SetRuntimeConfig","variants":"all","class":"error-returning","sources":["runtime_config.go"]},
+    {"name":"SetTopMost","variants":"all","class":"legacy-existing","sources":["robotgo.go","robotgo_nocgo_parity.go"],"canonical":{"existing":"SetTopMostE"}},
+    {"name":"SetTopMostE","variants":"all","class":"error-returning","sources":["robotgo.go","robotgo_nocgo_parity.go"]},
+    {"name":"SetWaylandBackend","variants":"all","class":"observation","sources":["robotgo.go","robotgo_nocgo.go"]},
+    {"name":"SetXDisplayName","variants":"all","class":"error-returning","sources":["robotgo.go","robotgo_nocgo_parity.go"]},
+    {"name":"Sleep","variants":"all","class":"pure","sources":["robotgo.go","robotgo_nocgo.go"]},
+    {"name":"StartRemoteDesktopInput","variants":"all","class":"error-returning","sources":["remote_desktop_input.go"]},
+    {"name":"StartRemoteDesktopInputWithOptions","variants":"all","class":"error-returning","sources":["remote_desktop_input.go"]},
+    {"name":"StartScreenCastCapture","variants":"all","class":"error-returning","sources":["screencast_capture.go"]},
+    {"name":"StrToImg","variants":"all","class":"error-returning","sources":["img.go"]},
+    {"name":"SysScale","variants":"all","class":"legacy-planned","sources":["robotgo.go","robotgo_nocgo.go"],"canonical":{"planned":"SysScaleE"}},
+    {"name":"ToBitmap","variants":"all","class":"raw-status","sources":["robotgo.go","robotgo_nocgo.go"],"nativeTypes":"cgo-only; manifest declarations and aliases are authoritative"},
+    {"name":"ToByteImg","variants":"all","class":"legacy-planned","sources":["img.go"],"canonical":{"planned":"ToByteImgE"}},
+    {"name":"ToCBitmap","variants":"all","class":"legacy-existing","sources":["robotgo.go","robotgo_nocgo.go"],"canonical":{"existing":"ToCBitmapE"},"nativeTypes":"cgo-only; manifest declarations and aliases are authoritative"},
+    {"name":"ToCBitmapE","variants":"all","class":"error-returning","sources":["robotgo.go","robotgo_nocgo.go"],"nativeTypes":"cgo-only; manifest declarations and aliases are authoritative"},
+    {"name":"Toggle","variants":"all","class":"error-returning","sources":["robotgo.go","robotgo_nocgo.go"]},
+    {"name":"ToImage","variants":"all","class":"legacy-existing","sources":["robotgo.go","robotgo_nocgo.go"],"canonical":{"existing":"ToRGBAE"},"nativeTypes":"cgo-only; manifest declarations and aliases are authoritative"},
+    {"name":"ToInterfaces","variants":"all","class":"pure","sources":["key.go","robotgo_nocgo_parity.go"]},
+    {"name":"ToMMBitmapRef","variants":"cgo","class":"raw-status","sources":["robotgo.go"],"nativeTypes":"cgo-only; manifest declarations and aliases are authoritative"},
+    {"name":"ToMMRGBHex","variants":"cgo","class":"raw-status","sources":["robotgo.go"],"nativeTypes":"cgo-only; manifest declarations and aliases are authoritative"},
+    {"name":"ToRGBA","variants":"all","class":"legacy-existing","sources":["robotgo.go","robotgo_nocgo.go"],"canonical":{"existing":"ToRGBAE"},"nativeTypes":"cgo-only; manifest declarations and aliases are authoritative"},
+    {"name":"ToRGBAE","variants":"all","class":"error-returning","sources":["robotgo.go","robotgo_nocgo.go"],"nativeTypes":"cgo-only; manifest declarations and aliases are authoritative"},
+    {"name":"ToRGBAGo","variants":"all","class":"legacy-existing","sources":["img.go"],"canonical":{"existing":"ToRGBAGoE"}},
+    {"name":"ToRGBAGoE","variants":"all","class":"error-returning","sources":["img.go"]},
+    {"name":"ToStrBitmap","variants":"all","class":"error-returning","sources":["bitmap_common.go"]},
+    {"name":"ToStringImg","variants":"all","class":"legacy-planned","sources":["img.go"],"canonical":{"planned":"ToByteImgE + string conversion"}},
+    {"name":"ToStrings","variants":"all","class":"validation-loss","sources":["key.go","robotgo_nocgo_parity.go"],"canonical":{"planned":"ToStringsE (one strict checked conversion)"}},
+    {"name":"ToUC","variants":"all","class":"pure","sources":["key.go","robotgo_nocgo_parity.go"]},
+    {"name":"ToUint8p","variants":"all","class":"pure","sources":["img.go"]},
+    {"name":"Try","variants":"all","class":"pure","sources":["robotgo.go","robotgo_nocgo_parity.go"]},
+    {"name":"Type","variants":"all","class":"legacy-existing","sources":["upstream_compat.go"],"canonical":{"existing":"TypeStrE"}},
+    {"name":"TypeDelay","variants":"all","class":"legacy-existing","sources":["upstream_compat.go"],"canonical":{"existing":"TypeStrE + successful post-call sleep"}},
+    {"name":"TypeStr","variants":"all","class":"legacy-existing","sources":["key.go","robotgo_nocgo.go"],"canonical":{"existing":"TypeStrE"}},
+    {"name":"TypeStrDelay","variants":"all","class":"legacy-existing","sources":["key.go","robotgo_nocgo.go"],"canonical":{"existing":"TypeStrE + successful post-call sleep"}},
+    {"name":"TypeStrE","variants":"all","class":"error-returning","sources":["key.go","robotgo_nocgo.go"]},
+    {"name":"TypeStrImmediateE","variants":"all","class":"error-returning","sources":["key.go","robotgo_nocgo.go"]},
+    {"name":"TypeStringDelayed","variants":"all","class":"legacy-existing","sources":["robotgo_fn_v1.go","robotgo_nocgo_parity.go"],"canonical":{"existing":"TypeStrE + successful post-call sleep"}},
+    {"name":"U32ToHex","variants":"all","class":"pure","sources":["robotgo.go","robotgo_nocgo.go"],"nativeTypes":"cgo-only; manifest declarations and aliases are authoritative"},
+    {"name":"U8ToHex","variants":"all","class":"raw-status","sources":["robotgo.go","robotgo_nocgo.go"],"nativeTypes":"cgo-only; manifest declarations and aliases are authoritative"},
+    {"name":"UintToHex","variants":"all","class":"pure","sources":["robotgo.go","robotgo_nocgo_parity.go"],"nativeTypes":"cgo-only; manifest declarations and aliases are authoritative"},
+    {"name":"UnicodeType","variants":"all","class":"legacy-existing","sources":["key.go","robotgo_nocgo.go"],"canonical":{"existing":"UnicodeTypeE"}},
+    {"name":"UnicodeTypeE","variants":"all","class":"error-returning","sources":["key.go","robotgo_nocgo.go"]},
+    {"name":"Width","variants":"all","class":"pure","sources":["img.go"]},
+    {"name":"WriteAll","variants":"all","class":"error-returning","sources":["key.go","robotgo_nocgo.go"]},
+    {"name":"WriteAllContext","variants":"all","class":"error-returning","sources":["clipboard_context.go"]}
+  ]
+}
