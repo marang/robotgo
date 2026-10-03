@@ -87,10 +87,14 @@ bundle SHA-256, exact commit/tree/ref, six evidence documents, and 29-check
 manifest were independently reverified from the public release streams without
 persisting a local verification directory.
 
-That bundle remains immutable historical evidence. The public API and schema
-contract expanded afterward, so `v1.0.0-rc.2` must produce a new exact-tag
-six-cell bundle and 29-check manifest before its fresh stable qualification
-window can begin.
+That bundle remains historical evidence. The expanded public API and schema
+contract is re-frozen by
+[`v1.0.0-rc.2` Release Evidence run 37110542971](https://github.com/marang/robotgo/actions/runs/37110542971):
+all six snapshots and 29 checks passed on
+`60aa3a44522492a341e6d5b55df7a2fa99ef57b1`. Its public archive/checksum and
+each snapshot's exact tag, commit, tree, and run were independently verified.
+GitHub publication at `2026-10-03T08:41:23Z` starts the fresh seven-day stable
+qualification window, ending no earlier than `2026-10-10T08:41:23Z`.
 
 The preceding pre-API-freeze 28-check exact-candidate contract passes in
 [`Release Evidence` run 30272753885](https://github.com/marang/robotgo/actions/runs/30272753885)
@@ -101,6 +105,17 @@ multi-output bounds rows. This manual candidate evidence does not alter the
 immutable assets of an already published release.
 
 The latest published bundle is attached to
+[`v1.0.0-rc.2`](https://github.com/marang/robotgo/releases/tag/v1.0.0-rc.2):
+
+- [`robotgo-release-evidence-v1.0.0-rc.2-60aa3a445224.tar.gz`](https://github.com/marang/robotgo/releases/download/v1.0.0-rc.2/robotgo-release-evidence-v1.0.0-rc.2-60aa3a445224.tar.gz)
+- [`robotgo-release-evidence-v1.0.0-rc.2-60aa3a445224.tar.gz.sha256`](https://github.com/marang/robotgo/releases/download/v1.0.0-rc.2/robotgo-release-evidence-v1.0.0-rc.2-60aa3a445224.tar.gz.sha256)
+
+It records source commit `60aa3a44522492a341e6d5b55df7a2fa99ef57b1`, tree
+`873854b0d18d4b780a8fbbbfe835bc25fbadebdd`, tag ref `refs/tags/v1.0.0-rc.2`,
+and release run `37110542971`. The archive has SHA-256
+`e416ca7a980e19f3b25642fef33c6e964453384d366c5f628d4ccb6923a8f2b6`.
+
+The preceding published bundle remains attached to
 [`v1.0.0-rc.1`](https://github.com/marang/robotgo/releases/tag/v1.0.0-rc.1):
 
 - [`robotgo-release-evidence-v1.0.0-rc.1-281d8cee29d6.tar.gz`](https://github.com/marang/robotgo/releases/download/v1.0.0-rc.1/robotgo-release-evidence-v1.0.0-rc.1-281d8cee29d6.tar.gz)

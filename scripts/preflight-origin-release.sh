@@ -8,11 +8,9 @@ readonly git_bin="${ROBOTGO_RELEASE_GIT_BIN:-git}"
 readonly gh_bin="${ROBOTGO_RELEASE_GH_BIN:-gh}"
 readonly date_bin="${ROBOTGO_RELEASE_DATE_BIN:-date}"
 readonly stable_qualification_release="v1.0.0-rc.2"
-# Set these together in a reviewed follow-up after GitHub publishes the
-# immutable qualification release. Stable publication must fail closed until
-# the new seven-day boundary is known exactly.
-readonly stable_qualification_not_before=""
-readonly stable_qualification_not_before_epoch=""
+# GitHub published rc.2 at 2026-10-03T08:41:23Z. Require seven full days.
+readonly stable_qualification_not_before="2026-10-10T08:41:23Z"
+readonly stable_qualification_not_before_epoch="1791621683"
 
 usage() {
   printf 'usage: %s <tag> <40-character-origin-main-commit>\n' \
