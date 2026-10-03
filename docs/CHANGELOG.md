@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Release copied macOS display modes and Windows desktop device contexts after
+  native scale queries, including invalid-result paths. NULL handles and invalid
+  widths/DPI return the zero failure sentinel without division by zero; valid
+  scales, display-ID behavior, and existing `ScaleF` fallbacks are unchanged.
+
 ## RobotGo v1.0.1 — 2026-10-03
 
 Compatible maintenance of the v1.0.0 contract; no exported signatures, backend

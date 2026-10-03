@@ -169,6 +169,26 @@ blocking evidence for the consent-free macOS support rows only; they do not
 promote permission-granted capture, input mutation, or window control into the
 RC-supported scope.
 
+The default CGO suite compiles and runs both macOS and Windows scale branches
+against hermetic C platform mocks on every native CI runner. It includes the
+production scale header and checks normal/fractional scales, display-ID
+semantics, NULL handles, invalid widths/DPI, and exactly-once resource release
+over repeated success/failure calls. It never queries or captures the desktop;
+temporary executables are removed by test cleanup. The compiler comes from
+`go env CC`, including quoted arguments and compiler wrappers. Reproduce with:
+
+```bash
+go test -run '^TestNativeScale(C|CompilerCommand)$' -count=1 -v .
+```
+
+The fixture explicitly enables assertions even with `NDEBUG`; every harness
+compile supplies `-DNDEBUG` to guard against accidentally disabling its checks.
+
+Native `SysScale` returns zero for an unavailable macOS mode or invalid mode
+widths, and for unavailable Windows DCs or nonpositive DPI. Existing `ScaleF`
+fallback behavior remains unchanged; Windows `ScaleX` keeps its zero failure
+sentinel rather than synthesizing a 96-DPI result.
+
 Default Linux screen tests use hermetic portal fixtures rather than persisting
 the developer's real desktop. Portal regression tests require temporary
 screenshot files to be absent after successful decoding and after decode
