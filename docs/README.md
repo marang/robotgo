@@ -16,6 +16,10 @@ Use the following documents as the primary entry points:
 - [Public Go API compatibility](compatibility/public-api.md) for stable package
   discovery, platform/build-tag manifests, the blocking CI gate, and the
   intentional baseline-update policy.
+- [Strict interfaces and CGO decomposition plan](plan/strict-api-migration.md)
+  and its [complete root helper inventory](plan/strict-api-inventory.json) for
+  native ownership seams, compatibility-preserving decomposition, and checked
+  migration families across frozen build variants.
 - [Runtime Compatibility Matrix v1](compatibility/runtime-v1.md) and its
   [machine-readable contract](compatibility/runtime-v1.json) for the exact
   supported, evidence-pending, and not-claimed platform scopes.
