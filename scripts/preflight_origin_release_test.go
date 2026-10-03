@@ -26,6 +26,41 @@ func TestOriginReleasePreflight(t *testing.T) {
 	}{
 		{name: "clean authoritative origin"},
 		{
+			name: "patch after stable publication does not reopen RC clock",
+			tag:  "v1.0.1",
+			environment: map[string]string{
+				"FAKE_EXISTING_STABLE":     "1",
+				"FAKE_GITHUB_CLOCK_STATUS": "17",
+				"FAKE_DATE_STATUS":         "17",
+			},
+		},
+		{name: "multi-digit patch", tag: "v1.0.12"},
+		{
+			name: "local patch tag collision", tag: "v1.0.1",
+			environment: map[string]string{"FAKE_LOCAL_TAG": "v1.0.1"},
+			wantError:   "refusing existing local tag collision",
+		},
+		{
+			name: "origin patch tag collision", tag: "v1.0.1",
+			environment: map[string]string{"FAKE_ORIGIN_TAGS": releaseCommit + "\trefs/tags/v1.0.1\n"},
+			wantError:   "refusing existing authoritative origin tag",
+		},
+		{
+			name: "GitHub patch tag collision", tag: "v1.0.1",
+			environment: map[string]string{"FAKE_GITHUB_TAGS": "refs/tags/v1.0.1\n"},
+			wantError:   "refusing existing GitHub tag ref",
+		},
+		{
+			name: "GitHub patch release collision", tag: "v1.0.1",
+			environment: map[string]string{"FAKE_GITHUB_RELEASES": "v1.0.1\n"},
+			wantError:   "refusing existing GitHub release",
+		},
+		{
+			name:        "RC still rejects published stable",
+			environment: map[string]string{"FAKE_EXISTING_STABLE": "1"},
+			wantError:   "refusing existing authoritative origin tag",
+		},
+		{
 			name: "clean stable release at qualification boundary",
 			tag:  "v1.0.0",
 		},
@@ -221,6 +256,12 @@ func TestOriginReleasePreflightRejectsMalformedInputs(t *testing.T) {
 	for _, arguments := range [][]string{
 		{"v1.0.0-beta.3", releaseCommit},
 		{"v1.0.0-rc.0", releaseCommit},
+		{"v1.0.01", releaseCommit},
+		{"v1.0.1-rc.1", releaseCommit},
+		{"v1.0.1+build", releaseCommit},
+		{"v1.1.0", releaseCommit},
+		{"v2.0.0", releaseCommit},
+		{"v1.0.0-rc.01", releaseCommit},
 		{"v1.0.0-rc.2", "not-a-commit"},
 	} {
 		command := exec.Command("bash", append([]string{script}, arguments...)...)
@@ -257,6 +298,9 @@ case "$1" in
         printf '%s\trefs/heads/main\n' "${FAKE_MAIN_COMMIT}"
         ;;
       --tags)
+        if [[ "${FAKE_EXISTING_STABLE:-}" == "1" && " $* " == *" refs/tags/v1.0.0 "* ]]; then
+          printf '%s\trefs/tags/v1.0.0\n' "$FAKE_MAIN_COMMIT"
+        fi
         printf '%s' "${FAKE_ORIGIN_TAGS:-}"
         ;;
       *)
@@ -301,10 +345,18 @@ case "$2" in
     fi
     printf '\n'
     ;;
-  */git/matching-refs/tags/v1.0.0)
+  */git/matching-refs/tags/v1.0.)
+    [[ "$3" == "--paginate" && "$4" == "--jq" ]] || exit 2
+    if [[ "${FAKE_EXISTING_STABLE:-}" == "1" && "$5" == *'"refs/tags/v1.0.0"'* ]]; then
+      printf 'refs/tags/v1.0.0\n'
+    fi
     printf '%s' "${FAKE_GITHUB_TAGS:-}"
     ;;
   */releases?per_page=100)
+    [[ "$3" == "--paginate" && "$4" == "--jq" ]] || exit 2
+    if [[ "${FAKE_EXISTING_STABLE:-}" == "1" && "$5" == *'"v1.0.0"'* ]]; then
+      printf 'v1.0.0\n'
+    fi
     printf '%s' "${FAKE_GITHUB_RELEASES:-}"
     ;;
   *)

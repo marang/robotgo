@@ -257,7 +257,7 @@ implemented through Go image packages in the current module.
 Add this fork to a Go module:
 
 ```bash
-go get github.com/marang/robotgo@v1.0.0
+go get github.com/marang/robotgo@v1.0.1
 ```
 
 Use the explicit stable version to keep builds reproducible even when module
@@ -1743,6 +1743,7 @@ Real Wayland input results are tracked in the
 - [Testing guide](TEST.md)
 - [Runtime compatibility and exact support claims](docs/compatibility/runtime-v1.md)
 - [v1.0.0 install and migration notes](docs/releases/v1.0.0.md)
+- [v1.0.1 patch fixes and qualification](docs/releases/v1.0.1.md)
 - [Release evidence format and verification](docs/compatibility/release-evidence-v1.md)
 - [Upstream compatibility audit](docs/compatibility/upstream-master.md)
 - [X11 native-vs-Pure-Go evidence](docs/performance/x11-native-vs-purego.md)

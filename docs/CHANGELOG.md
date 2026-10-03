@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+## RobotGo v1.0.1 — 2026-10-03
+
+Compatible maintenance of the v1.0.0 contract; no exported signatures, backend
+defaults, agent schemas or support claims change. See the
+[patch release notes](releases/v1.0.1.md) for installation and fresh exact-source
+qualification requirements.
+
 - Hardened native Wayland capture against invalid compositor/GBM dimensions,
   short or oversized strides and allocation overflow. SHM mappings retain
   their actual length; selected buffer metadata cannot be overwritten by
