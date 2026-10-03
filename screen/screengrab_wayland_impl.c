@@ -100,6 +100,24 @@ int robotgo_wayland_pixel_to_bitmap_bgra(uint8_t *dst, const uint8_t *src,
 }
 #endif
 
+static inline size_t screencopy_pixel_offset(int height, int stride,
+                                             int x, int y, uint32_t flags) {
+  // Invert the full buffer row after logical cropping, not the cropped image.
+  int row = (flags & ZWLR_SCREENCOPY_FRAME_V1_FLAGS_Y_INVERT) != 0 ? height - 1 - y : y;
+  return (size_t)row * (size_t)stride + (size_t)x * 4;
+}
+
+#if defined(ROBOTGO_WAYLAND_TEST)
+int robotgo_wayland_buffer_pixel_to_bitmap_bgra(uint8_t *dst, const uint8_t *src,
+                                                uint32_t format, int using_dmabuf,
+                                                int height, int stride, int x,
+                                                int y, uint32_t flags) {
+  return screencopy_pixel_to_bitmap_bgra(
+      dst, src + screencopy_pixel_offset(height, stride, x, y, flags),
+      format, using_dmabuf);
+}
+#endif
+
 static int screencopy_pixel_format_supported(uint32_t format,
                                              int using_dmabuf) {
   uint8_t src[4] = {0};
@@ -708,6 +726,7 @@ struct capture {
   int failed;
   int using_dmabuf;
   uint32_t format;
+  uint32_t flags;
   int err_code;
 };
 
@@ -945,9 +964,9 @@ static void frame_buffer(void *data, struct zwlr_screencopy_frame_v1 *frame,
 
 static void frame_flags(void *data, struct zwlr_screencopy_frame_v1 *frame,
                         uint32_t flags) {
-  (void)data;
   (void)frame;
-  (void)flags;
+  struct capture *cap = data;
+  cap->flags = flags;
 }
 
 static void frame_damage(void *data, struct zwlr_screencopy_frame_v1 *frame,
@@ -1520,7 +1539,8 @@ MMBitmapRef capture_screen_wayland_impl(int32_t x, int32_t y, int32_t w,
   uint8_t *src = cap.data;
   for (int row = 0; row < h; ++row) {
     for (int col = 0; col < w; ++col) {
-      size_t sidx = (size_t)(row + y) * cap.stride + (size_t)(col + x) * 4;
+      size_t sidx = screencopy_pixel_offset(cap.height, cap.stride,
+                                             col + x, row + y, cap.flags);
       size_t didx = (size_t)row * stride + (size_t)col * 4;
       if (!screencopy_pixel_to_bitmap_bgra(rgba + didx, src + sidx,
                                            cap.format, cap.using_dmabuf)) {

@@ -813,12 +813,12 @@ void scrollMouseXY(int x, int y) {
 				}
 				if (x != 0) {
 					int steps = abs(x);
-					int sign = (x > 0) ? 1 : -1; /* positive x = scroll right */
+					int sign = (x > 0) ? 1 : -1; /* positive x = scroll left */
 					for (int i = 0; i < steps; i++) {
 						zwlr_virtual_pointer_v1_axis_source(rg_wl_vptr, WL_POINTER_AXIS_SOURCE_WHEEL);
-						wl_fixed_t val = wl_fixed_from_double(15.0 * sign);
+						wl_fixed_t val = wl_fixed_from_double(-15.0 * sign);
 						zwlr_virtual_pointer_v1_axis(rg_wl_vptr, 0, WL_POINTER_AXIS_HORIZONTAL_SCROLL, val);
-						zwlr_virtual_pointer_v1_axis_discrete(rg_wl_vptr, 0, WL_POINTER_AXIS_HORIZONTAL_SCROLL, val, 1 * sign);
+						zwlr_virtual_pointer_v1_axis_discrete(rg_wl_vptr, 0, WL_POINTER_AXIS_HORIZONTAL_SCROLL, val, -1 * sign);
 						zwlr_virtual_pointer_v1_frame(rg_wl_vptr);
 					}
 				}

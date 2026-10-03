@@ -5,6 +5,7 @@
 #include <fcntl.h>
 #include <stdint.h>
 #include <stdlib.h>
+#include <stdatomic.h>
 #include <string.h>
 #include <sys/mman.h>
 #include <sys/sysmacros.h>
@@ -12,12 +13,14 @@
 #include <wayland-server.h>
 #include "../../wlr-screencopy-unstable-v1-client-protocol.h"
 #include "../../linux-dmabuf-unstable-v1-server-protocol.h"
+#include "../../mouse/wlr-virtual-pointer-unstable-v1-client-protocol.h"
 
 #define ZWLR_SCREENCOPY_FRAME_V1_BUFFER 0
 #define ZWLR_SCREENCOPY_FRAME_V1_LINUX_DMABUF 5
 #define ZWLR_SCREENCOPY_FRAME_V1_BUFFER_DONE 6
 #define ZWLR_SCREENCOPY_FRAME_V1_READY 2
 #define ZWLR_SCREENCOPY_FRAME_V1_FAILED 3
+#define ZWLR_SCREENCOPY_FRAME_V1_FLAGS 1
 #define WL_BUFFER_RELEASE 0
 #define MOCK_DRM_FORMAT_ARGB8888 0x34325241u
 
@@ -25,13 +28,27 @@
 #define MOCK_MODE_STALL 1
 #define MOCK_MODE_FAIL_AFTER_DMABUF 2
 #define MOCK_MODE_REGISTRY_STALL 3
+#define MOCK_MODE_PIXELS 4
+#define MOCK_MODE_PIXELS_Y_INVERT 5
+#define MOCK_MODE_PIXELS_Y_INVERT_SCALE 6
+#define MOCK_MODE_POINTER 7
 
 static struct wl_display *mock_display;
 static dev_t mock_dev;
 static uint64_t mock_modifier;
 static int use_shm;
 static uint32_t mock_mode;
-static volatile int mock_stop_requested;
+static _Atomic int mock_stop_requested;
+static _Atomic uint32_t mock_pointer_frames;
+static _Atomic uint32_t mock_pointer_source_count;
+static _Atomic uint32_t mock_pointer_source;
+static _Atomic int32_t mock_pointer_axis[2];
+static _Atomic int32_t mock_pointer_discrete_value[2];
+static _Atomic int32_t mock_pointer_discrete[2];
+
+static int mock_has_pixels(void) {
+    return mock_mode >= MOCK_MODE_PIXELS && mock_mode <= MOCK_MODE_PIXELS_Y_INVERT_SCALE;
+}
 
 struct zwlr_screencopy_frame_v1_interface {
     void (*copy)(struct wl_client *, struct wl_resource *, struct wl_resource *);
@@ -46,6 +63,30 @@ struct zwlr_screencopy_manager_v1_interface {
 };
 
 static void frame_copy(struct wl_client *client, struct wl_resource *resource, struct wl_resource *buffer) {
+    if (mock_has_pixels()) {
+        struct wl_shm_buffer *shm_buffer = wl_shm_buffer_get(buffer);
+        if (!shm_buffer) {
+            wl_resource_post_event(resource, ZWLR_SCREENCOPY_FRAME_V1_FAILED);
+            return;
+        }
+        wl_shm_buffer_begin_access(shm_buffer);
+        uint8_t *pixels = wl_shm_buffer_get_data(shm_buffer);
+        int stride = wl_shm_buffer_get_stride(shm_buffer);
+        memset(pixels, 0xee, (size_t)stride * 4);
+        for (int y = 0; y < 4; y++) {
+            int row = mock_mode == MOCK_MODE_PIXELS ? y : 3 - y;
+            for (int x = 0; x < 4; x++) {
+                uint8_t *pixel = pixels + row * stride + x * 4;
+                pixel[0] = 73;
+                pixel[1] = 5 + x * 29;
+                pixel[2] = 17 + y * 31;
+                pixel[3] = 0xff;
+            }
+        }
+        wl_shm_buffer_end_access(shm_buffer);
+        wl_resource_post_event(resource, ZWLR_SCREENCOPY_FRAME_V1_FLAGS,
+            mock_mode == MOCK_MODE_PIXELS ? 0 : ZWLR_SCREENCOPY_FRAME_V1_FLAGS_Y_INVERT);
+    }
     wl_resource_post_event(resource, ZWLR_SCREENCOPY_FRAME_V1_READY, 0, 0, 0);
     wl_resource_post_event(buffer, WL_BUFFER_RELEASE);
     wl_display_flush_clients(mock_display);
@@ -80,7 +121,11 @@ static void handle_capture_output(struct wl_client *client, struct wl_resource *
         return;
     }
     if (use_shm) {
-        wl_resource_post_event(frame, ZWLR_SCREENCOPY_FRAME_V1_BUFFER, WL_SHM_FORMAT_ARGB8888, 64, 64, 256);
+        if (mock_has_pixels()) {
+            wl_resource_post_event(frame, ZWLR_SCREENCOPY_FRAME_V1_BUFFER, WL_SHM_FORMAT_ARGB8888, 4, 4, 24);
+        } else {
+            wl_resource_post_event(frame, ZWLR_SCREENCOPY_FRAME_V1_BUFFER, WL_SHM_FORMAT_ARGB8888, 64, 64, 256);
+        }
     } else {
         wl_resource_post_event(frame, ZWLR_SCREENCOPY_FRAME_V1_LINUX_DMABUF, MOCK_DRM_FORMAT_ARGB8888, 64, 64);
     }
@@ -176,7 +221,92 @@ static void bind_dmabuf(struct wl_client *client, void *data, uint32_t version, 
 static void bind_output(struct wl_client *client, void *data, uint32_t version, uint32_t id) {
     struct wl_resource *res = wl_resource_create(client, &wl_output_interface, 2, id);
     wl_resource_set_implementation(res, NULL, NULL, NULL);
+    if (mock_has_pixels() || mock_mode == MOCK_MODE_POINTER) {
+        int size = mock_has_pixels() ? 4 : 64;
+        wl_output_send_geometry(res, 0, 0, 0, 0, WL_OUTPUT_SUBPIXEL_UNKNOWN,
+            "robotgo", "synthetic", WL_OUTPUT_TRANSFORM_NORMAL);
+        wl_output_send_mode(res, WL_OUTPUT_MODE_CURRENT, size, size, 60000);
+        wl_output_send_scale(res, mock_mode == MOCK_MODE_PIXELS_Y_INVERT_SCALE ? 2 : 1);
+        wl_output_send_done(res);
+    }
 }
+
+struct zwlr_virtual_pointer_v1_interface {
+    void (*motion)(struct wl_client *, struct wl_resource *, uint32_t, wl_fixed_t, wl_fixed_t);
+    void (*motion_absolute)(struct wl_client *, struct wl_resource *, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t);
+    void (*button)(struct wl_client *, struct wl_resource *, uint32_t, uint32_t, uint32_t);
+    void (*axis)(struct wl_client *, struct wl_resource *, uint32_t, uint32_t, wl_fixed_t);
+    void (*frame)(struct wl_client *, struct wl_resource *);
+    void (*axis_source)(struct wl_client *, struct wl_resource *, uint32_t);
+    void (*axis_stop)(struct wl_client *, struct wl_resource *, uint32_t, uint32_t);
+    void (*axis_discrete)(struct wl_client *, struct wl_resource *, uint32_t, uint32_t, wl_fixed_t, int32_t);
+    void (*destroy)(struct wl_client *, struct wl_resource *);
+};
+
+struct zwlr_virtual_pointer_manager_v1_interface {
+    void (*create_virtual_pointer)(struct wl_client *, struct wl_resource *, struct wl_resource *, uint32_t);
+    void (*destroy)(struct wl_client *, struct wl_resource *);
+    void (*create_virtual_pointer_with_output)(struct wl_client *, struct wl_resource *, struct wl_resource *, struct wl_resource *, uint32_t);
+};
+
+static void mock_pointer_axis_request(struct wl_client *client, struct wl_resource *resource,
+                                     uint32_t time, uint32_t axis, wl_fixed_t value) {
+    if (axis < 2) atomic_store(&mock_pointer_axis[axis], value);
+}
+
+static void mock_pointer_discrete_request(struct wl_client *client, struct wl_resource *resource,
+                                         uint32_t time, uint32_t axis, wl_fixed_t value, int32_t discrete) {
+    if (axis < 2) {
+        atomic_store(&mock_pointer_discrete_value[axis], value);
+        atomic_store(&mock_pointer_discrete[axis], discrete);
+    }
+}
+
+static void mock_pointer_source_request(struct wl_client *client, struct wl_resource *resource, uint32_t source) {
+    atomic_store(&mock_pointer_source, source);
+    atomic_fetch_add(&mock_pointer_source_count, 1);
+}
+
+static void mock_pointer_frame_request(struct wl_client *client, struct wl_resource *resource) {
+    atomic_fetch_add(&mock_pointer_frames, 1);
+}
+
+static const struct zwlr_virtual_pointer_v1_interface mock_pointer_impl = {
+    .axis = mock_pointer_axis_request,
+    .frame = mock_pointer_frame_request,
+    .axis_source = mock_pointer_source_request,
+    .axis_discrete = mock_pointer_discrete_request,
+    .destroy = frame_destroy,
+};
+
+static void mock_create_pointer(struct wl_client *client, struct wl_resource *resource,
+                                struct wl_resource *seat, uint32_t id) {
+    struct wl_resource *pointer = wl_resource_create(client, &zwlr_virtual_pointer_v1_interface, 1, id);
+    wl_resource_set_implementation(pointer, &mock_pointer_impl, NULL, NULL);
+}
+
+static const struct zwlr_virtual_pointer_manager_v1_interface mock_pointer_manager_impl = {
+    .create_virtual_pointer = mock_create_pointer,
+    .destroy = frame_destroy,
+};
+
+static void bind_pointer_manager(struct wl_client *client, void *data, uint32_t version, uint32_t id) {
+    struct wl_resource *resource = wl_resource_create(client, &zwlr_virtual_pointer_manager_v1_interface, 1, id);
+    wl_resource_set_implementation(resource, &mock_pointer_manager_impl, NULL, NULL);
+}
+
+static void bind_pointer_seat(struct wl_client *client, void *data, uint32_t version, uint32_t id) {
+    struct wl_resource *resource = wl_resource_create(client, &wl_seat_interface, 1, id);
+    wl_resource_set_implementation(resource, NULL, NULL, NULL);
+    wl_seat_send_capabilities(resource, WL_SEAT_CAPABILITY_POINTER);
+}
+
+uint32_t mock_pointer_frame_count(void) { return atomic_load(&mock_pointer_frames); }
+uint32_t mock_pointer_axis_source_count(void) { return atomic_load(&mock_pointer_source_count); }
+uint32_t mock_pointer_axis_source(void) { return atomic_load(&mock_pointer_source); }
+int32_t mock_pointer_axis_value(uint32_t axis) { return atomic_load(&mock_pointer_axis[axis]); }
+int32_t mock_pointer_axis_discrete_value(uint32_t axis) { return atomic_load(&mock_pointer_discrete_value[axis]); }
+int32_t mock_pointer_axis_discrete_count(uint32_t axis) { return atomic_load(&mock_pointer_discrete[axis]); }
 
 static void shm_pool_destroy(struct wl_client *client, struct wl_resource *resource) {
     wl_resource_destroy(resource);
@@ -215,6 +345,14 @@ void run_mock_server_mode(const char *socket, uint32_t maj, uint32_t min, uint64
     mock_modifier = modifier;
     mock_mode = mode;
     mock_stop_requested = 0;
+    atomic_store(&mock_pointer_frames, 0);
+    atomic_store(&mock_pointer_source_count, 0);
+    atomic_store(&mock_pointer_source, UINT32_MAX);
+    for (int axis = 0; axis < 2; axis++) {
+        atomic_store(&mock_pointer_axis[axis], 0);
+        atomic_store(&mock_pointer_discrete_value[axis], 0);
+        atomic_store(&mock_pointer_discrete[axis], 0);
+    }
     use_shm = (maj == 0 && min == 0 && modifier == 0);
     mock_display = wl_display_create();
     wl_display_add_socket(mock_display, socket);
@@ -222,16 +360,30 @@ void run_mock_server_mode(const char *socket, uint32_t maj, uint32_t min, uint64
     if (!use_shm) {
         wl_global_create(mock_display, &zwp_linux_dmabuf_v1_interface, 4, NULL, bind_dmabuf);
     } else {
-        wl_global_create(mock_display, &wl_shm_interface, 1, NULL, bind_shm);
+        if (mock_has_pixels()) {
+            wl_display_init_shm(mock_display);
+        } else {
+            wl_global_create(mock_display, &wl_shm_interface, 1, NULL, bind_shm);
+        }
+    }
+    if (mock_mode == MOCK_MODE_POINTER) {
+        wl_global_create(mock_display, &wl_seat_interface, 1, NULL, bind_pointer_seat);
+        wl_global_create(mock_display, &zwlr_virtual_pointer_manager_v1_interface, 1, NULL, bind_pointer_manager);
     }
     wl_global_create(mock_display, &zwlr_screencopy_manager_v1_interface, 3, NULL, bind_screencopy_manager);
     if (mock_mode == MOCK_MODE_REGISTRY_STALL) {
         while (!mock_stop_requested) {
             usleep(1000);
         }
+    } else if (mock_mode == MOCK_MODE_POINTER) {
+        while (!mock_stop_requested) {
+            wl_event_loop_dispatch(wl_display_get_event_loop(mock_display), 10);
+            wl_display_flush_clients(mock_display);
+        }
     } else {
         wl_display_run(mock_display);
     }
+    wl_display_destroy_clients(mock_display);
     wl_display_destroy(mock_display);
     mock_display = NULL;
 }
@@ -242,6 +394,9 @@ void run_mock_server(const char *socket, uint32_t maj, uint32_t min, uint64_t mo
 
 void stop_mock_server(void) {
     mock_stop_requested = 1;
+    if (mock_mode == MOCK_MODE_POINTER) {
+        return;
+    }
     if (mock_display) {
         wl_display_terminate(mock_display);
     }
