@@ -17,6 +17,7 @@ func TestMainKeyPreservesExtendedFlag(t *testing.T) {
 		{"delete", true}, {"num/", true}, {"num_lock", true},
 		{"audio_play", true}, {"num_enter", true},
 		{"a", false}, {"enter", false}, {"num1", false}, {"num_clear", false},
+		{"pause_break", false},
 	} {
 		t.Run(test.key, func(t *testing.T) {
 			system := &fakeSystem{}
@@ -76,6 +77,49 @@ func TestExtendedMainKeyCleanupKeepsIdentity(t *testing.T) {
 			}
 			if len(backend.ownedKeys) != 0 {
 				t.Fatal("cleanup retained owned key")
+			}
+		})
+	}
+}
+
+func TestPauseCleanupKeepsNonExtendedScanMetadata(t *testing.T) {
+	for _, cleanup := range []string{"release", "close", "rollback"} {
+		t.Run(cleanup, func(t *testing.T) {
+			system := &fakeSystem{}
+			backend := newFakeBackend(system, nil)
+			if cleanup == "rollback" {
+				injectionErr := errors.New("partial Pause tap")
+				system.sendPlan = []sendResult{{inserted: 1, err: injectionErr}, {inserted: 1}}
+				if err := backend.Key(KeyEvent{Key: "pause_break", Tap: true}); !errors.Is(err, injectionErr) {
+					t.Fatalf("tap error = %v", err)
+				}
+			} else {
+				if err := backend.Key(KeyEvent{Key: "pause_break", Down: true}); err != nil {
+					t.Fatal(err)
+				}
+				var err error
+				if cleanup == "close" {
+					err = backend.Close()
+				} else {
+					err = backend.Key(KeyEvent{Key: "pause_break"})
+				}
+				if err != nil {
+					t.Fatal(err)
+				}
+			}
+			if len(system.sends) != 2 || len(backend.ownedKeys) != 0 {
+				t.Fatal("Pause cleanup retained ownership or emitted extra transactions")
+			}
+			for _, transaction := range system.sends {
+				prepared := withPhysicalScanCodes(transaction, func(uint16) uint16 { return 0x45 })
+				for _, record := range prepared {
+					if event := decodeKeyboard(record); event.VirtualKey != vkPause || event.ScanCode != 0x45 || event.Flags&^keyEventKeyUp != 0 {
+						t.Fatalf("Pause physical event = %+v", event)
+					}
+				}
+			}
+			if event := decodeKeyboard(system.sends[1][0]); event.Flags != keyEventKeyUp {
+				t.Fatalf("Pause cleanup flags = %#x", event.Flags)
 			}
 		})
 	}

@@ -219,8 +219,9 @@ func trackedMouseInput(flags uint32, data int32) trackedInput {
 }
 
 func extendedVirtualKey(key uint16) bool {
+	// KEYEVENTF_EXTENDEDKEY denotes E0, not Pause's special E1 sequence.
 	switch key {
-	case vkRControl, vkSnapshot, vkRMenu, vkPause,
+	case vkRControl, vkSnapshot, vkRMenu,
 		vkHome, vkUp, vkPrior, vkLeft, vkRight, vkEnd, vkDown, vkNext,
 		vkInsert, vkDelete, vkLWin, vkRWin, vkApps, vkDivide, vkNumLock,
 		vkVolumeMute, vkVolumeDown, vkVolumeUp,
