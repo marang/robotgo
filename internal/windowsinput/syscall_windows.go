@@ -33,6 +33,8 @@ const (
 	shiftStateShift   = 1
 	shiftStateControl = 2
 	shiftStateAlt     = 4
+
+	mapVirtualKeyToScanCode = 0
 )
 
 const (
@@ -41,6 +43,7 @@ const (
 	vkMButton        = 0x04
 	vkBack           = 0x08
 	vkTab            = 0x09
+	vkClear          = 0x0c
 	vkReturn         = 0x0d
 	vkShift          = 0x10
 	vkControl        = 0x11
@@ -148,6 +151,23 @@ func keyboardRecord(virtualKey, scanCode uint16, flags uint32) inputRecord {
 	return record
 }
 
+// withPhysicalScanCodes adds hardware metadata without changing virtual-key
+// injection or the UTF-16 units carried in Unicode input records. Translate at
+// the system boundary so ordinary, cleanup and rollback events all use it.
+func withPhysicalScanCodes(records []inputRecord, scanCode func(uint16) uint16) []inputRecord {
+	prepared := append([]inputRecord(nil), records...)
+	for index := range prepared {
+		if prepared[index].Type != inputKeyboard {
+			continue
+		}
+		keyboard := (*keyboardInput)(unsafe.Pointer(&prepared[index].Payload))
+		if keyboard.Flags&keyEventUnicode == 0 && keyboard.VirtualKey != 0 {
+			keyboard.ScanCode = scanCode(keyboard.VirtualKey)
+		}
+	}
+	return prepared
+}
+
 func trackedKeyInput(key uint16, down bool) trackedInput {
 	return trackedKeyInputExtended(key, down, extendedVirtualKey(key))
 }
@@ -199,8 +219,9 @@ func trackedMouseInput(flags uint32, data int32) trackedInput {
 }
 
 func extendedVirtualKey(key uint16) bool {
+	// KEYEVENTF_EXTENDEDKEY denotes E0, not Pause's special E1 sequence.
 	switch key {
-	case vkRControl, vkSnapshot, vkRMenu, vkPause,
+	case vkRControl, vkSnapshot, vkRMenu,
 		vkHome, vkUp, vkPrior, vkLeft, vkRight, vkEnd, vkDown, vkNext,
 		vkInsert, vkDelete, vkLWin, vkRWin, vkApps, vkDivide, vkNumLock,
 		vkVolumeMute, vkVolumeDown, vkVolumeUp,
@@ -230,6 +251,7 @@ type win32System struct {
 	getWindowThreadProcessID *windows.LazyProc
 	getKeyboardLayout        *windows.LazyProc
 	vkKeyScanExW             *windows.LazyProc
+	mapVirtualKeyW           *windows.LazyProc
 }
 
 func newWin32System() *win32System {
@@ -243,6 +265,7 @@ func newWin32System() *win32System {
 		getWindowThreadProcessID: user32.NewProc("GetWindowThreadProcessId"),
 		getKeyboardLayout:        user32.NewProc("GetKeyboardLayout"),
 		vkKeyScanExW:             user32.NewProc("VkKeyScanExW"),
+		mapVirtualKeyW:           user32.NewProc("MapVirtualKeyW"),
 	}
 }
 
@@ -263,6 +286,7 @@ func (system *win32System) KeyboardReady() error {
 		system.getWindowThreadProcessID,
 		system.getKeyboardLayout,
 		system.vkKeyScanExW,
+		system.mapVirtualKeyW,
 	)
 }
 
@@ -281,6 +305,12 @@ func (system *win32System) SendInput(records []inputRecord) (int, error) {
 	if len(records) == 0 {
 		return 0, nil
 	}
+	records = withPhysicalScanCodes(records, func(key uint16) uint16 {
+		code, _, _ := system.mapVirtualKeyW.Call(uintptr(key), mapVirtualKeyToScanCode)
+		// Zero means this virtual key has no hardware translation; retain the
+		// virtual-key event, as in the CGO backend, rather than fabricating one.
+		return uint16(code)
+	})
 	inserted, _, callErr := system.sendInput.Call(
 		uintptr(len(records)),
 		uintptr(unsafe.Pointer(&records[0])),

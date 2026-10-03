@@ -8,6 +8,10 @@ package robotgo
 
 int robotgo_wayland_pixel_to_bitmap_bgra(uint8_t *dst, const uint8_t *src,
                                          uint32_t format, int using_dmabuf);
+int robotgo_wayland_buffer_pixel_to_bitmap_bgra(uint8_t *dst, const uint8_t *src,
+                                                uint32_t format, int using_dmabuf,
+                                                int height, int stride, int x,
+                                                int y, uint32_t flags);
 
 #define ROBOTGO_WL_SHM_FORMAT_ARGB8888 0
 #define ROBOTGO_WL_SHM_FORMAT_XRGB8888 1
@@ -30,6 +34,10 @@ const (
 )
 
 func testWaylandPixelToBitmapBGRA(format int, usingDMABuf bool, src [4]byte) ([4]byte, bool) {
+	return testWaylandBufferPixelToBitmapBGRA(format, usingDMABuf, src[:], 1, 4, 0, 0, 0)
+}
+
+func testWaylandBufferPixelToBitmapBGRA(format int, usingDMABuf bool, src []byte, height, stride, x, y int, flags uint32) ([4]byte, bool) {
 	var cFormat C.uint32_t
 	switch format {
 	case testWaylandFormatARGB:
@@ -67,11 +75,12 @@ func testWaylandPixelToBitmapBGRA(format int, usingDMABuf bool, src [4]byte) ([4
 	}
 
 	var dst [4]byte
-	ok := C.robotgo_wayland_pixel_to_bitmap_bgra(
+	ok := C.robotgo_wayland_buffer_pixel_to_bitmap_bgra(
 		(*C.uint8_t)(&dst[0]),
 		(*C.uint8_t)(&src[0]),
 		cFormat,
 		C.int(boolToInt(usingDMABuf)),
+		C.int(height), C.int(stride), C.int(x), C.int(y), C.uint32_t(flags),
 	)
 	return dst, ok != 0
 }

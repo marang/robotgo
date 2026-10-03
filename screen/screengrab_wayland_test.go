@@ -22,6 +22,10 @@ const (
 	mockModeStall           = 1
 	mockModeFailAfterDmabuf = 2
 	mockModeRegistryStall   = 3
+	mockModePixels          = 4
+	mockModePixelsYInvert   = 5
+	mockModePixelsYScale    = 6
+	mockModePointer         = 7
 )
 
 func cleanupMockServer(t *testing.T, done <-chan struct{}) {
@@ -128,6 +132,89 @@ func TestScreencopyWlShm(t *testing.T) {
 		t.Fatalf("backend = %q, want %q", got, robotgo.BackendScreencopy)
 	}
 
+}
+
+func TestScreencopyYInvertPreservesLogicalCrop(t *testing.T) {
+	for _, test := range []struct {
+		name   string
+		mode   uint32
+		region [4]int
+		want   [4]int
+	}{
+		{"normal full", mockModePixels, [4]int{0, 0, 4, 4}, [4]int{0, 0, 4, 4}},
+		{"inverted full", mockModePixelsYInvert, [4]int{0, 0, 4, 4}, [4]int{0, 0, 4, 4}},
+		{"inverted upper crop", mockModePixelsYInvert, [4]int{1, 0, 2, 2}, [4]int{1, 0, 2, 2}},
+		{"inverted lower crop", mockModePixelsYInvert, [4]int{1, 2, 2, 2}, [4]int{1, 2, 2, 2}},
+		{"inverted scaled crop", mockModePixelsYScale, [4]int{0, 1, 1, 1}, [4]int{0, 2, 2, 2}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			dir := t.TempDir()
+			const socket = "robotgo-wl-pixels"
+			t.Setenv("XDG_RUNTIME_DIR", dir)
+			t.Setenv("WAYLAND_DISPLAY", socket)
+			t.Setenv("DISPLAY", "")
+			t.Setenv("ROBOTGO_DISABLE_PORTAL", "1")
+			robotgo.SetWaylandBackend(robotgo.WaylandBackendWlShm)
+			t.Cleanup(func() { robotgo.SetWaylandBackend(robotgo.WaylandBackendAuto) })
+			done := make(chan struct{})
+			startMockServerMode(socket, 0, 0, 0, test.mode, done)
+			t.Cleanup(func() { cleanupMockServer(t, done) })
+			waitForMockServer(t, dir, socket)
+			img, err := robotgo.CaptureImg(test.region[:]...)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if img.Bounds().Dx() != test.want[2] || img.Bounds().Dy() != test.want[3] {
+				t.Fatalf("capture size = %v, want %dx%d", img.Bounds(), test.want[2], test.want[3])
+			}
+			for y := 0; y < test.want[3]; y++ {
+				for x := 0; x < test.want[2]; x++ {
+					want := color.RGBA{R: uint8(17 + (y+test.want[1])*31), G: uint8(5 + (x+test.want[0])*29), B: 73, A: 0xff}
+					if got := color.RGBAModel.Convert(img.At(x, y)); got != want {
+						t.Fatalf("pixel (%d,%d) = %v, want %v", x, y, got, want)
+					}
+				}
+			}
+		})
+	}
+}
+
+func TestNativeWaylandScrollDirections(t *testing.T) {
+	dir := t.TempDir()
+	const socket = "robotgo-wl-scroll"
+	t.Setenv("XDG_RUNTIME_DIR", dir)
+	t.Setenv("WAYLAND_DISPLAY", socket)
+	t.Setenv("DISPLAY", "")
+	done := make(chan struct{})
+	startMockServerMode(socket, 0, 0, 0, mockModePointer, done)
+	t.Cleanup(func() {
+		robotgo.CloseWaylandInput()
+		stopMockServer()
+		cleanupMockServer(t, done)
+	})
+	waitForMockServer(t, dir, socket)
+	for index, test := range []struct {
+		direction string
+		axis      uint32
+		discrete  int32
+	}{
+		{"left", 1, -1}, {"right", 1, 1}, {"up", 0, -1}, {"down", 0, 1},
+	} {
+		robotgo.ScrollDir(1, test.direction)
+		deadline := time.Now().Add(time.Second)
+		for mockPointerFrameCount() < uint32(index+1) && time.Now().Before(deadline) {
+			time.Sleep(time.Millisecond)
+		}
+		if got := mockPointerFrameCount(); got != uint32(index+1) {
+			t.Fatalf("%s frames = %d, want %d", test.direction, got, index+1)
+		}
+		sourceCount, source, value, discreteValue, discrete := mockPointerScroll(test.axis)
+		const wheelSource = 0
+		const fixedWheelStep = 15 * 256
+		if sourceCount != uint32(index+1) || source != wheelSource || value != test.discrete*fixedWheelStep || discreteValue != value || discrete != test.discrete {
+			t.Errorf("%s scroll = source(count=%d,value=%d), axis=%d, discrete(value=%d,count=%d); want wheel, value=%d, count=%d", test.direction, sourceCount, source, value, discreteValue, discrete, test.discrete*fixedWheelStep, test.discrete)
+		}
+	}
 }
 
 func TestScreencopyBitmapStringHelper(t *testing.T) {

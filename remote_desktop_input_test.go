@@ -669,17 +669,36 @@ func TestPortalModifiedKeyPreservesModifiersAcrossToggle(t *testing.T) {
 
 func TestPortalKeysymForRune(t *testing.T) {
 	tests := []struct {
-		value rune
-		want  int32
+		value   rune
+		want    int32
+		wantErr bool
 	}{
 		{value: 'a', want: 0x61},
 		{value: 'é', want: 0xe9},
 		{value: '\n', want: 0xff0d},
+		{value: '\r', want: 0xff0d},
+		{value: '\t', want: 0xff09},
+		{value: '\b', want: 0xff08},
+		{value: 0x1b, want: 0xff1b},
 		{value: '€', want: 0x010020ac},
 		{value: '😀', want: 0x0101f600},
+		{value: 0, wantErr: true},
+		{value: 0x1f, wantErr: true},
+		{value: 0x7f, wantErr: true},
+		{value: 0x9f, wantErr: true},
+		{value: -1, wantErr: true},
+		{value: 0xd800, wantErr: true},
+		{value: 0xdfff, wantErr: true},
+		{value: 0x110000, wantErr: true},
 	}
 	for _, test := range tests {
 		got, err := portalKeysymForRune(test.value)
+		if test.wantErr {
+			if err == nil || got != 0 {
+				t.Fatalf("portalKeysymForRune(%U) = (%#x, %v), want (0, error)", test.value, got, err)
+			}
+			continue
+		}
 		if err != nil {
 			t.Fatalf("portalKeysymForRune(%U) error: %v", test.value, err)
 		}
@@ -787,6 +806,33 @@ func TestRemoteDesktopTargetStreamMultiOutput(t *testing.T) {
 			}
 			if test.wantErr == nil && (stream.NodeID != test.wantNode || x != test.wantX || y != test.wantY) {
 				t.Fatalf("target = (node=%d x=%g y=%g), want (node=%d x=%g y=%g)", stream.NodeID, x, y, test.wantNode, test.wantX, test.wantY)
+			}
+		})
+	}
+}
+
+func TestRemoteDesktopMoveRejectsUnmappedTargetsWithoutInjection(t *testing.T) {
+	monitors := []inputportal.Stream{
+		{NodeID: 10, Position: inputportal.Point{X: 0, Y: 0}, HasPosition: true, Size: inputportal.Size{Width: 1000, Height: 1000}, HasSize: true},
+		{NodeID: 20, Position: inputportal.Point{X: 1500, Y: 0}, HasPosition: true, Size: inputportal.Size{Width: 1000, Height: 1000}, HasSize: true},
+	}
+	for _, test := range []struct {
+		name    string
+		streams []inputportal.Stream
+		wantErr error
+	}{
+		{name: "monitor hole", streams: monitors, wantErr: inputportal.ErrStreamNotFound},
+		{name: "no selected streams", wantErr: inputportal.ErrScreenCastRequired},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			session := installFakeHighLevelPortalSession(t, inputportal.DevicePointer)
+			session.streams = test.streams
+			used, err := tryRemoteDesktopMoveAbsolute(1200, 50, nil)
+			if !used || !errors.Is(err, test.wantErr) {
+				t.Fatalf("absolute portal move = (%t, %v), want (true, %v)", used, err, test.wantErr)
+			}
+			if events, _ := session.snapshot(); len(events) != 0 {
+				t.Fatalf("rejected absolute move injected events: %v", events)
 			}
 		})
 	}

@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+- Adapted compatible fixes from upstream `go-vgo/robotgo` through `12f16b7c`:
+  Pure-Go Windows physical-key scan metadata, extended main-key flags,
+  caller-sided modifier deduplication and `NumClear`; native Wayland
+  screencopy `YInvert` handling; and left-positive horizontal scrolling on
+  native Wayland and high-level portal paths. Public signatures, explicit
+  consent/observation contracts and backend selection remain unchanged. See
+  the [upstream compatibility audit](compatibility/upstream-master.md) for
+  retained differences and separately tracked hardening follow-ups.
+
 ## RobotGo v1.0.0 — 2026-10-03
 
 Promotes the reviewed `v1.0.0-rc.2` API and evidence-backed platform contract

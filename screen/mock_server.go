@@ -26,3 +26,12 @@ func startMockServerMode(socket string, maj, min uint32, modifier uint64, mode u
 func stopMockServer() {
 	C.stop_mock_server()
 }
+
+func mockPointerFrameCount() uint32 { return uint32(C.mock_pointer_frame_count()) }
+
+func mockPointerScroll(axis uint32) (sourceCount, source uint32, value, discreteValue, discrete int32) {
+	return uint32(C.mock_pointer_axis_source_count()), uint32(C.mock_pointer_axis_source()),
+		int32(C.mock_pointer_axis_value(C.uint32_t(axis))),
+		int32(C.mock_pointer_axis_discrete_value(C.uint32_t(axis))),
+		int32(C.mock_pointer_axis_discrete_count(C.uint32_t(axis)))
+}
