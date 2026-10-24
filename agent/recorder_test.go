@@ -527,7 +527,7 @@ func TestRecordedFlowGoldenArtifactsAndCompileWithoutExecution(t *testing.T) {
 	}
 	command := exec.Command("go", "test", "-mod=mod", "./...")
 	command.Dir = directory
-	command.Env = append(os.Environ(), "GOWORK=off", "GOTOOLCHAIN=go1.26.0")
+	command.Env = append(os.Environ(), "GOWORK=off", "GOTOOLCHAIN=go1.26.10")
 	if output, err := command.CombinedOutput(); err != nil {
 		t.Fatalf("generated flow did not compile: %v\n%s", err, output)
 	}
