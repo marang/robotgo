@@ -11,6 +11,8 @@ Use the following documents as the primary entry points:
   exact-evidence gates.
 - [v1.0.0 notes](releases/v1.0.0.md) for installation,
   support-scope, migration, privacy, and final tag-evidence requirements.
+- [v1.0.2 maintenance notes](releases/v1.0.2.md) for scale-resource cleanup,
+  CGO ownership decomposition and dependency updates.
 - [v1.0.1 patch notes](releases/v1.0.1.md) for compatible upstream and capture
   fixes, unchanged support limits, and fresh patch-release evidence requirements.
 - [Public Go API compatibility](compatibility/public-api.md) for stable package
