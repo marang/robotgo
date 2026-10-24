@@ -119,7 +119,7 @@ func TestPublishedReleaseEvidenceCannotReplaceExistingAssets(t *testing.T) {
 		t.Fatal("release evidence publish job does not define steps")
 	}
 	const allowedSteps = `    steps:
-      - uses: actions/download-artifact@v8
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: release-evidence-bundle
           path: bundle
