@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+## RobotGo v1.0.2 — 2026-10-24
+
+Compatible maintenance of the v1 contract with Go 1.26.10 as the minimum
+toolchain. See the [maintenance notes](releases/v1.0.2.md) for installation,
+unchanged runtime scope and exact-source qualification requirements.
+
+- Separate internal CGO facades, policy and ownership without changing public
+  declarations or legacy sequencing.
+- Refresh dependencies and enable automated dependency/vulnerability checks;
+  preserve the legacy image representation with `imgo` 0.42.0.
+
 - Release copied macOS display modes and Windows desktop device contexts after
   native scale queries, including invalid-result paths. NULL handles and invalid
   widths/DPI return the zero failure sentinel without division by zero; valid
