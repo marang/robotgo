@@ -52,8 +52,8 @@ github.com/tklauser/numcpus v0.12.0 h1:NR85qdvHA9pFse3x3weVZ0r0ST8R6l5RHbZrlRaqo
 github.com/tklauser/numcpus v0.12.0/go.mod h1:ABHeXzJnr/qqwguhClkZKT1/8VABcYrsyUiUGobwWJg=
 github.com/vcaesar/gops v0.43.0 h1:eLVW23wWPS6l4B1bGl23H/PqOWsDkvIVXcFsBTe+5Lo=
 github.com/vcaesar/gops v0.43.0/go.mod h1:9dBd+u6TlR6QK/4/HHXKbMwPbwFEGCcSuB22UrK4VKQ=
-github.com/vcaesar/imgo v0.42.0 h1:zG9SE/zztBwlIFezIEoh20OWxsgFtGCbjEGXRZEgOrA=
-github.com/vcaesar/imgo v0.42.0/go.mod h1:CjEx26ptY/UNPeUaDvUMU/HDzRkIXJHH5n07tehw7wg=
+github.com/vcaesar/imgo v0.44.0 h1:1tPy/laqRJj2kkfygOO+IXEIUR5TePjOD8lVQS0UpYw=
+github.com/vcaesar/imgo v0.44.0/go.mod h1:xzDs0v/VmZK1cFwESxWsq5478OPS2TxOZabdqjTCMZo=
 github.com/vcaesar/keycode v0.20.0 h1:rad6LotibCYlwnWUSna+5JTTaiVlfiQMELfVw5wod+w=
 github.com/vcaesar/keycode v0.20.0/go.mod h1:JNlY7xbKsh+LAGfY2j4M3znVrGEm5W1R8s/Uv6BJcfQ=
 github.com/vcaesar/screenshot v0.40.0 h1:Xq6EuYIYTxayIrpvY8yHMWnpwa3/XlPZKG8+12znzB0=
