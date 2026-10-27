@@ -13,14 +13,26 @@ package robotgo
 
 import (
 	"context"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"image"
 	"image/png"
 	"os"
+	"strings"
 	"unsafe"
 
 	"github.com/vcaesar/imgo"
+)
+
+const (
+	imageFormatJPEG = "jpeg"
+	imageFormatPNG  = "png"
+	imageFormatGIF  = "gif"
+	imageFormatBMP  = "bmp"
+	imageFormatTIFF = "tiff"
+
+	legacyImageEncodingPadding = 1024
 )
 
 // DecodeImg decode the image to image.Image and return
@@ -35,12 +47,41 @@ func OpenImg(path string) ([]byte, error) {
 
 // Read read the file return image.Image
 func Read(path string) (image.Image, error) {
-	return imgo.Read(path)
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = f.Close() }() // Preserve the legacy close-error behavior.
+	return imgo.Decode(f, legacyImagePathFormat(path))
 }
 
 // Save create a image file with the image.Image
 func Save(img image.Image, path string, quality ...int) error {
-	return imgo.Save(path, img, quality...)
+	f, err := os.Create(path)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = f.Close() }() // Preserve the legacy close-error behavior.
+	return imgo.Encode(f, img, legacyImagePathFormat(path), quality...)
+}
+
+// Keep imgo 0.42's case-sensitive last-dot parsing, including bare relative
+// format names. Upstream 0.44 uses filepath.Ext and accepts additional aliases.
+func legacyImagePathFormat(path string) string {
+	format := path[strings.LastIndexByte(path, '.')+1:]
+	if !isLegacyImageFormat(format) {
+		return ""
+	}
+	return format
+}
+
+func isLegacyImageFormat(format string) bool {
+	switch format {
+	case imageFormatJPEG, imageFormatPNG, imageFormatGIF, imageFormatBMP, imageFormatTIFF:
+		return true
+	default:
+		return false
+	}
 }
 
 // SaveImg save the image by []byte
@@ -58,12 +99,31 @@ func SaveJpeg(img image.Image, path string, quality ...int) error {
 	return imgo.SaveToJpeg(path, img, quality...)
 }
 
-// ToByteImg convert image.Image to []byte
+// ToByteImg serializes an image as standard Base64 with legacy trailing zero bytes.
+// The default format is JPEG at quality 70; explicit formats are jpeg, png, gif,
+// bmp and tiff. Only the first format is used. Encoding failure returns nil.
 func ToByteImg(img image.Image, fm ...string) []byte {
-	return imgo.ToByte(img, fm...)
+	format := imageFormatJPEG
+	if len(fm) > 0 {
+		format = fm[0]
+	}
+	if !isLegacyImageFormat(format) {
+		return nil
+	}
+	encoded, err := imgo.ToBytes(img, format)
+	if err != nil {
+		return nil
+	}
+	// imgo 0.44 removed its oversized envelope. RobotGo owns this legacy contract
+	// independently of upstream allocation changes; the suffix is zero bytes,
+	// not additional Base64 '=' padding.
+	result := make([]byte, base64.RawStdEncoding.EncodedLen(len(encoded)+legacyImageEncodingPadding))
+	base64.StdEncoding.Encode(result, encoded)
+	return result
 }
 
-// ToStringImg convert image.Image to string
+// ToStringImg returns the exact ToByteImg representation as a string, including
+// its trailing zero bytes. Encoding failure returns an empty string.
 func ToStringImg(img image.Image, fm ...string) string {
 	return string(ToByteImg(img, fm...))
 }
