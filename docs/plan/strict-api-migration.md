@@ -143,9 +143,14 @@ permission, cancellation, and cleanup causes; joined failures retain all causes.
 | `ToByteImgE` | `ToByteImg`, `ToStringImg` | Propagate encoder errors with existing format/default representation |
 | `ToStringsE` | `ToStrings` | One checked conversion; reject non-string input without silent nil |
 
-The pinned image serializer defaults to JPEG quality 70 and returns standard
+RobotGo's legacy image serializer defaults to JPEG quality 70 and returns standard
 base64 in an oversized, trailing-zero-padded buffer, not raw encoded image
-bytes. Its synthetic characterization freezes that existing representation;
+bytes. RobotGo owns this envelope independently of imgo's allocation behavior,
+including with imgo 0.44. Only `jpeg`, `png`, `gif`, `bmp` and `tiff` are accepted;
+new upstream aliases do not silently broaden the legacy contract.
+`Read` and `Save` likewise retain case-sensitive, last-dot filename parsing,
+including bare relative format names, while delegating encoding/decoding to imgo.
+Its synthetic characterization freezes that existing representation;
 the future checked interface must preserve it or separately review an
 intentional representation change.
 
