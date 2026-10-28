@@ -35,6 +35,20 @@ It is safe to run from an interactive developer session: real desktop
 mutation is excluded unless the explicit integration tag and environment gate
 are both enabled.
 
+Windows clipboard transaction/ownership fixtures run hermetically on every host:
+
+```bash
+go test -race ./clipboard -run '^TestWindowsClipboard'
+```
+
+They cover allocation-bounded UTF-16 (including text larger than the former
+million-unit limit), malformed input, cancellation and failed native operations.
+On Windows the same default package suite also checks thread affinity, Win32
+last-error conventions and private message-only window creation/destruction;
+those checks do not open or change the clipboard. Live text roundtrips remain
+behind `desktopintegration` and the explicit disposable-desktop gate described
+above; Linux fixtures/cross-compilation do not claim live Windows evidence.
+
 On a disposable, self-owned native Windows desktop, the protected Windows job
 also runs pointer and capture behavior with cleanup enabled:
 
