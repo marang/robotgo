@@ -30,6 +30,14 @@ Notes:
 * Text string only
 * UTF-8 text encoding only (no conversion)
 
+Windows transactions stay on one OS thread. Reads are bounded by the native
+allocation and require terminated UTF-16; unavailable text is an error, distinct
+from an empty string. Writes reject embedded NUL and prepare storage before
+clearing the old clipboard. A private message-only window owns each eager write
+and is destroyed after closing the clipboard. Cancellation is checked before
+publication; once clearing begins, a failure cannot restore arbitrary prior
+clipboard formats. Cleanup failures are returned alongside the original error.
+
 TODO:
 
 * Clipboard watcher(?)

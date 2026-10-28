@@ -376,6 +376,12 @@ temporary-file cleanup. With `-tags ocr`, cancellation is observed before and
 after the synchronous in-process Tesseract call; that native call cannot itself
 be interrupted.
 
+Windows clipboard reads validate allocation-bounded, terminated UTF-16. Writes
+reject embedded NUL before changing the clipboard and prepare storage before
+clearing prior content; cancellation is checked before publication. Cleanup
+errors are returned, and an unavailable text format remains an error rather
+than a successful empty string. See [clipboard details](clipboard/README.md).
+
 ## Linux display backends
 
 ### X11
