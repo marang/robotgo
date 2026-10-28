@@ -322,6 +322,15 @@ backend may support a single non-ASCII rune directly (the RemoteDesktop portal
 and Pure-Go X11 do), while another native keymap can return `ErrNotSupported`.
 Use `TypeStrE` or `UnicodeTypeE` when the intent is text input.
 
+CGO macOS and Windows text input preserves supplementary Unicode characters
+using UTF-16 surrogate pairs. macOS event creation and Windows event/message
+submission failures are returned by the checked APIs. Windows keeps failed
+Unicode key releases owned after a partial `SendInput`; later Unicode input or
+`CloseMainDisplayE` retries them before sending new text. Existing macOS PID
+and Windows PID/HWND text targeting remain available; an unresolved Windows
+target fails instead of posting to RobotGo's own queue. Successful submission
+does not confirm that the target application processed the text.
+
 On native Linux, native Windows, and RemoteDesktop portal paths, stateful
 `KeyDown`/`KeyUp` pairs are backend- and session-affine; pointer holds provide
 the same contract where supported. Equivalent key aliases such as

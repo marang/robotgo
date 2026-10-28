@@ -2139,6 +2139,8 @@ static inline int robotgo_wayland_type_codepoints(const uint32_t *values,
 	}
 #endif
 
+#include "unicode_c.h"
+
 int toggleKeyCode(MMKeyCode code, const bool down, MMKeyFlags flags, uintptr pid) {
 #if defined(IS_MACOSX)
 	/* The media keys all have 1000 added to them to help us detect them. */
@@ -2266,6 +2268,8 @@ int robotgo_x11_release_owned_keys(void) {
 	}
 	X_SYNC_KEYBOARD_GENERATION();
 	return X_RELEASE_ALL_OWNED_KEYS(display);
+#elif defined(IS_WINDOWS)
+	return ROBOTGO_WIN32_RELEASE_OWNED_UNICODE();
 #else
 	return ROBOTGO_KEY_OK;
 #endif
@@ -2373,60 +2377,14 @@ int robotgo_x11_type_text(const char *text, uint64_t delay_ms) {
 // 	toggleKey(c, false, flags);
 // }
 
-#if defined(IS_MACOSX)
-	void toggleUnicode(UniChar ch, const bool down, uintptr pid) {
-		/* This function relies on the convenient CGEventKeyboardSetUnicodeString(), 
-		convert characters to a keycode, but does not support adding modifier flags. 
-		It is only used in typeString().
-		-- if you need modifier keys, use the above functions instead. */
-		CGEventSourceRef source = CGEventSourceCreate(kCGEventSourceStateHIDSystemState);
-		CGEventRef keyEvent = CGEventCreateKeyboardEvent(source, 0, down);
-		if (keyEvent == NULL) {
-			fputs("Could not create keyboard event.\n", stderr);
-			return;
-		}
-
-		CGEventKeyboardSetUnicodeString(keyEvent, 1, &ch);
-
-		SendTo(pid, keyEvent);
-		CFRelease(source);
-	}
-#else
+#if !defined(IS_MACOSX)
 	#define toggleUniKey(c, down) toggleKey(c, down, MOD_NONE, 0)
 #endif
 
 // unicode type
 int unicodeType(const unsigned value, uintptr pid, int8_t isPid) {
-	#if defined(IS_MACOSX)
-		UniChar ch = (UniChar)value; // Convert to unsigned char
-
-		toggleUnicode(ch, true, pid);
-		microsleep(5.0);
-		toggleUnicode(ch, false, pid);
-		return ROBOTGO_KEY_OK;
-	#elif defined(IS_WINDOWS)
-		if (pid != 0) {
-			HWND hwnd = getHwnd(pid, isPid);
-
-			// SendMessage(hwnd, down, value, 0);
-			PostMessageW(hwnd, WM_CHAR, value, 0);
-			return ROBOTGO_KEY_OK;
-		}
-
-		INPUT input[2];
-        memset(input, 0, sizeof(input));
-
-        input[0].type = INPUT_KEYBOARD;
-  		input[0].ki.wVk = 0;
-  		input[0].ki.wScan = value;
-  		input[0].ki.dwFlags = 0x4; // KEYEVENTF_UNICODE;
-
-  		input[1].type = INPUT_KEYBOARD;
-  		input[1].ki.wVk = 0;
-  		input[1].ki.wScan = value;
-  		input[1].ki.dwFlags = KEYEVENTF_KEYUP | 0x4; // KEYEVENTF_UNICODE;
-
-		return SendInput(2, input, sizeof(INPUT)) == 2 ? ROBOTGO_KEY_OK : ROBOTGO_KEY_INJECTION_FAILED;
+	#if defined(IS_MACOSX) || defined(IS_WINDOWS)
+		return ROBOTGO_NATIVE_UNICODE_TYPE(value, pid, isPid);
         #elif defined(IS_LINUX)
 #ifdef ROBOTGO_USE_WAYLAND
                 if (robotgo_wayland_keyboard_backend_selected()) {

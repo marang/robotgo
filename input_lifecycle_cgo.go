@@ -31,9 +31,9 @@ func SetXDisplayName(name string) error {
 // compatibility. Prefer CloseMainDisplayE in new code.
 func CloseMainDisplay() { _ = CloseMainDisplayE() }
 
-// CloseMainDisplayE releases RobotGo-owned native mouse holds and X11 keys,
-// then closes the native main display. Failed mouse releases remain owned so a
-// later call can retry them.
+// CloseMainDisplayE releases RobotGo-owned native mouse holds, X11 keys, and
+// residual Windows Unicode input, then closes the native main display. Failed
+// mouse and Windows Unicode releases remain owned so a later call can retry.
 func CloseMainDisplayE() error {
 	unlockMouse := lockLinuxMouse()
 	defer unlockMouse()

@@ -212,12 +212,14 @@ func syncWaylandKeyboardForTest() int {
 }
 
 // releaseNativeX11KeyboardOwnershipLocked releases RobotGo-owned XTEST keys
-// before the shared display connection is closed or retargeted. The caller
-// holds linuxKeyboardMu followed by nativeX11DisplayMu.
+// before the shared display connection is closed or retargeted. On Windows the
+// same existing C cleanup seam retries partial Unicode input releases. Linux
+// callers hold linuxKeyboardMu followed by nativeX11DisplayMu; Windows uses the
+// native keyboard ownership lock.
 func releaseNativeX11KeyboardOwnershipLocked() error {
 	return nativeKeyStatusError(
 		C.robotgo_x11_release_owned_keys(),
-		"release owned X11 keys",
+		"release owned native keyboard input",
 	)
 }
 
