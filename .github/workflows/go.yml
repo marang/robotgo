@@ -139,12 +139,16 @@ jobs:
       - name: Run golangci-lint for Pure-Go build
         run: CGO_ENABLED=0 golangci-lint run --timeout=5m ./...
   test:
-    # name: build
+    # Keep the protected context while pinning the ARM64 macOS image.
+    name: test (${{ matrix.os }})
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macOS-latest, windows-latest]
-    runs-on: ${{ matrix.os }}
+        include:
+          - os: macOS-latest
+            runner: macos-15
+    runs-on: ${{ matrix.runner || matrix.os }}
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

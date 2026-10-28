@@ -10,8 +10,10 @@ func TestMacOSWorkflowKeepsARM64CoverageOnOneRunner(t *testing.T) {
 	workflow := readWorkflow(t, "../.github/workflows/go.yml")
 	native := macOSWorkflowSection(t, workflow, "  test:\n", "  nocgo:\n")
 	for _, required := range []string{
+		"name: test (${{ matrix.os }})",
 		"os: [ubuntu-latest, macOS-latest, windows-latest]",
-		"runs-on: ${{ matrix.os }}",
+		"- os: macOS-latest\n            runner: macos-15",
+		"runs-on: ${{ matrix.runner || matrix.os }}",
 		"run: go build -v .",
 		"run: go test -v ./...",
 		"go run ./internal/cmd/apicompat -variant darwin-cgo",
