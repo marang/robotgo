@@ -18,7 +18,9 @@ Platforms:
 
 * OSX
 * Windows 7 (probably work on other Windows)
-* Linux, Unix (requires 'xclip' or 'xsel' command to be installed)
+* Linux, Unix: Wayland sessions (`WAYLAND_DISPLAY` set) require both `wl-copy`
+  and `wl-paste`; writes require wl-clipboard 2.3.0 or newer. Outside Wayland,
+  the existing `xclip`-then-`xsel` command selection is retained.
 
 
 Document: 
@@ -29,6 +31,21 @@ Notes:
 
 * Text string only
 * UTF-8 text encoding only (no conversion)
+* `ReadAllContext` and `WriteAllContext` accept `SelectionClipboard` or
+  `SelectionPrimary` without changing the deprecated global `Primary` default.
+  A missing helper, unsupported selection, or failed Wayland operation returns
+  an error without falling back to X11 or another selection.
+* Wayland writes check the helper version before transferring text through
+  stdin, preserve newline bytes, and clean an invocation-owned private spool
+  directory on success, failure, and cancellation. Older or unrecognized copy
+  helpers are rejected. Cleanup errors are reported and terminate the owner.
+* A successful `wl-copy` background owner intentionally survives the call and
+  later context cancellation, retaining its open, unlinked storage until
+  ownership ends. Legacy calls keep their five-second timeout; context calls
+  honor the caller's context, with version probing capped at five seconds.
+* The opt-in [clipboard example](../examples/clipboard/main.go) demonstrates
+  regular/primary access. The [testing guide](../TEST.md) documents hermetic
+  fixtures and a separately gated, newly created headless-Sway runtime test.
 
 Windows transactions stay on one OS thread. Reads are bounded by the native
 allocation and require terminated UTF-16; unavailable text is an error, distinct
