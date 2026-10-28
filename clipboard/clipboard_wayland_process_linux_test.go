@@ -22,7 +22,8 @@ while [ ! -f "$ROBOTGO_CLIPBOARD_TEST_ROOT/request" ]; do /bin/sleep 0.01; done
 /bin/cat <&3 > "$ROBOTGO_CLIPBOARD_TEST_ROOT/owner-result"
 exec /bin/sleep 30
 ) </dev/null >/dev/null &
-printf '%s %s' "$$" "$!" > "$ROBOTGO_CLIPBOARD_TEST_ROOT/processes"
+printf '%s %s' "$$" "$!" > "$ROBOTGO_CLIPBOARD_TEST_ROOT/processes.tmp"
+/bin/mv "$ROBOTGO_CLIPBOARD_TEST_ROOT/processes.tmp" "$ROBOTGO_CLIPBOARD_TEST_ROOT/processes"
 `
 
 func waylandTestProcessRecord(directory string) (group, child int, err error) {

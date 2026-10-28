@@ -49,7 +49,8 @@ func TestRunWithCleanupFinalizesEveryOutcome(t *testing.T) {
 			backend := writeTestCommand(t, `#!/bin/sh
 /bin/sleep 30 </dev/null >/dev/null 2>&1 &
 child=$!
-printf '%s %s' "$$" "$child" > "$ROBOTGO_COMMAND_TEST_PGID"
+printf '%s %s' "$$" "$child" > "$ROBOTGO_COMMAND_TEST_PGID.tmp"
+/bin/mv "$ROBOTGO_COMMAND_TEST_PGID.tmp" "$ROBOTGO_COMMAND_TEST_PGID"
 case "$ROBOTGO_COMMAND_TEST_OUTCOME" in
   'command failure') exit 7 ;;
   cancellation) wait ;;
