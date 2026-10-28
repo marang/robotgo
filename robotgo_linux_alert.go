@@ -3,9 +3,15 @@
 package robotgo
 
 import (
+	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os/exec"
+	"strings"
+	"syscall"
+
+	commandpkg "github.com/marang/robotgo/internal/command"
 )
 
 const (
@@ -18,6 +24,9 @@ const (
 	linuxAlertDialogCancelExit   = 1
 	linuxAlertXMessageCancelExit = 2
 )
+
+// xmessage treats comma and colon as button separators and backslash as escape.
+var escapeLinuxAlertXMessageLabel = strings.NewReplacer(`\`, `\\`, `,`, `\,`, `:`, `\:`).Replace
 
 // Alert shows a simple alert dialog and preserves the legacy bool-only API.
 // Use AlertE when backend failures must be distinguished from user rejection.
@@ -48,7 +57,7 @@ func AlertE(title, msg string, args ...string) (bool, error) {
 			}
 		}
 		accepted, err := runLinuxAlertCommand(
-			linuxAlertZenity, commandArgs, linuxAlertDialogCancelExit,
+			linuxAlertZenity, commandArgs, linuxAlertDialogCancelExit, nil,
 		)
 		if err == nil {
 			return accepted, nil
@@ -67,7 +76,7 @@ func AlertE(title, msg string, args ...string) (bool, error) {
 			}
 		}
 		accepted, err := runLinuxAlertCommand(
-			linuxAlertKDialog, commandArgs, linuxAlertDialogCancelExit,
+			linuxAlertKDialog, commandArgs, linuxAlertDialogCancelExit, nil,
 		)
 		if err == nil {
 			return accepted, nil
@@ -76,24 +85,32 @@ func AlertE(title, msg string, args ...string) (bool, error) {
 	}
 
 	if hasCmd(linuxAlertXMessage) {
-		buttons := defaultBtn + ":0"
-		cancelExit := linuxAlertNoCancelExit
-		if cancelBtn != "" {
-			buttons += fmt.Sprintf(",%s:%d", cancelBtn, linuxAlertXMessageCancelExit)
-			cancelExit = linuxAlertXMessageCancelExit
+		if strings.IndexByte(msg, 0) >= 0 {
+			// Preserve the invalid-argument error previously enforced by argv delivery.
+			backendErrors = append(backendErrors, fmt.Errorf(
+				"run Linux alert backend %s: message contains NUL: %w", linuxAlertXMessage, syscall.EINVAL,
+			))
+		} else {
+			buttons := escapeLinuxAlertXMessageLabel(defaultBtn) + ":0"
+			cancelExit := linuxAlertNoCancelExit
+			if cancelBtn != "" {
+				buttons += fmt.Sprintf(",%s:%d", escapeLinuxAlertXMessageLabel(cancelBtn), linuxAlertXMessageCancelExit)
+				cancelExit = linuxAlertXMessageCancelExit
+			}
+			// -default matches the unescaped label; -file - keeps msg out of option parsing.
+			accepted, err := runLinuxAlertCommand(linuxAlertXMessage, []string{
+				"-center",
+				"-title", title,
+				"-buttons", buttons,
+				"-default", defaultBtn,
+				"-geometry", "400x200",
+				"-file", "-",
+			}, cancelExit, strings.NewReader(msg))
+			if err == nil {
+				return accepted, nil
+			}
+			backendErrors = append(backendErrors, err)
 		}
-		accepted, err := runLinuxAlertCommand(linuxAlertXMessage, []string{
-			"-center",
-			"-title", title,
-			"-buttons", buttons,
-			"-default", defaultBtn,
-			"-geometry", "400x200",
-			msg,
-		}, cancelExit)
-		if err == nil {
-			return accepted, nil
-		}
-		backendErrors = append(backendErrors, err)
 	}
 
 	if hasCmd(linuxAlertNotifySend) {
@@ -104,7 +121,7 @@ func AlertE(title, msg string, args ...string) (bool, error) {
 			))
 		} else {
 			accepted, err := runLinuxAlertCommand(
-				linuxAlertNotifySend, []string{title, msg}, linuxAlertNoCancelExit,
+				linuxAlertNotifySend, []string{title, msg}, linuxAlertNoCancelExit, nil,
 			)
 			if err == nil {
 				return accepted, nil
@@ -126,8 +143,9 @@ func AlertE(title, msg string, args ...string) (bool, error) {
 	)
 }
 
-func runLinuxAlertCommand(name string, args []string, cancelExit int) (bool, error) {
-	err := exec.Command(name, args...).Run()
+func runLinuxAlertCommand(name string, args []string, cancelExit int, stdin io.Reader) (bool, error) {
+	// User choice has no deadline; only inherited I/O after helper exit is bounded.
+	err := commandpkg.Run(context.Background(), stdin, name, args...)
 	if err == nil {
 		return true, nil
 	}

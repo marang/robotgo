@@ -313,6 +313,10 @@ On Linux, `AlertE` tries `zenity`, `kdialog`, and `xmessage` before using
 `notify-send` for an OK-only informational alert. A cancel-capable alert never
 silently degrades to a non-interactive notification; missing or failed backends
 are returned explicitly. Legacy `Alert` keeps its bool-only signature.
+The `xmessage` backend treats button labels and message text as literal data,
+including punctuation and messages beginning with `-`.
+Dialog interaction has no automatic timeout; inherited command I/O cleanup is
+bounded only after the helper exits.
 Context-backed OCR, clipboard, Wayland probe, and compositor command paths also
 bound inherited process I/O cleanup. On Unix, cancellation terminates the
 one-shot backend's process group so a descendant cannot keep an API call stuck
