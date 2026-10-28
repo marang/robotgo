@@ -91,6 +91,18 @@ and reviewed. See
 [Public Go API Compatibility](docs/compatibility/public-api.md) for scope,
 exclusions, and the update command.
 
+macOS CI uses one ARM64 VM per PR: `test (macOS-latest)` pins the supported
+`macos-15` ARM64 image and runs its native build, tests and `darwin-cgo` API
+gate, followed by the complete Pure-Go suite
+and input preflight on that same ARM64 host. The separate
+`nocgo (macOS-latest)` protected check runs the existing Pure-Go suite and
+preflight on `macos-26-intel`, adding Intel runtime coverage. The check name is
+a stable branch-protection context, not the physical runner label. Both
+macOS check names retain their legacy spelling. This avoids
+requesting a second ARM64 VM without dropping ARM64 test execution. GitHub's
+remaining ARM64 capacity can still delay the single native job; it is not
+replaced by cross-compilation, an Intel result or a success-only proxy.
+
 The versioned platform-support contract is also machine-checked:
 
 ```bash
@@ -1177,6 +1189,12 @@ node, host display socket, writable checkout, or credentials. The test owns its
 `wev` fixture and verifies title, PID, exact bounds, legacy/error API parity,
 and explicit unsupported handle/client/PID-target contracts under
 AddressSanitizer and LeakSanitizer.
+
+Hosted kernel 7+ images provide the modules in `linux-modules`; older images
+still install the matching `linux-modules-extra` package. Package failures on
+older images remain blocking. Both paths must load `vkms` and pass the same
+virtual-device checks; default tests mock package commands and never load host
+modules.
 
 The runner also executes an induced failure after compositor startup and
 requires compositor/seat-manager processes, sockets, raw logs, the private
