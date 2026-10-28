@@ -13,6 +13,13 @@ func UnicodeTypeE(str uint32, args ...int) error {
 	if err := validateUnicodeScalar(str); err != nil {
 		return err
 	}
+	pid := 0
+	if len(args) > 0 {
+		pid = args[0]
+	}
+	if err := validateNativeInputPID(pid); err != nil {
+		return err
+	}
 	unlockKeyboard := lockLinuxKeyboard()
 	defer unlockKeyboard()
 	server := selectedDisplayServer()
@@ -34,6 +41,9 @@ func UnicodeTypeE(str uint32, args ...int) error {
 func typeStrE(str string, applyDelay bool, args ...int) error {
 	pid, tm, err := parseTextInput(str, args)
 	if err != nil {
+		return err
+	}
+	if err := validateNativeInputPID(pid); err != nil {
 		return err
 	}
 	unlockKeyboard := lockLinuxKeyboard()

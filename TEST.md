@@ -225,6 +225,21 @@ CGO_ENABLED=0 go test -run '^Test(ToUCUnicodeAndEscapes|UnicodeScalarBoundaries)
 These mocks do not establish real macOS/Windows application delivery or
 permission-granted runtime support; native CI still compiles against each SDK.
 
+CGO PID-range tests and source-routing guards check that macOS keyboard input,
+window selection, title/geometry queries, and activation validate the original
+Go target before native conversion or input preparation. They cover negative
+IDs, signed `pid_t` overflow, 32-bit wraparound, and Go's maximum `int`, while
+preserving global keyboard PID `0` and the distinct unsigned `CGWindowID`
+range (including `SetHandle(0)` reset). These tests never invoke the desktop,
+Accessibility, keyboard injection, or clipboard:
+
+```bash
+go test -run '^TestNativeDarwin(PID|WindowID)' -count=1 -v .
+```
+
+This is hermetic pre-bridge evidence, not a substitute for native macOS arm64
+SDK compilation or permission-granted application delivery evidence.
+
 Native `SysScale` returns zero for an unavailable macOS mode or invalid mode
 widths, and for unavailable Windows DCs or nonpositive DPI. Existing `ScaleF`
 fallback behavior remains unchanged; Windows `ScaleX` keeps its zero failure
