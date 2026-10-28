@@ -1173,6 +1173,12 @@ node, host display socket, writable checkout, or credentials. The test owns its
 and explicit unsupported handle/client/PID-target contracts under
 AddressSanitizer and LeakSanitizer.
 
+Hosted kernel 7+ images provide the modules in `linux-modules`; older images
+still install the matching `linux-modules-extra` package. Package failures on
+older images remain blocking. Both paths must load `vkms` and pass the same
+virtual-device checks; default tests mock package commands and never load host
+modules.
+
 The runner also executes an induced failure after compositor startup and
 requires compositor/seat-manager processes, sockets, raw logs, the private
 runtime directory, and the dedicated container-transfer workspace to be gone.
