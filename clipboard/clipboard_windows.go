@@ -60,7 +60,7 @@ func windowsClipboardBool(operation string, call windowsClipboardCall, args ...u
 // The caller pins the OS thread, including this last-error pair. Zero means
 // successful final unlock only when GetLastError is also zero.
 func unlockWindowsClipboard(h uintptr, clear, unlock windowsClipboardCall) error {
-	clear(0)
+	_, _, _ = clear(0) // SetLastError has no return value to interpret.
 	r, _, err := unlock(h)
 	if r == 0 && err != nil && err != syscall.Errno(0) {
 		return windowsClipboardError("GlobalUnlock", err)
