@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+## RobotGo v1.0.3 — 2026-10-28
+
+Compatible image maintenance with unchanged exported signatures, backend policy
+and runtime support scope. See the [maintenance notes](releases/v1.0.3.md) for
+installation and exact-source qualification requirements.
+
+- Upgrade `imgo` to 0.44.0 while preserving RobotGo's legacy JPEG quality,
+  standard Base64, trailing zero bytes, supported formats and error results.
+- Preserve `Read` and `Save` filename interpretation and quality arguments;
+  retain upstream image-decoding file cleanup and error-wrapping fixes.
+
 ## RobotGo v1.0.2 — 2026-10-24
 
 Compatible maintenance of the v1 contract with Go 1.26.10 as the minimum
