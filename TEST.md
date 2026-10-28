@@ -91,6 +91,16 @@ and reviewed. See
 [Public Go API Compatibility](docs/compatibility/public-api.md) for scope,
 exclusions, and the update command.
 
+macOS CI uses one ARM64 VM per PR: `test (macOS-latest)` runs the native
+build, tests and `darwin-cgo` API gate, followed by the complete Pure-Go suite
+and input preflight on that same ARM64 host. The separate
+`nocgo (macOS-latest)` protected check runs the existing Pure-Go suite and
+preflight on `macos-26-intel`, adding Intel runtime coverage. The check name is
+a stable branch-protection context, not the physical runner label. This avoids
+requesting a second ARM64 VM without dropping ARM64 test execution. GitHub's
+remaining ARM64 capacity can still delay the single native job; it is not
+replaced by cross-compilation, an Intel result or a success-only proxy.
+
 The versioned platform-support contract is also machine-checked:
 
 ```bash
