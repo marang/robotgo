@@ -198,6 +198,21 @@ go test -run '^TestNativeScale(C|CompilerCommand)$' -count=1 -v .
 The fixture explicitly enables assertions even with `NDEBUG`; every harness
 compile supplies `-DNDEBUG` to guard against accidentally disabling its checks.
 
+The default CGO suite also runs the production macOS/Windows Unicode helpers
+against hermetic C mocks. It checks BMP/supplementary scalar boundaries, target
+resolution, event allocation and message failures, every partial-send prefix,
+and retryable owned releases. No keyboard events or clipboard access occur.
+Shared Go tests cover scalar validation and `ToUC` escape handling in both
+build modes. Reproduce with:
+
+```bash
+go test -run '^Test(NativeUnicodeC|ToUCUnicodeAndEscapes|UnicodeScalarBoundaries)$' -count=1 -v .
+CGO_ENABLED=0 go test -run '^Test(ToUCUnicodeAndEscapes|UnicodeScalarBoundaries)$' -count=1 -v .
+```
+
+These mocks do not establish real macOS/Windows application delivery or
+permission-granted runtime support; native CI still compiles against each SDK.
+
 Native `SysScale` returns zero for an unavailable macOS mode or invalid mode
 widths, and for unavailable Windows DCs or nonpositive DPI. Existing `ScaleF`
 fallback behavior remains unchanged; Windows `ScaleX` keeps its zero failure

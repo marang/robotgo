@@ -66,6 +66,7 @@ func ToUC(text string) []string {
 		textUnQ := textQ[1 : len(textQ)-1]
 
 		st := strings.ReplaceAll(textUnQ, "\\u", "U")
+		st = strings.ReplaceAll(st, "\\U", "U")
 		if st == "\\\\" {
 			st = "\\"
 		}
