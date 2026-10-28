@@ -31,6 +31,10 @@ Available examples:
   consent-aware RemoteDesktop portal input.
 - [`mouse`](mouse/main.go): pointer movement, clicks, and scrolling.
 - [`key`](key/main.go): keyboard and clipboard operations.
+- [`clipboard`](clipboard/main.go): context-bounded regular/primary text access;
+  no access occurs without explicit `-read` or `-write` flags. Write text through
+  stdin, for example `printf 'fixture\n' | go run ./examples/clipboard -write
+  -primary`. This intentionally replaces that selection; `-read` prints it.
 - [`window`](window/main.go): window and process helpers.
 - [`scale`](scale/main.go): display scaling information.
 

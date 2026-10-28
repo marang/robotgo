@@ -27,9 +27,38 @@ func Output(ctx context.Context, name string, args ...string) ([]byte, error) {
 // Run runs a one-shot command with the supplied standard input. It returns
 // exec.ErrWaitDelay when inherited I/O remains open past CleanupDelay.
 func Run(ctx context.Context, stdin io.Reader, name string, args ...string) error {
+	return RunWithCleanup(ctx, stdin, nil, nil, name, args...)
+}
+
+// RunWithCleanup is Run with a child environment and an optional finalizer.
+// A nil environment inherits the parent environment, which is never changed.
+// After running, command errors terminate the process tree before cleanup is
+// called exactly once, including on start failure. A cleanup error also
+// terminates an otherwise successful command's tree. All errors are retained.
+// Success preserves background owners once their inherited I/O has closed;
+// canceling the context after this handoff does not revoke those owners.
+func RunWithCleanup(ctx context.Context, stdin io.Reader, environment []string, cleanup func() error, name string, args ...string) error {
 	cmd := newContextCommand(ctx, name, args...)
 	cmd.Stdin = stdin
-	return finish(cmd, cmd.Run())
+	cmd.Env = environment
+	commandErr := cmd.Run()
+	if commandErr != nil && ctx != nil {
+		if contextErr := ctx.Err(); contextErr != nil {
+			commandErr = errors.Join(commandErr, contextErr)
+		}
+	}
+	commandErr = finish(cmd, commandErr)
+	if cleanup == nil {
+		return commandErr
+	}
+	cleanupErr := cleanup()
+	if cleanupErr == nil {
+		return commandErr
+	}
+	if commandErr == nil {
+		return finish(cmd, cleanupErr)
+	}
+	return errors.Join(commandErr, cleanupErr)
 }
 
 func newContextCommand(ctx context.Context, name string, args ...string) *exec.Cmd {

@@ -19,6 +19,115 @@ import (
 
 const commandTestTimeout = 2 * time.Second
 
+func TestRunWithCleanupOnlyChangesChildEnvironment(t *testing.T) {
+	const key = "ROBOTGO_COMMAND_TEST_CHILD_VALUE"
+	t.Setenv(key, "parent")
+	resultPath := filepath.Join(t.TempDir(), "result")
+	backend := writeTestCommand(t, `#!/bin/sh
+[ "$ROBOTGO_COMMAND_TEST_CHILD_VALUE" = child ] || exit 10
+/bin/cat > "$ROBOTGO_COMMAND_TEST_RESULT"
+`)
+	environment := append(os.Environ(), key+"=child", "ROBOTGO_COMMAND_TEST_RESULT="+resultPath)
+	if err := RunWithCleanup(context.Background(), strings.NewReader("fixture"), environment, nil, backend); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(resultPath)
+	if err != nil || string(data) != "fixture" {
+		t.Fatalf("child stdin = %q, error = %v", data, err)
+	}
+	if os.Getenv(key) != "parent" {
+		t.Fatal("RunWithCleanup changed the parent environment")
+	}
+}
+
+func TestRunWithCleanupFinalizesEveryOutcome(t *testing.T) {
+	for _, outcome := range []string{"success", "start failure", "command failure", "cancellation", "already canceled"} {
+		t.Run(outcome, func(t *testing.T) {
+			pidPath := filepath.Join(t.TempDir(), "processes")
+			t.Setenv("ROBOTGO_COMMAND_TEST_PGID", pidPath)
+			t.Setenv("ROBOTGO_COMMAND_TEST_OUTCOME", outcome)
+			backend := writeTestCommand(t, `#!/bin/sh
+/bin/sleep 30 </dev/null >/dev/null 2>&1 &
+child=$!
+printf '%s %s' "$$" "$child" > "$ROBOTGO_COMMAND_TEST_PGID"
+case "$ROBOTGO_COMMAND_TEST_OUTCOME" in
+  'command failure') exit 7 ;;
+  cancellation) wait ;;
+esac
+`)
+			if outcome == "start failure" {
+				backend = filepath.Join(t.TempDir(), "missing")
+			}
+			processes := testProcesses{}
+			cleanupTestProcesses(t, &processes)
+			// Populate cleanup even if a broken implementation skips the callback.
+			t.Cleanup(func() {
+				if data, err := os.ReadFile(pidPath); err == nil {
+					processes = parseTestProcesses(t, data)
+				}
+			})
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			if outcome == "already canceled" {
+				cancel()
+			}
+			cleanupFailure := errors.New("fixture finalization failure")
+			calls := 0
+			cleanup := func() error {
+				calls++
+				if data, err := os.ReadFile(pidPath); err == nil {
+					processes = parseTestProcesses(t, data)
+					gone, probeErr := testProcessTerminated(processes.child)
+					if probeErr != nil {
+						t.Error(probeErr)
+					}
+					if outcome == "success" && gone {
+						t.Error("successful owner terminated before finalization")
+					}
+					if outcome != "success" {
+						requireTestProcessGone(t, processes.child)
+					}
+				}
+				return cleanupFailure
+			}
+			result := make(chan error, 1)
+			go func() { result <- RunWithCleanup(ctx, nil, nil, cleanup, backend) }()
+			if outcome == "cancellation" {
+				processes = waitForTestProcesses(t, pidPath)
+				cancel()
+			}
+			select {
+			case err := <-result:
+				if !errors.Is(err, cleanupFailure) {
+					t.Fatalf("cleanup error identity lost: %v", err)
+				}
+				if outcome == "cancellation" || outcome == "already canceled" {
+					if !errors.Is(err, context.Canceled) {
+						t.Fatalf("cancellation identity lost: %v", err)
+					}
+				}
+				if outcome == "command failure" {
+					var exitError *exec.ExitError
+					if !errors.As(err, &exitError) || exitError.ExitCode() != 7 {
+						t.Fatalf("backend exit error lost: %v", err)
+					}
+				}
+				if outcome == "start failure" && !errors.Is(err, os.ErrNotExist) {
+					t.Fatalf("start failure identity lost: %v", err)
+				}
+			case <-time.After(commandTestTimeout):
+				t.Fatal("RunWithCleanup did not return within cleanup deadline")
+			}
+			if calls != 1 {
+				t.Fatalf("cleanup callback calls = %d, want exactly one", calls)
+			}
+			if processes.child > 0 {
+				requireTestProcessGone(t, processes.child)
+			}
+		})
+	}
+}
+
 type testProcesses struct {
 	processGroup int
 	child        int

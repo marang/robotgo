@@ -235,6 +235,35 @@ startup sleeps or OCR-operation retries are not used.
 Unix clipboard read/write cancellation tests likewise wait for a fake command's
 readiness before canceling, cover already-canceled contexts separately, and use
 only fixed fixture text without reading or changing the developer's clipboard.
+Native Wayland unit fixtures also cover pair detection without X11 fallback,
+regular/primary isolation, helper-version rejection before payload transfer,
+exact text/newline preservation, private-spool cleanup on every outcome, and
+successful background owners surviving context cancellation. All fake owners
+are terminated during test cleanup. A permission-denied cleanup test requires
+an unprivileged UID; it skips under root.
+
+The opt-in Linux clipboard runtime suite creates a **new** isolated headless
+Sway instance; it never attaches to the invoking desktop or preserves/reads its
+clipboard. Prerequisites are an unprivileged user, `/usr/bin/sway`, `swaymsg`,
+`dbus-run-session`, and wl-clipboard 2.3.0 or newer at `/usr/bin/wl-copy` and
+`/usr/bin/wl-paste`:
+
+```sh
+ROBOTGO_REQUIRE_WAYLAND_CLIPBOARD_INTEGRATION=1 go test -tags clipboardintegration ./clipboard -run '^TestWaylandClipboardHeadlessSway$' -count=1 -timeout=45s -v
+```
+
+This command works with CGO enabled or disabled and needs no `wayland` build
+tag. The fixture uses its own `0700` runtime/config directories, private D-Bus
+session, headless backend, software renderer, disabled Xwayland, and no input
+devices. It strips inherited desktop sockets and routes helpers only to the
+explicit private Wayland socket. It checks regular/primary Unicode, empty text,
+newline preservation, repeated reads after owner handoff, failed connection,
+and cancellation of an actual helper while its compositor is stopped. Cleanup
+terminates every recorded helper process group and the compositor, verifies
+that no owned group remains live, and removes/verifies absence of the private
+runtime and spool directories on success and failure. No portal, consent
+dialog, physical input, screenshot, or existing desktop data is involved.
+This is wlroots/Sway evidence, not a claim of GNOME/KDE runtime coverage.
 
 Shared external-command lifecycle tests launch only private `t.TempDir()`
 backends. They verify that descendants holding inherited stdin/stdout cannot
