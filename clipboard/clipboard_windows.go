@@ -3,7 +3,6 @@
 // license that can be found in the LICENSE file.
 
 //go:build windows
-// +build windows
 
 package clipboard
 
@@ -11,62 +10,123 @@ import (
 	"context"
 	"fmt"
 	"syscall"
-	"time"
 	"unsafe"
+
+	"golang.org/x/sys/windows"
 )
 
 const (
 	cfUnicodetext = 13
-	// gmemFixed     = 0x0000
-	gmemMoveable = 0x0002
+	gmemMoveable  = 0x0002
+	// HWND_MESSAGE is the documented pseudo-handle (HWND)-3.
+	clipboardMessageWindow = ^uintptr(2)
 )
 
 var (
-	user32           = syscall.MustLoadDLL("user32")
-	openClipboard    = user32.MustFindProc("OpenClipboard")
-	closeClipboard   = user32.MustFindProc("CloseClipboard")
-	emptyClipboard   = user32.MustFindProc("EmptyClipboard")
-	getClipboardData = user32.MustFindProc("GetClipboardData")
-	setClipboardData = user32.MustFindProc("SetClipboardData")
+	user32           = windows.NewLazySystemDLL("user32.dll")
+	openClipboard    = user32.NewProc("OpenClipboard")
+	closeClipboard   = user32.NewProc("CloseClipboard")
+	emptyClipboard   = user32.NewProc("EmptyClipboard")
+	getClipboardData = user32.NewProc("GetClipboardData")
+	setClipboardData = user32.NewProc("SetClipboardData")
+	createWindow     = user32.NewProc("CreateWindowExW")
+	destroyWindow    = user32.NewProc("DestroyWindow")
 
-	kernel32     = syscall.NewLazyDLL("kernel32")
+	kernel32     = windows.NewLazySystemDLL("kernel32.dll")
 	globalAlloc  = kernel32.NewProc("GlobalAlloc")
 	globalFree   = kernel32.NewProc("GlobalFree")
 	globalLock   = kernel32.NewProc("GlobalLock")
 	globalUnlock = kernel32.NewProc("GlobalUnlock")
-	lstrcpy      = kernel32.NewProc("lstrcpyW")
+	globalSize   = kernel32.NewProc("GlobalSize")
+	setLastError = kernel32.NewProc("SetLastError")
 )
 
-func waitOpenClipboardContext(ctx context.Context) error {
-	started := time.Now()
-	limit := started.Add(time.Second)
-	var (
-		r   uintptr
-		err error
-	)
-	for time.Now().Before(limit) {
-		if err := ctx.Err(); err != nil {
-			return err
-		}
-		r, _, err = openClipboard.Call(0)
-		if r != 0 {
-			return nil
-		}
-		timer := time.NewTimer(time.Millisecond)
-		select {
-		case <-ctx.Done():
-			if !timer.Stop() {
-				select {
-				case <-timer.C:
-				default:
-				}
-			}
-			return ctx.Err()
-		case <-timer.C:
-		}
-	}
+type windowsClipboardCall func(...uintptr) (uintptr, uintptr, error)
 
-	return err
+func windowsClipboardError(operation string, err error) error {
+	if err == nil || err == syscall.Errno(0) {
+		return fmt.Errorf("clipboard: %s failed without an error code", operation)
+	}
+	return fmt.Errorf("clipboard: %s: %w", operation, err)
+}
+
+func windowsClipboardBool(operation string, call windowsClipboardCall, args ...uintptr) error {
+	if r, _, err := call(args...); r == 0 {
+		return windowsClipboardError(operation, err)
+	}
+	return nil
+}
+
+// The caller pins the OS thread, including this last-error pair. Zero means
+// successful final unlock only when GetLastError is also zero.
+func unlockWindowsClipboard(h uintptr, clear, unlock windowsClipboardCall) error {
+	_, _, _ = clear(0) // SetLastError has no return value to interpret.
+	r, _, err := unlock(h)
+	if r == 0 && err != nil && err != syscall.Errno(0) {
+		return windowsClipboardError("GlobalUnlock", err)
+	}
+	return nil
+}
+
+func nativeWindowsClipboardOps() windowsClipboardOps {
+	return windowsClipboardOps{
+		open:  func(owner uintptr) error { return windowsClipboardBool("OpenClipboard", openClipboard.Call, owner) },
+		close: func() error { return windowsClipboardBool("CloseClipboard", closeClipboard.Call) },
+		data: func() (uintptr, error) {
+			h, _, err := getClipboardData.Call(cfUnicodetext)
+			if h == 0 {
+				// Keep missing text an error, distinct from a valid empty string.
+				return 0, windowsClipboardError("GetClipboardData(CF_UNICODETEXT)", err)
+			}
+			return h, nil
+		},
+		size: func(h uintptr) (uintptr, error) {
+			n, _, err := globalSize.Call(h)
+			if n == 0 {
+				return 0, windowsClipboardError("GlobalSize", err)
+			}
+			return n, nil
+		},
+		lock: func(h uintptr) (unsafe.Pointer, error) {
+			addr, _, err := globalLock.Call(h)
+			if addr == 0 {
+				return nil, windowsClipboardError("GlobalLock", err)
+			}
+			// GlobalLock returns non-Go storage. Keep conversion at the native
+			// boundary rather than doing arithmetic on a Go heap uintptr.
+			return *(*unsafe.Pointer)(unsafe.Pointer(&addr)), nil
+		},
+		unlock: func(h uintptr) error { return unlockWindowsClipboard(h, setLastError.Call, globalUnlock.Call) },
+		alloc: func(n uintptr) (uintptr, error) {
+			h, _, err := globalAlloc.Call(gmemMoveable, n)
+			if h == 0 {
+				return 0, windowsClipboardError("GlobalAlloc", err)
+			}
+			return h, nil
+		},
+		free: func(h uintptr) error {
+			if r, _, err := globalFree.Call(h); r != 0 {
+				return windowsClipboardError("GlobalFree", err)
+			}
+			return nil
+		},
+		empty: func() error { return windowsClipboardBool("EmptyClipboard", emptyClipboard.Call) },
+		set: func(h uintptr) error {
+			return windowsClipboardBool("SetClipboardData", setClipboardData.Call, cfUnicodetext, h)
+		},
+		createOwner: func() (uintptr, error) {
+			// A predefined STATIC class needs no custom callback, persistent
+			// message loop or delayed rendering for eagerly supplied text.
+			class := [...]uint16{'S', 'T', 'A', 'T', 'I', 'C', 0}
+			h, _, err := createWindow.Call(0, uintptr(unsafe.Pointer(&class[0])), 0,
+				0, 0, 0, 0, 0, clipboardMessageWindow, 0, 0, 0)
+			if h == 0 {
+				return 0, windowsClipboardError("CreateWindowExW", err)
+			}
+			return h, nil
+		},
+		destroyOwner: func(h uintptr) error { return windowsClipboardBool("DestroyWindow", destroyWindow.Call, h) },
+	}
 }
 
 func readAll() (string, error) {
@@ -77,32 +137,7 @@ func readAllContext(ctx context.Context, selection Selection) (string, error) {
 	if selection != SelectionClipboard {
 		return "", fmt.Errorf("clipboard: primary selection is unsupported on Windows")
 	}
-	err := waitOpenClipboardContext(ctx)
-	if err != nil {
-		return "", err
-	}
-	defer closeClipboard.Call()
-
-	h, _, err := getClipboardData.Call(cfUnicodetext)
-	if h == 0 {
-		return "", err
-	}
-
-	l, _, err := globalLock.Call(h)
-	if l == 0 {
-		return "", err
-	}
-
-	text := syscall.UTF16ToString((*[1 << 20]uint16)(unsafe.Pointer(l))[:])
-
-	r, _, err := globalUnlock.Call(h)
-	if r == 0 && err != nil {
-		if errno, ok := err.(syscall.Errno); !ok || errno != 0 {
-			return "", err
-		}
-	}
-
-	return text, nil
+	return readWindowsClipboard(ctx, nativeWindowsClipboardOps())
 }
 
 func writeAll(text string) error {
@@ -113,55 +148,5 @@ func writeAllContext(ctx context.Context, text string, selection Selection) erro
 	if selection != SelectionClipboard {
 		return fmt.Errorf("clipboard: primary selection is unsupported on Windows")
 	}
-	err := waitOpenClipboardContext(ctx)
-	if err != nil {
-		return err
-	}
-	defer closeClipboard.Call()
-
-	r, _, err := emptyClipboard.Call(0)
-	if r == 0 {
-		return err
-	}
-
-	data := syscall.StringToUTF16(text)
-
-	// "If the hMem parameter identifies a memory object, the object must have
-	// been allocated using the function with the GMEM_MOVEABLE flag."
-	h, _, err := globalAlloc.Call(gmemMoveable,
-		uintptr(len(data)*int(unsafe.Sizeof(data[0]))))
-	if h == 0 {
-		return err
-	}
-
-	defer func() {
-		if h != 0 {
-			globalFree.Call(h)
-		}
-	}()
-
-	l, _, err := globalLock.Call(h)
-	if l == 0 {
-		return err
-	}
-
-	r, _, err = lstrcpy.Call(l, uintptr(unsafe.Pointer(&data[0])))
-	if r == 0 {
-		return err
-	}
-
-	r, _, err = globalUnlock.Call(h)
-	if r == 0 {
-		if err.(syscall.Errno) != 0 {
-			return err
-		}
-	}
-
-	r, _, err = setClipboardData.Call(cfUnicodetext, h)
-	if r == 0 {
-		return err
-	}
-
-	h = 0 // suppress deferred cleanup
-	return nil
+	return writeWindowsClipboard(ctx, text, nativeWindowsClipboardOps())
 }

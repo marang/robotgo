@@ -35,6 +35,20 @@ It is safe to run from an interactive developer session: real desktop
 mutation is excluded unless the explicit integration tag and environment gate
 are both enabled.
 
+Windows clipboard transaction/ownership fixtures run hermetically on every host:
+
+```bash
+go test -race ./clipboard -run '^TestWindowsClipboard'
+```
+
+They cover allocation-bounded UTF-16 (including text larger than the former
+million-unit limit), malformed input, cancellation and failed native operations.
+On Windows the same default package suite also checks thread affinity, Win32
+last-error conventions and private message-only window creation/destruction;
+those checks do not open or change the clipboard. Live text roundtrips remain
+behind `desktopintegration` and the explicit disposable-desktop gate described
+above; Linux fixtures/cross-compilation do not claim live Windows evidence.
+
 On a disposable, self-owned native Windows desktop, the protected Windows job
 also runs pointer and capture behavior with cleanup enabled:
 
@@ -183,6 +197,21 @@ go test -run '^TestNativeScale(C|CompilerCommand)$' -count=1 -v .
 
 The fixture explicitly enables assertions even with `NDEBUG`; every harness
 compile supplies `-DNDEBUG` to guard against accidentally disabling its checks.
+
+The default CGO suite also runs the production macOS/Windows Unicode helpers
+against hermetic C mocks. It checks BMP/supplementary scalar boundaries, target
+resolution, event allocation and message failures, every partial-send prefix,
+and retryable owned releases. No keyboard events or clipboard access occur.
+Shared Go tests cover scalar validation and `ToUC` escape handling in both
+build modes. Reproduce with:
+
+```bash
+go test -run '^Test(NativeUnicodeC|ToUCUnicodeAndEscapes|UnicodeScalarBoundaries)$' -count=1 -v .
+CGO_ENABLED=0 go test -run '^Test(ToUCUnicodeAndEscapes|UnicodeScalarBoundaries)$' -count=1 -v .
+```
+
+These mocks do not establish real macOS/Windows application delivery or
+permission-granted runtime support; native CI still compiles against each SDK.
 
 Native `SysScale` returns zero for an unavailable macOS mode or invalid mode
 widths, and for unavailable Windows DCs or nonpositive DPI. Existing `ScaleF`

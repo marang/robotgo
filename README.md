@@ -326,6 +326,15 @@ backend may support a single non-ASCII rune directly (the RemoteDesktop portal
 and Pure-Go X11 do), while another native keymap can return `ErrNotSupported`.
 Use `TypeStrE` or `UnicodeTypeE` when the intent is text input.
 
+CGO macOS and Windows text input preserves supplementary Unicode characters
+using UTF-16 surrogate pairs. macOS event creation and Windows event/message
+submission failures are returned by the checked APIs. Windows keeps failed
+Unicode key releases owned after a partial `SendInput`; later Unicode input or
+`CloseMainDisplayE` retries them before sending new text. Existing macOS PID
+and Windows PID/HWND text targeting remain available; an unresolved Windows
+target fails instead of posting to RobotGo's own queue. Successful submission
+does not confirm that the target application processed the text.
+
 On native Linux, native Windows, and RemoteDesktop portal paths, stateful
 `KeyDown`/`KeyUp` pairs are backend- and session-affine; pointer holds provide
 the same contract where supported. Equivalent key aliases such as
@@ -379,6 +388,12 @@ Potentially blocking helpers have context-aware variants: `ReadAllContext` and
 temporary-file cleanup. With `-tags ocr`, cancellation is observed before and
 after the synchronous in-process Tesseract call; that native call cannot itself
 be interrupted.
+
+Windows clipboard reads validate allocation-bounded, terminated UTF-16. Writes
+reject embedded NUL before changing the clipboard and prepare storage before
+clearing prior content; cancellation is checked before publication. Cleanup
+errors are returned, and an unavailable text format remains an error rather
+than a successful empty string. See [clipboard details](clipboard/README.md).
 
 ## Linux display backends
 

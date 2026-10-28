@@ -299,6 +299,7 @@ func ToUC(text string) []string {
 	for _, value := range text {
 		quoted := strconv.QuoteToASCII(string(value))
 		encoded := strings.ReplaceAll(quoted[1:len(quoted)-1], `\u`, "U")
+		encoded = strings.ReplaceAll(encoded, `\U`, "U")
 		if encoded == `\\` {
 			encoded = `\`
 		}
