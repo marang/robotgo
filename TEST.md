@@ -225,6 +225,23 @@ CGO_ENABLED=0 go test -run '^Test(ToUCUnicodeAndEscapes|UnicodeScalarBoundaries)
 These mocks do not establish real macOS/Windows application delivery or
 permission-granted runtime support; native CI still compiles against each SDK.
 
+The macOS CGO PID-window helpers also run against hermetic AX/CoreFoundation
+C mocks on every CGO test host, without loading Apple frameworks or querying
+windows. They cover focused/main precedence, PID range/type/role/owner checks,
+minimized-main restore, reference cleanup, borrowed selected-window lifetime,
+and lookup/mutation/close-button failures without retargeting. A small source
+check keeps the native routing branches attached to the tested helpers:
+
+```bash
+go test -run '^TestNativeAXWindow(C|Routing|PIDRange)$' -count=1 -v .
+```
+
+The harness uses `go env CC`, timed subprocesses, temporary executables, and
+assertions enabled even with `-DNDEBUG`. It proves no arbitrary window-list
+fallback or activation. It does not qualify real AX application behavior;
+native macOS SDK CI remains required, and permission-granted minimize/restore
+and close evidence remains pending under LAB-69.
+
 Native `SysScale` returns zero for an unavailable macOS mode or invalid mode
 widths, and for unavailable Windows DCs or nonpositive DPI. Existing `ScaleF`
 fallback behavior remains unchanged; Windows `ScaleX` keeps its zero failure

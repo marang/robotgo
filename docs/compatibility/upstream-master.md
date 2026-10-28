@@ -12,8 +12,9 @@ Last audited upstream revision:
 [LAB-425](https://linear.app/riotbox/issue/LAB-425)). The October audit compares
 against `12f16b7c5d82b317f81da8b45a6984de2a740ec4` and fork
 [`16cafc60870553b4a2885ca99c69e68981a489e4`](https://github.com/marang/robotgo/commit/16cafc60870553b4a2885ca99c69e68981a489e4)
-(released v1.0.3). It records adoption decisions, not delivered runtime ports
-or a new release.
+(released v1.0.3). The decision matrix records that pinned baseline; the
+implementation ledger below links the subsequent ports. Those ports do not
+change the v1.0.3 release or imply a new release.
 Coordination: [P012 — Upstream Compatibility Refresh](https://linear.app/riotbox/project/robotgo-p012-upstream-compatibility-refresh-4078787a22a8).
 
 ## September compatibility baseline
@@ -95,7 +96,8 @@ contains 23 first-parent integrations, 99 newly reachable commits and 149
 changed files. The 99 include January–July branch history newly merged into
 `master`; they are not 99 newly authored October changes. Decisions compare
 the resulting source with the fork's v1.0.3 contracts, not commit subjects
-alone. Proposed adoption and test reuse below are not delivered by this audit.
+alone. The matrix describes findings at that baseline, not unresolved defects
+in current `main`. Accepted implementations are linked separately below.
 
 ### Adoption and compatibility decisions
 
@@ -119,19 +121,27 @@ alone. Proposed adoption and test reuse below are not delivered by this audit.
 | Public helpers and package/configuration refactors ([API source](https://github.com/go-vgo/robotgo/blob/16930bad397dcd8c5c295dd0c9c70177a135d66f/robotgo_pub.go), [shared config](https://github.com/go-vgo/robotgo/blob/16930bad397dcd8c5c295dd0c9c70177a135d66f/pub/pub.go)) | Exclude wholesale | Upstream now changes return signatures, including `Paste` to `(int, error)`, and adds importable platform/shared packages. Retain fork [checked compatibility helpers](../../upstream_compat.go), explicit errors and [frozen API manifest](public-api.md). Existing [LAB-256](https://linear.app/riotbox/issue/LAB-256), [LAB-257](https://linear.app/riotbox/issue/LAB-257) and [LAB-269](https://linear.app/riotbox/issue/LAB-269) keep their existing scopes; this audit does not authorize interface expansion or strict-API migration. |
 | Dependencies, CI and repository presentation ([dependencies](https://github.com/go-vgo/robotgo/blob/16930bad397dcd8c5c295dd0c9c70177a135d66f/go.mod), [CI](https://github.com/go-vgo/robotgo/blob/16930bad397dcd8c5c295dd0c9c70177a135d66f/.github/workflows/go.yml)) | Already covered / reuse selectively / exclude | Shared dependency versions already match the [fork module](../../go.mod); fork Go 1.26.10 is newer than upstream 1.26.0. Do not import upstream module identity, experimental `go-wayland`, logo, instructions or repository layout. Reuse compatible synthetic CI/test ideas only; retain fork API, lifecycle, privacy and real-runtime gates. |
 
-### Near term issue grouping
+### Accepted implementation ledger
 
-Five Backlog children of [LAB-425](https://linear.app/riotbox/issue/LAB-425)
-form the next implementation horizon. None is delivered by this documentation
-audit; each must preserve signatures and provide normal/error/lifecycle tests.
+Five children of [LAB-425](https://linear.app/riotbox/issue/LAB-425) implement
+the accepted scope after the audit. Each preserves public signatures and adds
+normal/error/lifecycle tests. Linked PRs own current review, CI and merge
+evidence; Linear owns delivery status. These changes are newer than v1.0.3.
 
-| Issue | Bounded outcome |
-|---|---|
-| [LAB-427](https://linear.app/riotbox/issue/LAB-427) | Windows clipboard thread, buffer, cancellation and mutation/ownership safety |
-| [LAB-428](https://linear.app/riotbox/issue/LAB-428) | CGO Windows/macOS UTF-16 text correctness plus supplementary `ToUC` spelling in both build variants |
-| [LAB-429](https://linear.app/riotbox/issue/LAB-429) | Native Wayland clipboard selection and successful selection-owner lifetime |
-| [LAB-430](https://linear.app/riotbox/issue/LAB-430) | Literal xmessage button labels and stdin message delivery without changing alert fallback/cancellation semantics |
-| [LAB-431](https://linear.app/riotbox/issue/LAB-431) | CGO macOS minimize/restore/close targeting an owned AX window rather than the application element |
+| Issue | Bounded outcome | Implementation |
+|---|---|---|
+| [LAB-427](https://linear.app/riotbox/issue/LAB-427) | Windows clipboard thread, buffer, cancellation and mutation/ownership safety | [PR 181](https://github.com/marang/robotgo/pull/181) |
+| [LAB-428](https://linear.app/riotbox/issue/LAB-428) | CGO Windows/macOS UTF-16 text correctness plus supplementary `ToUC` spelling in both build variants | [PR 182](https://github.com/marang/robotgo/pull/182) |
+| [LAB-429](https://linear.app/riotbox/issue/LAB-429) | Native Wayland clipboard selection and successful selection-owner lifetime; private per-write spooling requires recognized `wl-clipboard` 2.3.0 or newer | [PR 184](https://github.com/marang/robotgo/pull/184) |
+| [LAB-430](https://linear.app/riotbox/issue/LAB-430) | Literal xmessage button labels and stdin message delivery without changing alert fallback/cancellation semantics | [PR 183](https://github.com/marang/robotgo/pull/183) |
+| [LAB-431](https://linear.app/riotbox/issue/LAB-431) | CGO macOS minimize/restore/close targeting an owned focused/main AX window rather than the application element, with PID validation before native narrowing | [PR 185](https://github.com/marang/robotgo/pull/185) |
+
+The macOS window slice validates its own PID mutation boundaries; the
+pre-existing argument-narrowing risk in other native PID adapters remains
+separate under [LAB-432](https://linear.app/riotbox/issue/LAB-432). Permission-
+granted macOS runtime qualification remains [LAB-69](https://linear.app/riotbox/issue/LAB-69).
+Neither follow-up nor the deferred capabilities in the matrix are implemented
+implicitly by these ports.
 
 ### First parent integration chronology
 
