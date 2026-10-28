@@ -335,6 +335,16 @@ and Windows PID/HWND text targeting remain available; an unresolved Windows
 target fails instead of posting to RobotGo's own queue. Successful submission
 does not confirm that the target application processed the text.
 
+Native CGO macOS PID-targeted keyboard and window calls reject negative or
+out-of-range process IDs before conversion to native arguments; process IDs
+must fit signed 32-bit `pid_t`. Keyboard PID `0` still selects global input.
+The legacy window PID paths continue to interpret targets as PIDs even when
+the optional handle flag is supplied. `SetHandle` instead takes an unsigned
+32-bit `CGWindowID`, with `0` resetting the selection; invalid values leave
+the selection unchanged. Checked keyboard APIs return `ErrInvalidPID`, checked
+window queries/activation report their existing failure errors, and legacy
+no-error window selectors return without native side effects.
+
 On native Linux, native Windows, and RemoteDesktop portal paths, stateful
 `KeyDown`/`KeyUp` pairs are backend- and session-affine; pointer holds provide
 the same contract where supported. Equivalent key aliases such as
