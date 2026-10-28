@@ -15,12 +15,8 @@
 
 bool min_window(uintptr pid, bool state, int8_t isPid){
 	#if defined(IS_MACOSX)
-		AXUIElementRef axID = AXUIElementCreateApplication(pid);
-		if (axID == NULL) { return false; }
-		AXError result = AXUIElementSetAttributeValue(axID, kAXMinimizedAttribute,
-										state ? kCFBooleanTrue : kCFBooleanFalse);
-		CFRelease(axID);
-		return result == kAXErrorSuccess;
+		(void)isPid; /* macOS retains PID interpretation in both modes. */
+		return robotgo_ax_minimize_pid(pid, state);
 	#elif defined(IS_LINUX)
 		(void)pid; (void)state; (void)isPid;
 		return false;

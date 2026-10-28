@@ -760,6 +760,18 @@ top-level window and falls back to another top-level window owned by the
 process. Windows may deny `SetActiveE` under its foreground-activation policy;
 the error is returned instead of reporting false success.
 
+On macOS CGO builds, PID-targeted `MinWindowE` (including restore) and
+`CloseWindowE(pid)` resolve the application's focused window, then its main
+window, validating its AX role and owning PID before mutation. They do not
+activate the application or choose an arbitrary window-list entry. Restore
+can use a minimized main window if the application exposes it; unavailable
+focused/main windows return the existing checked operation error. The legacy
+macOS target remains a PID even with the generic handle-mode flag; selected
+CGWindowID lookup and no-argument close targeting are unchanged. Maximize
+remains unsupported rather than being reinterpreted as fullscreen. These
+paths require Accessibility permission; permission-granted runtime evidence
+remains pending under [LAB-69](https://linear.app/riotbox/issue/LAB-69).
+
 ### Runtime diagnostics
 
 `GetRuntimeBackendInfo` is platform-neutral and reports whether the current
