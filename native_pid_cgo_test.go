@@ -8,6 +8,7 @@ import (
 	"go/parser"
 	"go/token"
 	"os"
+	"path/filepath"
 	"runtime"
 	"strconv"
 	"strings"
@@ -117,6 +118,22 @@ func TestNativeDarwinPIDBridgeRouting(t *testing.T) {
 	}
 }
 
+func TestNativeDarwinPIDRoutingLineEndings(t *testing.T) {
+	const body = "{\n\tif rejected {\n\t\treturn\n\t}\n}"
+	const source = "package fixture\nfunc guarded() " + body + "\n"
+	for _, newline := range []string{"\n", "\r\n"} {
+		t.Run(strconv.Quote(newline), func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "fixture.go")
+			if err := os.WriteFile(path, []byte(strings.ReplaceAll(source, "\n", newline)), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			if got := nativePIDFunctionBody(t, path, "guarded"); got != body {
+				t.Fatalf("normalized function body = %q, want %q", got, body)
+			}
+		})
+	}
+}
+
 func nativePIDFunctionBody(t *testing.T, name, function string) string {
 	t.Helper()
 	source, err := os.ReadFile(name)
@@ -130,7 +147,8 @@ func nativePIDFunctionBody(t *testing.T, name, function string) string {
 	}
 	for _, declaration := range file.Decls {
 		if declaration, ok := declaration.(*ast.FuncDecl); ok && declaration.Name.Name == function {
-			return string(source[fileSet.Position(declaration.Body.Pos()).Offset:fileSet.Position(declaration.Body.End()).Offset])
+			body := string(source[fileSet.Position(declaration.Body.Pos()).Offset:fileSet.Position(declaration.Body.End()).Offset])
+			return strings.ReplaceAll(body, "\r\n", "\n")
 		}
 	}
 	t.Fatalf("missing function %s in %s", function, name)
