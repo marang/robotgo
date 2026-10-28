@@ -139,12 +139,16 @@ jobs:
       - name: Run golangci-lint for Pure-Go build
         run: CGO_ENABLED=0 golangci-lint run --timeout=5m ./...
   test:
-    # name: build
+    # Keep the protected context while pinning the ARM64 macOS image.
+    name: test (${{ matrix.os }})
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macOS-latest, windows-latest]
-    runs-on: ${{ matrix.os }}
+        include:
+          - os: macOS-latest
+            runner: macos-15
+    runs-on: ${{ matrix.runner || matrix.os }}
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -155,6 +159,13 @@ jobs:
         with:
           go-version-file: go.mod
         id: go
+
+      - name: Verify native macOS ARM64 runner
+        if: runner.os == 'macOS'
+        run: |
+          test "$(uname -m)" = arm64
+          test "$(go env GOARCH)" = arm64
+          test "$(go env CGO_ENABLED)" = 1
 
       - name: Install Linux dependencies
         if: runner.os == 'Linux'
@@ -193,15 +204,38 @@ jobs:
       - name: Check native macOS public Go API
         if: runner.os == 'macOS'
         run: go run ./internal/cmd/apicompat -variant darwin-cgo
+      # Share one scarce ARM64 VM for both build modes. The separate nocgo
+      # macOS lane also executes the Pure-Go suite on a standard Intel VM.
+      - name: Test Pure-Go macOS ARM64 build
+        if: runner.os == 'macOS'
+        env:
+          CGO_ENABLED: "0"
+        run: go test -count=1 -v ./...
+      - name: Test Pure-Go macOS ARM64 input preflight
+        if: runner.os == 'macOS'
+        env:
+          CGO_ENABLED: "0"
+        run: >-
+          go test
+          -run "^TestPureGoDarwinInputRuntime$"
+          -count=1 -timeout=30s -v .
       - name: Check native Windows public Go API
         if: runner.os == 'Windows'
         run: go run ./internal/cmd/apicompat -variant windows-cgo
   nocgo:
+    # Keep existing branch-protection contexts independent of physical labels.
+    name: nocgo (${{ matrix.os }})
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macOS-latest, windows-latest]
-    runs-on: ${{ matrix.os }}
+        include:
+          - os: ubuntu-latest
+            runner: ubuntu-latest
+          - os: macOS-latest
+            runner: macos-26-intel
+          - os: windows-latest
+            runner: windows-latest
+    runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -210,6 +244,11 @@ jobs:
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
+      - name: Verify Pure-Go macOS Intel runner
+        if: runner.os == 'macOS'
+        run: |
+          test "$(uname -m)" = x86_64
+          test "$(go env GOARCH)" = amd64
       - name: Test Pure-Go build
         env:
           CGO_ENABLED: "0"
