@@ -80,7 +80,7 @@ func TestLocalCIPreflightCoversFastFailureContracts(t *testing.T) {
 		`run_logged "branch diff hygiene" git diff --check "$merge_base" HEAD`,
 		`run_logged "working-tree diff hygiene" git diff --check HEAD`,
 		`run_logged "module integrity" go mod verify`,
-		"go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.7",
+		"go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12",
 		`run_logged "native default tests" go test ./...`,
 		`run_logged "Pure-Go default tests" env CGO_ENABLED=0 go test ./...`,
 		`run_logged "native vet" go vet ./...`,

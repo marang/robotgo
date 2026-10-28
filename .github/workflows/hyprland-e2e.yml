@@ -41,9 +41,19 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          sudo apt-get update
-          sudo apt-get install --no-install-recommends -y \
-            "linux-modules-extra-$(uname -r)"
+          kernel_release="$(uname -r)"
+          kernel_major="${kernel_release%%.*}"
+          if [[ ! "$kernel_major" =~ ^[1-9][0-9]*$ ]]; then
+            echo 'unsupported hosted kernel release' >&2
+            exit 1
+          fi
+          # New Azure kernels include these modules in linux-modules;
+          # older runner images still require the separate extras package.
+          if (( kernel_major < 7 )); then
+            sudo apt-get update
+            sudo apt-get install --no-install-recommends -y \
+              "linux-modules-extra-$kernel_release"
+          fi
           sudo modprobe vkms enable_default_device=1
           sudo udevadm settle
           test -d /sys/module/vkms
