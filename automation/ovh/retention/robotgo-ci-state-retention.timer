@@ -1,0 +1,12 @@
+[Unit]
+Description=Hourly retention of private RobotGo CI runs
+
+[Timer]
+OnCalendar=hourly
+Persistent=true
+RandomizedDelaySec=5m
+AccuracySec=1min
+Unit=robotgo-ci-state-retention.service
+
+[Install]
+WantedBy=timers.target

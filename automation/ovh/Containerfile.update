@@ -1,0 +1,29 @@
+# Runtime/tool correction; the base is the already admitted local image ID.
+# The build context contains only this file and the two reviewed scripts.
+FROM sha256:5d6fcf93914cd368057e9d124909cbf91f876f576d773563518e61b5df6f7241
+USER 0:0
+# Debian bookworm's xkbcli 1.5 omits the keycode field required by the
+# unchanged X11 oracle. Pin the compatible 1.6 tool in an isolated prefix.
+# Its xkbcommon libraries are static: RobotGo still links the distro libraries.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends curl meson ninja-build bison libxcb-xkb-dev \
+    && curl --fail --show-error --silent --location \
+        https://xkbcommon.org/download/libxkbcommon-1.6.0.tar.xz \
+        --output /tmp/libxkbcommon-1.6.0.tar.xz \
+    && echo '0edc14eccdd391514458bc5f5a4b99863ed2d651e4dd761a90abf4f46ef99c2b  /tmp/libxkbcommon-1.6.0.tar.xz' | sha256sum --check --strict \
+    && tar -xJf /tmp/libxkbcommon-1.6.0.tar.xz -C /tmp \
+    && meson setup /tmp/robotgo-xkb-build /tmp/libxkbcommon-1.6.0 \
+        --prefix=/opt/robotgo-xkb-oracle --libdir=lib --buildtype=release \
+        -Ddefault_library=static -Denable-docs=false -Denable-wayland=false \
+        -Denable-xkbregistry=false -Denable-bash-completion=false \
+        -Dxkb-config-root=/usr/share/X11/xkb -Dx-locale-root=/usr/share/X11/locale \
+    && meson compile -C /tmp/robotgo-xkb-build -j 2 \
+    && meson install -C /tmp/robotgo-xkb-build --no-rebuild \
+    && ln -s /opt/robotgo-xkb-oracle/bin/xkbcli /usr/local/bin/xkbcli \
+    && test "$(/usr/local/bin/xkbcli --version)" = 1.6.0 \
+    && ldd /opt/robotgo-xkb-oracle/libexec/xkbcommon/xkbcli-interactive-x11 > /tmp/robotgo-xkb-linked-libs \
+    && ! grep -q libxkbcommon /tmp/robotgo-xkb-linked-libs \
+    && rm /tmp/robotgo-xkb-linked-libs \
+    && rm -rf /tmp/libxkbcommon-1.6.0 /tmp/libxkbcommon-1.6.0.tar.xz /tmp/robotgo-xkb-build /var/lib/apt/lists/*
+USER 65532:65532
+COPY --chmod=0444 container-ci.sh container-dependencies.sh /opt/robotgo-ci/
