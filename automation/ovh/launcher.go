@@ -56,7 +56,7 @@ func main() {
 		refuse()
 	}
 	file := os.NewFile(uintptr(fd), driverPath)
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 	info, err := file.Stat()
 	if err != nil || !info.Mode().IsRegular() || info.Mode().Perm() != 0700 || info.Size() > 1024*1024 {
 		refuse()
