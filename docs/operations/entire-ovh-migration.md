@@ -7,6 +7,15 @@ the central account/home normalization. Three Dagu schedules and the dedicated
 retention timer are active. Source integration is tracked in
 [the native LAB-437 Trail](https://entire.com/et/marang/-/trails/4).
 
+The evidence files below retain the initial qualification snapshot, not a
+permanent live baseline. The closeout also admits exactly the reviewed
+non-executable `.codex/hooks.json` and `.entire/.gitignore` Git blobs introduced
+by Entire activation; every other capture/session/config path stays denied.
+Worker upgrades after account normalization require explicit reconciliation
+against completed historical journals and the independently rebuilt normalized
+baseline, without modifying those journals. Current upgrade/CI receipts are
+recorded in LAB-437.
+
 The subsequently requested complete first-party GitHub exit, including a new
 module address, is the separate [P015 delivery plan](../plan/github-exit.md).
 LAB-437's verified foundation is not a claim that those remaining dependencies
@@ -45,7 +54,7 @@ transferred and no unrestricted mirror push was used.
 Native repository `/et/marang/robotgo` is public, ID
 `01M6741GKY2C7Y5SY71CYXVZZJ`, with its sole primary in Frankfurt
 (`aws-eu-central-1`, EU jurisdiction). Project `marang` reports the same primary
-processing cell and EU region. Native HEAD is `main` at
+processing cell and EU region. The original source-transfer HEAD was `main` at
 `700a70e2a55ee27c2a7dbe4f3de80a967f5775b9`.
 [Exact source evidence](../../automation/ovh/evidence/source-verification.json)
 records the refs.

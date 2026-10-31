@@ -31,6 +31,12 @@ TASKS = {
 STATE_DIRECTORY = Path('/home/izoone_workers/.local/state/robotgo-ovh')
 MAX_LOG_BYTES = 16 * 1024 * 1024
 MAX_CAPTURE_BYTES = 1024 * 1024
+# Reviewed, non-executable activation metadata from the user's Enable Entire
+# commit. No other agent/session metadata is admitted; changes require review.
+SOURCE_METADATA_BLOBS = {
+    '.codex/hooks.json': '79c5f77d9ec33966bc0341b95865dafd01f8bc62',
+    '.entire/.gitignore': 'e66987d2baadec50fc9285426dcb00d81edb7aff',
+}
 
 
 class BoundedLog:
@@ -356,9 +362,15 @@ def execute_locked(args, run_id, state, binaries):
             successful = {'commit': commit, 'pipeline': pipeline}
             if args.if_changed and success_marker(state) == successful:
                 return 'unchanged'
-            forbidden = command('git', '-C', objects, 'ls-tree', '-r', '--name-only', commit,
+            metadata = command('git', '-C', objects, 'ls-tree', '-r', '-z',
+                                '--format=%(objectmode) %(objecttype) %(objectname) %(path)', commit,
                                 '--', '.entire', '.codex', '.claude', '.git', '.gitmodules', '.gitattributes', capture=True)
-            if forbidden:
+            allowed = {f'100644 blob {blob} {path}' for path, blob in SOURCE_METADATA_BLOBS.items()}
+            # NUL terminators preserve final path whitespace through command().
+            if metadata and not metadata.endswith('\0'):
+                raise Refused('unterminated source metadata records')
+            records = metadata.split('\0')[:-1] if metadata else []
+            if any(record not in allowed for record in records):
                 raise Refused('source contains forbidden metadata or external-source paths')
             module = command('git', '-C', objects, 'show', f'{commit}:go.mod', capture=True)
             if re.findall(r'^go ([^\s]+)\s*$', module, re.MULTILINE) != ['1.26.10']:

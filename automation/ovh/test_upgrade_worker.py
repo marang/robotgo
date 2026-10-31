@@ -401,6 +401,253 @@ class WorkerUpgradeTests(unittest.TestCase):
         with self.assertRaisesRegex(upgrade.Refused, 'pending worker upgrade exists'):
             self.upgrade.upgrade(fourth[0], fourth[1], self.third[0], self.third[1], True, previous)
 
+    def prepare_normalized_reconciliation(self):
+        # Build old-identity completed journals without importing/executing their
+        # source. Their final profile intentionally differs from the normalized
+        # live baseline, just as after the central account/home rename.
+        legacy = []
+        for index in range(3):
+            bundle, _, files = self.make_bundle('legacy-' + str(index), self.old_image)
+            profile = upgrade.decode((bundle / 'profile.json').read_bytes())
+            profile.update(owner='izoone_workers_vps16776', home='/home/izoone_workers_vps16776')
+            raw = upgrade.encoded(profile)
+            legacy.append((raw, profile, files))
+        final_sha = upgrade.sha(legacy[-1][0])
+        paths = [self.upgrade.path(upgrade.PENDING),
+                 self.upgrade.path(upgrade.ROOT + '/robotgo-worker-upgrade-' + final_sha + '.pending')]
+        previous_complete = None
+        for index, path in enumerate(paths):
+            prior_raw, prior_profile, prior_files = legacy[index]
+            new_raw, new_profile, _ = legacy[index + 1]
+            complete = {'mode': 'apply', 'profile_sha256': upgrade.sha(new_raw),
+                        'baseline_sha256': upgrade.sha(prior_raw), 'files': new_profile['files'],
+                        'image': new_profile['image'],
+                        'auth_services_dags_holds_history_and_other_projects_untouched': True}
+            if index:
+                complete.update(previous_journal=str(paths[0]), journal=str(path),
+                                previous_complete_sha256=upgrade.sha(previous_complete))
+            intent = dict(complete, baseline_files=prior_profile['files'], installed_metadata={}, locks={})
+            contents = {'intent.json': upgrade.encoded(intent), 'complete.json': upgrade.encoded(complete),
+                        'progress.json': upgrade.encoded({'phase': 'complete'}),
+                        'prior-profile.json': prior_raw, 'new-profile.json': new_raw,
+                        **{'prior-' + name: data for name, data in prior_files.items()}}
+            for name, data in contents.items():
+                self.write('/' + str(path.relative_to(self.root)) + '/' + name, data, 0o600)
+            previous_complete = contents['complete.json']
+        # Reconciliation is a code-only upgrade of the fixed existing image.
+        self.new_bundle, self.new_sha, self.new_files = self.make_bundle('new-normalized', self.old_image)
+        self.addCleanup(mock.patch.stopall)
+        mock.patch.object(upgrade, 'NORMALIZED_BASELINE_SHA256', self.old_sha).start()
+        mock.patch.object(upgrade, 'NORMALIZED_IMAGE', self.old_image).start()
+        mock.patch.object(upgrade, 'HISTORICAL_PROFILE_SHA256', final_sha).start()
+        self.historical_paths = paths
+        return upgrade.sha(upgrade.encoded(self.upgrade.historical_journals()))
+
+    def normalized_upgrade(self, digest, apply=True, previous=None):
+        return self.upgrade.upgrade(self.new_bundle, self.new_sha, self.old_bundle, self.old_sha,
+                                    apply, previous, reconcile_normalized_baseline=digest)
+
+    def test_normalized_reconciliation_preserves_completed_history_and_preview_is_read_only(self):
+        digest = self.prepare_normalized_reconciliation()
+        before = self.tree()
+        report = self.normalized_upgrade(digest, False)
+        self.assertEqual(self.tree(), before)
+        self.assertEqual(report['historical_journals_sha256'], digest)
+        expected = self.upgrade.path(upgrade.ROOT + '/robotgo-worker-upgrade-' + self.new_sha + '.pending')
+        self.assertEqual(report['journal'], str(expected))
+        self.assertFalse(expected.exists())
+        directory_inodes = {path: path.stat().st_ino for path in self.historical_paths}
+        self.normalized_upgrade(digest)
+        for path, inode in directory_inodes.items():
+            self.assertEqual(path.stat().st_ino, inode)
+            for name in path.iterdir():
+                relative = str(name.relative_to(self.root))
+                self.assertEqual(self.tree()[relative], before[relative])
+        self.assertTrue((expected / 'complete.json').is_file())
+        for name, data in self.new_files.items():
+            self.assertEqual(self.upgrade.path(upgrade.LIBEXEC + '/' + name).read_bytes(), data)
+
+    def test_normalized_reconciliation_refuses_bad_digest_or_other_baseline_and_image(self):
+        digest = self.prepare_normalized_reconciliation()
+        before = self.tree()
+        for bad in ('', 'not-a-hash', '0' * 64):
+            with self.subTest(digest=bad), self.assertRaises(upgrade.Refused):
+                self.normalized_upgrade(bad)
+            self.assertEqual(self.tree(), before)
+        with mock.patch.object(upgrade, 'NORMALIZED_BASELINE_SHA256', '0' * 64):
+            with self.assertRaisesRegex(upgrade.Refused, 'exact normalized baseline'):
+                self.normalized_upgrade(digest)
+        other, other_sha, _ = self.make_bundle('other-image', 'sha256:' + 'f' * 64)
+        before = self.tree()
+        with self.assertRaisesRegex(upgrade.Refused, 'unchanged image'):
+            self.upgrade.upgrade(other, other_sha, self.old_bundle, self.old_sha, True,
+                                 reconcile_normalized_baseline=digest)
+        self.assertEqual(self.tree(), before)
+
+    def test_normalized_reconciliation_refuses_incomplete_historical_journals(self):
+        digest = self.prepare_normalized_reconciliation()
+        for path in self.historical_paths:
+            with self.subTest(journal=path.name):
+                complete = path / 'complete.json'
+                data = complete.read_bytes()
+                complete.unlink()
+                before = self.tree()
+                with self.assertRaisesRegex(upgrade.Refused, 'historical journal is incomplete'):
+                    self.normalized_upgrade(digest)
+                self.assertEqual(self.tree(), before)
+                self.write('/' + str(complete.relative_to(self.root)), data, 0o600)
+        progress = self.historical_paths[-1] / 'progress.json'
+        progress.write_bytes(upgrade.encoded({'phase': 'launcher-published'}))
+        with self.assertRaisesRegex(upgrade.Refused, 'historical journal is incomplete'):
+            self.normalized_upgrade(digest)
+
+    def test_normalized_reconciliation_refuses_replaced_or_unsafe_historical_files(self):
+        digest = self.prepare_normalized_reconciliation()
+        path = self.historical_paths[0] / 'complete.json'
+        replacement = self.write(upgrade.ROOT + '/replacement.json', path.read_bytes(), 0o600)
+        os.replace(replacement, path)
+        before = self.tree()
+        with self.assertRaisesRegex(upgrade.Refused, 'historical journals differ from reviewed SHA256'):
+            self.normalized_upgrade(digest)
+        self.assertEqual(self.tree(), before)
+        # Even newly reviewed contents cannot bless a symlink/hardlink input.
+        target = self.historical_paths[1] / 'prior-robotgo-ci.py'
+        target.unlink()
+        target.symlink_to(self.historical_paths[0] / 'prior-robotgo-ci.py')
+        with self.assertRaises(upgrade.Refused):
+            self.normalized_upgrade(digest)
+
+    def test_normalized_reconciliation_obeys_both_locks_and_refuses_mixed_modes(self):
+        digest = self.prepare_normalized_reconciliation()
+        before = self.tree()
+        for absolute in (upgrade.GLOBAL_LOCK, upgrade.RUNNER_LOCK):
+            with self.subTest(lock=absolute), self.upgrade.path(absolute).open('rb') as active:
+                fcntl.flock(active, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                with self.assertRaisesRegex(upgrade.Refused, 'lock busy'):
+                    self.normalized_upgrade(digest)
+            self.assertEqual(self.tree(), before)
+        with self.assertRaisesRegex(upgrade.Refused, 'mutually exclusive'):
+            self.normalized_upgrade(digest, previous=self.historical_paths[1])
+        self.assertEqual(self.tree(), before)
+
+    def test_normalized_reconciliation_preserves_concurrent_history_change_without_publishing(self):
+        digest = self.prepare_normalized_reconciliation()
+        original = self.upgrade.create
+        historical = self.historical_paths[0] / 'intent.json'
+        def interfere(path, data, owner, mode):
+            result = original(path, data, owner, mode)
+            if path.name == '.robotgo-next-launcher':
+                value = upgrade.decode(historical.read_bytes())
+                value['locks'] = {'changed': 'concurrent root operation'}
+                historical.write_bytes(upgrade.encoded(value))
+            return result
+        with mock.patch.object(self.upgrade, 'create', side_effect=interfere):
+            with self.assertRaisesRegex(upgrade.Refused, 'historical journals changed'):
+                self.normalized_upgrade(digest)
+        self.assertEqual(upgrade.decode(historical.read_bytes())['locks'], {'changed': 'concurrent root operation'})
+        for name, data in self.old_files.items():
+            self.assertEqual(self.upgrade.path(upgrade.LIBEXEC + '/' + name).read_bytes(), data)
+        journal = self.upgrade.path(upgrade.ROOT + '/robotgo-worker-upgrade-' + self.new_sha + '.pending')
+        self.assertTrue((journal / 'intent.json').is_file())
+        self.assertFalse((journal / 'complete.json').exists())
+
+    def test_normalized_reconciliation_partial_publish_keeps_history_and_refuses_retry(self):
+        digest = self.prepare_normalized_reconciliation()
+        before = self.tree()
+        original = os.replace
+        def fail(source, destination):
+            if destination == self.upgrade.path(upgrade.LIBEXEC + '/robotgo-ci'):
+                raise OSError('interrupted after driver publication')
+            return original(source, destination)
+        with mock.patch.object(os, 'replace', side_effect=fail), self.assertRaises(OSError):
+            self.normalized_upgrade(digest)
+        for directory in self.historical_paths:
+            for path in directory.iterdir():
+                key = str(path.relative_to(self.root))
+                self.assertEqual(self.tree()[key], before[key])
+        self.assertEqual(self.upgrade.path(upgrade.LIBEXEC + '/robotgo-ci.py').read_bytes(), self.new_files['robotgo-ci.py'])
+        self.assertEqual(self.upgrade.path(upgrade.LIBEXEC + '/robotgo-ci').read_bytes(), self.old_files['robotgo-ci'])
+        with self.assertRaisesRegex(upgrade.Refused, 'pending worker upgrade exists'):
+            self.normalized_upgrade(digest)
+
+    def test_normalized_reconciliation_never_adopts_existing_successor_namespace(self):
+        digest = self.prepare_normalized_reconciliation()
+        journal = self.upgrade.path(upgrade.ROOT + '/robotgo-worker-upgrade-' + self.new_sha + '.pending')
+        journal.mkdir(mode=0o700)
+        before = self.tree()
+        with self.assertRaisesRegex(upgrade.Refused, 'pending worker upgrade exists'):
+            self.normalized_upgrade(digest)
+        self.assertEqual(self.tree(), before)
+
+    def test_completed_normalized_reconciliation_supports_normal_successor_chain(self):
+        digest = self.prepare_normalized_reconciliation()
+        self.normalized_upgrade(digest)
+        before = self.tree()
+        previous = self.upgrade.path(upgrade.ROOT + '/robotgo-worker-upgrade-' + self.new_sha + '.pending')
+        bundle, profile_sha, files = self.make_bundle('after-reconciliation', self.old_image)
+        self.upgrade.upgrade(bundle, profile_sha, self.new_bundle, self.new_sha, True, previous)
+        for directory in (*self.historical_paths, previous):
+            for path in directory.iterdir():
+                key = str(path.relative_to(self.root))
+                self.assertEqual(self.tree()[key], before[key])
+        for name, data in files.items():
+            self.assertEqual(self.upgrade.path(upgrade.LIBEXEC + '/' + name).read_bytes(), data)
+
+    def test_normalized_reconciliation_abandoned_intent_blocks_different_profile_retry(self):
+        digest = self.prepare_normalized_reconciliation()
+        original = self.upgrade.create
+        def fail_after_intent(path, data, owner, mode):
+            result = original(path, data, owner, mode)
+            if path.name == 'intent.json':
+                raise OSError('interrupted after durable intent, before staging')
+            return result
+        abandoned = self.upgrade.path(upgrade.ROOT + '/robotgo-worker-upgrade-' + self.new_sha + '.pending')
+        with mock.patch.object(self.upgrade, 'create', side_effect=fail_after_intent), self.assertRaises(OSError):
+            self.normalized_upgrade(digest)
+        self.assertTrue((abandoned / 'intent.json').is_file())
+        self.assertFalse((abandoned / 'complete.json').exists())
+        self.new_bundle, self.new_sha, self.new_files = self.make_bundle('different-retry', self.old_image)
+        before = self.tree()
+        with self.assertRaisesRegex(upgrade.Refused, 'unaccounted.*journal'):
+            self.normalized_upgrade(digest)
+        self.assertEqual(self.tree(), before)
+
+    def test_normalized_reconciliation_rechecks_unaccounted_namespaces_during_apply(self):
+        digest = self.prepare_normalized_reconciliation()
+        original = self.upgrade.create
+        foreign = self.upgrade.path(upgrade.ROOT + '/robotgo-worker-upgrade-unreviewed.pending')
+        def interfere(path, data, owner, mode):
+            result = original(path, data, owner, mode)
+            if path.name == '.robotgo-next-launcher':
+                foreign.mkdir(mode=0o700)
+                (foreign / 'complete.json').write_bytes(upgrade.encoded({'phase': 'complete'}))
+            return result
+        with mock.patch.object(self.upgrade, 'create', side_effect=interfere):
+            with self.assertRaisesRegex(upgrade.Refused, 'unaccounted.*journal'):
+                self.normalized_upgrade(digest)
+        self.assertTrue((foreign / 'complete.json').is_file())
+        for name, data in self.old_files.items():
+            self.assertEqual(self.upgrade.path(upgrade.LIBEXEC + '/' + name).read_bytes(), data)
+
+    def test_normalized_reconciliation_rechecks_own_journal_identity_during_apply(self):
+        digest = self.prepare_normalized_reconciliation()
+        original = self.upgrade.create
+        pending = self.upgrade.path(upgrade.ROOT + '/robotgo-worker-upgrade-' + self.new_sha + '.pending')
+        moved = self.upgrade.path(upgrade.ROOT + '/preserved-replaced-journal')
+        def interfere(path, data, owner, mode):
+            result = original(path, data, owner, mode)
+            if path.name == '.robotgo-next-launcher':
+                pending.rename(moved)
+                pending.mkdir(mode=0o700)
+            return result
+        with mock.patch.object(self.upgrade, 'create', side_effect=interfere):
+            with self.assertRaisesRegex(upgrade.Refused, 'owned reconciliation journal changed'):
+                self.normalized_upgrade(digest)
+        self.assertTrue((moved / 'intent.json').is_file())
+        self.assertEqual(list(pending.iterdir()), [])
+        for name, data in self.old_files.items():
+            self.assertEqual(self.upgrade.path(upgrade.LIBEXEC + '/' + name).read_bytes(), data)
+
 
 if __name__ == '__main__':
     unittest.main()

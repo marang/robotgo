@@ -189,6 +189,66 @@ class RunnerTests(unittest.TestCase):
         self.invoke(success=False)
         self.assertFalse(any(e['kind'] == 'podman' for e in self.records()))
 
+    def add_reviewed_activation_metadata(self):
+        repository = Path(__file__).resolve().parents[2]
+        for name in ('.codex/hooks.json', '.entire/.gitignore'):
+            (self.fixture / name).write_bytes((repository / name).read_bytes())
+            self.command_git('add', name)
+        self.command_git('commit', '-m', 'reviewed Entire activation metadata')
+
+    def test_reviewed_entire_activation_metadata_allows_current_main(self):
+        self.add_reviewed_activation_metadata()
+        result = self.invoke()
+        self.assertEqual(result['commit'], self.command_git('rev-parse', 'HEAD'))
+        source = self.state / result['run_id'] / 'source'
+        self.assertTrue((source / '.codex/hooks.json').is_file())
+        self.assertTrue((source / '.entire/.gitignore').is_file())
+        self.assertFalse((source / '.codex/private').exists())
+        self.assertFalse((source / '.entire/private').exists())
+
+    def test_activation_metadata_rejects_changed_bytes_modes_and_extra_private_files(self):
+        self.add_reviewed_activation_metadata()
+        clean = self.command_git('rev-parse', 'HEAD')
+        for name in ('.codex/hooks.json', '.entire/.gitignore'):
+            path = self.fixture / name
+            original = path.read_bytes()
+            for changed in ('bytes', 'executable', 'symlink'):
+                with self.subTest(name=name, changed=changed):
+                    if changed == 'bytes':
+                        path.write_bytes(original + b'\n')
+                    elif changed == 'executable':
+                        path.chmod(0o755)
+                    else:
+                        path.unlink()
+                        path.symlink_to('uncommitted.txt')
+                    self.command_git('add', name)
+                    self.command_git('commit', '-m', 'unreviewed activation metadata')
+                    self.invoke(success=False)
+                    self.command_git('checkout', clean, '--', name)
+                    self.command_git('commit', '-m', 'restore reviewed metadata')
+        for name in ('.entire/settings.local.json', '.entire/metadata/session.json',
+                     '.codex/private', '.claude/settings.json', '.gitmodules', '.gitattributes'):
+            with self.subTest(name=name):
+                path = self.fixture / name
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text('synthetic forbidden fixture\n')
+                self.command_git('add', '-f', name)
+                self.command_git('commit', '-m', 'forbidden source metadata')
+                self.invoke(success=False)
+                self.command_git('rm', '-f', name)
+                self.command_git('commit', '-m', 'remove forbidden fixture')
+        self.assertFalse(any(e['kind'] == 'podman' for e in self.records()))
+
+    def test_activation_metadata_rejects_pinned_blob_under_whitespace_filename(self):
+        self.add_reviewed_activation_metadata()
+        original = '.entire/.gitignore'
+        renamed = original + ' '
+        (self.fixture / original).rename(self.fixture / renamed)
+        self.command_git('add', '-A', '--', original, renamed)
+        self.command_git('commit', '-m', 'unexpected trailing-space metadata filename')
+        self.invoke(success=False)
+        self.assertFalse(any(e['kind'] == 'podman' for e in self.records()))
+
     def test_failure_stays_private_bounded_and_cleanup_is_exact(self):
         self.options.write_text(json.dumps({'auth': True, 'exit': 7}))
         with patch.object(runner, 'MAX_LOG_BYTES', 256):

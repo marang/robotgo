@@ -23,6 +23,15 @@ own journal completed and proves the currently reviewed baseline profile/files.
 It is preserved byte-for-byte. The successor journal name is derived solely
 from the new full profile SHA256; an existing successor namespace is refused.
 Omitting this option retains the original first-upgrade behavior unchanged.
+
+--reconcile-normalized-baseline SHA256 is a separate, explicit one-time bridge
+from the exact reviewed central account-normalization baseline. Its digest binds
+both fixed completed pre-normalization journals, including file/directory
+fingerprints. They remain historical, never adopted or rewritten. The image is
+unchanged, and the new journal is derived from the new full profile SHA256.
+Preview and apply both refuse incomplete, changed or unreviewed historical state.
+Any other own upgrade-journal namespace blocks this one-time bridge, including
+an abandoned attempt for a different candidate profile.
 """
 
 import argparse
@@ -56,6 +65,11 @@ NAMES = ('robotgo-ci', 'robotgo-ci.py')
 HASH = re.compile(r'[0-9a-f]{64}')
 IMAGE = re.compile(r'sha256:[0-9a-f]{64}')
 LIMIT = 16 * 1024 * 1024
+NORMALIZED_BASELINE_SHA256 = 'a211836dcc11c73b8299844fbd74f6257fba67e821b762e9759c4bb15686687b'
+NORMALIZED_IMAGE = 'sha256:4fb1dd6ef7bc347b9713c3fd89ee6801f8d47b2acc07378063f1420491d05f62'
+HISTORICAL_PROFILE_SHA256 = '08efbae7cc1475546edf28c4838ac1b48beabcf2058bdf7ac3cf4defa4bad5be'
+JOURNAL_FILES = {'intent.json', 'progress.json', 'complete.json', 'new-profile.json',
+                 'prior-profile.json', 'prior-robotgo-ci', 'prior-robotgo-ci.py'}
 
 
 class Refused(ValueError):
@@ -273,8 +287,7 @@ class Upgrade:
         if path not in (original, derived) or '..' in path.parts or not path.is_absolute():
             raise Refused('previous journal must be exact own baseline-profile namespace')
         self.inspect(path, self.root_owner, {0o700}, directory=True)
-        names = {'intent.json', 'progress.json', 'complete.json', 'new-profile.json',
-                 'prior-profile.json', 'prior-robotgo-ci', 'prior-robotgo-ci.py'}
+        names = JOURNAL_FILES
         if set(os.listdir(path)) != names:
             raise Refused('previous journal is incomplete or has unexpected state')
         records = {name: self.read(path / name, self.root_owner, {0o600}) for name in sorted(names)}
@@ -301,6 +314,79 @@ class Upgrade:
             raise Refused('previous intent and prior public code differ')
         return path, records
 
+    def historical_journals(self):
+        """Read only the two completed own journals preceding central rename.
+
+        Return a canonical content/metadata snapshot for independent review.
+        Historical profiles are inspected as data, never admitted as executable
+        bundles or substituted for the exact normalized live baseline.
+        """
+        paths = (self.path(PENDING), self.path(ROOT + '/robotgo-worker-upgrade-' +
+                                              HISTORICAL_PROFILE_SHA256 + '.pending'))
+        snapshot = {}
+        previous = None
+        for index, path in enumerate(paths):
+            directory = self.metadata(self.inspect(path, self.root_owner, {0o700}, directory=True))
+            if set(os.listdir(path)) != JOURNAL_FILES:
+                raise Refused('historical journal is incomplete or has unexpected state')
+            records = {name: self.read(path / name, self.root_owner, {0o600}) for name in sorted(JOURNAL_FILES)}
+            complete, intent = (decode(records[name][0]) for name in ('complete.json', 'intent.json'))
+            profile, prior = (decode(records[name][0]) for name in ('new-profile.json', 'prior-profile.json'))
+            for value in (profile, prior):
+                if (not isinstance(value, dict) or value.get('owner') != 'izoone_workers_vps16776'
+                        or value.get('home') != '/home/izoone_workers_vps16776'
+                        or value.get('uid') != UID or value.get('gid') != GID
+                        or value.get('schema_version') != 1 or value.get('go_version') != 'go1.26.10'
+                        or value.get('installed') is not False
+                        or not isinstance(value.get('image'), str) or not IMAGE.fullmatch(value['image'])
+                        or not isinstance(value.get('files'), dict) or set(value['files']) != set(NAMES)
+                        or any(not isinstance(digest, str) or not HASH.fullmatch(digest)
+                               for digest in value['files'].values())):
+                    raise Refused('historical journal profile identity or seals differ')
+            expected = {'mode': 'apply', 'profile_sha256': sha(records['new-profile.json'][0]),
+                        'baseline_sha256': sha(records['prior-profile.json'][0]),
+                        'files': profile['files'], 'image': profile['image'],
+                        'auth_services_dags_holds_history_and_other_projects_untouched': True}
+            if index:
+                expected.update(previous_journal=str(paths[0]), journal=str(path),
+                                previous_complete_sha256=sha(previous['complete.json'][0]))
+                if records['prior-profile.json'][0] != previous['new-profile.json'][0]:
+                    raise Refused('historical journal profile chain differs')
+            if (not isinstance(complete, dict) or complete != expected
+                    or not isinstance(intent, dict) or set(intent) != set(expected) | {'baseline_files', 'installed_metadata', 'locks'}
+                    or any(intent[key] != value for key, value in expected.items())
+                    or intent['baseline_files'] != prior['files']
+                    or any(sha(records['prior-' + name][0]) != prior['files'][name] for name in NAMES)
+                    or decode(records['progress.json'][0]) != {'phase': 'complete'}):
+                raise Refused('historical journal is incomplete or receipt seals differ')
+            if self.metadata(self.inspect(path, self.root_owner, {0o700}, directory=True)) != directory:
+                raise Refused('historical journal changed during validation')
+            snapshot[path.name] = {'directory': directory,
+                                   'files': {name: dict(info, sha256=sha(data))
+                                             for name, (data, info) in records.items()}}
+            previous = records
+        if (sha(previous['new-profile.json'][0]) != HISTORICAL_PROFILE_SHA256
+                or profile['image'] != NORMALIZED_IMAGE):
+            raise Refused('historical final profile or unchanged image differs')
+        return snapshot
+
+    def reconciliation_namespaces(self, own_journal=None):
+        """Account only for own upgrade namespaces in the root-private store."""
+        allowed = {Path(PENDING).name,
+                   'robotgo-worker-upgrade-' + HISTORICAL_PROFILE_SHA256 + '.pending'}
+        if own_journal is not None:
+            path, expected = own_journal
+            allowed.add(path.name)
+            current = self.metadata(self.inspect(path, self.root_owner, {0o700}, directory=True))
+            # Contents/mtime change as this transaction writes its own journal;
+            # directory identity, ownership and private mode must not change.
+            if any(current[key] != expected[key] for key in ('device', 'inode', 'mode', 'uid', 'gid')):
+                raise Refused('owned reconciliation journal changed; preserve and reconcile')
+        for name in os.listdir(self.path(ROOT)):
+            if (name.startswith('robotgo-worker-upgrade-') and name.endswith('.pending')
+                    and name not in allowed):
+                raise Refused('unaccounted own upgrade journal; preserve and reconcile')
+
     def check_predecessor(self, previous):
         if previous is None:
             return
@@ -311,7 +397,8 @@ class Upgrade:
                        for name, record in records.items())):
             raise Refused('previous journal changed; preserve and reconcile')
 
-    def check(self, expected_code, locks, bundle, new_sha, old_bundle, old_sha, expected_bundles, previous=None):
+    def check(self, expected_code, locks, bundle, new_sha, old_bundle, old_sha, expected_bundles, previous=None,
+              historical=None, reconciliation_journal=None):
         if self.worker_code() != expected_code:
             raise Refused('installed worker changed; preserve and reconcile')
         for absolute, owner, metadata in locks:
@@ -321,8 +408,15 @@ class Upgrade:
         if current != expected_bundles:
             raise Refused('reviewed bundle changed during upgrade')
         self.check_predecessor(previous)
+        if historical is not None:
+            if self.historical_journals() != historical:
+                raise Refused('historical journals changed; preserve and reconcile')
+            self.reconciliation_namespaces(reconciliation_journal)
 
-    def upgrade(self, bundle, new_sha, old_bundle, old_sha, apply=False, previous_journal=None):
+    def upgrade(self, bundle, new_sha, old_bundle, old_sha, apply=False, previous_journal=None,
+                reconcile_normalized_baseline=None):
+        if reconcile_normalized_baseline is not None and previous_journal is not None:
+            raise Refused('normalized reconciliation and previous-journal are mutually exclusive')
         profile, files, new_inputs = self.bundle(bundle, new_sha)
         old_profile, old_files, old_inputs = self.bundle(old_bundle, old_sha)
         if new_sha == old_sha or profile['files'] == old_profile['files']:
@@ -330,9 +424,22 @@ class Upgrade:
         with self.lock(GLOBAL_LOCK, self.controller_owner) as global_info:
             with self.lock(RUNNER_LOCK, self.worker_owner) as runner_info:
                 previous = None if previous_journal is None else self.predecessor(previous_journal, old_sha, old_profile, old_files)
-                pending = self.path(PENDING if previous is None else ROOT + '/robotgo-worker-upgrade-' + new_sha + '.pending')
+                historical = None
+                if reconcile_normalized_baseline is not None:
+                    if (old_sha != NORMALIZED_BASELINE_SHA256 or old_profile['image'] != NORMALIZED_IMAGE
+                            or profile['image'] != NORMALIZED_IMAGE
+                            or not isinstance(reconcile_normalized_baseline, str)
+                            or not HASH.fullmatch(reconcile_normalized_baseline)):
+                        raise Refused('exact normalized baseline and unchanged image required')
+                    historical = self.historical_journals()
+                    if sha(encoded(historical)) != reconcile_normalized_baseline:
+                        raise Refused('historical journals differ from reviewed SHA256')
+                pending = self.path(PENDING if previous is None and historical is None else
+                                    ROOT + '/robotgo-worker-upgrade-' + new_sha + '.pending')
                 if pending.exists() or pending.is_symlink():
                     raise Refused('pending worker upgrade exists; explicit reconciliation required')
+                if historical is not None:
+                    self.reconciliation_namespaces()
                 current = self.worker_code()
                 if {name: record[0] for name, record in current.items()} != old_files:
                     raise Refused('installed code does not match reviewed baseline')
@@ -342,7 +449,7 @@ class Upgrade:
                 locks = ((GLOBAL_LOCK, self.controller_owner, global_info), (RUNNER_LOCK, self.worker_owner, runner_info))
                 baseline_bundles = new_inputs, old_inputs
                 self.verify_image(profile['image'])
-                self.check(current, locks, bundle, new_sha, old_bundle, old_sha, baseline_bundles, previous)
+                self.check(current, locks, bundle, new_sha, old_bundle, old_sha, baseline_bundles, previous, historical)
                 report = {'mode': 'apply' if apply else 'preview', 'image': profile['image'],
                           'profile_sha256': new_sha, 'baseline_sha256': old_sha, 'files': profile['files'],
                           'auth_services_dags_holds_history_and_other_projects_untouched': True}
@@ -350,11 +457,18 @@ class Upgrade:
                     report['previous_journal'] = str(previous[0])
                     report['previous_complete_sha256'] = sha(previous[1]['complete.json'][0])
                     report['journal'] = str(pending)
+                if historical is not None:
+                    report.update(historical_journals_sha256=reconcile_normalized_baseline,
+                                  historical_journals=sorted(historical), journal=str(pending))
                 if not apply:
                     return report
                 os.mkdir(pending, 0o700)
                 self.sync_dir(pending.parent)
-                self.create(pending / 'intent.json', encoded({**report, 'baseline_files': old_profile['files'],
+                reconciliation_journal = ((pending, self.metadata(self.inspect(
+                    pending, self.root_owner, {0o700}, directory=True))) if historical is not None else None)
+                self.create(pending / 'intent.json', encoded({**report,
+                            **({'historical_snapshot': historical} if historical is not None else {}),
+                            'baseline_files': old_profile['files'],
                             'installed_metadata': {name: record[1] for name, record in current.items()},
                             'locks': {'global': global_info, 'runner': runner_info}}), self.root_owner, 0o600)
                 for name in NAMES:
@@ -367,9 +481,12 @@ class Upgrade:
                 for name, suffix in order:
                     path = self.path(LIBEXEC + '/.robotgo-next-' + suffix)
                     staged[name] = path, self.create(path, files[name], self.worker_owner, 0o700)
+                if historical is not None:
+                    self.reconciliation_namespaces(reconciliation_journal)
                 self.progress('both-candidates-durable', pending)
                 for name, suffix in order:
-                    self.check(current, locks, bundle, new_sha, old_bundle, old_sha, baseline_bundles, previous)
+                    self.check(current, locks, bundle, new_sha, old_bundle, old_sha, baseline_bundles, previous,
+                               historical, reconciliation_journal)
                     if self.read(staged[name][0], self.worker_owner, {0o700}) != staged[name][1]:
                         raise Refused('staged worker changed; preserve and reconcile')
                     os.replace(staged[name][0], self.path(LIBEXEC + '/' + name))
@@ -384,7 +501,8 @@ class Upgrade:
                         raise Refused('published worker differs from prepared file')
                     current[name] = published
                     self.progress(suffix + '-published', pending)
-                self.check(current, locks, bundle, new_sha, old_bundle, old_sha, baseline_bundles, previous)
+                self.check(current, locks, bundle, new_sha, old_bundle, old_sha, baseline_bundles, previous,
+                           historical, reconciliation_journal)
                 if {name: record[0] for name, record in current.items()} != files:
                     raise Refused('post-upgrade public code differs')
                 self.progress('complete', pending)
@@ -400,6 +518,8 @@ def main():
     parser.add_argument('--expect-baseline-sha256', required=True)
     parser.add_argument('--previous-journal', type=Path,
                         help='explicit completed own predecessor; derives new journal from new full profile SHA256')
+    parser.add_argument('--reconcile-normalized-baseline', metavar='HISTORICAL_JOURNALS_SHA256',
+                        help='explicit exact normalized-baseline bridge; binds both completed historical journals by reviewed snapshot SHA256')
     parser.add_argument('--apply', action='store_true')
     args = parser.parse_args()
     if (os.getuid(), os.geteuid(), os.getgid(), os.getegid()) != (0, 0, 0, 0) or socket.gethostname() != 'vps-ac45f3e2.vps.ovh.net':
@@ -411,7 +531,8 @@ def main():
         raise Refused('enforcing SELinux required')
     os.umask(0o077)
     report = Upgrade().upgrade(args.bundle, args.expect_profile_sha256,
-                               args.baseline_bundle, args.expect_baseline_sha256, args.apply, args.previous_journal)
+                               args.baseline_bundle, args.expect_baseline_sha256, args.apply, args.previous_journal,
+                               args.reconcile_normalized_baseline)
     sys.stdout.buffer.write(encoded(report))
 
 
