@@ -11,7 +11,7 @@ require (
 	github.com/jezek/xgbutil v0.0.0-20260124183602-9fd151d6a51a
 	github.com/modelcontextprotocol/go-sdk v1.8.0
 	github.com/otiai10/gosseract/v2 v2.4.1
-	github.com/shirou/gopsutil/v4 v4.26.9
+	github.com/shirou/gopsutil/v4 v4.26.10
 	github.com/tailscale/win v0.0.0-20260619195133-2d76c33a64c1
 	github.com/vcaesar/gops v0.43.0
 	github.com/vcaesar/imgo v0.44.0
