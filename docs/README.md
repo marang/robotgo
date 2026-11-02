@@ -6,6 +6,10 @@ Use the following documents as the primary entry points:
   pull requests, CI, reviewer feedback, merges, and cleanup.
 - [Test guide](../TEST.md) for validation commands and runtime prerequisites.
 - [Product roadmap](plan/product-roadmap.md) for delivery phases.
+- [GitHub-independent delivery plan](plan/github-exit.md) and its
+  [primary-source feasibility research](plan/github-exit-feasibility.md) for
+  P015's accepted full exit, new module identity, preserved gates and unapproved
+  hosting/runner decisions. This is a plan, not a completed cutover.
 - [Stable release readiness](plan/stable-release-readiness.md) for the
   `v1.0.0-rc.2` to `v1.0.0` decision, API freeze, platform claims, and
   exact-evidence gates.

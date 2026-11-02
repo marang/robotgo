@@ -1,0 +1,18 @@
+{
+  "files": {
+    "robotgo-ci": "d8f84fa5e500a88dbaf6ffdd3d96ae89dddc81ea09484be17b97ad7da3134834",
+    "robotgo-ci.py": "1d28833c68d1c91fbea2d59b523d04e2b433b82ab1c1243143d9a8bed67c3651"
+  },
+  "gid": 1004,
+  "go_version": "go1.26.10",
+  "home": "/home/izoone_workers",
+  "image": "sha256:4fb1dd6ef7bc347b9713c3fd89ee6801f8d47b2acc07378063f1420491d05f62",
+  "installed": false,
+  "owner": "izoone_workers",
+  "schema_version": 1,
+  "source_sha256": {
+    "launcher.go": "259268ccffc8b0f20a0e78799fd82d0fe2a6f0f1ac6778a420054b6e3bb254c1",
+    "runner.py": "aaab9e89747148f4d1dae7e9eb060f4caf8dfe959f11b2e9a9ed87fe9a1ee4a3"
+  },
+  "uid": 7051508
+}

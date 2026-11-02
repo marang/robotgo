@@ -1,0 +1,20 @@
+type: graph
+shell: direct
+queue: photoroller-local
+worker_selector:
+  runner: izoone-ovh
+  isolation: podman
+params:
+  type: object
+  properties: {}
+  additionalProperties: false
+artifacts:
+  enabled: false
+overlap_policy: skip
+timeout_sec: 3700
+max_active_steps: 1
+hist_retention_days: 14
+schedule: "CRON_TZ=Europe/Vienna 27 4 * * 1"
+steps:
+  - id: dependencies
+    command: ["/home/izoone_workers/.local/libexec/robotgo-ci --task dependencies"]
