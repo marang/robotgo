@@ -19,6 +19,19 @@ and lifecycle LAB-256 slice, and display/window/image plus guard LAB-257 slice
 have distinct acceptance evidence. This work does not expand runtime support
 claims or relax the existing exact public declaration gate.
 
+## GitHub-independent delivery (P015, 2026-10-31)
+
+The user accepted planning the [complete first-party GitHub exit](github-exit.md),
+including a new Go module address. Native Entire source hosting and admitted OVH
+Linux CI are the LAB-437 foundation, not a full replacement for native platform,
+compositor, review or release gates. P015 owns the remaining provenance, module
+distribution, native-capacity and cutover work. No old published tags are
+rewritten, no check is retired without equivalent proof, and the plan authorizes
+no deployment, purchase, credential expansion or automatic commit/push.
+
+The [Linear project](https://linear.app/riotbox/project/robotgo-p015-github-independent-delivery-02316a64881b)
+tracks the ordered near-next slices and explicit decision gates.
+
 ## Current Baseline
 
 The July 2026 hardening work establishes the foundation for this roadmap:

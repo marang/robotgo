@@ -1,0 +1,73 @@
+{
+  "schema_version": 1,
+  "repository": "entire://aws-eu-central-1.entire.io/et/marang/robotgo",
+  "commit": "700a70e2a55ee27c2a7dbe4f3de80a967f5775b9",
+  "profile_sha256": "08efbae7cc1475546edf28c4838ac1b48beabcf2058bdf7ac3cf4defa4bad5be",
+  "image": "sha256:4fb1dd6ef7bc347b9713c3fd89ee6801f8d47b2acc07378063f1420491d05f62",
+  "driver_sha256": "f3cf1955c54dc26339dce2e3c034a89f7dccd88eaefb8b2523f501429c7349e7",
+  "verified_at": "2026-10-30T21:05:28Z",
+  "runs": {
+    "ci": {
+      "dag": "robotgo-ovh-ci",
+      "dag_run_id": "robotgo-ci-proof3-20261030",
+      "dag_status": "succeeded",
+      "dag_source": "https://automation.izoone.com",
+      "worker_id": "izoone-ovh-01",
+      "worker_run_id": "8d7a727722e24bfa8d42913851e18366",
+      "worker_status": "passed",
+      "worker_source": "trusted-ssh://vps-ac45f3e2.vps.ovh.net/uid/7051508",
+      "commit": "700a70e2a55ee27c2a7dbe4f3de80a967f5775b9",
+      "profile_sha256": "08efbae7cc1475546edf28c4838ac1b48beabcf2058bdf7ac3cf4defa4bad5be",
+      "image": "sha256:4fb1dd6ef7bc347b9713c3fd89ee6801f8d47b2acc07378063f1420491d05f62",
+      "completed_at": "2026-10-30T20:59:33Z"
+    },
+    "dependencies": {
+      "dag": "robotgo-ovh-dependencies",
+      "dag_run_id": "robotgo-dependencies-proof3-20261030",
+      "dag_status": "succeeded",
+      "dag_source": "https://automation.izoone.com",
+      "worker_id": "izoone-ovh-01",
+      "worker_run_id": "28dce7a8951e41cf81d72ff969505a7c",
+      "worker_status": "passed",
+      "worker_source": "trusted-ssh://vps-ac45f3e2.vps.ovh.net/uid/7051508",
+      "commit": "700a70e2a55ee27c2a7dbe4f3de80a967f5775b9",
+      "profile_sha256": "08efbae7cc1475546edf28c4838ac1b48beabcf2058bdf7ac3cf4defa4bad5be",
+      "image": "sha256:4fb1dd6ef7bc347b9713c3fd89ee6801f8d47b2acc07378063f1420491d05f62",
+      "completed_at": "2026-10-30T20:59:58Z"
+    },
+    "security": {
+      "dag": "robotgo-ovh-security",
+      "dag_run_id": "robotgo-security-proof3-20261030",
+      "dag_status": "succeeded",
+      "dag_source": "https://automation.izoone.com",
+      "worker_id": "izoone-ovh-01",
+      "worker_run_id": "0ca5b4a7cb7341cfb065c463e53d3015",
+      "worker_status": "passed",
+      "worker_source": "trusted-ssh://vps-ac45f3e2.vps.ovh.net/uid/7051508",
+      "commit": "700a70e2a55ee27c2a7dbe4f3de80a967f5775b9",
+      "profile_sha256": "08efbae7cc1475546edf28c4838ac1b48beabcf2058bdf7ac3cf4defa4bad5be",
+      "image": "sha256:4fb1dd6ef7bc347b9713c3fd89ee6801f8d47b2acc07378063f1420491d05f62",
+      "completed_at": "2026-10-30T20:59:44Z"
+    },
+    "watch": {
+      "dag": "robotgo-ovh-watch",
+      "dag_run_id": "robotgo-watch-proof3-20261030",
+      "dag_status": "succeeded",
+      "dag_source": "https://automation.izoone.com",
+      "worker_id": "izoone-ovh-01",
+      "worker_run_id": "572d7b445ef54687b96bb093bcfeb241",
+      "worker_status": "unchanged",
+      "worker_source": "trusted-ssh://vps-ac45f3e2.vps.ovh.net/uid/7051508",
+      "commit": "700a70e2a55ee27c2a7dbe4f3de80a967f5775b9",
+      "profile_sha256": "08efbae7cc1475546edf28c4838ac1b48beabcf2058bdf7ac3cf4defa4bad5be",
+      "image": "sha256:4fb1dd6ef7bc347b9713c3fd89ee6801f8d47b2acc07378063f1420491d05f62",
+      "completed_at": "2026-10-30T21:04:42Z"
+    }
+  },
+  "success_marker": {
+    "source": "trusted-ssh://vps-ac45f3e2.vps.ovh.net/uid/7051508",
+    "path": ".local/state/robotgo-ovh/last-ci-success.json",
+    "commit": "700a70e2a55ee27c2a7dbe4f3de80a967f5775b9",
+    "pipeline": "f3cf1955c54dc26339dce2e3c034a89f7dccd88eaefb8b2523f501429c7349e7"
+  }
+}
