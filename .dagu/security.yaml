@@ -1,0 +1,83 @@
+# Scheduled reachable-vulnerability gate for Pure-Go Linux; native/platform/release gates are separate.
+type: graph
+schedule: "CRON_TZ=Europe/Vienna 17 4 * * 1"
+queue: ci
+worker_selector:
+  runner: izoone-ovh
+  isolation: podman
+timeout_sec: 3700
+overlap_policy: skip
+max_active_steps: 1
+hist_retention_days: 14
+artifacts:
+  enabled: false
+params:
+  type: object
+  properties:
+    commit:
+      type: string
+      pattern: '^(main|[0-9a-f]{40})$'
+      default: main
+steps:
+  - id: checkout
+    run: /usr/local/libexec/izoone-ci/checkout entire://aws-eu-central-1.entire.io/et/marang/robotgo ${params.commit} ${context.paths.work_dir}/source
+    timeout_sec: 180
+    output:
+      source:
+        from: stdout
+        decode: json
+  - id: security
+    depends: [checkout]
+    action: container.run
+    timeout_sec: 1800
+    with:
+      image: sha256:c2fdcc9acbd7eb568a6cd2afe83169cf4fc8c5ea17d02e53f841a2e430b3b4b8
+      pull: never
+      auto_remove: true
+      container:
+        User: "7051508:1004"
+        WorkingDir: /w/source
+        Labels:
+          io.izoone.project: robotgo
+          io.izoone.run: ${context.run.id}
+        Env:
+          - PATH=/usr/local/go/bin:/usr/local/bin:/usr/bin:/bin
+          - LANG=C.UTF-8
+          - HOME=/w/home
+          - GOPATH=/w/cache/go
+          - GOMODCACHE=/w/cache/go/pkg/mod
+          - GOCACHE=/w/cache/go-build
+          # Go also bases test temp directories on GOTMPDIR; keep socket paths short.
+          - GOTMPDIR=/w/t
+          - TMPDIR=/tmp
+          - XDG_RUNTIME_DIR=/tmp/r
+          - XDG_CACHE_HOME=/w/cache/xdg
+          - XDG_CONFIG_HOME=/w/home/config
+          - XDG_DATA_HOME=/w/home/data
+          - RUNNER_TEMP=/w/t
+          - GOFLAGS=-p=1 -mod=readonly -modcacherw
+          - GOMAXPROCS=2
+          - GOTOOLCHAIN=local
+          - GOENV=off
+          - GOWORK=off
+          - GOTELEMETRY=off
+          - CGO_ENABLED=0
+          - CI=true
+        Cmd:
+          - bash
+          - -euo
+          - pipefail
+          - -c
+          - bash scripts/ci.sh security
+      host:
+        Binds: ["${context.paths.work_dir}:/w:rw,Z"]
+        UsernsMode: keep-id
+        Init: true
+        NanoCpus: 2000000000
+        Memory: 3221225472
+        PidsLimit: 512
+        ReadonlyRootfs: true
+        Tmpfs:
+          /tmp: rw,nosuid,nodev,size=1g
+        CapDrop: [ALL]
+        SecurityOpt: [no-new-privileges]

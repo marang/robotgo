@@ -1,0 +1,320 @@
+# Repository-owned ordinary Linux CI; no real desktop or release gate.
+# Native macOS/Windows, host compositor/input/portal-consent and release gates
+# remain separate. Xvfb and nested Weston see no host display or socket.
+type: graph
+queue: ci
+worker_selector:
+  runner: izoone-ovh
+  isolation: podman
+timeout_sec: 3700
+overlap_policy: skip
+max_active_steps: 1
+hist_retention_days: 14
+artifacts:
+  enabled: false
+params:
+  type: object
+  properties:
+    WEBHOOK_PAYLOAD:
+      type: string
+      default: ''
+    commit:
+      type: string
+      pattern: '^(main|[0-9a-f]{40})$'
+      default: main
+steps:
+  - id: normalize
+    action: js.run
+    timeout_sec: 10
+    with:
+      input:
+        requested: ${params.commit}
+        payload: ${params.WEBHOOK_PAYLOAD}
+      script: |
+        if (typeof input.payload !== 'string') throw new Error('Invalid webhook payload type');
+        const hasEvent = input.payload.length > 0;
+        const event = hasEvent ? JSON.parse(input.payload) : null;
+        let commit = input.requested;
+        if (hasEvent) {
+          if (!event || typeof event !== 'object' || Array.isArray(event) ||
+              event.repository !== 'et/marang/robotgo' ||
+              typeof event.ref !== 'string' || !event.ref.startsWith('refs/heads/') ||
+              event.ref.length === 'refs/heads/'.length || event.ref.startsWith('refs/heads/entire/') ||
+              event.ref.startsWith('refs/heads/release-artifacts/')) {
+            throw new Error('Invalid robotgo CI event');
+          }
+          if (input.requested !== 'main' && input.requested !== event.commit) {
+            throw new Error('Conflicting manual and webhook commits');
+          }
+          commit = event.commit;
+        }
+        if (typeof commit !== 'string' ||
+            !(hasEvent === false && commit === 'main') && !/^[0-9a-f]{40}$/.test(commit)) {
+          throw new Error('Expected an exact commit or manual main');
+        }
+        return {commit};
+    output:
+      source:
+        from: stdout
+        decode: json
+
+  - id: checkout
+    depends: [normalize]
+    run: /usr/local/libexec/izoone-ci/checkout entire://aws-eu-central-1.entire.io/et/marang/robotgo ${normalize.output.source.commit} ${context.paths.work_dir}/source
+    timeout_sec: 180
+    output:
+      source:
+        from: stdout
+        decode: json
+  - &linux_step
+    id: prepare
+    depends: [checkout]
+    action: container.run
+    timeout_sec: 180
+    with: &linux_container
+      image: sha256:c2fdcc9acbd7eb568a6cd2afe83169cf4fc8c5ea17d02e53f841a2e430b3b4b8
+      pull: never
+      auto_remove: true
+      container: &linux_defaults
+        User: "7051508:1004"
+        WorkingDir: /w/source
+        Labels:
+          io.izoone.project: robotgo
+          io.izoone.run: ${context.run.id}
+        Env:
+          - PATH=/usr/local/go/bin:/usr/local/bin:/usr/bin:/bin
+          - LANG=C.UTF-8
+          - HOME=/w/home
+          - GOPATH=/w/cache/go
+          - GOMODCACHE=/w/cache/go/pkg/mod
+          - GOCACHE=/w/cache/go-build
+          # Go also bases test temp directories on GOTMPDIR; keep socket paths short.
+          - GOTMPDIR=/w/t
+          - TMPDIR=/tmp
+          - XDG_RUNTIME_DIR=/tmp/r
+          - XDG_CACHE_HOME=/w/cache/xdg
+          - XDG_CONFIG_HOME=/w/home/config
+          - XDG_DATA_HOME=/w/home/data
+          - RUNNER_TEMP=/w/t
+          - GOFLAGS=-p=1 -mod=readonly -modcacherw
+          - GOMAXPROCS=2
+          - GOTOOLCHAIN=local
+          - GOENV=off
+          - GOWORK=off
+          - GOTELEMETRY=off
+          - CGO_ENABLED=1
+          - CI=true
+        Cmd:
+          - bash
+          - -euo
+          - pipefail
+          - -c
+          - bash scripts/ci.sh prepare
+      host:
+        Binds: ["${context.paths.work_dir}:/w:rw,Z"]
+        UsernsMode: keep-id
+        Init: true
+        NanoCpus: 2000000000
+        Memory: 3221225472
+        PidsLimit: 512
+        ReadonlyRootfs: true
+        Tmpfs:
+          /tmp: rw,nosuid,nodev,size=1g
+        CapDrop: [ALL]
+        SecurityOpt: [no-new-privileges]
+  - <<: *linux_step
+    id: source_contracts
+    depends: [prepare]
+    timeout_sec: 600
+    with:
+      <<: *linux_container
+      container:
+        <<: *linux_defaults
+        Cmd:
+          - bash
+          - -euo
+          - pipefail
+          - -c
+          - bash scripts/ci.sh source_contracts
+  - <<: *linux_step
+    id: linux_cgo
+    depends: [prepare]
+    timeout_sec: 900
+    with:
+      <<: *linux_container
+      container:
+        <<: *linux_defaults
+        Cmd:
+          - bash
+          - -euo
+          - pipefail
+          - -c
+          - bash scripts/ci.sh linux_cgo
+  - <<: *linux_step
+    id: linux_nocgo
+    depends: [prepare]
+    timeout_sec: 900
+    with:
+      <<: *linux_container
+      container:
+        <<: *linux_defaults
+        Cmd:
+          - bash
+          - -euo
+          - pipefail
+          - -c
+          - bash scripts/ci.sh linux_nocgo
+  - <<: *linux_step
+    id: api_compat
+    depends: [prepare]
+    timeout_sec: 900
+    with:
+      <<: *linux_container
+      container:
+        <<: *linux_defaults
+        Cmd:
+          - bash
+          - -euo
+          - pipefail
+          - -c
+          - bash scripts/ci.sh api_compat
+  - <<: *linux_step
+    id: race
+    depends: [prepare]
+    timeout_sec: 900
+    with:
+      <<: *linux_container
+      container:
+        <<: *linux_defaults
+        Cmd:
+          - bash
+          - -euo
+          - pipefail
+          - -c
+          - bash scripts/ci.sh race
+  - <<: *linux_step
+    id: sanitizer
+    depends: [prepare]
+    timeout_sec: 1200
+    with:
+      <<: *linux_container
+      container:
+        <<: *linux_defaults
+        Cmd:
+          - bash
+          - -euo
+          - pipefail
+          - -c
+          - bash scripts/ci.sh sanitizer
+  - <<: *linux_step
+    id: lint
+    depends: [prepare]
+    timeout_sec: 900
+    with:
+      <<: *linux_container
+      container:
+        <<: *linux_defaults
+        Cmd:
+          - bash
+          - -euo
+          - pipefail
+          - -c
+          - bash scripts/ci.sh lint
+  - <<: *linux_step
+    id: ocr
+    depends: [prepare]
+    timeout_sec: 900
+    with:
+      <<: *linux_container
+      container:
+        <<: *linux_defaults
+        Cmd:
+          - bash
+          - -euo
+          - pipefail
+          - -c
+          - bash scripts/ci.sh ocr
+  - <<: *linux_step
+    id: wayland_keyboard_contracts
+    depends: [prepare]
+    timeout_sec: 600
+    with:
+      <<: *linux_container
+      container:
+        <<: *linux_defaults
+        Cmd:
+          - bash
+          - -euo
+          - pipefail
+          - -c
+          - bash scripts/ci.sh wayland_keyboard_contracts
+  - <<: *linux_step
+    id: wayland_tags
+    depends: [prepare]
+    timeout_sec: 900
+    with:
+      <<: *linux_container
+      container:
+        <<: *linux_defaults
+        Cmd:
+          - bash
+          - -euo
+          - pipefail
+          - -c
+          - bash scripts/ci.sh wayland_tags
+  - <<: *linux_step
+    id: wayland_output_integration
+    depends: [prepare]
+    timeout_sec: 900
+    with:
+      <<: *linux_container
+      container:
+        <<: *linux_defaults
+        Cmd:
+          - bash
+          - -euo
+          - pipefail
+          - -c
+          - bash scripts/ci.sh wayland_output_integration
+  - <<: *linux_step
+    id: x11_purego
+    depends: [prepare]
+    timeout_sec: 600
+    with:
+      <<: *linux_container
+      container:
+        <<: *linux_defaults
+        Cmd:
+          - bash
+          - -euo
+          - pipefail
+          - -c
+          - bash scripts/ci.sh x11_purego
+  - <<: *linux_step
+    id: x11_backend_evidence
+    depends: [prepare]
+    timeout_sec: 900
+    with:
+      <<: *linux_container
+      container:
+        <<: *linux_defaults
+        Cmd:
+          - bash
+          - -euo
+          - pipefail
+          - -c
+          - bash scripts/ci.sh x11_backend_evidence
+  - <<: *linux_step
+    id: x11_default_suite
+    depends: [prepare]
+    timeout_sec: 900
+    with:
+      <<: *linux_container
+      container:
+        <<: *linux_defaults
+        Cmd:
+          - bash
+          - -euo
+          - pipefail
+          - -c
+          - bash scripts/ci.sh x11_default_suite

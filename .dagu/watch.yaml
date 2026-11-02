@@ -1,0 +1,138 @@
+type: graph
+queue: ci
+worker_selector:
+  runner: izoone-ovh
+  isolation: podman
+schedule: "CRON_TZ=Europe/Vienna */5 * * * *"
+timeout_sec: 300
+max_active_steps: 1
+hist_retention_days: 14
+secrets:
+  - name: ROBOTGO_CI_WEBHOOK_TOKEN
+    ref: robotgo/ci-webhook
+steps:
+  - id: refs
+    run: /usr/local/libexec/izoone-ci/checkout --refs entire://aws-eu-central-1.entire.io/et/marang/robotgo
+    timeout_sec: 60
+    output: REFS
+
+  - id: previous
+    depends: [refs]
+    action: state.get
+    with:
+      key: entire/refs-v1
+      default: null
+    output:
+      cursor:
+        from: stdout
+        decode: json
+
+  - id: plan
+    depends: [previous]
+    action: js.run
+    timeout_sec: 10
+    with:
+      input:
+        refs: ${REFS}
+        previous: ${previous.output.cursor}
+      script: |
+        const rows = Object.create(null);
+        for (const line of input.refs.trim().split('\n')) {
+          const pair = line.split('\t');
+          if (pair.length !== 2 || !/^[0-9a-f]{40}$/.test(pair[0])) {
+            throw new Error('Invalid Entire ref response');
+          }
+          rows[pair[1]] = pair[0];
+        }
+        if (!rows['refs/heads/main']) throw new Error('Entire main is missing');
+        const snapshot = Object.create(null);
+        for (const ref of Object.keys(rows).sort()) {
+          if (ref.startsWith('refs/heads/') &&
+              !ref.startsWith('refs/heads/release-artifacts/') &&
+              !ref.startsWith('refs/heads/entire/')) snapshot[ref] = rows[ref];
+        }
+        const previous = typeof input.previous === 'string' ? JSON.parse(input.previous) : input.previous;
+        const old = typeof previous.value === 'string' ? JSON.parse(previous.value) : previous.value;
+        const ci = [], planned = new Set();
+        if (previous.found) {
+          if (!old || typeof old !== 'object' || Array.isArray(old)) {
+            throw new Error('Invalid saved Entire ref snapshot');
+          }
+          for (const ref of Object.keys(snapshot)) {
+            if (ref.endsWith('^{}')) continue;
+            const commit = snapshot[ref];
+            if (old[ref] === commit) continue;
+            const id = 'robotgo-ci-' + commit;
+            if (!/^[A-Za-z0-9_-]+$/.test(id) || id.length > 64) throw new Error('Invalid or too long Dagu run ID');
+            const payload = {repository: 'et/marang/robotgo', commit, ref};
+            if (!planned.has(id)) {
+              ci.push({id, body: JSON.stringify({dagRunId: id, payload})});
+              planned.add(id);
+            }
+          }
+        }
+        return {snapshot, ci, baseline: !previous.found};
+    output:
+      changes:
+        from: stdout
+        decode: json
+
+  - id: ci
+    depends: [plan]
+    foreach:
+      items: ${plan.output.changes.ci}
+      key: ${foreach.item.id}
+      max_concurrent: 1
+      steps:
+        - id: enqueue
+          action: http.request
+          with:
+            method: POST
+            url: https://automation.izoone.com/api/v1/webhooks/robotgo-ovh-ci
+            headers:
+              Authorization: "Bearer ${env.ROBOTGO_CI_WEBHOOK_TOKEN}"
+              Content-Type: application/json
+            body: ${foreach.item.body}
+            format: json
+            timeout: 30
+            debug: false
+          output: RESPONSE
+          # Duplicate IDs are expected after an ambiguous HTTP response. The
+          # next step, not this continuation, decides whether dispatch succeeded.
+          continue_on: {failure: true, mark_success: true}
+        - id: accepted
+          depends: [enqueue]
+          action: js.run
+          with:
+            input: {response: "${RESPONSE}", id: "${foreach.item.id}"}
+            script: &accepted |
+              const r = typeof input.response === 'string' ? JSON.parse(input.response) : input.response;
+              if (r.status_code === 200) return {accepted: true};
+              if (r.status_code === 409 && r.body && r.body.code === 'already_exists' &&
+                  r.body.message === 'dag-run with ID ' + input.id + ' already exists') {
+                return {accepted: true, duplicate: true};
+              }
+              throw new Error('Dagu did not accept dispatch: ' + r.status_code);
+
+    output: CI_DISPATCH
+
+  - id: ci_done
+    depends: [ci]
+    action: js.run
+    with:
+      input: {result: "${CI_DISPATCH}", items: "${plan.output.changes.ci}"}
+      script: &complete |
+        const r = typeof input.result === 'string' ? JSON.parse(input.result) : input.result;
+        const items = typeof input.items === 'string' ? JSON.parse(input.items) : input.items;
+        if (!r.summary || r.summary.failed !== 0 ||
+            r.summary.succeeded !== items.length || r.summary.total !== items.length) {
+          throw new Error('Not every ref was dispatched; keep the previous snapshot');
+        }
+        return {accepted: items.length};
+
+  - id: remember
+    depends: [ci_done]
+    action: state.set
+    with:
+      key: entire/refs-v1
+      value: ${plan.output.changes.snapshot}

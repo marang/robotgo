@@ -9,7 +9,7 @@ This note supports the overall exit plan; it does not authorize execution.
 
 Current source and the preserved published `v1.0.3` commit declare
 `module github.com/marang/robotgo`. The published tag object and commit remain
-recorded in the [source evidence](../../automation/ovh/evidence/source-verification.json).
+recorded in the [source evidence](../evidence/2026-10-31-entire-ovh/source-verification.json).
 Local inspection also found old-path imports throughout the source: changing
 only `go.mod` would not complete migration.
 

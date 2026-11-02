@@ -25,9 +25,10 @@ distinct from first-party operational dependence. Claiming zero GitHub network
 access additionally requires cold-cache dependency/tool/image egress proof.
 
 Native source stays in Entire project `marang`, Frankfurt/EU. Execution remains
-on the accepted OVH London, UK primary. Keep the existing one-job,
-2-CPU / 8-GiB / 256-PID rootless boundary unless a separately approved profile
-is qualified. Notebook fallback stays stopped; DreamHost retains email,
+on the accepted OVH London, UK primary. Ordinary Linux CI retains the qualified
+2-CPU / 3-GiB / 512-PID rootless boundary and the existing CGO image. Shared queue
+capacity is three jobs; each RobotGo graph serializes its own test steps.
+Notebook fallback stays stopped; DreamHost retains email,
 domains and DNS. Native Entire Trails are the canonical proposal/review path;
 reuse intent and link it reciprocally with Linear. Check live project automations
 before Trail writes and use `--no-branch` while source publication is unauthorized.
@@ -39,9 +40,9 @@ provider mirrors or broader credential access are introduced by this plan.
 ## Verified starting point
 
 The [migration record](../operations/entire-ovh-migration.md) and
-[current runtime evidence](../../automation/ovh/evidence/runtime-verification.json)
+[dated migration evidence](../evidence/2026-10-31-entire-ovh/runtime-verification.json)
 record source/ref verification, authenticated host-only source access, fixed
-Dagu definitions and successful current-account CI/security/dependency plus
+Dagu definitions and successful migration-era CI/security/dependency plus
 automatic-watch runs. They are not proof of the remaining native/platform lanes.
 
 Current installed Entire CLI 0.12.2 explicitly defines public visibility as
@@ -57,8 +58,9 @@ server-side-merge-only protection. Current native `main` has
 required-CI-check integration; that capability must be proved, not inferred.
 Native Trail merge help exposes approval/CI gates and `--dry-run`, but the
 actual Dagu-to-required-check mapping and enforcement remain to be qualified.
-The existing OVH runner fetches **main only**, so it is
-not yet a feature-head pre-merge gate.
+The repository-owned [LAB-460 pipeline](../../.dagu/README.md) adds exact-SHA
+feature-head execution and five-minute branch polling. Source installation,
+actual capped runs and the external CI writer remain separate gates.
 
 [Primary-source feasibility research](github-exit-feasibility.md) covers Go
 identity/discovery, immutable module bundles, authentication and distribution
@@ -70,9 +72,9 @@ limits. Its public endpoint proposals are not installed services.
 | --- | --- | --- |
 | First-party Go module address | `go.mod`, self-imports, examples, API baselines and CI admission | Explicit new identity/release; consumer migration; old tags and checksums unchanged. |
 | Public source/module access | Native Git requires an Entire login under current public policy | Prefer testing an anonymous read-only **tagged module** distribution surface; source credentials remain host-only. It is not a Git mirror or public write service. |
-| PRs / required checks | GitHub review rules; current native force/delete-only rule; main-only runner | Native Entire Trails with authentic exact-candidate/base admission and review/evidence gates. Qualify enforcement and external CI mapping before retiring the old gate. |
+| PRs / required checks | GitHub review rules; native Trail review rules; exact-head operator CI verification | Native Entire Trails with authentic exact-candidate/base admission and review/evidence gates. Qualify enforcement and external CI mapping before retiring the old gate. |
 | Evidence identity | `internal/releaseevidence`, `internal/compositorevidence`, `internal/supportmatrix` hardcode GitHub provider/IDs/URLs | Provider-aware, source-bound Dagu evidence; preserve historical validation; never fabricate `GITHUB_*` variables. |
-| Weston output runtime | `.github/workflows/go.yml`; current OVH path is compile-only | Run both real Weston tests on the admitted worker; require actual PASS. |
+| Weston output runtime | `.github/workflows/go.yml`; ordinary Linux CI includes both guarded Weston runtime tests | Preserve both real Weston tests and require actual PASS on each replacement exact head. |
 | Six Sway runtime cells | `.github/workflows/sway-e2e.yml`, `scripts/run-sway-e2e.sh` | Headless/pixman is a plausible fit; genuine Dagu provenance and induced-failure cleanup must pass under unchanged caps. |
 | GNOME/KDE and Hyprland | Portal manifests / QEMU require 4 vCPU, 8192 MiB, 40 GiB and KVM; Hyprland requests 4 CPUs/6 GiB plus VKMS/DRM | Separately approved resource/device capacity or a newly qualified equivalent profile. Current no-device/2-CPU admission is insufficient unchanged. |
 | Native macOS and Windows | `.github/workflows/go.yml` and six-cell release snapshots | Approved existing native capacity in allowed locations; cross-compilation is not runtime proof. Preserve existing support limits, including LAB-69's separate permission evidence. |

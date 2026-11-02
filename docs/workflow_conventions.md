@@ -1,6 +1,6 @@
 # RobotGo Workflow Conventions
 
-Version: 1.5
+Version: 1.6
 Status: Active  
 Audience: contributors, reviewers, and coding agents
 
@@ -127,8 +127,11 @@ Native pushes do not trigger GitHub Actions. Retain required legacy platform,
 release, module-distribution and existing-PR gates until reviewed equivalents
 are verified; new proposals and reviews use native Trails. Cross-provider
 publication requires explicit authorization, not automatic mirroring. The
-current main-only OVH polling job and force/delete protection are not a
-feature-head pre-merge gate. See the [migration record](operations/entire-ovh-migration.md)
+repository-owned [Dagu pipeline](../.dagu/README.md) defines exact-SHA
+Linux CI, security/dependency reports and five-minute native branch polling.
+Its installation and exact-source qualification remain separate from a source
+push; retained platform checks and native review gates still apply. See the
+[migration record](operations/entire-ovh-migration.md)
 and [remaining exit plan](plan/github-exit.md).
 
 Normal implementation work follows this loop:
@@ -252,7 +255,8 @@ CI status and review status are separate. Both must be inspected explicitly.
 - Treat a skipped job as acceptable only when its trigger or runner conditions
   intentionally do not apply.
 - Local tests, required hosted checks and real-runtime evidence cover different
-  gates. Current main-only OVH success cannot qualify an untested feature head.
+  gates. A result for native main cannot qualify an untested feature head. Inspect
+  the installed [Dagu definition and cutover status](../.dagu/README.md).
 
 ### 5.2 Native Entire reviews
 

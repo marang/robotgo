@@ -1,4 +1,11 @@
-# Native Entire / OVH migration
+# Native Entire / OVH migration — dated LAB-437 record
+
+This record describes the 2026-10-30/31 migration baseline. Current
+repository-owned definitions, privacy policy and replacement prerequisites are
+in the [LAB-460 delivery guide](../../.dagu/README.md). Its dated evidence JSON
+remains byte-exact; historical resource/profile claims below are not a live
+installation baseline. LAB-429/431/432/463 were subsequently integrated through
+native Trails, and the four legacy PRs were closed as superseded.
 
 [LAB-437](https://linear.app/riotbox/issue/LAB-437), 2026-10-30.
 Source migration and the current normalized OVH runtime are verified. Actual
@@ -41,7 +48,7 @@ failed because its immutable old DAG snapshot referenced the removed old home.
 Those failures are retained. Fresh named runs use the current definitions.
 The qualification table below records the successful **normalized** baseline;
 earlier results remain separately archived. Current verified results are in the
-[runtime record](../../automation/ovh/evidence/runtime-verification.json).
+[runtime record](../evidence/2026-10-31-entire-ovh/runtime-verification.json).
 
 ## Source identity and publication
 
@@ -56,7 +63,7 @@ Native repository `/et/marang/robotgo` is public, ID
 (`aws-eu-central-1`, EU jurisdiction). Project `marang` reports the same primary
 processing cell and EU region. The original source-transfer HEAD was `main` at
 `700a70e2a55ee27c2a7dbe4f3de80a967f5775b9`.
-[Exact source evidence](../../automation/ovh/evidence/source-verification.json)
+[Exact source evidence](../evidence/2026-10-31-entire-ovh/source-verification.json)
 records the refs.
 
 Entire's public visibility permits authenticated Entire readers; the actual
@@ -185,13 +192,13 @@ reports the four RobotGo DAGs unsuspended, with no definition errors:
 - Security: `CRON_TZ=Europe/Vienna 17 4 * * 1`.
 - Dependencies: `CRON_TZ=Europe/Vienna 27 4 * * 1`.
 
-[Current runtime results and boundary evidence](../../automation/ovh/evidence/runtime-verification.json)
-and [the normalized qualification attestation](../../automation/ovh/evidence/post-normalization-proof.json)
+[Current runtime results and boundary evidence](../evidence/2026-10-31-entire-ovh/runtime-verification.json)
+and [the normalized qualification attestation](../evidence/2026-10-31-entire-ovh/post-normalization-proof.json)
 bind the four completed runs to the commit, immutable image, exactly reproduced
 sealed profile and success marker. The successful automatic watch was queued by
 the scheduler at 22:22 Vienna and completed after CI at 21:41:01 UTC.
-[Historical runtime results](../../automation/ovh/evidence/runtime-verification-pre-normalization.json)
-and [the original release attestation](../../automation/ovh/evidence/activation-proof-pre-normalization.json)
+[Historical runtime results](../evidence/2026-10-31-entire-ovh/runtime-verification-pre-normalization.json)
+and [the original release attestation](../evidence/2026-10-31-entire-ovh/activation-proof-pre-normalization.json)
 retain earlier outcomes and receipt hashes unchanged. Definition/inline/edit-retry requests still return 403;
 unknown named parameters return 400 and terminal access returns 404. Live
 cancellation and credential-expiry/refresh were not forced; offline cancellation
@@ -220,7 +227,9 @@ Go 1.26.10 after normalization.
 Canonical `main` and the LAB-429/431/432 worktrees remain unchanged; GitHub
 PRs #184, #185 and #187 are not merged by this task. Migration code, fixed YAMLs,
 retention artifacts, agent guidance and evidence are the LAB-437 integration
-change. See [the worker artifacts](../../automation/ovh/). The user subsequently
+change. The original worker artifacts are retained in this record's Git history;
+see [the replacement delivery guide](../../.dagu/README.md) for current ownership.
+The user subsequently
 authorized its commit, native feature-branch push, review and merge on 2026-10-31.
 No tag, release, original-repository deletion or service cancellation is
 authorized by that closeout.

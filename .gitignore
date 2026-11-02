@@ -109,3 +109,6 @@ __pycache__/
 # Local sequential test tracking
 docs/plan/last-running-test.txt
 docs/plan/test-run-history.log
+
+# Keep Entire local state and capture metadata private.
+/.entire/
