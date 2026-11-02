@@ -28,9 +28,8 @@ Native source stays in Entire project `marang`, Frankfurt/EU. Execution remains
 on the accepted OVH London, UK primary. Ordinary Linux CI retains the qualified
 2-CPU / 3-GiB / 512-PID rootless boundary and the existing CGO image. Shared queue
 capacity is three jobs; each RobotGo graph serializes its own test steps.
-Notebook fallback stays stopped; DreamHost retains email,
-domains and DNS. Native Entire Trails are the canonical proposal/review path;
-reuse intent and link it reciprocally with Linear. Check live project automations
+DreamHost retains email, domains and DNS. Native Entire Trails are the canonical
+proposal/review path; reuse intent and link it reciprocally with Linear. Check live project automations
 before Trail writes and use `--no-branch` while source publication is unauthorized.
 Trail permission does not authorize cloud-agent execution, telemetry, provider
 changes or session/transcript/screenshot/checkpoint uploads. Preserve permitted

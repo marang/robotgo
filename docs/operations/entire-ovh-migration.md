@@ -98,8 +98,8 @@ Verify current authenticated operational state before shared-host changes. Histo
 examples are not current installation instructions.
 
 Execution is on the existing OVH London, UK worker `izoone-ovh-01`, an explicitly
-accepted non-EU location. The notebook fallback remains stopped. DreamHost
-retains email, domains and DNS. No application deployment or release was made.
+accepted non-EU location. DreamHost retains email, domains and DNS. No application
+deployment or release was made.
 
 Trusted SSH provisioning uses the existing persistent `native-activation.lock`
 and a fresh reviewed snapshot. A concurrent Riotbox migration invalidated the

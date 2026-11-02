@@ -102,7 +102,8 @@ Before implementation approval:
 4. Independently qualify anonymous Git access, pre-merge enforcement, platform
    CI, dependency-update proposals and release/evidence publication replacements.
 
-Native Entire stays in Frankfurt/EU; the existing OVH London rootless worker
-retains 2 CPUs/8 GiB/256 PIDs and host-only auth. Notebook fallback stays stopped;
-DreamHost retains email/domains/DNS. This research adds no service, US processing,
-purchase, mirror, container credential, automatic push, commit or live change.
+Native Entire stays in Frankfurt/EU; ordinary Linux jobs on the existing OVH
+London rootless worker retain 2 CPUs/3 GiB/512 PIDs and host-only auth, within
+the shared three-job queue. DreamHost retains email/domains/DNS. This research
+adds no service, US processing, purchase, mirror, container credential, automatic
+push, commit or live change.
