@@ -15,7 +15,9 @@ webhook tokens, host display sockets and Podman sockets stay outside containers.
 | `watch.yaml` | `robotgo-ovh-watch` |
 
 `scripts/ci.sh` owns the test commands. The image recipe and active legacy-state
-retention source/units live under `scripts/ci/`. The recipe records the admitted
+retention source/units live under `scripts/ci/`. The former sealed launcher,
+admission and provisioning implementation is retired from current source;
+its history remains available in native Git. The recipe records the admitted
 image's inputs; mutable distribution packages make a rebuild a new image requiring
 qualification. Existing immutable image layers are retained.
 
@@ -64,13 +66,15 @@ journals. The original dirty cleanup worktree is not an installation source.
    change, duplicate/retry handling and exact accepted SHA. Only then enable its
    schedule and webhook. Holding execution requires both schedule suspension and
    webhook disablement because webhooks bypass schedule holds.
-5. Verify no active job still invokes the old sealed `robotgo-ci` launcher.
-   Retire its obsolete driver/admission/provisioning source only after the two
-   remaining legacy watcher/dependency calls are replaced. Preserve legacy
-   state and the active retention timer; do not delete journals, holds or images.
-   The prior implementation remains recoverable from native Git history.
+5. Verify all four installed jobs use these definitions and no active job
+   invokes the former sealed `robotgo-ci` launcher. Its watcher/dependency calls
+   have been replaced, and the obsolete driver/admission/provisioning source is
+   retired. Preserve legacy state and the active retention timer, including
+   journals, holds and images. Recover the prior implementation from native
+   Git history only within an explicitly reviewed rollback.
 
-Until those actual capped runs and cleanup checks pass, this is a reviewable
-replacement proposal; old jobs remain the rollback boundary. The dated migration
+Until the exact-head capped runs and cleanup checks pass, this remains a
+reviewable replacement proposal. The dated installed-definition backup and
+native Git history preserve the rollback boundary. The dated migration
 JSON under `docs/evidence/2026-10-31-entire-ovh/` is preserved byte-for-byte and is
 historical provenance, not current qualification.
