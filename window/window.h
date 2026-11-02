@@ -469,28 +469,20 @@ bool close_main_window () {
 }
 
 bool close_window_by_PId(uintptr pid, int8_t isPid){
+#if defined(IS_MACOSX)
+	(void)isPid; /* macOS retains PID interpretation in both modes. */
+	return robotgo_ax_close_pid(pid);
+#else
 	MData win = set_handle_pid(pid, isPid);
 	bool closed = close_window_by_Id(win);
-#if defined(IS_MACOSX)
-	if (win.AxID != NULL) { CFRelease(win.AxID); }
-#endif
 	return closed;
+#endif
 }
 
 // CloseWindow
 bool close_window_by_Id(MData m_data){
 #if defined(IS_MACOSX)
-	if (m_data.AxID == NULL) { return false; }
-	AXUIElementRef b = NULL;
-	// Retrieve the close button of this window
-	if (AXUIElementCopyAttributeValue(m_data.AxID, kAXCloseButtonAttribute, (CFTypeRef*) &b) 
-		== kAXErrorSuccess && b != NULL) {
-		// Simulate button press on the close button
-		AXError result = AXUIElementPerformAction(b, kAXPressAction);
-		CFRelease(b);
-		return result == kAXErrorSuccess;
-	}
-	return false;
+	return robotgo_ax_close_window(m_data.AxID);
 #elif defined(IS_LINUX)
 	if (m_data.XWin == 0) { return false; }
 	Display *rDisplay = XGetMainDisplay();

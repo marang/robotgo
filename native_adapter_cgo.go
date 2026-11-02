@@ -360,7 +360,17 @@ func nativeSetActive(win Handle) bool {
 	return bool(C.set_active(C.MData(win)))
 }
 
+func nativeDarwinWindowPIDValid(pid int) bool {
+	const maximumDarwinWindowPID = 1<<31 - 1
+	return pid > 0 && uint64(pid) <= maximumDarwinWindowPID
+}
+
 func nativeMinWindow(pid int, state bool, isPid bool) bool {
+	// Check before C.uintptr: the legacy native integer may be narrower than
+	// Go's int, so the C resolver alone cannot reject an already wrapped PID.
+	if runtime.GOOS == "darwin" && !nativeDarwinWindowPIDValid(pid) {
+		return false
+	}
 	flag := 0
 	if isPid {
 		flag = 1
@@ -387,6 +397,9 @@ func nativeCloseMainWindow() bool {
 }
 
 func nativeCloseWindowByPid(pid int, isPid bool) bool {
+	if runtime.GOOS == "darwin" && !nativeDarwinWindowPIDValid(pid) {
+		return false
+	}
 	flag := 0
 	if isPid {
 		flag = 1

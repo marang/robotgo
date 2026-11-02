@@ -4,6 +4,12 @@ Current implementation baseline:
 
 - Display server detection (`x11`/`wayland`) is in place.
 - Mouse and key input have Wayland backends.
+- Text clipboard access selects native `wl-copy`/`wl-paste` in Wayland sessions,
+  including without X11. Regular/primary selections stay explicit; failures do
+  not fall back to X11 or another selection. Writes require wl-clipboard 2.3.0+
+  for private-spool cleanup on cancellation. Hermetic tests and an opt-in,
+  newly created headless-Sway fixture cover owner lifetime and cleanup;
+  GNOME/KDE clipboard runtime evidence remains unverified.
 - Screen capture prefers Wayland screencopy and falls back to portal.
 - `ROBOTGO_FORCE_PORTAL=1` is supported for forcing portal capture.
 - `ROBOTGO_DISABLE_PORTAL=1` disables portal prompts/fallback for deterministic native-only operation.

@@ -239,7 +239,10 @@ Package names differ on other distributions. Optional runtime integrations:
 
 - `xdg-desktop-portal` plus the matching desktop backend provides screenshot
   fallback and consent-aware RemoteDesktop input sessions.
-- `xsel` or `xclip` provides clipboard access on Linux.
+- `wl-clipboard` provides native clipboard access when `WAYLAND_DISPLAY` is
+  set; both `wl-copy` and `wl-paste` are required. Writes require version 2.3.0
+  or newer for cancellation-safe private temporary-file cleanup. `xsel` or
+  `xclip` provides clipboard access outside Wayland sessions.
 - `wayland-info` can provide a bounds fallback when native output geometry is
   unavailable.
 - `wlrctl`, `swaymsg`, or `hyprctl` enables the compositor-specific window
@@ -404,6 +407,22 @@ reject embedded NUL before changing the clipboard and prepare storage before
 clearing prior content; cancellation is checked before publication. Cleanup
 errors are returned, and an unavailable text format remains an error rather
 than a successful empty string. See [clipboard details](clipboard/README.md).
+
+Unix clipboard helpers are selected at package initialization. In a Wayland
+session, clipboard access uses native `wl-copy`/`wl-paste`, including when
+`DISPLAY` is unset; a missing helper, unsupported primary selection, or failed
+native operation returns an error without retrying through X11 or a different
+selection. Outside Wayland, the existing Xclip-then-Xsel selection remains.
+Text is passed through stdin, newline bytes are preserved, and every write
+checks the helper version before transferring text. Each copy uses a private
+temporary directory that is removed on success, failure, or cancellation;
+older or unrecognized copy helpers are rejected before receiving text.
+A successful write intentionally leaves wl-copy's background selection owner
+running with open, unlinked storage until ownership ends. Canceling that
+completed call does not revoke the selection. Legacy `ReadAll`/`WriteAll` calls
+retain their five-second timeout; context variants honor the caller's context,
+with version probing additionally capped at five seconds. See the opt-in
+[clipboard example](examples/clipboard/main.go) for regular/primary usage.
 
 ## Linux display backends
 
@@ -769,6 +788,18 @@ topmost state, and graceful close. PID lookup prefers a visible, unowned
 top-level window and falls back to another top-level window owned by the
 process. Windows may deny `SetActiveE` under its foreground-activation policy;
 the error is returned instead of reporting false success.
+
+On macOS CGO builds, PID-targeted `MinWindowE` (including restore) and
+`CloseWindowE(pid)` resolve the application's focused window, then its main
+window, validating its AX role and owning PID before mutation. They do not
+activate the application or choose an arbitrary window-list entry. Restore
+can use a minimized main window if the application exposes it; unavailable
+focused/main windows return the existing checked operation error. The legacy
+macOS target remains a PID even with the generic handle-mode flag; selected
+CGWindowID lookup and no-argument close targeting are unchanged. Maximize
+remains unsupported rather than being reinterpreted as fullscreen. These
+paths require Accessibility permission; permission-granted runtime evidence
+remains pending under [LAB-69](https://linear.app/riotbox/issue/LAB-69).
 
 ### Runtime diagnostics
 

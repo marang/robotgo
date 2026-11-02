@@ -16,6 +16,7 @@
 // #include "../base/os.h"
 #if defined(IS_MACOSX)
 	#include <dlfcn.h>
+	#include "ax_window.h"
 #elif defined(IS_LINUX)
 	#include <X11/Xatom.h>
 #endif

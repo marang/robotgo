@@ -46,9 +46,9 @@ func installClipboardTestCommand(t *testing.T, script string) string {
 		t.Fatal(err)
 	}
 	t.Setenv("PATH", directory)
-	previousTool := selectedTool
-	selectedTool = unixClipboardXclip
-	t.Cleanup(func() { selectedTool = previousTool })
+	previousTool, previousError := selectedTool, selectedToolError
+	selectedTool, selectedToolError = unixClipboardXclip, nil
+	t.Cleanup(func() { selectedTool, selectedToolError = previousTool, previousError })
 	return directory
 }
 
@@ -124,6 +124,10 @@ func TestUnixClipboardCommandSelectionsAreStateless(t *testing.T) {
 		wantName  string
 		wantArgs  []string
 	}{
+		{name: "wayland clipboard read", tool: unixClipboardWayland, read: true, wantName: "wl-paste", wantArgs: []string{"--no-newline", "--type", "text"}},
+		{name: "wayland primary read", tool: unixClipboardWayland, read: true, selection: SelectionPrimary, wantName: "wl-paste", wantArgs: []string{"--no-newline", "--type", "text", "--primary"}},
+		{name: "wayland clipboard write", tool: unixClipboardWayland, wantName: "wl-copy", wantArgs: []string{"--type", "text/plain;charset=utf-8"}},
+		{name: "wayland primary write", tool: unixClipboardWayland, selection: SelectionPrimary, wantName: "wl-copy", wantArgs: []string{"--type", "text/plain;charset=utf-8", "--primary"}},
 		{name: "xclip clipboard read", tool: unixClipboardXclip, read: true, wantName: xclip, wantArgs: []string{"-out", "-selection", "clipboard"}},
 		{name: "xclip primary write", tool: unixClipboardXclip, selection: SelectionPrimary, wantName: xclip, wantArgs: []string{"-in", "-selection", "primary"}},
 		{name: "xsel clipboard write", tool: unixClipboardXsel, wantName: xsel, wantArgs: []string{"--input", "--clipboard"}},
@@ -137,6 +141,54 @@ func TestUnixClipboardCommandSelectionsAreStateless(t *testing.T) {
 			}
 			if name != test.wantName || !reflect.DeepEqual(args, test.wantArgs) {
 				t.Fatalf("command = %s %v, want %s %v", name, args, test.wantName, test.wantArgs)
+			}
+		})
+	}
+}
+
+func TestDetectUnixClipboardTool(t *testing.T) {
+	for _, test := range []struct {
+		name      string
+		wayland   string
+		display   string
+		available []string
+		want      unixClipboardTool
+		wantErr   bool
+	}{
+		{name: "Wayland only", wayland: "private-wayland", available: []string{"wl-copy", "wl-paste", "xclip"}, want: unixClipboardWayland},
+		{name: "mixed session stays native", wayland: "private-wayland", display: ":99", available: []string{"wl-copy", "wl-paste", "xclip"}, want: unixClipboardWayland},
+		{name: "missing copy does not fall back", wayland: "private-wayland", display: ":99", available: []string{"wl-paste", "xclip", "xsel"}, wantErr: true},
+		{name: "missing paste does not fall back", wayland: "private-wayland", available: []string{"wl-copy", "xclip"}, wantErr: true},
+		{name: "missing pair", wayland: "private-wayland", wantErr: true},
+		{name: "X11 prefers xclip", display: ":99", available: []string{"xsel", "xclip", "wl-copy", "wl-paste"}, want: unixClipboardXclip},
+		{name: "X11 xsel", display: ":99", available: []string{"xsel"}, want: unixClipboardXsel},
+		{name: "headless compatibility", available: []string{"xclip"}, want: unixClipboardXclip},
+		{name: "headless missing helpers", wantErr: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			getenv := func(name string) string {
+				if name == "WAYLAND_DISPLAY" {
+					return test.wayland
+				}
+				if name == "DISPLAY" {
+					return test.display
+				}
+				return ""
+			}
+			lookPath := func(name string) (string, error) {
+				for _, available := range test.available {
+					if name == available {
+						return "/fixture/" + name, nil
+					}
+				}
+				return "", os.ErrNotExist
+			}
+			got, err := detectUnixClipboardTool(getenv, lookPath)
+			if got != test.want || (err != nil) != test.wantErr {
+				t.Fatalf("detected tool = %v, error = %v; want %v, error %t", got, err, test.want, test.wantErr)
+			}
+			if test.wantErr && test.wayland != "" && !errors.Is(err, errMissingWaylandCommands) {
+				t.Fatalf("Wayland helper failure = %v, want explicit missing-pair error", err)
 			}
 		})
 	}
