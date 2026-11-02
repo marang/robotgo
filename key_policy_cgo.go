@@ -106,6 +106,9 @@ func nativeWaylandKeyboardReady() error {
 }
 
 func keyTaps(k string, keyArr []string, pid int) error {
+	if err := validateNativeInputPID(pid); err != nil {
+		return err
+	}
 	flags, err := nativeKeyFlags(keyArr)
 	if err != nil {
 		return err
@@ -133,6 +136,9 @@ func keyTaps(k string, keyArr []string, pid int) error {
 }
 
 func keyTogglesB(k string, down bool, keyArr []string, pid int, applyDelay bool) error {
+	if err := validateNativeInputPID(pid); err != nil {
+		return err
+	}
 	flags, err := nativeKeyFlags(keyArr)
 	if err != nil {
 		return err

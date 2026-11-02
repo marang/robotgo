@@ -225,6 +225,38 @@ CGO_ENABLED=0 go test -run '^Test(ToUCUnicodeAndEscapes|UnicodeScalarBoundaries)
 These mocks do not establish real macOS/Windows application delivery or
 permission-granted runtime support; native CI still compiles against each SDK.
 
+The macOS CGO PID-window helpers also run against hermetic AX/CoreFoundation
+C mocks on every CGO test host, without loading Apple frameworks or querying
+windows. They cover focused/main precedence, PID range/type/role/owner checks,
+minimized-main restore, reference cleanup, borrowed selected-window lifetime,
+and lookup/mutation/close-button failures without retargeting. A small source
+check keeps the native routing branches attached to the tested helpers:
+
+```bash
+go test -run '^TestNativeAXWindow(C|Routing|PIDRange)$' -count=1 -v .
+```
+
+The harness uses `go env CC`, timed subprocesses, temporary executables, and
+assertions enabled even with `-DNDEBUG`. It proves no arbitrary window-list
+fallback or activation. It does not qualify real AX application behavior;
+native macOS SDK CI remains required, and permission-granted minimize/restore
+and close evidence remains pending under LAB-69.
+
+CGO PID-range tests and source-routing guards check that macOS keyboard input,
+window selection, title/geometry queries, and activation validate the original
+Go target before native conversion or input preparation. They cover negative
+IDs, signed `pid_t` overflow, 32-bit wraparound, and Go's maximum `int`, while
+preserving global keyboard PID `0` and the distinct unsigned `CGWindowID`
+range (including `SetHandle(0)` reset). These tests never invoke the desktop,
+Accessibility, keyboard injection, or clipboard:
+
+```bash
+go test -run '^TestNativeDarwin(PID|WindowID)' -count=1 -v .
+```
+
+This is hermetic pre-bridge evidence, not a substitute for native macOS arm64
+SDK compilation or permission-granted application delivery evidence.
+
 Native `SysScale` returns zero for an unavailable macOS mode or invalid mode
 widths, and for unavailable Windows DCs or nonpositive DPI. Existing `ScaleF`
 fallback behavior remains unchanged; Windows `ScaleX` keeps its zero failure
@@ -247,6 +279,35 @@ startup sleeps or OCR-operation retries are not used.
 Unix clipboard read/write cancellation tests likewise wait for a fake command's
 readiness before canceling, cover already-canceled contexts separately, and use
 only fixed fixture text without reading or changing the developer's clipboard.
+Native Wayland unit fixtures also cover pair detection without X11 fallback,
+regular/primary isolation, helper-version rejection before payload transfer,
+exact text/newline preservation, private-spool cleanup on every outcome, and
+successful background owners surviving context cancellation. All fake owners
+are terminated during test cleanup. A permission-denied cleanup test requires
+an unprivileged UID; it skips under root.
+
+The opt-in Linux clipboard runtime suite creates a **new** isolated headless
+Sway instance; it never attaches to the invoking desktop or preserves/reads its
+clipboard. Prerequisites are an unprivileged user, `/usr/bin/sway`, `swaymsg`,
+`dbus-run-session`, and wl-clipboard 2.3.0 or newer at `/usr/bin/wl-copy` and
+`/usr/bin/wl-paste`:
+
+```sh
+ROBOTGO_REQUIRE_WAYLAND_CLIPBOARD_INTEGRATION=1 go test -tags clipboardintegration ./clipboard -run '^TestWaylandClipboardHeadlessSway$' -count=1 -timeout=45s -v
+```
+
+This command works with CGO enabled or disabled and needs no `wayland` build
+tag. The fixture uses its own `0700` runtime/config directories, private D-Bus
+session, headless backend, software renderer, disabled Xwayland, and no input
+devices. It strips inherited desktop sockets and routes helpers only to the
+explicit private Wayland socket. It checks regular/primary Unicode, empty text,
+newline preservation, repeated reads after owner handoff, failed connection,
+and cancellation of an actual helper while its compositor is stopped. Cleanup
+terminates every recorded helper process group and the compositor, verifies
+that no owned group remains live, and removes/verifies absence of the private
+runtime and spool directories on success and failure. No portal, consent
+dialog, physical input, screenshot, or existing desktop data is involved.
+This is wlroots/Sway evidence, not a claim of GNOME/KDE runtime coverage.
 
 Shared external-command lifecycle tests launch only private `t.TempDir()`
 backends. They verify that descendants holding inherited stdin/stdout cannot

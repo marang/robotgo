@@ -167,7 +167,7 @@ of the following unless technically impossible:
    applicable.
 
 If one layer (example/unit/integration) is intentionally omitted, document why
-in the PR and add a follow-up task.
+in the change description and add a follow-up task.
 
 ## 9) Screen/Bounds-Specific Guardrails
 
@@ -183,7 +183,25 @@ For functions that expose dimensions or rectangles:
 
 ## 10) Documentation and Change Hygiene
 
-The operational branch, pull-request, CI, reviewer, merge, and cleanup loop is
+Before shared-host CI or source-hosting migration work, read the
+[central automation guide](https://automation.izoone.com/agents) and
+[worker execution boundary](https://automation.izoone.com/agents/worker-accounts.md).
+Use current authenticated operational state. Recheck the live
+baseline and use the documented shared-host lock before changes; historical
+provisioning examples are not installation instructions. Preserve retained
+services, holds, authentication and history. Source-transfer authorization and
+remaining provider-dependent workflows are recorded in
+[the migration assessment](docs/operations/entire-ovh-migration.md).
+
+Before source-hosting, Trail or code-review work, read the central
+[source hosting and review policy](https://automation.izoone.com/agents/worker-accounts.md#source-hosting-and-review).
+Native Entire is this migrated repository's canonical source and review path;
+use project-scoped Trails linked to Linear within the task's authorization.
+Trail use is separate from cloud execution, telemetry, provider changes and
+session publication. Preserve permitted local capture and keep session/capture
+uploads off.
+
+The operational branch, Trail, transitional CI, reviewer, merge and cleanup loop is
 defined in `docs/workflow_conventions.md`. Follow it for normal repository work;
 this file remains authoritative for engineering and safety rules.
 
@@ -196,8 +214,8 @@ Any backend behavior change should update affected docs:
 Keep diffs focused:
 
 1. Do not mix unrelated refactors with backend fixes.
-2. Prefer small, auditable commits and clear PR notes.
-3. Call out risks, fallbacks, and tested environments in PR description.
+2. Prefer small, auditable commits and clear change notes.
+3. Call out risks, fallbacks and tested environments in the change description.
 
 Documentation granularity policy:
 

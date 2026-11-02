@@ -1,0 +1,480 @@
+{
+  "schema_version": 1,
+  "date": "2026-10-30",
+  "status": "qualified; RobotGo schedules and dedicated retention active",
+  "source_main": "700a70e2a55ee27c2a7dbe4f3de80a967f5775b9",
+  "worker": "izoone-ovh-01",
+  "placement": "OVH London, UK",
+  "profile": {
+    "installed": true,
+    "profileSha": "08efbae7cc1475546edf28c4838ac1b48beabcf2058bdf7ac3cf4defa4bad5be",
+    "files": {
+      "robotgo-ci": "e2317b0235a2887436e7c04289737cf3dedbf9580f7733721d0e5a5065c642ff",
+      "robotgo-ci.py": "f3cf1955c54dc26339dce2e3c034a89f7dccd88eaefb8b2523f501429c7349e7"
+    },
+    "staging": "/var/lib/izoone-ci-provision/robotgo-profile-v3-08efbae7cc14"
+  },
+  "image": "sha256:4fb1dd6ef7bc347b9713c3fd89ee6801f8d47b2acc07378063f1420491d05f62",
+  "first_attempt_failures": "All three failed; security/deps scans were clean but cache cleanup failed. CI also exposed inherited umask0755 mismatch and excessive Unix socket temp prefixes. Regression fixes/97localtests green; no application tests skipped.",
+  "current_proof_runs": {
+    "ci": "robotgo-ci-proof3-20261030",
+    "security": "robotgo-security-proof3-20261030",
+    "dependencies": "robotgo-dependencies-proof3-20261030",
+    "watch": "robotgo-watch-proof3-20261030"
+  },
+  "retention": {
+    "review": "dedicated RobotGo-only hourly100 budget accepted, shared old3files untouched",
+    "installed": true,
+    "baselinePruner": "9621bef591f01f7e893c92ae853e43f57f91f55a7c6cbc6811a06d1e71323eae",
+    "baselineUnit": "17f407e59aea8be1c3f6b83803fe5f1704fd98f59b188370eb9ee24e649277c6",
+    "baselineTimer": "425affb59111052462c67565b53e17b1592361d8226865c8cf1be68c5eacffd4",
+    "syntheticUnitProof": "passed; only owned empty15-day-old UUIDfixture deleted, oldshared3files unchanged",
+    "timer_enabled": true,
+    "timer_active": true,
+    "next_elapse_utc": "2026-10-30T22:04:23Z",
+    "own_pruner_sha256": "7b56a06aaee777d0c167e4a3622f52b3da3651b512a24a8d49f7697fa43dd741",
+    "own_service_sha256": "6c82a056c127aaf27208daa8f3f1b64649e044ba569e3b73a7d1a937c66ad76f",
+    "own_timer_sha256": "7091cf8c8b0446c8cd660cff2a43b1616a0a7635d5c41b33696aeeb38a8f5276"
+  },
+  "schedules_activated": true,
+  "container_boundary_first_actual_proof": {
+    "container": "robotgo-remote-8080f7d071d14436be1084e3bf44f9ff",
+    "image": "4659a3d4ce05dc13e71922ff4a33a78ef7e84b995f85d22c26af28b6e3e1dd3d",
+    "worker": "izoone-ovh-01",
+    "cpuPeriod": 100000,
+    "cpuQuota": 200000,
+    "memory": 8589934592,
+    "pidsLimit": 256,
+    "privileged": false,
+    "user": "7051508:1004",
+    "securityOpt": [
+      "no-new-privileges"
+    ],
+    "capDrop": [
+      "CAP_CHOWN",
+      "CAP_DAC_OVERRIDE",
+      "CAP_FOWNER",
+      "CAP_FSETID",
+      "CAP_KILL",
+      "CAP_NET_BIND_SERVICE",
+      "CAP_SETFCAP",
+      "CAP_SETGID",
+      "CAP_SETPCAP",
+      "CAP_SETUID",
+      "CAP_SYS_CHROOT"
+    ],
+    "effectiveCaps": null,
+    "boundingCaps": null,
+    "processLabel": "system_u:system_r:container_t:s0:c273,c810",
+    "mounts": [
+      {
+        "type": "bind",
+        "destination": "/workspace",
+        "source": "/home/izoone_workers_vps16776/.local/state/robotgo-ovh/8080f7d071d14436be1084e3bf44f9ff/source",
+        "options": [
+          "rbind"
+        ],
+        "rw": true
+      }
+    ],
+    "credentialEnvPresent": []
+  },
+  "second_attempt_results": {
+    "ci": {
+      "dagRunId": "robotgo-ci-proof2-20261030",
+      "finishedAt": "2026-10-30T20:39:41Z",
+      "name": "robotgo-ovh-ci",
+      "startedAt": "2026-10-30T20:29:06Z",
+      "statusLabel": "failed",
+      "workerId": "izoone-ovh-01",
+      "workerSummary": {
+        "commit": "700a70e2a55ee27c2a7dbe4f3de80a967f5775b9",
+        "duration_seconds": 635.454,
+        "run_id": "43cf2aacca4048139ac44218ab993416",
+        "status": "failed",
+        "task": "ci"
+      }
+    },
+    "dependencies": {
+      "dagRunId": "robotgo-dependencies-proof2-20261030",
+      "finishedAt": "2026-10-30T20:40:01Z",
+      "name": "robotgo-ovh-dependencies",
+      "startedAt": "2026-10-30T20:39:51Z",
+      "statusLabel": "succeeded",
+      "workerId": "izoone-ovh-01",
+      "workerSummary": {
+        "commit": "700a70e2a55ee27c2a7dbe4f3de80a967f5775b9",
+        "duration_seconds": 10.248,
+        "run_id": "0b4bd4599c2e4bd3ab60c56ebb88aa21",
+        "status": "passed",
+        "task": "dependencies"
+      }
+    },
+    "security": {
+      "dagRunId": "robotgo-security-proof2-20261030",
+      "finishedAt": "2026-10-30T20:39:51Z",
+      "name": "robotgo-ovh-security",
+      "startedAt": "2026-10-30T20:39:42Z",
+      "statusLabel": "succeeded",
+      "workerId": "izoone-ovh-01",
+      "workerSummary": {
+        "commit": "700a70e2a55ee27c2a7dbe4f3de80a967f5775b9",
+        "duration_seconds": 8.481,
+        "run_id": "6cd4c01aa4bd44b58e3f666886a45672",
+        "status": "passed",
+        "task": "security"
+      }
+    }
+  },
+  "container_boundary_current_actual_proof": {
+    "capabilities": "0000000000000000",
+    "container": "robotgo-remote-8d7a727722e24bfa8d42913851e18366",
+    "cpuPeriod": 100000,
+    "cpuQuota": 200000,
+    "credentialEnvPresent": [],
+    "image": "4fb1dd6ef7bc347b9713c3fd89ee6801f8d47b2acc07378063f1420491d05f62",
+    "memory": 8589934592,
+    "mounts": [
+      {
+        "destination": "/workspace",
+        "rw": true,
+        "source": "/home/izoone_workers_vps16776/.local/state/robotgo-ovh/8d7a727722e24bfa8d42913851e18366/source",
+        "type": "bind"
+      }
+    ],
+    "namespacePids": [
+      139623,
+      1
+    ],
+    "noNewPrivileges": 1,
+    "pid": 139623,
+    "pidsLimit": 256,
+    "privileged": false,
+    "processLabel": "system_u:system_r:container_t:s0:c334,c845",
+    "securityOpt": [
+      "no-new-privileges"
+    ],
+    "sourceModes": {
+      "go.mod": "0o644"
+    },
+    "stage": "stage=linux-cgo-default",
+    "user": "7051508:1004"
+  },
+  "local_validation": {
+    "python_migration_tests": 119,
+    "status": "passed",
+    "go_default_tests": "passed with Go 1.26.10; application code unchanged",
+    "windows_package_enumeration": "passed; Linux-only launcher excluded"
+  },
+  "concurrent_shared_retention_change": {
+    "shared_pruner_current_sha256": "7024e31d83f3b429c17e0d26cbfa0ad5c85f8fbcb6cf80fadd11c2a4f0cf5f7e",
+    "shared_service_current_sha256": "6cd2d4f791a3f29efddd2282c00ececfc3af64aaab1db25da19cfdba9cc0af8d",
+    "shared_timer_unchanged": true,
+    "observed_added_root": "sway-session-ci",
+    "robotgo_in_shared_roots": false,
+    "changes_preserved": true
+  },
+  "notes": [
+    "No new commits/pushes/tags/releases or application deployments; only the authorized CI worker profile/image was installed.",
+    "Raw logs/reports remain private on OVH.",
+    "Old GitHub platform/release/dependency-update workflows remain unchanged.",
+    "Authoring worktrees integrated and removed; own source-slice archives retained locally."
+  ],
+  "verified_at": "2026-10-30T21:08:13Z",
+  "current_qualified_results": {
+    "ci": {
+      "dagRunId": "robotgo-ci-proof3-20261030",
+      "finishedAt": "2026-10-30T20:59:33Z",
+      "name": "robotgo-ovh-ci",
+      "startedAt": "2026-10-30T20:48:59Z",
+      "statusLabel": "succeeded",
+      "workerId": "izoone-ovh-01",
+      "workerSummary": {
+        "commit": "700a70e2a55ee27c2a7dbe4f3de80a967f5775b9",
+        "duration_seconds": 634.175,
+        "run_id": "8d7a727722e24bfa8d42913851e18366",
+        "status": "passed",
+        "task": "ci"
+      }
+    },
+    "dependencies": {
+      "dagRunId": "robotgo-dependencies-proof3-20261030",
+      "finishedAt": "2026-10-30T20:59:58Z",
+      "name": "robotgo-ovh-dependencies",
+      "startedAt": "2026-10-30T20:59:47Z",
+      "statusLabel": "succeeded",
+      "workerId": "izoone-ovh-01",
+      "workerSummary": {
+        "commit": "700a70e2a55ee27c2a7dbe4f3de80a967f5775b9",
+        "duration_seconds": 10.563,
+        "run_id": "28dce7a8951e41cf81d72ff969505a7c",
+        "status": "passed",
+        "task": "dependencies"
+      }
+    },
+    "security": {
+      "dagRunId": "robotgo-security-proof3-20261030",
+      "finishedAt": "2026-10-30T20:59:44Z",
+      "name": "robotgo-ovh-security",
+      "startedAt": "2026-10-30T20:59:35Z",
+      "statusLabel": "succeeded",
+      "workerId": "izoone-ovh-01",
+      "workerSummary": {
+        "commit": "700a70e2a55ee27c2a7dbe4f3de80a967f5775b9",
+        "duration_seconds": 9.194,
+        "run_id": "0ca5b4a7cb7341cfb065c463e53d3015",
+        "status": "passed",
+        "task": "security"
+      }
+    },
+    "watch": {
+      "dagRunId": "robotgo-watch-proof3-20261030",
+      "finishedAt": "2026-10-30T21:04:42Z",
+      "name": "robotgo-ovh-watch",
+      "startedAt": "2026-10-30T21:04:41Z",
+      "statusLabel": "succeeded",
+      "workerId": "izoone-ovh-01",
+      "workerSummary": {
+        "commit": "700a70e2a55ee27c2a7dbe4f3de80a967f5775b9",
+        "duration_seconds": 0.747,
+        "run_id": "572d7b445ef54687b96bb093bcfeb241",
+        "status": "unchanged",
+        "task": "ci"
+      }
+    }
+  },
+  "first_attempt_results": {
+    "ci": {
+      "dagRunId": "robotgo-ci-proof-20261030",
+      "finishedAt": "2026-10-30T20:01:23Z",
+      "name": "robotgo-ovh-ci",
+      "startedAt": "2026-10-30T20:00:00Z",
+      "statusLabel": "failed",
+      "workerId": "izoone-ovh-01",
+      "workerSummary": {
+        "commit": "700a70e2a55ee27c2a7dbe4f3de80a967f5775b9",
+        "duration_seconds": 82.582,
+        "run_id": "8080f7d071d14436be1084e3bf44f9ff",
+        "status": "failed",
+        "task": "ci"
+      }
+    },
+    "dependencies": {
+      "dagRunId": "robotgo-dependencies-proof-20261030",
+      "finishedAt": "2026-10-30T20:01:47Z",
+      "name": "robotgo-ovh-dependencies",
+      "startedAt": "2026-10-30T20:01:36Z",
+      "statusLabel": "failed",
+      "workerId": "izoone-ovh-01",
+      "workerSummary": {
+        "commit": "700a70e2a55ee27c2a7dbe4f3de80a967f5775b9",
+        "duration_seconds": 11.05,
+        "run_id": "36de71ee961f4b14a49dd894d046636e",
+        "status": "failed",
+        "task": "dependencies"
+      }
+    },
+    "security": {
+      "dagRunId": "robotgo-security-proof-20261030",
+      "finishedAt": "2026-10-30T20:01:34Z",
+      "name": "robotgo-ovh-security",
+      "startedAt": "2026-10-30T20:01:24Z",
+      "statusLabel": "failed",
+      "workerId": "izoone-ovh-01",
+      "workerSummary": {
+        "commit": "700a70e2a55ee27c2a7dbe4f3de80a967f5775b9",
+        "duration_seconds": 9.623,
+        "run_id": "558d7c8d6b464a18b90e76941a061622",
+        "status": "failed",
+        "task": "security"
+      }
+    }
+  },
+  "active_dagu_definitions": {
+    "robotgo-ovh-ci": {
+      "artifacts": {
+        "enabled": false
+      },
+      "errors": [],
+      "maxActiveSteps": 1,
+      "queue": "photoroller-local",
+      "schedule": [],
+      "suspended": false
+    },
+    "robotgo-ovh-dependencies": {
+      "artifacts": {
+        "enabled": false
+      },
+      "errors": [],
+      "maxActiveSteps": 1,
+      "queue": "photoroller-local",
+      "schedule": [
+        {
+          "expression": "CRON_TZ=Europe/Vienna 27 4 * * 1",
+          "kind": "cron"
+        }
+      ],
+      "suspended": false
+    },
+    "robotgo-ovh-security": {
+      "artifacts": {
+        "enabled": false
+      },
+      "errors": [],
+      "maxActiveSteps": 1,
+      "queue": "photoroller-local",
+      "schedule": [
+        {
+          "expression": "CRON_TZ=Europe/Vienna 17 4 * * 1",
+          "kind": "cron"
+        }
+      ],
+      "suspended": false
+    },
+    "robotgo-ovh-watch": {
+      "artifacts": {
+        "enabled": false
+      },
+      "errors": [],
+      "maxActiveSteps": 1,
+      "queue": "photoroller-local",
+      "schedule": [
+        {
+          "expression": "CRON_TZ=Europe/Vienna 7-59/15 * * * *",
+          "kind": "cron"
+        }
+      ],
+      "suspended": false
+    }
+  },
+  "controller_release": {
+    "commit": "700a70e2a55ee27c2a7dbe4f3de80a967f5775b9",
+    "image": "sha256:4fb1dd6ef7bc347b9713c3fd89ee6801f8d47b2acc07378063f1420491d05f62",
+    "mode": "apply",
+    "other_controller_state_untouched": true,
+    "profile_sha256": "08efbae7cc1475546edf28c4838ac1b48beabcf2058bdf7ac3cf4defa4bad5be",
+    "proof_sha256": "f08a1f4025edd77c1e4ed3f2b7b460bfad98945daa2c2e7d1da613c9599e9a3a",
+    "release_only": [
+      "robotgo-ovh-ci.suspend",
+      "robotgo-ovh-watch.suspend",
+      "robotgo-ovh-security.suspend",
+      "robotgo-ovh-dependencies.suspend"
+    ],
+    "snapshot_sha256": "953b9e3476bda2f2177f15a3d2d6b0e43ca291d3580a45d66e32384c99cf5745",
+    "exact_post_release_snapshot_matches": true,
+    "manifest_entries_at_release": 26,
+    "old_mandatory_seven_holds_preserved": true,
+    "definition_writes_inline_and_edit_retry_denied": true,
+    "terminal_disabled": true,
+    "global_configuration_sha256": "fa56814aebf14c004bd26cb887312eca859e30b9231a06a62da49950acfe9680",
+    "proof": "activation-proof.json",
+    "source_of_run_status": "Authenticated controller loopback REST read over trusted SSH; https://automation.izoone.com is the canonical service identity."
+  },
+  "controller_api_probes": [
+    {
+      "check": "authenticated_read",
+      "status": 200,
+      "passed": true
+    },
+    {
+      "check": "create_definition",
+      "status": 403,
+      "passed": true
+    },
+    {
+      "check": "update_definition",
+      "status": 403,
+      "passed": true
+    },
+    {
+      "check": "inline_force_local_start",
+      "status": 403,
+      "passed": true
+    },
+    {
+      "check": "inline_force_local_enqueue",
+      "status": 403,
+      "passed": true
+    },
+    {
+      "check": "unknown_named_params",
+      "status": 400,
+      "passed": true
+    },
+    {
+      "check": "terminal_disabled",
+      "status": 404,
+      "passed": true
+    },
+    {
+      "check": "edit_retry_preview",
+      "status": 403,
+      "passed": true
+    },
+    {
+      "check": "edit_retry",
+      "status": 403,
+      "passed": true
+    },
+    {
+      "check": "credential_log_scan",
+      "files": 1,
+      "passed": true
+    }
+  ],
+  "watch_no_source_checkout_or_container_created": true,
+  "source_final_reverification": [
+    {
+      "remote": "github",
+      "advertisedRows": 44,
+      "matchesTransferredPublishedSet": true
+    },
+    {
+      "remote": "origin",
+      "advertisedRows": 44,
+      "matchesTransferredPublishedSet": true
+    }
+  ],
+  "session_tracking_enabled": false,
+  "entire_project": {
+    "region": "eu",
+    "primary_processing_cell": "aws-eu-central-1",
+    "plugins": []
+  },
+  "remotes": {
+    "origin": "entire://aws-eu-central-1.entire.io/et/marang/robotgo",
+    "github": "https://github.com/marang/robotgo.git",
+    "upstream": "https://github.com/go-vgo/robotgo.git",
+    "push_default": "origin",
+    "main_tracking": "origin/main"
+  },
+  "services": {
+    "ovh_controller": "active",
+    "ovh_worker": "active",
+    "notebook_worker": "inactive",
+    "notebook_relay": "inactive",
+    "dreamhost_email_domains_dns": "unchanged"
+  },
+  "unverified_or_retained_dependencies": [
+    "Native macOS/Windows runtime and real compositor/portal-consent evidence remain on the original provider; cross-compilation is not native runtime evidence.",
+    "Full platform/release evidence, GitHub review/check gates, module distribution and Dependabot PR generation remain provider-dependent; no automatic provider synchronization.",
+    "Native Entire public visibility verified, but anonymous Git advertisement returned401; preserved public GitHub remains anonymous source/distribution.",
+    "Native main force-push/deletion protection is not GitHub required-check mapping or a native pre-merge gate.",
+    "Live Dagu cancellation and actual credential-expiry/refresh were not forced; cancellation has offline regression coverage.",
+    "Registry/advisory metadata processing residency was not independently certified; no end-to-end EU claim.",
+    "The local automation-hosting checkout path was no longer present during final verification; current public guide was available. No central local record was created or overwritten."
+  ],
+  "local_changes": {
+    "worktree": "/home/markus/Dev/robotgo/lab-437-entire-ovh",
+    "committed": false,
+    "pushed": false,
+    "application_code_changed": false,
+    "main_and_three_existing_feature_worktrees_clean": true,
+    "awaiting_review": [
+      "automation/ovh",
+      "AGENTS.md",
+      "docs/workflow_conventions.md",
+      "docs/operations/entire-ovh-migration.md"
+    ]
+  }
+}

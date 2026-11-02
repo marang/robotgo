@@ -303,11 +303,14 @@ func toErr(str *C.char) error {
 }
 
 func unicodeType(str uint32, args ...int) error {
-	cstr := C.uint(str)
 	pid := 0
 	if len(args) > 0 {
 		pid = args[0]
 	}
+	if err := validateNativeInputPID(pid); err != nil {
+		return err
+	}
+	cstr := C.uint(str)
 
 	isPid := 0
 	if len(args) > 1 {
@@ -342,6 +345,9 @@ func typeWaylandTextExact(str string, delay int) error {
 // Keep C key codes in this owning translation unit: their width and signedness
 // vary by platform. Policy passes only normalized flags and portable requests.
 func nativeTapKey(name string, flags uint32, pid int) error {
+	if err := validateNativeInputPID(pid); err != nil {
+		return err
+	}
 	key, err := checkKeyCodes(name)
 	if err != nil {
 		return fmt.Errorf("%w: native keyboard backend cannot map key %q; use TypeStrE or UnicodeTypeE for text", ErrNotSupported, name)
@@ -355,6 +361,9 @@ func nativeKeyFlags(modifiers []string) (uint32, error) {
 }
 
 func nativeToggleKey(name string, down bool, flags uint32, pid int) error {
+	if err := validateNativeInputPID(pid); err != nil {
+		return err
+	}
 	key, err := checkKeyCodes(name)
 	if err != nil {
 		return fmt.Errorf("%w: native keyboard backend cannot map key %q; use TypeStrE or UnicodeTypeE for text", ErrNotSupported, name)

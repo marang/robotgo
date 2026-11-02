@@ -360,7 +360,17 @@ func nativeSetActive(win Handle) bool {
 	return bool(C.set_active(C.MData(win)))
 }
 
+func nativeDarwinWindowPIDValid(pid int) bool {
+	const maximumDarwinWindowPID = 1<<31 - 1
+	return pid > 0 && uint64(pid) <= maximumDarwinWindowPID
+}
+
 func nativeMinWindow(pid int, state bool, isPid bool) bool {
+	// Check before C.uintptr: the legacy native integer may be narrower than
+	// Go's int, so the C resolver alone cannot reject an already wrapped PID.
+	if runtime.GOOS == "darwin" && !nativeDarwinWindowPIDValid(pid) {
+		return false
+	}
 	flag := 0
 	if isPid {
 		flag = 1
@@ -387,6 +397,9 @@ func nativeCloseMainWindow() bool {
 }
 
 func nativeCloseWindowByPid(pid int, isPid bool) bool {
+	if runtime.GOOS == "darwin" && !nativeDarwinWindowPIDValid(pid) {
+		return false
+	}
 	flag := 0
 	if isPid {
 		flag = 1
@@ -421,6 +434,9 @@ func nativeGetActiveC() C.MData {
 
 // SetHandle set the window handle
 func SetHandle(hwnd int) {
+	if runtime.GOOS == "darwin" && !nativeDarwinWindowIDValid(hwnd) {
+		return
+	}
 	chwnd := C.uintptr(hwnd)
 	unlock := lockNativeX11Display()
 	defer unlock()
@@ -429,6 +445,9 @@ func SetHandle(hwnd int) {
 
 // SetHandlePid set the window handle by pid
 func SetHandlePid(pid int, args ...int) {
+	if runtime.GOOS == "darwin" && !nativeDarwinPIDValid(pid, false) {
+		return
+	}
 	var isPid int
 	if len(args) > 0 || currentTreatAsHandle() {
 		isPid = 1
@@ -441,6 +460,9 @@ func SetHandlePid(pid int, args ...int) {
 
 // GetHandByPidC get handle mdata by pid
 func GetHandByPidC(pid int, args ...int) C.MData {
+	if runtime.GOOS == "darwin" && !nativeDarwinPIDValid(pid, false) {
+		return C.MData{}
+	}
 	var isPid int
 	if len(args) > 0 || currentTreatAsHandle() {
 		isPid = 1
@@ -477,6 +499,9 @@ func GetBHandle() int {
 }
 
 func cgetTitleLocked(pid, isPid int) string {
+	if runtime.GOOS == "darwin" && !nativeDarwinPIDValid(pid, false) {
+		return ""
+	}
 	title := C.get_title_by_pid(C.uintptr(pid), C.int8_t(isPid))
 	if title == nil {
 		return ""
@@ -492,11 +517,17 @@ func nativeGetActivePID() int {
 }
 
 func internalGetBoundsLocked(pid, isPid int) (int, int, int, int) {
+	if runtime.GOOS == "darwin" && !nativeDarwinPIDValid(pid, false) {
+		return 0, 0, 0, 0
+	}
 	bounds := C.get_bounds(C.uintptr(pid), C.int8_t(isPid))
 	return int(bounds.X), int(bounds.Y), int(bounds.W), int(bounds.H)
 }
 
 func internalGetClientLocked(pid, isPid int) (int, int, int, int) {
+	if runtime.GOOS == "darwin" && !nativeDarwinPIDValid(pid, false) {
+		return 0, 0, 0, 0
+	}
 	bounds := C.get_client(C.uintptr(pid), C.int8_t(isPid))
 	return int(bounds.X), int(bounds.Y), int(bounds.W), int(bounds.H)
 }
@@ -508,6 +539,9 @@ func Is64Bit() bool {
 }
 
 func internalActiveLocked(pid, isPid int) bool {
+	if runtime.GOOS == "darwin" && !nativeDarwinPIDValid(pid, false) {
+		return false
+	}
 	return bool(C.active_PID(C.uintptr(pid), C.int8_t(isPid)))
 }
 
