@@ -13,9 +13,9 @@ import (
 	"time"
 	"unsafe"
 
-	"github.com/marang/robotgo/clipboard"
-	inputportal "github.com/marang/robotgo/input/portal"
-	"github.com/marang/robotgo/internal/windowbackend"
+	"go.izoone.com/robotgo/clipboard"
+	inputportal "go.izoone.com/robotgo/input/portal"
+	"go.izoone.com/robotgo/internal/windowbackend"
 )
 
 var (

@@ -14,8 +14,8 @@ import (
 	"strings"
 	"sync"
 
-	portalpkg "github.com/marang/robotgo/screen/portal"
 	"github.com/vcaesar/screenshot"
+	portalpkg "go.izoone.com/robotgo/screen/portal"
 )
 
 const (

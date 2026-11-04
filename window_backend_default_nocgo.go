@@ -2,7 +2,7 @@
 
 package robotgo
 
-import "github.com/marang/robotgo/internal/windowbackend"
+import "go.izoone.com/robotgo/internal/windowbackend"
 
 func platformPureGoWindowBackend() windowbackend.Backend {
 	return nil

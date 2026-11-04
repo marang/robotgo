@@ -13,7 +13,7 @@ import (
 	"unicode/utf8"
 	"unsafe"
 
-	"github.com/marang/robotgo/internal/windowbackend"
+	"go.izoone.com/robotgo/internal/windowbackend"
 )
 
 func TestEnclosingRect(t *testing.T) {

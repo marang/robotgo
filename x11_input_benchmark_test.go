@@ -6,7 +6,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/marang/robotgo"
+	"go.izoone.com/robotgo"
 )
 
 const (

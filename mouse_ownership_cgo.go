@@ -9,7 +9,7 @@ import (
 	"sync"
 	"time"
 
-	inputportal "github.com/marang/robotgo/input/portal"
+	inputportal "go.izoone.com/robotgo/input/portal"
 )
 
 var waylandMouseMu sync.Mutex

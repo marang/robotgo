@@ -5,7 +5,7 @@ package robotgo_test
 import (
 	"testing"
 
-	"github.com/marang/robotgo"
+	"go.izoone.com/robotgo"
 )
 
 // TestWaylandBuildPreservesX11Capture proves that enabling the Wayland CGO

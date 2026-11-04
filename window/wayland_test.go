@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/marang/robotgo"
-	"github.com/marang/robotgo/base"
+	"go.izoone.com/robotgo"
+	"go.izoone.com/robotgo/base"
 )
 
 func requireDisplay(t *testing.T) {

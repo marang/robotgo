@@ -6,7 +6,7 @@ import (
 	"context"
 	"errors"
 
-	"github.com/marang/robotgo/internal/darwinwindow"
+	"go.izoone.com/robotgo/internal/darwinwindow"
 )
 
 func probe(ctx context.Context) Capability {

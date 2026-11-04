@@ -9,7 +9,7 @@ import (
 	"sync"
 	"testing"
 
-	portalpkg "github.com/marang/robotgo/screen/portal"
+	portalpkg "go.izoone.com/robotgo/screen/portal"
 )
 
 type fakeScreenCastCapture struct {

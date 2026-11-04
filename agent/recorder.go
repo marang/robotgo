@@ -27,7 +27,7 @@ const (
 	// MCPFlowFixtureSchemaVersion identifies the non-executing MCP request-template contract.
 	MCPFlowFixtureSchemaVersion = "1"
 
-	agentPackageImportPath       = "github.com/marang/robotgo/agent"
+	agentPackageImportPath       = "go.izoone.com/robotgo/agent"
 	recorderBindingOverheadBytes = 64
 	recorderFlowReserveBytes     = 256
 	maxRecorderReviewReasons     = 14

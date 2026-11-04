@@ -8,7 +8,7 @@ import (
 	"log"
 	"runtime"
 
-	"github.com/marang/robotgo"
+	"go.izoone.com/robotgo"
 )
 
 func main() {

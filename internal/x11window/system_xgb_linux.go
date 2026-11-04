@@ -13,7 +13,7 @@ import (
 	"github.com/jezek/xgb/xproto"
 	"github.com/jezek/xgbutil"
 	"github.com/jezek/xgbutil/ewmh"
-	"github.com/marang/robotgo/internal/windowbackend"
+	"go.izoone.com/robotgo/internal/windowbackend"
 )
 
 const (

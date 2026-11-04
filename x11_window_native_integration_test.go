@@ -11,7 +11,7 @@ import (
 
 	"github.com/jezek/xgb"
 	"github.com/jezek/xgb/xproto"
-	"github.com/marang/robotgo"
+	"go.izoone.com/robotgo"
 )
 
 const x11DestroyedWindowHelperEnv = "ROBOTGO_X11_DESTROYED_WINDOW_HELPER"

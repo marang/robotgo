@@ -6,7 +6,7 @@ import (
 	"os"
 	"testing"
 
-	inputportal "github.com/marang/robotgo/input/portal"
+	inputportal "go.izoone.com/robotgo/input/portal"
 )
 
 func TestNativeX11StatefulInputDoesNotSwitchToPortalOnUp(t *testing.T) {

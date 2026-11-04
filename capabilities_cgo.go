@@ -10,8 +10,8 @@ import (
 	"runtime"
 	"time"
 
-	inputportal "github.com/marang/robotgo/input/portal"
-	portalpkg "github.com/marang/robotgo/screen/portal"
+	inputportal "go.izoone.com/robotgo/input/portal"
+	portalpkg "go.izoone.com/robotgo/screen/portal"
 )
 
 func nativeWaylandProtocolVersions() nativeWaylandProtocolInfo {

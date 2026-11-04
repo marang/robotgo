@@ -8,7 +8,7 @@ import (
 	"image"
 	"time"
 
-	"github.com/marang/robotgo/internal/waylandoutput"
+	"go.izoone.com/robotgo/internal/waylandoutput"
 )
 
 const (

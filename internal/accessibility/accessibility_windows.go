@@ -13,7 +13,7 @@ import (
 	"time"
 
 	"github.com/go-ole/go-ole"
-	"github.com/marang/robotgo/internal/windowswindow"
+	"go.izoone.com/robotgo/internal/windowswindow"
 )
 
 func probe(ctx context.Context) Capability {

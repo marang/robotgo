@@ -16,7 +16,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	robotgo "github.com/marang/robotgo"
+	robotgo "go.izoone.com/robotgo"
 )
 
 const (

@@ -11,8 +11,8 @@ import (
 	"strings"
 	"testing"
 
-	inputportal "github.com/marang/robotgo/input/portal"
 	"github.com/vcaesar/screenshot"
+	inputportal "go.izoone.com/robotgo/input/portal"
 )
 
 func preservePureGoCaptureFakes(t *testing.T) {

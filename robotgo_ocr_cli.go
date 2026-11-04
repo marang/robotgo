@@ -6,7 +6,7 @@ import (
 	"context"
 	"time"
 
-	commandpkg "github.com/marang/robotgo/internal/command"
+	commandpkg "go.izoone.com/robotgo/internal/command"
 )
 
 const defaultOCRTimeout = 2 * time.Minute

@@ -1,6 +1,6 @@
 package screen
 
-import robotgo "github.com/marang/robotgo"
+import robotgo "go.izoone.com/robotgo"
 
 // CaptureScreen proxies to robotgo.CaptureScreen, exposing screen capture
 // functionality to subpackages without importing cgo details.

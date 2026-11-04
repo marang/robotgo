@@ -15,7 +15,7 @@ import (
 	"strconv"
 	"syscall"
 
-	"github.com/marang/robotgo/internal/portalrunner"
+	"go.izoone.com/robotgo/internal/portalrunner"
 )
 
 const defaultManifest = "infrastructure/portal-runner/gnome/manifest.json"

@@ -7,7 +7,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/marang/robotgo/internal/waylandoutput"
+	"go.izoone.com/robotgo/internal/waylandoutput"
 )
 
 func TestPureGoWaylandBoundsAPIsUseLogicalOutputs(t *testing.T) {

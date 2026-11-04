@@ -12,7 +12,7 @@ import (
 	"github.com/jezek/xgb/xproto"
 	"github.com/jezek/xgbutil"
 	"github.com/jezek/xgbutil/ewmh"
-	"github.com/marang/robotgo"
+	"go.izoone.com/robotgo"
 )
 
 const x11WindowStatePollTimeout = 2 * time.Second

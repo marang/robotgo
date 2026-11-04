@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/marang/robotgo/agent"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
+	"go.izoone.com/robotgo/agent"
 )
 
 func TestFindReturnsOnlySanitizedConditionResult(t *testing.T) {

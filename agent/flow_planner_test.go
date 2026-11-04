@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	robotgo "github.com/marang/robotgo"
+	robotgo "go.izoone.com/robotgo"
 )
 
 func flowPlannerPolicy() Policy {

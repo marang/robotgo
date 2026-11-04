@@ -518,7 +518,7 @@ func TestRecordedFlowGoldenArtifactsAndCompileWithoutExecution(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	goMod := "module robotgo-recorder-fixture\n\ngo 1.26\n\nrequire github.com/marang/robotgo v0.0.0\n\nreplace github.com/marang/robotgo => " + moduleRoot + "\n"
+	goMod := "module robotgo-recorder-fixture\n\ngo 1.26\n\nrequire go.izoone.com/robotgo v0.0.0\n\nreplace go.izoone.com/robotgo => " + moduleRoot + "\n"
 	if err := os.WriteFile(filepath.Join(directory, "go.mod"), []byte(goMod), 0o600); err != nil {
 		t.Fatal(err)
 	}

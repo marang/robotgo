@@ -9,8 +9,8 @@ import (
 	"os/signal"
 	"time"
 
-	"github.com/marang/robotgo"
-	portalinput "github.com/marang/robotgo/input/portal"
+	"go.izoone.com/robotgo"
+	portalinput "go.izoone.com/robotgo/input/portal"
 )
 
 func main() {

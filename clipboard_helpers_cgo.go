@@ -5,7 +5,7 @@ package robotgo
 import (
 	"runtime"
 
-	"github.com/marang/robotgo/clipboard"
+	"go.izoone.com/robotgo/clipboard"
 )
 
 // ReadAll read string from clipboard

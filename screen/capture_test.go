@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	robotgo "github.com/marang/robotgo"
+	robotgo "go.izoone.com/robotgo"
 )
 
 func TestCaptureScreen(t *testing.T) {

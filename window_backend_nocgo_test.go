@@ -6,7 +6,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/marang/robotgo/internal/windowbackend"
+	"go.izoone.com/robotgo/internal/windowbackend"
 )
 
 type permissionWindowBackend struct{}

@@ -15,7 +15,7 @@ import (
 
 	"github.com/jezek/xgb"
 	"github.com/jezek/xgb/xproto"
-	"github.com/marang/robotgo"
+	"go.izoone.com/robotgo"
 )
 
 const x11TestUnicodeGrinningFace = uint32(0x1f600)

@@ -1,9 +1,9 @@
 {
   "schema": 1,
-  "module": "github.com/marang/robotgo",
+  "module": "go.izoone.com/robotgo",
   "excludedPackagePrefixes": [
-    "github.com/marang/robotgo/cmd",
-    "github.com/marang/robotgo/examples"
+    "go.izoone.com/robotgo/cmd",
+    "go.izoone.com/robotgo/examples"
   ],
   "variants": [
     {

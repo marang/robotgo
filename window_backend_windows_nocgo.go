@@ -3,8 +3,8 @@
 package robotgo
 
 import (
-	"github.com/marang/robotgo/internal/windowbackend"
-	"github.com/marang/robotgo/internal/windowswindow"
+	"go.izoone.com/robotgo/internal/windowbackend"
+	"go.izoone.com/robotgo/internal/windowswindow"
 )
 
 var pureGoWindowsWindowBackend = windowswindow.NewNative()

@@ -16,7 +16,7 @@ import (
 	"github.com/jezek/xgb"
 	"github.com/jezek/xgb/xproto"
 	"github.com/jezek/xgb/xtest"
-	"github.com/marang/robotgo"
+	"go.izoone.com/robotgo"
 )
 
 const (

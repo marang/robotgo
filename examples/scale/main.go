@@ -3,7 +3,7 @@ package main
 import (
 	"fmt"
 
-	"github.com/marang/robotgo"
+	"go.izoone.com/robotgo"
 )
 
 func main() {

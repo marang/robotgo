@@ -12,7 +12,7 @@ import (
 	"time"
 
 	"github.com/godbus/dbus/v5"
-	"github.com/marang/robotgo/internal/portalrunner"
+	"go.izoone.com/robotgo/internal/portalrunner"
 )
 
 const envScreenCastRequireMonitor = "ROBOTGO_SCREENCAST_REQUIRE_MONITOR"

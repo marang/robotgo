@@ -6,7 +6,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/marang/robotgo/internal/windowbackend"
+	"go.izoone.com/robotgo/internal/windowbackend"
 )
 
 func pureGoWindowBackend() (windowbackend.Backend, error) {

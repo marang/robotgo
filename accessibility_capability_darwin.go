@@ -5,7 +5,7 @@ package robotgo
 import (
 	"context"
 
-	"github.com/marang/robotgo/internal/accessibility"
+	"go.izoone.com/robotgo/internal/accessibility"
 )
 
 func accessibilityCapability() FeatureCapability {

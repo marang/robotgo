@@ -3,7 +3,7 @@ package agent
 import (
 	"strings"
 
-	robotgo "github.com/marang/robotgo"
+	robotgo "go.izoone.com/robotgo"
 )
 
 const (

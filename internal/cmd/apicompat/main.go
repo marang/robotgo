@@ -11,7 +11,7 @@ import (
 	"slices"
 	"syscall"
 
-	"github.com/marang/robotgo/internal/apicompat"
+	"go.izoone.com/robotgo/internal/apicompat"
 )
 
 const (

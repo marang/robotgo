@@ -5,8 +5,8 @@ package robotgo
 import (
 	"errors"
 
-	"github.com/marang/robotgo/internal/darwinwindow"
-	"github.com/marang/robotgo/internal/windowbackend"
+	"go.izoone.com/robotgo/internal/darwinwindow"
+	"go.izoone.com/robotgo/internal/windowbackend"
 )
 
 var pureGoDarwinWindowBackend = darwinwindow.NewNative()

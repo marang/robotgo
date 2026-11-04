@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/marang/robotgo/internal/windowbackend"
+	"go.izoone.com/robotgo/internal/windowbackend"
 )
 
 // The functions in this file preserve the portable public surface for builds

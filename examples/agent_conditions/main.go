@@ -8,7 +8,7 @@ import (
 	"math"
 	"os"
 
-	"github.com/marang/robotgo/agent"
+	"go.izoone.com/robotgo/agent"
 )
 
 func main() {

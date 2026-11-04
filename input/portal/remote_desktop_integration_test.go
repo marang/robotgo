@@ -12,7 +12,7 @@ import (
 	"time"
 
 	"github.com/godbus/dbus/v5"
-	"github.com/marang/robotgo/internal/portalrunner"
+	"go.izoone.com/robotgo/internal/portalrunner"
 )
 
 const envRemoteDesktopE2E = "ROBOTGO_REMOTE_DESKTOP_E2E"

@@ -2,6 +2,18 @@
 
 This repository has both default tests and special test suites behind build tags.
 
+## Owned module identity validation
+
+The current source identity is `go.izoone.com/robotgo`, targeting the prepared
+`v1.0.4` release. Check `go test ./internal/cmd/modulezip` and the unchanged
+14-variant API gate after the explicit owned-prefix migration. Run default and
+tagged suites only in the disposable display contexts prescribed below, with
+host display, Sway, D-Bus and private-data access excluded. Packaging is not
+public consumer or platform qualification; the exact artifact and consumer
+requirements are in [module distribution](docs/operations/module-distribution.md).
+Historical release procedures and evidence later in this guide keep their
+original identity.
+
 Before pushing a branch, run the repository-local CI predictor:
 
 ```bash

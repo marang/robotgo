@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/marang/robotgo/internal/compositorevidence"
+	"go.izoone.com/robotgo/internal/compositorevidence"
 )
 
 func emptyEnvironment(string) string { return "" }

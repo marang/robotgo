@@ -6,7 +6,7 @@ import (
 	"reflect"
 	"testing"
 
-	inputportal "github.com/marang/robotgo/input/portal"
+	inputportal "go.izoone.com/robotgo/input/portal"
 )
 
 func TestKeyArgumentAndValidationParityThroughPortalFallback(t *testing.T) {

@@ -3,8 +3,8 @@
 package robotgo
 
 import (
-	"github.com/marang/robotgo/internal/windowbackend"
-	"github.com/marang/robotgo/internal/x11window"
+	"go.izoone.com/robotgo/internal/windowbackend"
+	"go.izoone.com/robotgo/internal/x11window"
 )
 
 var pureGoX11WindowBackend = x11window.NewNative(x11window.Config{

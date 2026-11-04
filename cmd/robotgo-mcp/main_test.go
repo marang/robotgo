@@ -10,10 +10,10 @@ import (
 	"strings"
 	"testing"
 
-	robotgo "github.com/marang/robotgo"
-	"github.com/marang/robotgo/agent"
-	"github.com/marang/robotgo/agent/mcpserver"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
+	robotgo "go.izoone.com/robotgo"
+	"go.izoone.com/robotgo/agent"
+	"go.izoone.com/robotgo/agent/mcpserver"
 )
 
 func writePolicy(t *testing.T, contents string) string {

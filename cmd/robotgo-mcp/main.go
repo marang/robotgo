@@ -14,10 +14,10 @@ import (
 	"os/signal"
 	"syscall"
 
-	robotgo "github.com/marang/robotgo"
-	"github.com/marang/robotgo/agent"
-	"github.com/marang/robotgo/agent/mcpserver"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
+	robotgo "go.izoone.com/robotgo"
+	"go.izoone.com/robotgo/agent"
+	"go.izoone.com/robotgo/agent/mcpserver"
 )
 
 const (

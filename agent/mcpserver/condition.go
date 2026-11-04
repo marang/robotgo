@@ -3,8 +3,8 @@ package mcpserver
 import (
 	"context"
 
-	"github.com/marang/robotgo/agent"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
+	"go.izoone.com/robotgo/agent"
 )
 
 var _ VisualConditionSession = (*agent.Session)(nil)

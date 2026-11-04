@@ -3,7 +3,7 @@ package robotgo
 import (
 	"context"
 
-	"github.com/marang/robotgo/clipboard"
+	"go.izoone.com/robotgo/clipboard"
 )
 
 // ClipboardSelection identifies the clipboard selection to access.

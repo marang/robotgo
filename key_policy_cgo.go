@@ -9,7 +9,7 @@ import (
 	"strings"
 	"sync"
 
-	inputportal "github.com/marang/robotgo/input/portal"
+	inputportal "go.izoone.com/robotgo/input/portal"
 )
 
 var errInvalidKeyFlag = errors.New("invalid key flag specified")

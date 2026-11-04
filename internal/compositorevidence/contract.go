@@ -48,12 +48,12 @@ const (
 
 const (
 	remoteDesktopTestName   = "TestRemoteDesktopPortalRuntime"
-	remoteDesktopPackage    = "github.com/marang/robotgo/input/portal"
+	remoteDesktopPackage    = "go.izoone.com/robotgo/input/portal"
 	remoteDesktopCommand    = "go test -count=1 -timeout=3m -tags=integration ./input/portal -run ^TestRemoteDesktopPortalRuntime$ -v"
 	screenCastTestName      = "TestPipeWireCapturePersistentSessionIntegration"
-	screenCastPackage       = "github.com/marang/robotgo/screen/portal"
+	screenCastPackage       = "go.izoone.com/robotgo/screen/portal"
 	screenCastCommand       = "go test -count=1 -timeout=3m -tags=pipewire,integration ./screen/portal -run ^TestPipeWireCapturePersistentSessionIntegration$ -v"
-	swayPackage             = "github.com/marang/robotgo"
+	swayPackage             = "go.izoone.com/robotgo"
 	swayCommandPrefix       = "go test -count=1 -timeout=2m -tags=wayland,swayintegration . -run ^"
 	swayCommandSuffix       = "$ -v"
 	swayInputTestName       = "TestSwayNativeInputRuntime"

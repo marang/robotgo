@@ -13,7 +13,7 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/marang/robotgo"
+	"go.izoone.com/robotgo"
 )
 
 const (

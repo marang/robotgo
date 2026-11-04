@@ -4,8 +4,8 @@ import (
 	"context"
 	"errors"
 
-	robotgo "github.com/marang/robotgo"
-	"github.com/marang/robotgo/internal/accessibility"
+	robotgo "go.izoone.com/robotgo"
+	"go.izoone.com/robotgo/internal/accessibility"
 )
 
 func inspectAccessibilityUI(

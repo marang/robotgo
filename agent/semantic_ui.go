@@ -10,7 +10,7 @@ import (
 	"unicode"
 	"unicode/utf8"
 
-	robotgo "github.com/marang/robotgo"
+	robotgo "go.izoone.com/robotgo"
 )
 
 const (

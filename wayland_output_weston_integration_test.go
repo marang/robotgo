@@ -14,7 +14,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/marang/robotgo/internal/waylandoutput"
+	"go.izoone.com/robotgo/internal/waylandoutput"
 )
 
 const envRequireWaylandOutputIntegration = "ROBOTGO_REQUIRE_WAYLAND_OUTPUT_INTEGRATION"

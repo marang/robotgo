@@ -38,8 +38,11 @@ local capture settings and global hooks are preserved.
 Native macOS/Windows, real desktop/compositor consent, Sway/Hyprland/GNOME/KDE,
 KVM/DRM, release evidence and public module distribution retain their existing
 gates. Linux tests and cross-compilation do not replace the 23 retained platform
-checks. Version `1.0.3`, the accepted imgo version, module identity and old releases
-are unchanged. LAB-438 tracks the unqualified native CI writer; operators must
+checks. Source now prepares `v1.0.4` under `go.izoone.com/robotgo`; the accepted
+imgo version and old releases are unchanged. The
+[module artifact contract](../docs/operations/module-distribution.md) does not add
+a native release publisher. LAB-438 tracks the unqualified native CI writer;
+operators must
 verify exact source, definition/image, run and result before merging.
 
 ## Qualification and cutover

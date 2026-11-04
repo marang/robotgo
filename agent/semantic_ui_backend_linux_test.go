@@ -8,8 +8,8 @@ import (
 	"fmt"
 	"testing"
 
-	robotgo "github.com/marang/robotgo"
-	"github.com/marang/robotgo/internal/accessibility"
+	robotgo "go.izoone.com/robotgo"
+	"go.izoone.com/robotgo/internal/accessibility"
 )
 
 func TestInspectPlatformUIRejectsNativeHandleWithoutDesktopIO(t *testing.T) {

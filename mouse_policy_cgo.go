@@ -8,7 +8,7 @@ import (
 	"runtime"
 	"time"
 
-	inputportal "github.com/marang/robotgo/input/portal"
+	inputportal "go.izoone.com/robotgo/input/portal"
 )
 
 func lockLinuxMouse() func() {

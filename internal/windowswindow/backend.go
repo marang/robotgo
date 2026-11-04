@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/marang/robotgo/internal/windowbackend"
+	"go.izoone.com/robotgo/internal/windowbackend"
 )
 
 var (

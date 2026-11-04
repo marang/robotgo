@@ -5,7 +5,7 @@ package agent
 import (
 	"context"
 
-	"github.com/marang/robotgo/internal/accessibility"
+	"go.izoone.com/robotgo/internal/accessibility"
 )
 
 func inspectPlatformUI(ctx context.Context, target uiBackendTarget, limits uiBackendLimits) (uiBackendSnapshot, error) {

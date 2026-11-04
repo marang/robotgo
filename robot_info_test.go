@@ -18,8 +18,8 @@ import (
 	"runtime"
 	"testing"
 
-	"github.com/marang/robotgo"
 	"github.com/vcaesar/tt"
+	"go.izoone.com/robotgo"
 )
 
 func requireDisplay(t *testing.T) {

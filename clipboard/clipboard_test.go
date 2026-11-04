@@ -12,7 +12,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/marang/robotgo/clipboard"
+	"go.izoone.com/robotgo/clipboard"
 )
 
 func TestCopyAndPaste(t *testing.T) {

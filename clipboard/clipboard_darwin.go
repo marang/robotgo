@@ -12,7 +12,7 @@ import (
 	"fmt"
 	"strings"
 
-	commandpkg "github.com/marang/robotgo/internal/command"
+	commandpkg "go.izoone.com/robotgo/internal/command"
 )
 
 var (

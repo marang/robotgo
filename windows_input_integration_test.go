@@ -7,7 +7,7 @@ import (
 	"strconv"
 	"testing"
 
-	"github.com/marang/robotgo"
+	"go.izoone.com/robotgo"
 )
 
 const requireWindowsInputIntegration = "ROBOTGO_REQUIRE_WINDOWS_INPUT_INTEGRATION"

@@ -10,24 +10,29 @@ Intentional post-rc.1 additions and schema changes were re-frozen in
 compares the current source tree with a human-reviewable full manifest and validated
 platform/build-tag deltas in `api/compat`.
 
+LAB-439 explicitly migrates only the owned module prefix to
+`go.izoone.com/robotgo` and updates `Version` for the prepared `v1.0.4` release.
+All declarations, JSON tags, third-party identities and 14 variant mappings
+retain their contracts; old module versions remain immutable.
+
 ## Stable package discovery
 
 The checker discovers every non-command package in the
-`github.com/marang/robotgo` module that has buildable non-test source. The
+`go.izoone.com/robotgo` module that has buildable non-test source. The
 current stable set is:
 
-- `github.com/marang/robotgo`
-- `github.com/marang/robotgo/agent`
-- `github.com/marang/robotgo/agent/mcpserver`
-- `github.com/marang/robotgo/base`
-- `github.com/marang/robotgo/clipboard`
-- `github.com/marang/robotgo/cv`
-- `github.com/marang/robotgo/input/portal`
-- `github.com/marang/robotgo/key`
-- `github.com/marang/robotgo/mouse`
-- `github.com/marang/robotgo/screen`
-- `github.com/marang/robotgo/screen/portal`
-- `github.com/marang/robotgo/window`
+- `go.izoone.com/robotgo`
+- `go.izoone.com/robotgo/agent`
+- `go.izoone.com/robotgo/agent/mcpserver`
+- `go.izoone.com/robotgo/base`
+- `go.izoone.com/robotgo/clipboard`
+- `go.izoone.com/robotgo/cv`
+- `go.izoone.com/robotgo/input/portal`
+- `go.izoone.com/robotgo/key`
+- `go.izoone.com/robotgo/mouse`
+- `go.izoone.com/robotgo/screen`
+- `go.izoone.com/robotgo/screen/portal`
+- `go.izoone.com/robotgo/window`
 
 Go `internal` packages, `package main` commands, test-only directories, and
 the configured `cmd` and `examples` trees are excluded. A new importable

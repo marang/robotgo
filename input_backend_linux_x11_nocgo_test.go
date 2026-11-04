@@ -6,7 +6,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/marang/robotgo/internal/x11input"
+	"go.izoone.com/robotgo/internal/x11input"
 )
 
 func TestTranslatePureGoX11ErrorPreservesJoinedCauses(t *testing.T) {

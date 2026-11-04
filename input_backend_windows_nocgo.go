@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/marang/robotgo/internal/windowsinput"
+	"go.izoone.com/robotgo/internal/windowsinput"
 )
 
 type windowsInputBackend struct {

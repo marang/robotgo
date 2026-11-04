@@ -11,7 +11,7 @@ import (
 	"time"
 	"unicode/utf8"
 
-	robotgo "github.com/marang/robotgo"
+	robotgo "go.izoone.com/robotgo"
 )
 
 type inputDriver interface {

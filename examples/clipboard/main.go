@@ -9,7 +9,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/marang/robotgo/clipboard"
+	"go.izoone.com/robotgo/clipboard"
 )
 
 func main() {

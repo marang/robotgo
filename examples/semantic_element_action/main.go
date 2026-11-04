@@ -17,7 +17,7 @@ import (
 	"slices"
 	"time"
 
-	"github.com/marang/robotgo/agent"
+	"go.izoone.com/robotgo/agent"
 )
 
 func main() {

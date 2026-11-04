@@ -16,9 +16,9 @@ import (
 	"time"
 
 	"github.com/google/jsonschema-go/jsonschema"
-	robotgo "github.com/marang/robotgo"
-	"github.com/marang/robotgo/agent"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
+	robotgo "go.izoone.com/robotgo"
+	"go.izoone.com/robotgo/agent"
 )
 
 const (

@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/marang/robotgo/internal/darwininput"
+	"go.izoone.com/robotgo/internal/darwininput"
 )
 
 func TestPureGoDarwinInputErrorTranslation(t *testing.T) {

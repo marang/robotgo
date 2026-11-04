@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	inputportal "github.com/marang/robotgo/input/portal"
+	inputportal "go.izoone.com/robotgo/input/portal"
 )
 
 // RemoteDesktopInputStreams returns the selected ScreenCast stream metadata.

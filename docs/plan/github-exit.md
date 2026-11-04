@@ -117,9 +117,11 @@ or silently replace pre-merge checks with post-main polling.
 
 Work on [LAB-439](https://linear.app/riotbox/issue/LAB-439/decide-the-new-go-module-identity-and-prove-credential-free-release); this can start alongside gate design.
 
-Candidate only: `izoone.com/robotgo`, with `/v2` if a v2 policy is selected.
-The exact path, versioning, DNS/HTTPS route, publisher and checksum/residency
-policy remain decisions—not configured defaults. Review all self-imports,
+Accepted identity: `go.izoone.com/robotgo`, using the existing root v1 layout.
+LAB-439 prepares `v1.0.4`; historical v2 beta tags and old module releases stay
+immutable. The approved HTTPS vanity/static protocol and remaining library
+release integration are recorded in the [module distribution contract](../operations/module-distribution.md).
+Source preparation does not establish deployed publication. Review all self-imports,
 examples, API baselines, evidence package names and worker module guards.
 Prove only the intended identity delta across frozen variants; do not bulk
 rebaseline away unrelated API changes or fold P013's backend/API work into this

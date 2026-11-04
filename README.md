@@ -2,7 +2,7 @@
 
 [![CI: main](https://github.com/marang/robotgo/actions/workflows/go.yml/badge.svg?branch=main)](https://github.com/marang/robotgo/actions/workflows/go.yml?query=branch%3Amain)
 [![Release](https://img.shields.io/github/v/release/marang/robotgo?include_prereleases&sort=semver)](https://github.com/marang/robotgo/releases)
-[![Go Reference](https://pkg.go.dev/badge/github.com/marang/robotgo.svg)](https://pkg.go.dev/github.com/marang/robotgo)
+[![Go Reference](https://pkg.go.dev/badge/go.izoone.com/robotgo.svg)](https://pkg.go.dev/go.izoone.com/robotgo)
 
 <p align="center">
   <img src="docs/assets/robotgo-hero-transparent.png" alt="RobotGo desktop automation" width="100%">
@@ -14,9 +14,9 @@ and converts images and bitmaps.
 
 ## About this fork
 
-> **This is `marang/robotgo`, not the original `go-vgo/robotgo` module.** Use
-> `github.com/marang/robotgo` in `go get` and imports. The two repositories are
-> separate Go modules.
+> The canonical module is `go.izoone.com/robotgo`. This fork and the original
+> `go-vgo/robotgo` are separate modules. Existing consumers must explicitly
+> migrate imports from `github.com/marang/robotgo`; old releases stay immutable.
 
 This fork has diverged substantially from the original implementation, chiefly
 to make Linux automation Wayland-first without weakening macOS, Windows, or
@@ -257,10 +257,13 @@ implemented through Go image packages in the current module.
 
 ## Installation
 
-Add this fork to a Go module:
+The owned identity targets the next `v1.0.4` release; publication and the
+credential-free consumer check must complete before it is available. See the
+[module distribution contract](docs/operations/module-distribution.md).
+After publication, add this fork to a Go module:
 
 ```bash
-go get github.com/marang/robotgo@v1.0.3
+go get go.izoone.com/robotgo@v1.0.4
 ```
 
 Use the explicit stable version to keep builds reproducible even when module
@@ -269,7 +272,7 @@ proxies lag or later releases become available.
 Import it with the same module path:
 
 ```go
-import "github.com/marang/robotgo"
+import "go.izoone.com/robotgo"
 ```
 
 Do not mix this import with `github.com/go-vgo/robotgo`; Go treats them as
@@ -287,7 +290,7 @@ import (
 	"fmt"
 	"log"
 
-	"github.com/marang/robotgo"
+	"go.izoone.com/robotgo"
 )
 
 func main() {
@@ -1803,11 +1806,12 @@ Real Wayland input results are tracked in the
 
 ## Documentation and roadmap
 
-- [Go API reference](https://pkg.go.dev/github.com/marang/robotgo)
+- [Go API reference](https://pkg.go.dev/go.izoone.com/robotgo)
 - [Key names and conversion](docs/keys.md)
 - [Testing guide](TEST.md)
 - [Runtime compatibility and exact support claims](docs/compatibility/runtime-v1.md)
 - [v1.0.0 install and migration notes](docs/releases/v1.0.0.md)
+- [v1.0.4 owned module identity](docs/releases/v1.0.4.md)
 - [v1.0.3 image compatibility and qualification](docs/releases/v1.0.3.md)
 - [v1.0.2 maintenance fixes and qualification](docs/releases/v1.0.2.md)
 - [v1.0.1 patch fixes and qualification](docs/releases/v1.0.1.md)

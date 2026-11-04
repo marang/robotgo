@@ -16,7 +16,7 @@ import (
 	"unsafe"
 
 	"github.com/jezek/xgb/xproto"
-	"github.com/marang/robotgo"
+	"go.izoone.com/robotgo"
 	"golang.org/x/sys/unix"
 )
 

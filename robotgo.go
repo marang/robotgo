@@ -23,11 +23,11 @@ Installation:
 
 With Go module support (Go 1.11+), just import:
 
-	import "github.com/marang/robotgo"
+	import "go.izoone.com/robotgo"
 
 Otherwise, to install the robotgo package, run the command:
 
-	go get -u github.com/marang/robotgo
+	go get -u go.izoone.com/robotgo
 */
 package robotgo
 

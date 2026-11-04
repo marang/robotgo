@@ -6,8 +6,8 @@ import (
 	"context"
 	"fmt"
 
-	robotgo "github.com/marang/robotgo"
-	"github.com/marang/robotgo/internal/accessibility"
+	robotgo "go.izoone.com/robotgo"
+	"go.izoone.com/robotgo/internal/accessibility"
 )
 
 func inspectPlatformUI(ctx context.Context, target uiBackendTarget, limits uiBackendLimits) (uiBackendSnapshot, error) {

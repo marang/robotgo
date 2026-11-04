@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/marang/robotgo/internal/portalrunner"
+	"go.izoone.com/robotgo/internal/portalrunner"
 )
 
 const (

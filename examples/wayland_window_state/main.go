@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/marang/robotgo"
+	"go.izoone.com/robotgo"
 )
 
 func main() {

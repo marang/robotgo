@@ -11,7 +11,7 @@ import (
 	"strings"
 	"syscall"
 
-	commandpkg "github.com/marang/robotgo/internal/command"
+	commandpkg "go.izoone.com/robotgo/internal/command"
 )
 
 const (

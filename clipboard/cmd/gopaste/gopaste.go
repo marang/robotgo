@@ -3,7 +3,7 @@ package main
 import (
 	"fmt"
 
-	"github.com/marang/robotgo/clipboard"
+	"go.izoone.com/robotgo/clipboard"
 )
 
 func main() {

@@ -9,7 +9,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/marang/robotgo/internal/benchcmp"
+	"go.izoone.com/robotgo/internal/benchcmp"
 )
 
 const standardOutputPath = "-"

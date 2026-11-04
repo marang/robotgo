@@ -6,7 +6,7 @@ import (
 	"context"
 	"fmt"
 
-	robotgo "github.com/marang/robotgo"
+	robotgo "go.izoone.com/robotgo"
 )
 
 func inspectPlatformUI(context.Context, uiBackendTarget, uiBackendLimits) (uiBackendSnapshot, error) {

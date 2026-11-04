@@ -7,7 +7,7 @@ import (
 	"strconv"
 	"testing"
 
-	"github.com/marang/robotgo/internal/windowsinput"
+	"go.izoone.com/robotgo/internal/windowsinput"
 )
 
 func TestPureGoWindowsInputBackendSelection(t *testing.T) {

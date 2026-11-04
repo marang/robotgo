@@ -5,7 +5,7 @@ package key
 import (
 	"testing"
 
-	"github.com/marang/robotgo"
+	"go.izoone.com/robotgo"
 )
 
 func TestCurrentSpecialTableWayland(t *testing.T) {

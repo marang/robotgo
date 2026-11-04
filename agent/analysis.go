@@ -7,7 +7,7 @@ import (
 	"math"
 	"time"
 
-	robotgo "github.com/marang/robotgo"
+	robotgo "go.izoone.com/robotgo"
 )
 
 const (

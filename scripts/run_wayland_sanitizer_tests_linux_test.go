@@ -19,7 +19,7 @@ const (
 		"TestScreencopyTimeoutIsBounded\n" +
 		"TestScreencopyWlShm\n" +
 		"TestScreencopyYInvertPreservesLogicalCrop\n" +
-		"ok\tgithub.com/marang/robotgo/screen\t0.001s"
+		"ok\tgo.izoone.com/robotgo/screen\t0.001s"
 	sanitizerPassingOutput = "=== RUN   TestScreencopyDmabufFailureDoesNotCloseStdin\n" +
 		"--- PASS: TestScreencopyBufferAnnouncementsKeepSelectedOwnership (0.00s)\n" +
 		"--- PASS: TestScreencopyDmabufFailureDoesNotCloseStdin (0.00s)\n" +
@@ -32,7 +32,7 @@ const (
 		"--- PASS: TestScreencopyTimeoutIsBounded (0.01s)\n" +
 		"=== RUN   TestScreencopyWlShm\n" +
 		"--- PASS: TestScreencopyWlShm (0.00s)\n" +
-		"PASS\nok\tgithub.com/marang/robotgo/screen\t0.012s"
+		"PASS\nok\tgo.izoone.com/robotgo/screen\t0.012s"
 )
 
 func TestWaylandSanitizerRunner(t *testing.T) {
@@ -61,7 +61,7 @@ func TestWaylandSanitizerRunner(t *testing.T) {
 		},
 		{
 			name:       "manifest mismatch is blocking",
-			listOutput: "TestScreencopyWlShm\nok\tgithub.com/marang/robotgo/screen\t0.001s",
+			listOutput: "TestScreencopyWlShm\nok\tgo.izoone.com/robotgo/screen\t0.001s",
 			wantStatus: 1,
 			wantOutputParts: []string{
 				"TestScreencopyWlShm",

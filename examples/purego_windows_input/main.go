@@ -19,7 +19,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/marang/robotgo"
+	"go.izoone.com/robotgo"
 )
 
 func main() {

@@ -14,8 +14,8 @@ import (
 	"os"
 	"time"
 
-	robotgo "github.com/marang/robotgo"
-	"github.com/marang/robotgo/agent"
+	robotgo "go.izoone.com/robotgo"
+	"go.izoone.com/robotgo/agent"
 )
 
 func main() {

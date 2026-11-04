@@ -6,7 +6,7 @@ import (
 	"errors"
 	"testing"
 
-	robotgo "github.com/marang/robotgo"
+	robotgo "go.izoone.com/robotgo"
 )
 
 func TestCaptureReportsUnsupportedWithoutBackend(t *testing.T) {

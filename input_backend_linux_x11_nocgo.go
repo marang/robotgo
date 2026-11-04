@@ -12,7 +12,7 @@ import (
 	"unicode"
 	"unicode/utf8"
 
-	"github.com/marang/robotgo/internal/x11input"
+	"go.izoone.com/robotgo/internal/x11input"
 )
 
 const x11KeysymF1 = 0xffbe

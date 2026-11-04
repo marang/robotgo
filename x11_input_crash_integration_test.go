@@ -13,7 +13,7 @@ import (
 	"time"
 
 	"github.com/jezek/xgb/xproto"
-	"github.com/marang/robotgo"
+	"go.izoone.com/robotgo"
 )
 
 func TestPureGoX11CrashRestoresScratchAndOwnedInput(t *testing.T) {

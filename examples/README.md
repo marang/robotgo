@@ -3,7 +3,7 @@
 These examples use this fork's module path:
 
 ```bash
-go get github.com/marang/robotgo
+go get go.izoone.com/robotgo
 ```
 
 Run an example from the repository root, for example:

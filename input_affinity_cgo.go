@@ -5,7 +5,7 @@ package robotgo
 import (
 	"errors"
 
-	inputportal "github.com/marang/robotgo/input/portal"
+	inputportal "go.izoone.com/robotgo/input/portal"
 )
 
 type persistentInputBackend uint8

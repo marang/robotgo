@@ -1,4 +1,4 @@
-module github.com/marang/robotgo
+module go.izoone.com/robotgo
 
 go 1.26.10
 

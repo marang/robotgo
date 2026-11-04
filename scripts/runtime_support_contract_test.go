@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/marang/robotgo/internal/supportmatrix"
+	"go.izoone.com/robotgo/internal/supportmatrix"
 )
 
 func TestRuntimeSupportContractMatchesDocsAndReleaseGate(t *testing.T) {

@@ -9,7 +9,7 @@ import (
 	"os"
 	"strconv"
 
-	"github.com/marang/robotgo/internal/releaseevidence"
+	"go.izoone.com/robotgo/internal/releaseevidence"
 )
 
 func main() {

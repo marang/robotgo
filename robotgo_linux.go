@@ -32,7 +32,7 @@ import (
 	"github.com/jezek/xgb/xproto"
 	"github.com/jezek/xgbutil"
 	"github.com/jezek/xgbutil/ewmh"
-	"github.com/marang/robotgo/base"
+	"go.izoone.com/robotgo/base"
 )
 
 // GetBounds returns the window bounds and dispatches to the appropriate

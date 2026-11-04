@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/marang/robotgo/internal/darwininput"
+	"go.izoone.com/robotgo/internal/darwininput"
 )
 
 const maxDarwinTextDelayMilliseconds = int64(^uint64(0)>>1) / int64(time.Millisecond)

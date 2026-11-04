@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/marang/robotgo/internal/supportmatrix"
+	"go.izoone.com/robotgo/internal/supportmatrix"
 )
 
 const (

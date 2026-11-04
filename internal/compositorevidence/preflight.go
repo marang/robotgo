@@ -14,7 +14,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/marang/robotgo/internal/command"
+	"go.izoone.com/robotgo/internal/command"
 )
 
 const (

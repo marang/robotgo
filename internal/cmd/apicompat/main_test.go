@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/marang/robotgo/internal/apicompat"
+	"go.izoone.com/robotgo/internal/apicompat"
 )
 
 func TestWriteFileAtomicCleansTemporaryFiles(t *testing.T) {

@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	robotgo "github.com/marang/robotgo"
+	robotgo "go.izoone.com/robotgo"
 )
 
 const (
