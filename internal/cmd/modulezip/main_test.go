@@ -68,7 +68,11 @@ func TestPackageModuleArtifacts(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer archive.Close()
+	t.Cleanup(func() {
+		if err := archive.Close(); err != nil {
+			t.Errorf("close module archive: %v", err)
+		}
+	})
 	if len(archive.File) != 2 {
 		t.Fatalf("unexpected file count: %d", len(archive.File))
 	}
