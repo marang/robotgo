@@ -268,7 +268,7 @@ func validatePreflightConfig(config PreflightConfig) error {
 		return err
 	}
 	if normalizedProvider(config.Provider) == ProviderDagu && !config.RequireHeadlessSway {
-		return errors.New("Dagu evidence requires headless Sway isolation")
+		return errors.New("dagu evidence requires headless Sway isolation")
 	}
 	if config.OutputCount <= 0 {
 		return errors.New("declared output count must be positive")

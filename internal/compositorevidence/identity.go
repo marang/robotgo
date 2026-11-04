@@ -101,13 +101,13 @@ func validateExecution(cell Cell, identity executionIdentity) error {
 		}
 		step := daguStep(cell)
 		if step == "" || identity.dagu.Step != step {
-			return errors.New("Dagu step does not match protected Sway cell")
+			return errors.New("dagu step does not match protected Sway cell")
 		}
 		if len(identity.dagu.SourceTree) != 40 || !gitObjectPattern.MatchString(identity.dagu.SourceTree) {
-			return errors.New("Dagu source tree must be a lowercase 40-character Git tree ID")
+			return errors.New("dagu source tree must be a lowercase 40-character Git tree ID")
 		}
 		if !strings.HasPrefix(identity.dagu.Image, "sha256:") || !digestPattern.MatchString(strings.TrimPrefix(identity.dagu.Image, "sha256:")) {
-			return errors.New("Dagu image must be an immutable sha256 digest")
+			return errors.New("dagu image must be an immutable sha256 digest")
 		}
 	default:
 		return errors.New("unsupported compositor evidence provider")
