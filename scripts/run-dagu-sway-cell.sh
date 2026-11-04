@@ -45,10 +45,23 @@ if [[ "$cell" == native-output-multi ]]; then
 	printf 'Sway induced-failure cleanup passed\n'
 fi
 
-dbus-run-session -- bash scripts/run-sway-e2e.sh "$cell"
+set +e
+dbus-run-session -- bash scripts/run-sway-e2e.sh "$cell" >"$RUNNER_TEMP/supervisor.log" 2>&1
+status=$?
+set -e
+if [[ "$status" -ne 0 ]]; then
+	# Match the retained GitHub supervisor boundary: diagnostics may include
+	# private session values. Only an allowlisted stage leaves the tmpfs.
+	bash scripts/read-sway-failure-reason.sh \
+		"$RUNNER_TEMP" "$RUNNER_TEMP/sway-$cell-failure-reason" ||
+		printf 'isolated Sway evidence failed at sanitized stage: unavailable\n' >&2
+	exit "$status"
+fi
 readonly report="$RUNNER_TEMP/sway-e2e-$cell"
-readonly destination="/w/sway-evidence/$cell"
+readonly attempt_directory="/w/sway-evidence/$ROBOTGO_CI_ATTEMPT_ID"
+readonly destination="$attempt_directory/$cell"
 [[ ! -e "$destination" && ! -L "$destination" ]]
-mkdir -m 700 -p /w/sway-evidence
+mkdir -m 700 -p "$attempt_directory"
 cp -aT -- "$report" "$destination"
+cat "$report/summary.md"
 printf 'Verified Sway report retained: %s\n' "$cell"
