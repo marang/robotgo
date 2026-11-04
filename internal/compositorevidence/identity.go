@@ -85,13 +85,13 @@ func validateExecution(cell Cell, identity executionIdentity) error {
 		}
 	case ProviderDagu:
 		if !identity.hasDagu {
-			return errors.New("Dagu evidence requires provenance")
+			return errors.New("dagu evidence requires provenance")
 		}
 		if identity.workflow != daguSwayWorkflow {
-			return errors.New("Dagu workflow does not match protected Sway DAG")
+			return errors.New("dagu workflow does not match protected Sway DAG")
 		}
 		if identity.runAttempt != 0 {
-			return errors.New("Dagu evidence must use the scheduler attempt ID instead of a numeric run attempt")
+			return errors.New("dagu evidence must use the scheduler attempt ID instead of a numeric run attempt")
 		}
 		if err := validateLabel("Dagu run ID", identity.runID); err != nil {
 			return err
