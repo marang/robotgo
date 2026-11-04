@@ -15,7 +15,6 @@ const (
 	SchemaVersion = "1"
 
 	preflightSchemaVersion = "1"
-	evidenceProvider       = "github-actions"
 	maxTextLength          = 256
 	maxLogBytes            = 1024 * 1024
 	maxEvidenceBytes       = 1024 * 1024

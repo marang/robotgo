@@ -1,21 +1,34 @@
-# Repository-owned ordinary Linux CI; no real desktop or release gate.
-# Native macOS/Windows, host compositor/input/portal-consent and release gates
+# Repository-owned Linux CI and six isolated headless Sway runtime cells.
+# Native macOS/Windows, host desktop/portal-consent and release gates
 # remain separate. Xvfb and nested Weston see no host display or socket.
 type: graph
 queue: ci
 worker_selector:
   runner: izoone-ovh
   isolation: podman
-timeout_sec: 3700
+timeout_sec: 7300
 overlap_policy: skip
 max_active_steps: 1
 hist_retention_days: 14
 artifacts:
-  enabled: false
+  enabled: true
+handler_on:
+  exit:
+    preconditions: "test -d '${context.paths.work_dir}/sway-evidence'"
+    action: file.copy
+    with:
+      source: ${context.paths.work_dir}/sway-evidence
+      destination: ${context.paths.artifacts_dir}/sway-evidence
+      recursive: true
+      create_dirs: true
+      overwrite: true
 params:
   type: object
   properties:
     WEBHOOK_PAYLOAD:
+      type: string
+      default: ''
+    source_ref:
       type: string
       default: ''
     commit:
@@ -29,12 +42,14 @@ steps:
     with:
       input:
         requested: ${params.commit}
+        source_ref: ${params.source_ref}
         payload: ${params.WEBHOOK_PAYLOAD}
       script: |
         if (typeof input.payload !== 'string') throw new Error('Invalid webhook payload type');
         const hasEvent = input.payload.length > 0;
         const event = hasEvent ? JSON.parse(input.payload) : null;
         let commit = input.requested;
+        let ref = input.source_ref || (commit === 'main' ? 'refs/heads/main' : '');
         if (hasEvent) {
           if (!event || typeof event !== 'object' || Array.isArray(event) ||
               event.repository !== 'et/marang/robotgo' ||
@@ -47,12 +62,18 @@ steps:
             throw new Error('Conflicting manual and webhook commits');
           }
           commit = event.commit;
+          if (input.source_ref && input.source_ref !== event.ref) throw new Error('Conflicting source ref');
+          ref = event.ref;
         }
         if (typeof commit !== 'string' ||
             !(hasEvent === false && commit === 'main') && !/^[0-9a-f]{40}$/.test(commit)) {
           throw new Error('Expected an exact commit or manual main');
         }
-        return {commit};
+        if (typeof ref !== 'string' || !/^refs\/heads\/[A-Za-z0-9][A-Za-z0-9._/-]*$/.test(ref) ||
+            ref.startsWith('refs/heads/entire/') || ref.startsWith('refs/heads/release-artifacts/')) {
+          throw new Error('A real source_ref is required for commit-only Sway evidence');
+        }
+        return {commit, ref};
     output:
       source:
         from: stdout
@@ -318,3 +339,96 @@ steps:
           - pipefail
           - -c
           - bash scripts/ci.sh x11_default_suite
+
+  - <<: *linux_step
+    id: native_input
+    depends: [prepare]
+    timeout_sec: 600
+    with:
+      <<: &sway_container
+        <<: *linux_container
+        image: sha256:cca66797cd441eff9c1569c1f7fddf27125e6eabd6aa2be3cfd2d65a6ba1c285
+      container:
+        <<: &sway_defaults
+          <<: *linux_defaults
+          Env:
+            - "PATH=/usr/local/go/bin:/usr/local/bin:/usr/bin:/bin"
+            - "LANG=C.UTF-8"
+            - "HOME=/w/home"
+            - "GOPATH=/w/cache/go"
+            - "GOMODCACHE=/w/cache/go/pkg/mod"
+            - "GOCACHE=/w/cache/go-build"
+            - "GOTMPDIR=/w/t"
+            - "TMPDIR=/tmp"
+            - "XDG_RUNTIME_DIR=/tmp/r"
+            - "XDG_CACHE_HOME=/w/cache/xdg"
+            - "XDG_CONFIG_HOME=/w/home/config"
+            - "XDG_DATA_HOME=/w/home/data"
+            - "RUNNER_TEMP=/w/t"
+            - "GOFLAGS=-p=1 -mod=readonly -modcacherw"
+            - "GOMAXPROCS=2"
+            - "GOTOOLCHAIN=local"
+            - "GOENV=off"
+            - "GOWORK=off"
+            - "GOTELEMETRY=off"
+            - "CGO_ENABLED=1"
+            - "CI=true"
+            - "ROBOTGO_CI_PROVIDER=dagu"
+            - "ROBOTGO_CI_DAG=${context.dag.name}"
+            - "ROBOTGO_CI_RUN_ID=${context.run.id}"
+            - "ROBOTGO_CI_ATTEMPT_ID=${context.attempt.id}"
+            - "ROBOTGO_CI_STEP=${context.step.id}"
+            - "ROBOTGO_CI_IMAGE=sha256:cca66797cd441eff9c1569c1f7fddf27125e6eabd6aa2be3cfd2d65a6ba1c285"
+            - "ROBOTGO_APPROVED_COMMIT=${checkout.output.source.commit}"
+            - "ROBOTGO_SOURCE_REF=${normalize.output.source.ref}"
+        Cmd: [bash, scripts/run-dagu-sway-cell.sh, native-input]
+
+  - <<: *linux_step
+    id: native_capture
+    depends: [prepare]
+    timeout_sec: 600
+    with:
+      <<: *sway_container
+      container:
+        <<: *sway_defaults
+        Cmd: [bash, scripts/run-dagu-sway-cell.sh, native-capture]
+
+  - <<: *linux_step
+    id: native_window
+    depends: [prepare]
+    timeout_sec: 600
+    with:
+      <<: *sway_container
+      container:
+        <<: *sway_defaults
+        Cmd: [bash, scripts/run-dagu-sway-cell.sh, native-window]
+
+  - <<: *linux_step
+    id: native_output
+    depends: [prepare]
+    timeout_sec: 600
+    with:
+      <<: *sway_container
+      container:
+        <<: *sway_defaults
+        Cmd: [bash, scripts/run-dagu-sway-cell.sh, native-output]
+
+  - <<: *linux_step
+    id: native_output_multi
+    depends: [prepare]
+    timeout_sec: 600
+    with:
+      <<: *sway_container
+      container:
+        <<: *sway_defaults
+        Cmd: [bash, scripts/run-dagu-sway-cell.sh, native-output-multi]
+
+  - <<: *linux_step
+    id: portal_availability
+    depends: [prepare]
+    timeout_sec: 600
+    with:
+      <<: *sway_container
+      container:
+        <<: *sway_defaults
+        Cmd: [bash, scripts/run-dagu-sway-cell.sh, portal-availability]

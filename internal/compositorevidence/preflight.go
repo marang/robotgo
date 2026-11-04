@@ -38,6 +38,8 @@ type PreflightConfig struct {
 	CheckoutCommit          string
 	ExpectedCommit          string
 	Ref                     string
+	Provider                Provider
+	Dagu                    *DaguIdentity
 	Workflow                string
 	RunID                   string
 	RunAttempt              int
@@ -98,14 +100,16 @@ type Desktop struct {
 
 // PreflightReport is the private intermediate document consumed by finalization.
 type PreflightReport struct {
-	SchemaVersion string   `json:"schema_version"`
-	Commit        string   `json:"commit"`
-	Ref           string   `json:"ref"`
-	Workflow      string   `json:"workflow"`
-	RunID         string   `json:"run_id"`
-	RunAttempt    int      `json:"run_attempt"`
-	Platform      Platform `json:"platform"`
-	Desktop       Desktop  `json:"desktop"`
+	SchemaVersion string        `json:"schema_version"`
+	Commit        string        `json:"commit"`
+	Ref           string        `json:"ref"`
+	Provider      Provider      `json:"provider,omitempty"`
+	Dagu          *DaguIdentity `json:"dagu,omitempty"`
+	Workflow      string        `json:"workflow"`
+	RunID         string        `json:"run_id"`
+	RunAttempt    int           `json:"run_attempt,omitempty"`
+	Platform      Platform      `json:"platform"`
+	Desktop       Desktop       `json:"desktop"`
 }
 
 type preflightDependencies struct {
@@ -233,6 +237,8 @@ func preflight(
 		SchemaVersion: preflightSchemaVersion,
 		Commit:        config.CheckoutCommit,
 		Ref:           config.Ref,
+		Provider:      config.Provider,
+		Dagu:          config.Dagu,
 		Workflow:      config.Workflow,
 		RunID:         config.RunID,
 		RunAttempt:    config.RunAttempt,
@@ -258,11 +264,11 @@ func validatePreflightConfig(config PreflightConfig) error {
 	if config.CheckoutCommit != config.ExpectedCommit {
 		return errors.New("checked-out commit does not match the approved commit")
 	}
-	if err := validateWorkflow(config.Cell, config.Workflow); err != nil {
+	if err := validateExecution(config.Cell, config.execution()); err != nil {
 		return err
 	}
-	if !runIDPattern.MatchString(config.RunID) || config.RunAttempt <= 0 {
-		return errors.New("preflight run identity is invalid")
+	if normalizedProvider(config.Provider) == ProviderDagu && !config.RequireHeadlessSway {
+		return errors.New("Dagu evidence requires headless Sway isolation")
 	}
 	if config.OutputCount <= 0 {
 		return errors.New("declared output count must be positive")
@@ -856,11 +862,8 @@ func validatePreflightReport(report PreflightReport) error {
 	if err := validateGitIdentity(report.Commit, report.Ref); err != nil {
 		return err
 	}
-	if err := validateWorkflow(report.Desktop.Cell, report.Workflow); err != nil {
+	if err := validateExecution(report.Desktop.Cell, report.execution()); err != nil {
 		return err
-	}
-	if !runIDPattern.MatchString(report.RunID) || report.RunAttempt <= 0 {
-		return errors.New("preflight run identity is invalid")
 	}
 	if err := validateLaneCell(report.Desktop.Lane, report.Desktop.Cell); err != nil {
 		return err

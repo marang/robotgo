@@ -43,16 +43,44 @@ readonly test_name
 readonly output_count
 
 : "${RUNNER_TEMP:?RUNNER_TEMP is required}"
-: "${GITHUB_WORKFLOW:?GITHUB_WORKFLOW is required}"
-: "${GITHUB_RUN_ID:?GITHUB_RUN_ID is required}"
-: "${GITHUB_RUN_ATTEMPT:?GITHUB_RUN_ATTEMPT is required}"
-: "${GITHUB_REF:?GITHUB_REF is required}"
 : "${ROBOTGO_APPROVED_COMMIT:?ROBOTGO_APPROVED_COMMIT is required}"
 
-if [[ "$GITHUB_WORKFLOW" != 'Sway E2E' ]]; then
-	printf 'unexpected workflow identity\n' >&2
-	exit 2
-fi
+provider="${ROBOTGO_CI_PROVIDER:-github-actions}"
+identity_args=()
+case "$provider" in
+	dagu)
+		: "${ROBOTGO_CI_DAG:?ROBOTGO_CI_DAG is required}"
+		: "${ROBOTGO_CI_RUN_ID:?ROBOTGO_CI_RUN_ID is required}"
+		: "${ROBOTGO_CI_ATTEMPT_ID:?ROBOTGO_CI_ATTEMPT_ID is required}"
+		: "${ROBOTGO_CI_STEP:?ROBOTGO_CI_STEP is required}"
+		: "${ROBOTGO_CI_IMAGE:?ROBOTGO_CI_IMAGE is required}"
+		: "${ROBOTGO_SOURCE_REF:?ROBOTGO_SOURCE_REF is required}"
+		identity_args=(--provider dagu --workflow "$ROBOTGO_CI_DAG"
+			--run-id "$ROBOTGO_CI_RUN_ID" --dagu-attempt-id "$ROBOTGO_CI_ATTEMPT_ID"
+			--dagu-step "$ROBOTGO_CI_STEP" --dagu-image "$ROBOTGO_CI_IMAGE")
+		evidence_ref="$ROBOTGO_SOURCE_REF"
+		;;
+	github-actions)
+		: "${GITHUB_WORKFLOW:?GITHUB_WORKFLOW is required}"
+		: "${GITHUB_RUN_ID:?GITHUB_RUN_ID is required}"
+		: "${GITHUB_RUN_ATTEMPT:?GITHUB_RUN_ATTEMPT is required}"
+		: "${GITHUB_REF:?GITHUB_REF is required}"
+		if [[ "$GITHUB_WORKFLOW" != 'Sway E2E' ]]; then
+			printf 'unexpected workflow identity\n' >&2
+			exit 2
+		fi
+		identity_args=(--workflow "$GITHUB_WORKFLOW" --run-id "$GITHUB_RUN_ID"
+			--run-attempt "$GITHUB_RUN_ATTEMPT")
+		if [[ "${GITHUB_EVENT_NAME:-}" == 'pull_request' ]]; then
+			: "${GITHUB_HEAD_REF:?GITHUB_HEAD_REF is required for pull requests}"
+			evidence_ref="refs/heads/$GITHUB_HEAD_REF"
+		else
+			evidence_ref="$GITHUB_REF"
+		fi
+		;;
+	*) printf 'unsupported evidence provider\n' >&2; exit 2 ;;
+esac
+readonly provider evidence_ref
 if [[ ! "$RUNNER_TEMP" = /* || "$RUNNER_TEMP" == / ]]; then
 	printf 'RUNNER_TEMP must be a non-root absolute path\n' >&2
 	exit 2
@@ -74,12 +102,16 @@ if [[ -n "$(git status --porcelain=v1 --untracked-files=all)" ]]; then
 	printf 'Sway evidence requires a clean exact-commit checkout\n' >&2
 	exit 1
 fi
+if [[ "$provider" == dagu ]]; then
+	identity_args+=(--dagu-source-tree "$(git rev-parse 'HEAD^{tree}')")
+fi
 
 umask 077
 runtime_dir=''
 sway_pid=''
 test_pid=''
 failure_stage="$ROBOTGO_SWAY_FAILURE_STAGE_COMPOSITOR_START"
+output_dir=''
 
 terminate_group() {
 	local pid="$1"
@@ -104,6 +136,12 @@ cleanup() {
 		rm -rf -- "$runtime_dir"
 	fi
 	if ((status != 0)); then
+		# In Dagu the output is private tmpfs; clear partial raw evidence before
+		# container removal as well. The historical GitHub always-step is retained.
+		if [[ "$provider" == dagu && -n "$output_dir" ]]; then
+			go run ./internal/cmd/compositorevidence cleanup \
+				-runner-temp "$RUNNER_TEMP" -output-dir "$output_dir" >/dev/null 2>&1 || true
+		fi
 		local temporary_reason=''
 		if ! robotgo_sway_failure_stage_is_allowed "$failure_stage"; then
 			exit "$status"
@@ -241,13 +279,6 @@ if [[ "${ROBOTGO_SWAY_E2E_FAIL_AFTER_START:-}" == '1' ]]; then
 	exit 86
 fi
 
-if [[ "${GITHUB_EVENT_NAME:-}" == 'pull_request' ]]; then
-	: "${GITHUB_HEAD_REF:?GITHUB_HEAD_REF is required for pull requests}"
-	evidence_ref="refs/heads/$GITHUB_HEAD_REF"
-else
-	evidence_ref="$GITHUB_REF"
-fi
-readonly evidence_ref
 readonly output_dir="$RUNNER_TEMP/sway-e2e-$cell"
 
 failure_stage="$ROBOTGO_SWAY_FAILURE_STAGE_PREFLIGHT"
@@ -259,9 +290,7 @@ go run ./internal/cmd/compositorevidence preflight \
 	-commit "$ROBOTGO_APPROVED_COMMIT" \
 	-expected-commit "$ROBOTGO_APPROVED_COMMIT" \
 	-ref "$evidence_ref" \
-	-workflow "$GITHUB_WORKFLOW" \
-	-run-id "$GITHUB_RUN_ID" \
-	-run-attempt "$GITHUB_RUN_ATTEMPT" \
+	"${identity_args[@]}" \
 	-output-count "$output_count" \
 	-minimum-outputs "$output_count" \
 	-require-headless-sway
@@ -292,9 +321,7 @@ go run ./internal/cmd/compositorevidence finalize \
 	-runner-temp "$RUNNER_TEMP" \
 	-output-dir "$output_dir" \
 	-expected-commit "$ROBOTGO_APPROVED_COMMIT" \
-	-workflow "$GITHUB_WORKFLOW" \
-	-run-id "$GITHUB_RUN_ID" \
-	-run-attempt "$GITHUB_RUN_ATTEMPT" \
+	"${identity_args[@]}" \
 	-test-exit-code "$test_status"
 failure_stage="$ROBOTGO_SWAY_FAILURE_STAGE_VERIFY"
 go run ./internal/cmd/compositorevidence verify \
@@ -303,8 +330,10 @@ go run ./internal/cmd/compositorevidence verify \
 	-runner-temp "$RUNNER_TEMP" \
 	-output-dir "$output_dir" \
 	-expected-commit "$ROBOTGO_APPROVED_COMMIT" \
-	-workflow "$GITHUB_WORKFLOW" \
-	-run-id "$GITHUB_RUN_ID" \
-	-run-attempt "$GITHUB_RUN_ATTEMPT"
+	"${identity_args[@]}"
 failure_stage="$ROBOTGO_SWAY_FAILURE_STAGE_SUMMARY"
-cat "$output_dir/summary.md" >>"$GITHUB_STEP_SUMMARY"
+if [[ "$provider" == dagu ]]; then
+	cat "$output_dir/summary.md"
+else
+	cat "$output_dir/summary.md" >>"$GITHUB_STEP_SUMMARY"
+fi

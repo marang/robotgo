@@ -39,12 +39,13 @@ var (
 	}
 )
 
-// CI identifies the protected GitHub Actions execution.
+// CI identifies the protected provider execution.
 type CI struct {
-	Provider   string `json:"provider"`
-	Workflow   string `json:"workflow"`
-	RunID      string `json:"run_id"`
-	RunAttempt int    `json:"run_attempt"`
+	Provider   Provider      `json:"provider"`
+	Workflow   string        `json:"workflow"`
+	RunID      string        `json:"run_id"`
+	RunAttempt int           `json:"run_attempt,omitempty"`
+	Dagu       *DaguIdentity `json:"dagu,omitempty"`
 }
 
 // EvidenceTest records the canonical, privacy-safe integration result.
@@ -78,6 +79,8 @@ type FinalizeConfig struct {
 	ExpectedCommit  string
 	ExpectedLane    Lane
 	ExpectedCell    Cell
+	Provider        Provider
+	Dagu            *DaguIdentity
 	Workflow        string
 	RunID           string
 	RunAttempt      int
@@ -91,6 +94,8 @@ type VerifyExpectations struct {
 	Commit     string
 	Lane       Lane
 	Cell       Cell
+	Provider   Provider
+	Dagu       *DaguIdentity
 	Workflow   string
 	RunID      string
 	RunAttempt int
@@ -170,9 +175,7 @@ func Finalize(config FinalizeConfig) (_ Manifest, retErr error) {
 	if report.Commit != config.ExpectedCommit ||
 		report.Desktop.Lane != config.ExpectedLane ||
 		report.Desktop.Cell != config.ExpectedCell ||
-		report.Workflow != config.Workflow ||
-		report.RunID != config.RunID ||
-		report.RunAttempt != config.RunAttempt {
+		report.execution() != config.execution() {
 		return Manifest{}, errors.New("preflight identity does not match finalization request")
 	}
 	spec, err := config.ExpectedCell.TestSpec()
@@ -206,7 +209,8 @@ func Finalize(config FinalizeConfig) (_ Manifest, retErr error) {
 		Commit:        report.Commit,
 		Ref:           report.Ref,
 		CI: CI{
-			Provider:   evidenceProvider,
+			Provider:   normalizedProvider(report.Provider),
+			Dagu:       report.Dagu,
 			Workflow:   report.Workflow,
 			RunID:      report.RunID,
 			RunAttempt: report.RunAttempt,
@@ -274,6 +278,8 @@ func Finalize(config FinalizeConfig) (_ Manifest, retErr error) {
 		Commit:     config.ExpectedCommit,
 		Lane:       config.ExpectedLane,
 		Cell:       config.ExpectedCell,
+		Provider:   config.Provider,
+		Dagu:       config.Dagu,
 		Workflow:   config.Workflow,
 		RunID:      config.RunID,
 		RunAttempt: config.RunAttempt,
@@ -290,6 +296,8 @@ func Finalize(config FinalizeConfig) (_ Manifest, retErr error) {
 		Commit:     config.ExpectedCommit,
 		Lane:       config.ExpectedLane,
 		Cell:       config.ExpectedCell,
+		Provider:   config.Provider,
+		Dagu:       config.Dagu,
 		Workflow:   config.Workflow,
 		RunID:      config.RunID,
 		RunAttempt: config.RunAttempt,
@@ -493,14 +501,8 @@ func validateFinalizeConfig(config FinalizeConfig) error {
 	if _, err := config.ExpectedCell.TestSpec(); err != nil {
 		return err
 	}
-	if err := validateWorkflow(config.ExpectedCell, config.Workflow); err != nil {
+	if err := validateExecution(config.ExpectedCell, config.execution()); err != nil {
 		return err
-	}
-	if !runIDPattern.MatchString(config.RunID) {
-		return errors.New("run ID must be a positive decimal integer")
-	}
-	if config.RunAttempt <= 0 {
-		return errors.New("run attempt must be positive")
 	}
 	if config.TestExitCode < 0 {
 		return errors.New("test exit code must not be negative")
@@ -515,16 +517,7 @@ func validateVerifyExpectations(expected VerifyExpectations) error {
 	if err := validateLaneCell(expected.Lane, expected.Cell); err != nil {
 		return err
 	}
-	if err := validateWorkflow(expected.Cell, expected.Workflow); err != nil {
-		return err
-	}
-	if !runIDPattern.MatchString(expected.RunID) {
-		return errors.New("expected run ID must be a positive decimal integer")
-	}
-	if expected.RunAttempt <= 0 {
-		return errors.New("expected run attempt must be positive")
-	}
-	return nil
+	return validateExecution(expected.Cell, expected.execution())
 }
 
 func validateManifest(manifest Manifest) error {
@@ -540,19 +533,15 @@ func validateManifest(manifest Manifest) error {
 	if err := validateGitIdentity(manifest.Commit, manifest.Ref); err != nil {
 		return err
 	}
-	if manifest.CI.Provider != evidenceProvider {
+	if manifest.CI.Provider == "" {
 		return errors.New("unsupported compositor evidence provider")
-	}
-	if err := validateText("workflow", manifest.CI.Workflow); err != nil {
-		return err
-	}
-	if !runIDPattern.MatchString(manifest.CI.RunID) || manifest.CI.RunAttempt <= 0 {
-		return errors.New("invalid compositor evidence run identity")
 	}
 	if err := validatePreflightReport(PreflightReport{
 		SchemaVersion: preflightSchemaVersion,
 		Commit:        manifest.Commit,
 		Ref:           manifest.Ref,
+		Provider:      manifest.CI.Provider,
+		Dagu:          manifest.CI.Dagu,
 		Workflow:      manifest.CI.Workflow,
 		RunID:         manifest.CI.RunID,
 		RunAttempt:    manifest.CI.RunAttempt,
@@ -582,6 +571,9 @@ func validateManifest(manifest Manifest) error {
 }
 
 func matchExpectations(manifest Manifest, expected VerifyExpectations) error {
+	if manifest.CI.execution() != expected.execution() {
+		return errors.New("provider execution identity does not match expected protected job")
+	}
 	comparisons := []struct {
 		name string
 		got  string
@@ -590,16 +582,11 @@ func matchExpectations(manifest Manifest, expected VerifyExpectations) error {
 		{name: "commit", got: manifest.Commit, want: expected.Commit},
 		{name: "lane", got: string(manifest.Desktop.Lane), want: string(expected.Lane)},
 		{name: "cell", got: string(manifest.Desktop.Cell), want: string(expected.Cell)},
-		{name: "workflow", got: manifest.CI.Workflow, want: expected.Workflow},
-		{name: "run ID", got: manifest.CI.RunID, want: expected.RunID},
 	}
 	for _, comparison := range comparisons {
 		if comparison.got != comparison.want {
 			return fmt.Errorf("%s does not match expected protected job", comparison.name)
 		}
-	}
-	if manifest.CI.RunAttempt != expected.RunAttempt {
-		return errors.New("run attempt does not match expected protected job")
 	}
 	return nil
 }

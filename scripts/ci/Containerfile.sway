@@ -1,0 +1,13 @@
+# Extend the qualified ordinary RobotGo CI image for isolated headless Sway.
+# Build with an empty context; ordinary CI retains its existing image.
+FROM sha256:c2fdcc9acbd7eb568a6cd2afe83169cf4fc8c5ea17d02e53f841a2e430b3b4b8
+
+USER root
+RUN test "$(go env GOVERSION)" = go1.26.10 \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends \
+        jq procps dbus-user-session sway swaybg wev \
+        xdg-desktop-portal xdg-desktop-portal-wlr \
+    && rm -rf /var/lib/apt/lists/*
+
+USER 7051508:1004

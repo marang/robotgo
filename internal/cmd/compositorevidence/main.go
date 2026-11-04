@@ -64,6 +64,8 @@ type identityFlags struct {
 	runnerTemp      string
 	outputDirectory string
 	expectedCommit  string
+	provider        string
+	dagu            compositorevidence.DaguIdentity
 }
 
 func (identity *identityFlags) register(flags *flag.FlagSet) {
@@ -72,6 +74,19 @@ func (identity *identityFlags) register(flags *flag.FlagSet) {
 	flags.StringVar(&identity.runnerTemp, "runner-temp", "", "runner temporary directory")
 	flags.StringVar(&identity.outputDirectory, "output-dir", "", "owned evidence output directory")
 	flags.StringVar(&identity.expectedCommit, "expected-commit", "", "approved exact Git commit")
+	flags.StringVar(&identity.provider, "provider", "", "evidence provider (github-actions or dagu; default github-actions)")
+	flags.StringVar(&identity.dagu.AttemptID, "dagu-attempt-id", "", "actual Dagu scheduler attempt ID")
+	flags.StringVar(&identity.dagu.Step, "dagu-step", "", "actual protected Dagu step ID")
+	flags.StringVar(&identity.dagu.SourceTree, "dagu-source-tree", "", "checked-out full Git tree ID")
+	flags.StringVar(&identity.dagu.Image, "dagu-image", "", "immutable worker image sha256 digest")
+}
+
+func (identity identityFlags) daguIdentity() *compositorevidence.DaguIdentity {
+	if identity.provider == string(compositorevidence.ProviderDagu) || identity.dagu != (compositorevidence.DaguIdentity{}) {
+		value := identity.dagu
+		return &value
+	}
+	return nil
 }
 
 func (identity identityFlags) parse() (compositorevidence.Lane, compositorevidence.Cell, error) {
@@ -112,9 +127,9 @@ func runPreflight(
 	)
 	flags.StringVar(&checkoutCommit, "commit", "", "checked-out Git commit")
 	flags.StringVar(&ref, "ref", "", "checked-out full Git ref")
-	flags.StringVar(&workflow, "workflow", "", "GitHub Actions workflow name")
-	flags.StringVar(&runID, "run-id", "", "GitHub Actions run ID")
-	flags.IntVar(&runAttempt, "run-attempt", 0, "GitHub Actions run attempt")
+	flags.StringVar(&workflow, "workflow", "", "protected workflow or DAG name")
+	flags.StringVar(&runID, "run-id", "", "provider run ID")
+	flags.IntVar(&runAttempt, "run-attempt", 0, "GitHub Actions numeric run attempt (omit for Dagu)")
 	flags.StringVar(&operatorReadyPath, "operator-ready-file", "", "orchestrator-owned consent readiness file")
 	flags.IntVar(&outputCount, "output-count", 0, "declared compositor output count")
 	flags.IntVar(&minimumOutputs, "minimum-outputs", 1, "minimum required output count")
@@ -153,6 +168,8 @@ func runPreflight(
 		CheckoutCommit:          checkoutCommit,
 		ExpectedCommit:          identity.expectedCommit,
 		Ref:                     ref,
+		Provider:                compositorevidence.Provider(identity.provider),
+		Dagu:                    identity.daguIdentity(),
 		Workflow:                workflow,
 		RunID:                   runID,
 		RunAttempt:              runAttempt,
@@ -204,9 +221,9 @@ func runFinalize(
 		runAttempt   int
 		testExitCode int
 	)
-	flags.StringVar(&workflow, "workflow", "", "GitHub Actions workflow name")
-	flags.StringVar(&runID, "run-id", "", "GitHub Actions run ID")
-	flags.IntVar(&runAttempt, "run-attempt", 0, "GitHub Actions run attempt")
+	flags.StringVar(&workflow, "workflow", "", "protected workflow or DAG name")
+	flags.StringVar(&runID, "run-id", "", "provider run ID")
+	flags.IntVar(&runAttempt, "run-attempt", 0, "GitHub Actions numeric run attempt (omit for Dagu)")
 	flags.IntVar(&testExitCode, "test-exit-code", -1, "integration test exit code")
 	if err := flags.Parse(arguments); err != nil {
 		return err
@@ -224,6 +241,8 @@ func runFinalize(
 		ExpectedCommit:  identity.expectedCommit,
 		ExpectedLane:    lane,
 		ExpectedCell:    cell,
+		Provider:        compositorevidence.Provider(identity.provider),
+		Dagu:            identity.daguIdentity(),
 		Workflow:        workflow,
 		RunID:           runID,
 		RunAttempt:      runAttempt,
@@ -256,9 +275,9 @@ func runVerify(arguments []string, stdout, stderr io.Writer) error {
 		runID      string
 		runAttempt int
 	)
-	flags.StringVar(&workflow, "workflow", "", "expected GitHub Actions workflow")
-	flags.StringVar(&runID, "run-id", "", "expected GitHub Actions run ID")
-	flags.IntVar(&runAttempt, "run-attempt", 0, "expected GitHub Actions run attempt")
+	flags.StringVar(&workflow, "workflow", "", "expected protected workflow or DAG name")
+	flags.StringVar(&runID, "run-id", "", "expected provider run ID")
+	flags.IntVar(&runAttempt, "run-attempt", 0, "expected GitHub Actions numeric run attempt (omit for Dagu)")
 	if err := flags.Parse(arguments); err != nil {
 		return err
 	}
@@ -275,6 +294,8 @@ func runVerify(arguments []string, stdout, stderr io.Writer) error {
 			Commit:     identity.expectedCommit,
 			Lane:       lane,
 			Cell:       cell,
+			Provider:   compositorevidence.Provider(identity.provider),
+			Dagu:       identity.daguIdentity(),
 			Workflow:   workflow,
 			RunID:      runID,
 			RunAttempt: runAttempt,

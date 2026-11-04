@@ -1,7 +1,7 @@
 # RobotGo native delivery
 
 Native Entire Frankfurt is canonical source. These definitions run ordinary
-Linux CI on the existing OVH London worker through the shared three-slot `ci`
+Linux CI plus six isolated headless Sway cells on the existing OVH London worker through the shared three-slot `ci`
 queue. They retain the qualified CGO image, non-root worker identity,
 2 CPU / 3 GiB / 512 PID limits, read-only root filesystem, disposable workspace
 and private temporary Xvfb/Weston sessions. Source keys, controller credentials,
@@ -35,7 +35,7 @@ local ignore file. Repository Codex hooks no longer invoke Entire automatically.
 Explicit native Git/Trail actions remain the reviewed delivery path; user-managed
 local capture settings and global hooks are preserved.
 
-Native macOS/Windows, real desktop/compositor consent, Sway/Hyprland/GNOME/KDE,
+Native macOS/Windows, real desktop/compositor consent, Hyprland/GNOME/KDE,
 KVM/DRM, release evidence and public module distribution retain their existing
 gates. Linux tests and cross-compilation do not replace the 23 retained platform
 checks. Source now prepares `v1.0.4` under `go.izoone.com/robotgo`; the accepted
@@ -44,6 +44,34 @@ imgo version and old releases are unchanged. The
 a native release publisher. LAB-438 tracks the unqualified native CI writer;
 operators must
 verify exact source, definition/image, run and result before merging.
+
+## Headless Sway runtime
+
+The same CI graph adds six serialized siblings after `prepare`: native input,
+capture, window, output, multi-output and portal availability. Ordinary steps
+retain their existing image and resource/time limits. Sway uses a dependency-only
+derivative image from `scripts/ci/Containerfile.sway`; the root DAG budget adds
+six ten-minute cell budgets to the existing 3700 seconds.
+
+The existing Sway test commands and assertions are reused. Explicit Dagu DAG,
+run, actual attempt, step, source tree and image identities bind their sanitized
+evidence. Historical GitHub evidence retains its original format and validation.
+The multi-output cell first exercises the existing induced-failure cleanup seam.
+
+Raw logs, session sockets and private preflight state stay on container `/tmp`
+tmpfs. Only successfully verified owned report directories are copied to `/w`
+and retained by Dagu's standard exit handler as private run artifacts. Container
+force-removal remains the cleanup boundary after hard cancellation.
+
+Normal branch polling supplies the source ref in its existing event payload.
+Manual `main` works unchanged. A manual exact commit without that payload must
+also provide `source_ref`, the actual full branch ref; conflicting metadata is
+rejected. This prevents a commit-only selection from inventing a branch identity.
+
+Definitions and local fixtures alone do not qualify installation. Require actual
+exact-source OVH runs of all six cases plus failure, timeout and cancellation
+cleanup before treating this runtime slice as complete. No Windows/macOS, other
+desktop or release qualification follows from these checks.
 
 ## Qualification and cutover
 

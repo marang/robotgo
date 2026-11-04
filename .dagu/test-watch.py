@@ -51,8 +51,12 @@ assert 'alphanumeric' in rejected.stdout+rejected.stderr
 
 A='a'*40;B='b'*40;C='c'*40;D='d'*40;E='e'*40
 payload={'repository':'et/marang/robotgo','commit':B,'ref':'refs/heads/feature/test','tag':''}
-js_case('ci-manual',ci,{'requested':A,'payload':''},'if(input.commit!=="'+A+'")throw new Error("wrong sha");')
-js_case('ci-webhook',ci,{'requested':'main','payload':json.dumps(payload)},'if(input.commit!=="'+B+'")throw new Error("wrong sha");')
+js_case('ci-manual',ci,{'requested':A,'source_ref':'refs/heads/feature/test','payload':''},'if(input.commit!=="'+A+'"||input.ref!=="refs/heads/feature/test")throw new Error("wrong source");')
+js_case('ci-manual-main',ci,{'requested':'main','payload':''},'if(input.ref!=="refs/heads/main")throw new Error("wrong main ref");')
+js_case('ci-manual-missing-ref',ci,{'requested':A,'payload':''},success=False)
+js_case('ci-manual-invalid-ref',ci,{'requested':A,'source_ref':'refs/tags/v1.0.4','payload':''},success=False)
+js_case('ci-ref-conflict',ci,{'requested':'main','source_ref':'refs/heads/other','payload':json.dumps(payload)},success=False)
+js_case('ci-webhook',ci,{'requested':'main','payload':json.dumps(payload)},'if(input.commit!=="'+B+'"||input.ref!=="refs/heads/feature/test")throw new Error("wrong source");')
 js_case('ci-conflict',ci,{'requested':A,'payload':json.dumps(payload)},success=False)
 js_case('ci-wrong-repo',ci,{'requested':'main','payload':json.dumps({**payload,'repository':'other'})},success=False)
 js_case('ci-json-null',ci,{'requested':'main','payload':'null'},success=False)
