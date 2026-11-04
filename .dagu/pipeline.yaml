@@ -2,6 +2,8 @@
 # Native macOS/Windows, host desktop/portal-consent and release gates
 # remain separate. Xvfb and nested Weston see no host display or socket.
 type: graph
+# Command preconditions need a real shell; the worker default is direct.
+shell: /bin/sh
 queue: ci
 worker_selector:
   runner: izoone-ovh

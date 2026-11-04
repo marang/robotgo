@@ -123,5 +123,31 @@ try:
     full(network_refs)
     count=len(Handler.calls);full(network_refs);assert len(Handler.calls)==count
 finally:server.shutdown();server.server_close()
+# The worker base uses shell:direct. Exit-handler command preconditions need
+# an explicit DAG shell, including when steps use only built-in actions.
+handler=copy.deepcopy(yaml.safe_load((repo/'.dagu/pipeline.yaml').read_text())['handler_on']['exit'])
+for name,present,legacy in [('artifacts-present',True,False),('artifacts-absent',False,False),('artifacts-shell-control',True,True)]:
+    destination=home/(name+'-artifacts')
+    current=copy.deepcopy(handler)
+    current['with']['destination']=str(destination)
+    graph={'type':'graph','shell':'direct' if legacy else yaml.safe_load((repo/'.dagu/pipeline.yaml').read_text())['shell'],'artifacts':{'enabled':True},'handler_on':{'exit':current},'steps':[]}
+    if present:
+        graph['steps']=[{'id':'report','action':'file.write','with':{'path':'${context.paths.work_dir}/sway-evidence/attempt/native-input/test.log','content':'sanitized fixture\n','create_dirs':True}}]
+    else:
+        graph['steps']=[{'id':'noop','action':'js.run','with':{'script':'return true;'}}]
+    result=run(name,graph)
+    retained=destination/'attempt/native-input/test.log'
+    if present and not legacy:
+        assert retained.read_text()=='sanitized fixture\n'
+    else:
+        assert not destination.exists(),name
+    if legacy:
+        records=list((home/'data/dag-runs'/name).rglob('status.jsonl'))
+        assert len(records)==1
+        status=json.loads(records[0].read_text().splitlines()[-1])
+        assert status['onExit']['status']==5
+        error=status['onExit']['step']['preconditions'][0]['error']
+        assert 'direct' in error and 'executable file not found' in error
+
 (home/'results.json').write_text(json.dumps(results,indent=2)+'\n')
 print('ALL RUNTIME CHECKS PASSED',len(results),'evidence',home)
