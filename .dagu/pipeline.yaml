@@ -103,7 +103,8 @@ steps:
 
   - &linux_step
     id: prepare
-    depends: [checkout]
+    # Source containers may modify .git; never enter them before credentialed Git.
+    depends: [github_mirror]
     action: container.run
     timeout_sec: 180
     with: &linux_container

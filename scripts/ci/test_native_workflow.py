@@ -65,6 +65,22 @@ def scheduled_cases(workflow, ref):
 
 
 class NativeWorkflowTests(unittest.TestCase):
+    def test_source_containers_require_successful_credentialed_mirror(self):
+        pipeline = WORKFLOW.parents[2] / '.dagu/pipeline.yaml'
+        steps = {step['id']: step for step in yaml.safe_load(pipeline.read_text())['steps']}
+
+        def ancestors(name):
+            direct = set(steps[name].get('depends', []))
+            return direct | {parent for item in direct for parent in ancestors(item)}
+
+        containers = [name for name, step in steps.items()
+                      if step.get('action') == 'container.run']
+        self.assertTrue(containers)
+        for name in containers:
+            with self.subTest(step=name):
+                self.assertIn('github_mirror', ancestors(name))
+        self.assertEqual(ancestors('github_mirror'), {'checkout', 'normalize'})
+
     @classmethod
     def setUpClass(cls):
         # BaseLoader preserves the GitHub Actions "on" key as a string.
