@@ -1,7 +1,7 @@
 name: Go
 on:
   push:
-    branches: [main]
+    branches: [main, 'ci/entire/**']
     tags: ['v*']
   pull_request:
 
@@ -17,6 +17,7 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 jobs:
   api-compat:
+    if: ${{ !startsWith(github.ref, 'refs/heads/ci/entire/') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -47,6 +48,7 @@ jobs:
             -variant darwin-nocgo \
             -variant darwin-nocgo-amd64
   vet:
+    if: ${{ !startsWith(github.ref, 'refs/heads/ci/entire/') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -69,6 +71,7 @@ jobs:
           CGO_ENABLED: "0"
         run: go vet ./...
   race:
+    if: ${{ !startsWith(github.ref, 'refs/heads/ci/entire/') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -89,6 +92,7 @@ jobs:
       - name: Stress race-testable Pure-Go X11 core
         run: go test -race -count=20 -timeout=2m ./internal/x11input
   sanitizer:
+    if: ${{ !startsWith(github.ref, 'refs/heads/ci/entire/') }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
@@ -113,6 +117,7 @@ jobs:
       - name: Run hermetic Wayland ownership paths with sanitizers
         run: scripts/run-wayland-sanitizer-tests.sh
   lint:
+    if: ${{ !startsWith(github.ref, 'refs/heads/ci/entire/') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -144,7 +149,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macOS-latest, windows-latest]
+        # Exact Entire commits use GitHub only for retained native platforms.
+        os: ${{ fromJSON(startsWith(github.ref, 'refs/heads/ci/entire/') && '["macOS-latest", "windows-latest"]' || '["ubuntu-latest", "macOS-latest", "windows-latest"]') }}
         include:
           - os: macOS-latest
             runner: macos-15
@@ -184,7 +190,8 @@ jobs:
       - name: Build
         run: go build -v .
       - name: Test
-        run: go test -v ./...
+        # Exercise this runner; cached results cannot prove its native runtime.
+        run: go test -count=1 -v ./...
       - name: Test native Windows pointer and capture on disposable desktop
         if: runner.os == 'Windows'
         env:
@@ -228,14 +235,12 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
+        # Exact Entire commits use GitHub only for retained native platforms.
+        os: ${{ fromJSON(startsWith(github.ref, 'refs/heads/ci/entire/') && '["macOS-latest", "windows-latest"]' || '["ubuntu-latest", "macOS-latest", "windows-latest"]') }}
         include:
-          - os: ubuntu-latest
-            runner: ubuntu-latest
           - os: macOS-latest
             runner: macos-26-intel
-          - os: windows-latest
-            runner: windows-latest
-    runs-on: ${{ matrix.runner }}
+    runs-on: ${{ matrix.runner || matrix.os }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -252,7 +257,8 @@ jobs:
       - name: Test Pure-Go build
         env:
           CGO_ENABLED: "0"
-        run: go test -v ./...
+        # Exercise this runner; cached results cannot prove its native runtime.
+        run: go test -count=1 -v ./...
       - name: Test Pure-Go Windows input desktop
         if: runner.os == 'Windows'
         env:
@@ -343,6 +349,7 @@ jobs:
               done
             '
   x11-backend-evidence:
+    if: ${{ !startsWith(github.ref, 'refs/heads/ci/entire/') }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -440,6 +447,7 @@ jobs:
             cat "$RUNNER_TEMP/x11-backend-evidence/summary.md" >> "$GITHUB_STEP_SUMMARY"
           fi
   ocr:
+    if: ${{ !startsWith(github.ref, 'refs/heads/ci/entire/') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -459,6 +467,7 @@ jobs:
       - name: Check OCR public API invariance
         run: go run ./internal/cmd/apicompat -variant linux-cgo-ocr
   wayland-integration:
+    if: ${{ !startsWith(github.ref, 'refs/heads/ci/entire/') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

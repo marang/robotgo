@@ -19,8 +19,12 @@ func TestPrimaryWorkflowsAvoidDuplicateBranchRuns(t *testing.T) {
 			t.Parallel()
 
 			text := readWorkflow(t, path)
+			branches := "[main]"
+			if path == "../.github/workflows/go.yml" {
+				branches = "[main, 'ci/entire/**']"
+			}
 			for _, required := range []string{
-				"  push:\n    branches: [main]\n    tags: ['v*']\n  pull_request:",
+				"  push:\n    branches: " + branches + "\n    tags: ['v*']\n  pull_request:",
 				"cancel-in-progress: ${{ github.event_name == 'pull_request' }}",
 			} {
 				if !strings.Contains(text, required) {

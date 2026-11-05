@@ -11,11 +11,11 @@ func TestMacOSWorkflowKeepsARM64CoverageOnOneRunner(t *testing.T) {
 	native := macOSWorkflowSection(t, workflow, "  test:\n", "  nocgo:\n")
 	for _, required := range []string{
 		"name: test (${{ matrix.os }})",
-		"os: [ubuntu-latest, macOS-latest, windows-latest]",
+		`os: ${{ fromJSON(startsWith(github.ref, 'refs/heads/ci/entire/') && '["macOS-latest", "windows-latest"]' || '["ubuntu-latest", "macOS-latest", "windows-latest"]') }}`,
 		"- os: macOS-latest\n            runner: macos-15",
 		"runs-on: ${{ matrix.runner || matrix.os }}",
 		"run: go build -v .",
-		"run: go test -v ./...",
+		"run: go test -count=1 -v ./...",
 		"go run ./internal/cmd/apicompat -variant darwin-cgo",
 	} {
 		if !strings.Contains(native, required) {
@@ -72,13 +72,12 @@ func TestMacOSPureGoWorkflowUsesIntelWithoutRenamingProtectedChecks(t *testing.T
 	pureGo := macOSWorkflowSection(t, workflow, "  nocgo:\n", "  x11-backend-evidence:\n")
 	for _, required := range []string{
 		"name: nocgo (${{ matrix.os }})",
-		"runs-on: ${{ matrix.runner }}",
-		"- os: ubuntu-latest\n            runner: ubuntu-latest",
+		"runs-on: ${{ matrix.runner || matrix.os }}",
+		`os: ${{ fromJSON(startsWith(github.ref, 'refs/heads/ci/entire/') && '["macOS-latest", "windows-latest"]' || '["ubuntu-latest", "macOS-latest", "windows-latest"]') }}`,
 		"- os: macOS-latest\n            runner: macos-26-intel",
-		"- os: windows-latest\n            runner: windows-latest",
 		"name: Test Pure-Go build",
 		`CGO_ENABLED: "0"`,
-		"run: go test -v ./...",
+		"run: go test -count=1 -v ./...",
 		"name: Test Pure-Go macOS input preflight",
 		`-run "^TestPureGoDarwinInputRuntime$"`,
 		"name: Test Pure-Go Windows input desktop",

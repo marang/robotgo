@@ -73,6 +73,49 @@ exact-source OVH runs of all six cases plus failure, timeout and cancellation
 cleanup before treating this runtime slice as complete. No Windows/macOS, other
 desktop or release qualification follows from these checks.
 
+## Retained native platform bridge
+
+The CI graph mirrors its selected source commit to the create-only GitHub ref
+`ci/entire/<full-SHA>` before running source containers. GitHub's existing Go
+workflow runs four native jobs there: macOS ARM64 CGO plus Pure-Go, macOS Intel
+Pure-Go, and Windows CGO/Pure-Go. Main, tag and PR behavior retains its existing
+matrix. Native default suites disable Go's result cache for fresh runtime proof.
+Entire remains canonical; this is a temporary GitHub execution dependency.
+
+The root-owned host adapter `scripts/ci/github_native.py` uses standard Git and
+GitHub CLI. It verifies the clean source, uses an empty create-only ref lease,
+and transfers only the selected ref without following tags. It rejects a
+conflicting ref. No local Entire capture/checkpoint refs are mirrored. Shallow
+source acquisition is deepened before the push; the source commit is unchanged.
+
+Provision a fine-grained GitHub token for **only `marang/robotgo`** with Contents
+and Workflows write, Actions read, and implicit Metadata read. Store it in Dagu's
+encrypted registry as `robotgo/github-native`; the DAG exposes it only to host
+steps as `ROBOTGO_GITHUB_TOKEN`. Containers keep their explicit environment and
+workspace mount; neither this token nor Git credential files enter that mount.
+Install the reviewed adapter at `/usr/local/libexec/izoone-ci/robotgo-github-native`
+and the trusted GitHub CLI at `/usr/bin/gh` before admitting the definition.
+
+After Linux/Sway execution, the adapter requires the exact GitHub repository,
+workflow, push ref/SHA, source tree, actual run and current attempt. All four
+native jobs and their required steps must succeed; protected runtime tests must
+show the required PASS counts, including three Windows window runs. Skips are
+not runtime evidence. Standard Dagu stdout artifacts retain the source-bound JSON
+summary; bounded downloaded job logs go to ordinary Dagu stderr logs. GitHub run
+and job links remain available for diagnosis. No additional log archive is kept.
+
+A failed or incomplete native run fails CI. After an explicit GitHub rerun,
+retrying the Dagu wait step collects the actual newer attempt; mirroring an
+existing matching ref itself creates no duplicate push. A Dagu stop ends its
+wait; cancel a still-running hosted workflow through GitHub. This bridge does
+not change hosted permissions, LAB-69, VM/device gates or release publication.
+
+Run `python3 -B -m unittest discover -s scripts/ci -p 'test_*native*.py'` locally
+(PyYAML is required for workflow routing checks) plus pinned `actionlint` and
+the repository's ordinary Go checks. Offline fixtures do not qualify native
+execution, secret isolation, installation or result retrieval; require actual
+source-bound GitHub and Dagu runs before marking this bridge complete.
+
 ## Qualification and cutover
 
 Before installation read https://automation.izoone.com/agents and its worker

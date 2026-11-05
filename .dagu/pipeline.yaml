@@ -14,6 +14,9 @@ max_active_steps: 1
 hist_retention_days: 14
 artifacts:
   enabled: true
+secrets:
+  - name: ROBOTGO_GITHUB_TOKEN
+    ref: robotgo/github-native
 handler_on:
   exit:
     preconditions: "test -d '${context.paths.work_dir}/sway-evidence'"
@@ -89,6 +92,15 @@ steps:
       source:
         from: stdout
         decode: json
+  - id: github_mirror
+    depends: [checkout]
+    run: /usr/local/libexec/izoone-ci/robotgo-github-native mirror ${checkout.output.source.commit}
+    timeout_sec: 240
+    output:
+      source:
+        from: stdout
+        decode: json
+
   - &linux_step
     id: prepare
     depends: [checkout]
@@ -434,3 +446,10 @@ steps:
       container:
         <<: *sway_defaults
         Cmd: [bash, scripts/run-dagu-sway-cell.sh, portal-availability]
+
+  - id: github_native
+    depends: [github_mirror, native_input, native_capture, native_window, native_output, native_output_multi, portal_availability]
+    run: /usr/local/libexec/izoone-ci/robotgo-github-native wait ${checkout.output.source.commit} --tree ${github_mirror.output.source.tree}
+    timeout_sec: 3700
+    stdout:
+      artifact: github-native/summary.json
