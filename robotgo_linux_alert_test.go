@@ -4,6 +4,7 @@ package robotgo
 
 import (
 	"errors"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -261,21 +262,89 @@ printf '%s' "$!" > "$ROBOTGO_ALERT_TEST_CHILD"
 	deadline := time.Now().Add(2 * time.Second)
 	for {
 		data, err := os.ReadFile("/proc/" + strconv.Itoa(pid) + "/stat")
-		if errors.Is(err, os.ErrNotExist) {
-			break
-		}
+		stopped, err := linuxAlertTestProcessStopped(data, err)
 		if err != nil {
 			t.Fatal(err)
 		}
-		// Orphans can remain zombies under container PID 1, but no longer hold I/O.
-		state := strings.LastIndexByte(string(data), ')') + 2
-		if state >= 2 && state < len(data) && (data[state] == 'Z' || data[state] == 'X') {
+		if stopped {
 			break
 		}
 		if time.Now().After(deadline) {
 			t.Fatalf("xmessage descendant %d survived inherited-stdin cleanup", pid)
 		}
 		time.Sleep(10 * time.Millisecond)
+	}
+}
+
+// Keep the proc observation separate so a reap between open and read can be
+// reproduced without depending on scheduler timing in the inherited-stdin test.
+func linuxAlertTestProcessStopped(data []byte, err error) (bool, error) {
+	// A proc entry opened before reaping can report ESRCH when read afterward.
+	if errors.Is(err, os.ErrNotExist) || errors.Is(err, syscall.ESRCH) {
+		return true, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	// Orphans can remain zombies under container PID 1, but no longer hold I/O.
+	state := strings.LastIndexByte(string(data), ')') + 2
+	return state >= 2 && state < len(data) && (data[state] == 'Z' || data[state] == 'X'), nil
+}
+
+func TestLinuxAlertProcessStoppedObservation(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		data string
+		err  error
+		want bool
+	}{
+		{name: "live", data: "42 (alert worker) S 1"},
+		{name: "zombie", data: "42 (alert worker) Z 1", want: true},
+		{name: "dead", data: "42 (alert worker) X 1", want: true},
+		{name: "missing", err: &os.PathError{Op: "open", Path: "/proc/42/stat", Err: syscall.ENOENT}, want: true},
+		{name: "permission", err: &os.PathError{Op: "open", Path: "/proc/42/stat", Err: syscall.EACCES}},
+		{name: "read failure", err: io.ErrUnexpectedEOF},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			stopped, err := linuxAlertTestProcessStopped([]byte(test.data), test.err)
+			if test.err != nil && !test.want {
+				if stopped || !errors.Is(err, test.err) {
+					t.Fatalf("observation = stopped %t, error %v; want original error %v", stopped, err, test.err)
+				}
+			} else if stopped != test.want || err != nil {
+				t.Fatalf("observation = stopped %t, error %v; want stopped %t", stopped, err, test.want)
+			}
+		})
+	}
+}
+
+func TestLinuxAlertProcessStoppedAfterProcOpen(t *testing.T) {
+	child := exec.Command("/bin/sleep", "5")
+	if err := child.Start(); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		_ = child.Process.Kill()
+		_ = child.Wait()
+	})
+	stat, err := os.Open("/proc/" + strconv.Itoa(child.Process.Pid) + "/stat")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = stat.Close() })
+	if err := child.Process.Kill(); err != nil {
+		t.Fatal(err)
+	}
+	if err := child.Wait(); err == nil {
+		t.Fatal("killed fixture unexpectedly exited successfully")
+	}
+	// os.ReadFile can likewise open the proc entry immediately before reaping.
+	data, readErr := io.ReadAll(stat)
+	if !errors.Is(readErr, syscall.ESRCH) {
+		t.Fatalf("stale proc read = %v; want ESRCH", readErr)
+	}
+	if stopped, err := linuxAlertTestProcessStopped(data, readErr); !stopped || err != nil {
+		t.Fatalf("reaped proc observation = stopped %t, error %v; want stopped", stopped, err)
 	}
 }
 
