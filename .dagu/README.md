@@ -102,7 +102,9 @@ native jobs and their required steps must succeed; protected runtime tests must
 show the required PASS counts, including three Windows window runs. Skips are
 not runtime evidence. Standard Dagu stdout artifacts retain the source-bound JSON
 summary; bounded downloaded job logs go to ordinary Dagu stderr logs. GitHub run
-and job links remain available for diagnosis. No additional log archive is kept.
+and job links remain available for diagnosis. Terminal controls are escaped;
+raw-log hashes bind the evidence. No additional log archive is kept. Host-adapter
+unit tests run inside the existing Linux source-contract container.
 
 A failed or incomplete native run fails CI. After an explicit GitHub rerun,
 retrying the Dagu wait step collects the actual newer attempt; mirroring an

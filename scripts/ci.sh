@@ -17,6 +17,7 @@ test -z "$(git status --porcelain --untracked-files=all)"
   ;;
 source_contracts)
 mkdir -m 700 -p "$XDG_RUNTIME_DIR"
+python3 -B -m unittest discover -s scripts/ci -p test_github_native.py
 go mod verify
 actionlint
 go run ./internal/cmd/supportmatrix

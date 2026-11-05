@@ -94,6 +94,8 @@ class GitHubFixture:
             raise AssertionError('unexpected command: ' + repr(argv))
         if not argv[-1].endswith('/logs') or kwargs != {'log': True}:
             raise AssertionError('unexpected log download: ' + repr((argv, kwargs)))
+        if '--allow-escape-sequences' not in argv:
+            raise AssertionError('native logs require explicit CLI escape-sequence acceptance')
 
 
 class IdentityAndEvidenceTests(unittest.TestCase):
@@ -258,6 +260,19 @@ class CredentialsTests(unittest.TestCase):
             receipt = native.wait_native(SOURCE, TREE, TOKEN)
         self.assertNotIn(TOKEN, repr(receipt) + out.getvalue() + err.getvalue())
         self.assertIn('[REDACTED]', err.getvalue())
+
+    def test_native_terminal_controls_are_inert_but_raw_evidence_is_preserved(self):
+        raw = b'\x1b[31mred\x1b[0m\n\ttext\r\x00\x7f\xc2\x9b\x1b]52;c;fixture\x07'
+        output = io.StringIO()
+        with mock.patch.object(native, 'command', return_value=raw) as command, \
+                contextlib.redirect_stderr(output):
+            result = native.job_log('fixture', {'id': 900}, native.environment(TOKEN), TOKEN)
+        GitHubFixture.assert_log_command(command.call_args.args[0], command.call_args.kwargs)
+        self.assertEqual(result, raw)
+        self.assertIn('\\u001b[31mred', output.getvalue())
+        self.assertIn('\n\ttext\\r', output.getvalue())
+        self.assertFalse(any(ord(c) < 32 and c not in '\n\t' or 127 <= ord(c) <= 159
+                             for c in output.getvalue()))
 
 
 class MirrorTests(unittest.TestCase):

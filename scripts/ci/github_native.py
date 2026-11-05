@@ -186,8 +186,12 @@ def verify_log(name, data):
 
 def job_log(name, job, env, token):
     raw = command(['/usr/bin/gh', 'api', '--hostname', 'github.com',
+                   '--allow-escape-sequences',
                    '/repos/' + REPOSITORY + '/actions/jobs/%s/logs' % job['id']], env, log=True)
     safe = raw.decode('utf-8', errors='replace').replace(token, '[REDACTED]')
+    # Native test output can contain ANSI; retain readable text, never controls.
+    safe = ''.join(c if c in '\n\t' or ord(c) >= 32 and not 127 <= ord(c) <= 159
+                   else json.dumps(c)[1:-1] for c in safe)
     print('\n--- GitHub native: ' + name + ' ---\n' + safe, file=sys.stderr, flush=True)
     return raw
 
