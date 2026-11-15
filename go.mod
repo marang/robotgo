@@ -3,7 +3,7 @@ module github.com/marang/robotgo
 go 1.26.10
 
 require (
-	github.com/ebitengine/purego v0.11.2
+	github.com/ebitengine/purego v0.11.3
 	github.com/go-ole/go-ole v1.3.0
 	github.com/godbus/dbus/v5 v5.2.4
 	github.com/google/jsonschema-go v0.4.3
@@ -11,16 +11,16 @@ require (
 	github.com/jezek/xgbutil v0.0.0-20260124183602-9fd151d6a51a
 	github.com/modelcontextprotocol/go-sdk v1.8.0
 	github.com/otiai10/gosseract/v2 v2.4.1
-	github.com/shirou/gopsutil/v4 v4.26.9
+	github.com/shirou/gopsutil/v4 v4.26.10
 	github.com/tailscale/win v0.0.0-20260619195133-2d76c33a64c1
 	github.com/vcaesar/gops v0.43.0
 	github.com/vcaesar/imgo v0.44.0
 	github.com/vcaesar/keycode v0.20.0
-	github.com/vcaesar/screenshot v0.40.0
+	github.com/vcaesar/screenshot v0.40.1
 	github.com/vcaesar/tt v0.40.0
-	golang.org/x/image v0.47.0
-	golang.org/x/sys v0.49.0
-	golang.org/x/tools v0.52.0
+	golang.org/x/image v0.48.0
+	golang.org/x/sys v0.50.0
+	golang.org/x/tools v0.52.1-0.20261106145633-d407941a339a
 )
 
 require (
@@ -34,7 +34,7 @@ require (
 	github.com/tklauser/numcpus v0.12.0 // indirect
 	github.com/yosida95/uritemplate/v3 v3.0.2 // indirect
 	github.com/yusufpapurcu/wmi v1.2.4 // indirect
-	golang.org/x/exp v0.0.0-20261014143641-f0251eb4aa3e // indirect
+	golang.org/x/exp v0.0.0-20261109185158-a52e3aef5920 // indirect
 	golang.org/x/mod v0.42.0 // indirect
 	golang.org/x/oauth2 v0.37.0 // indirect
 	golang.org/x/sync v0.24.0 // indirect
