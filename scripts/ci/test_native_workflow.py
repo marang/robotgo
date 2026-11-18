@@ -60,7 +60,7 @@ def scheduled_cases(workflow, ref):
                 row.update(extra)
         for row in rows:
             name = job['name'].replace('${{ matrix.os }}', row['os'])
-            cases.add((name, row.get('runner', row['os'])))
+            cases.add((name, expression(row.get('runner', row['os']), ref)))
     return cases
 
 
@@ -105,7 +105,10 @@ class NativeWorkflowTests(unittest.TestCase):
 
     def test_exact_commit_mirror_runs_only_four_native_jobs(self):
         ref = 'refs/heads/ci/entire/' + 'a' * 40
-        self.assertEqual(scheduled_cases(self.workflow, ref), NATIVE_CASES)
+        expected = (NATIVE_CASES - {('test (macOS-latest)', 'macos-15')}) | {
+            ('test (macOS-latest)', 'macos-26'),
+        }
+        self.assertEqual(scheduled_cases(self.workflow, ref), expected)
         self.assertEqual(self.workflow['jobs']['test']['runs-on'],
                          '${{ matrix.runner || matrix.os }}')
         self.assertEqual(self.workflow['jobs']['nocgo']['runs-on'],

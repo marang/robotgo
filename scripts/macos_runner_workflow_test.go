@@ -12,7 +12,7 @@ func TestMacOSWorkflowKeepsARM64CoverageOnOneRunner(t *testing.T) {
 	for _, required := range []string{
 		"name: test (${{ matrix.os }})",
 		`os: ${{ fromJSON(startsWith(github.ref, 'refs/heads/ci/entire/') && '["macOS-latest", "windows-latest"]' || '["ubuntu-latest", "macOS-latest", "windows-latest"]') }}`,
-		"- os: macOS-latest\n            runner: macos-15",
+		"runner: ${{ startsWith(github.ref, 'refs/heads/ci/entire/') && 'macos-26' || 'macos-15' }}",
 		"runs-on: ${{ matrix.runner || matrix.os }}",
 		"run: go build -v .",
 		"run: go test -count=1 -v ./...",

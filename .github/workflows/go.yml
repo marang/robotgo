@@ -153,7 +153,7 @@ jobs:
         os: ${{ fromJSON(startsWith(github.ref, 'refs/heads/ci/entire/') && '["macOS-latest", "windows-latest"]' || '["ubuntu-latest", "macOS-latest", "windows-latest"]') }}
         include:
           - os: macOS-latest
-            runner: macos-15
+            runner: ${{ startsWith(github.ref, 'refs/heads/ci/entire/') && 'macos-26' || 'macos-15' }}
     runs-on: ${{ matrix.runner || matrix.os }}
 
     steps:
