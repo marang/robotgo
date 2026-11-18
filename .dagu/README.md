@@ -111,11 +111,15 @@ and job links remain available for diagnosis. Terminal controls are escaped;
 raw-log hashes bind the evidence. No additional log archive is kept. Host-adapter
 unit tests run inside the existing Linux source-contract container.
 
-A failed or incomplete native run fails CI. After an explicit GitHub rerun,
-retrying the Dagu wait step collects the actual newer attempt; mirroring an
-existing matching ref itself creates no duplicate push. A Dagu stop ends its
-wait; cancel a still-running hosted workflow through GitHub. This bridge does
-not change hosted permissions, LAB-69, VM/device gates or release publication.
+A failed or incomplete native run fails CI. The OVH
+`robotgo-arm64-requeue` schedule checks every 30 minutes for unassigned
+macOS ARM64 jobs on the exact mirrored workflow. A retry can satisfy the
+Dagu wait while that run is still active. If the plugin has already reported
+a terminal failure, a later GitHub success does not replace that check.
+Qualify a fresh exact-source branch run before merging. Mirroring an existing
+matching ref does not push it again. A Dagu stop ends its wait. Cancel a
+still-running hosted workflow through GitHub. This bridge leaves hosted
+permissions, LAB-69, VM/device gates and release publication unchanged.
 
 Run `python3 -B -m unittest discover -s scripts/ci -p 'test_*native*.py'` locally
 (PyYAML is required for workflow routing checks) plus pinned `actionlint` and
