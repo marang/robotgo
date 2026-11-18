@@ -18,15 +18,23 @@ for template, name in {'pipeline': 'ci', 'watch': 'watch', 'security': 'security
     checked = subprocess.run([binary, 'validate', str(path), '--dagu-home', str(home),
                               '--config', str(config)], capture_output=True, text=True)
     assert checked.returncode == 0, (path.name, checked.stdout + checked.stderr)
-ci=yaml.safe_load((repo/'.dagu/pipeline.yaml').read_text())['steps'][0]
+pipeline=yaml.safe_load((repo/'.dagu/pipeline.yaml').read_text())
+ci=pipeline['steps'][0]
+assert pipeline['overlap_policy']=='all' and pipeline['retry_policy']['limit']==0
+assert [step['id'] for step in pipeline['steps'][:5]]==[
+    'normalize','checkout','verify_source','capture_source_evidence','github_mirror']
+assert pipeline['steps'][4]['depends']==['capture_source_evidence']
 watch=yaml.safe_load((repo/'.dagu/watch.yaml').read_text())
 planner=next(s for s in watch['steps'] if s['id']=='plan')
 guard=next(s for s in watch['steps'] if s['id']=='ci')['foreach']['steps'][-1]
 results=[]
 
-def run(name,graph,success=True,run_id=None):
+def run(name,graph,success=True,run_id=None,params=()):
     path=home/(name+'.yaml');path.write_text(yaml.safe_dump(graph,sort_keys=False))
-    r=subprocess.run([binary,'start',str(path),'--dagu-home',str(home),'--config',str(config)]+(['--run-id',run_id] if run_id is not None else []),capture_output=True,text=True)
+    command=[binary,'start',str(path),'--dagu-home',str(home),'--config',str(config)]
+    if run_id is not None: command.extend(['--run-id',run_id])
+    if params: command.extend(['--',*params])
+    r=subprocess.run(command,capture_output=True,text=True)
     (home/(name+'.log')).write_text(r.stdout+r.stderr)
     if success is not None: assert (r.returncode==0)==success,(name,r.returncode,(r.stdout+r.stderr)[-3000:])
     results.append({'name':name,'exit':r.returncode,'expected':success});print(json.dumps(results[-1]),flush=True)
@@ -34,6 +42,8 @@ def run(name,graph,success=True,run_id=None):
 
 def js_case(name,step,inputs,expected=None,success=True):
     step=copy.deepcopy(step);step.pop('depends',None);step['with']['input']=inputs
+    if step['id']=='normalize':
+        step['with']['input']={'ref':'','source_ref':'',**inputs}
     steps=[step]
     if expected is not None:
         expr='${'+step['id']+'.output.source}' if step.get('output') else None
@@ -62,6 +72,46 @@ js_case('ci-wrong-repo',ci,{'requested':'main','payload':json.dumps({**payload,'
 js_case('ci-json-null',ci,{'requested':'main','payload':'null'},success=False)
 js_case('ci-internal-ref',ci,{'requested':'main','payload':json.dumps({**payload,'ref':'refs/heads/entire/checkpoints/v1'})},success=False)
 js_case('ci-bad-sha',ci,{'requested':'main','payload':json.dumps({**payload,'commit':'main'})},success=False)
+
+plugin_ref=payload['ref']
+plugin_input={'requested':A,'ref':plugin_ref,'payload':''}
+expected=f'if(input.commit!=="{A}"||input.ref!=="{plugin_ref}")throw new Error("wrong plugin source");'
+js_case('ci-plugin',ci,plugin_input,expected)
+js_case('ci-plugin-matching-alias',ci,{**plugin_input,'source_ref':plugin_ref},expected)
+js_case('ci-plugin-conflicting-alias',ci,{**plugin_input,'source_ref':'refs/heads/other'},success=False)
+js_case('ci-plugin-conflicting-event',ci,{**plugin_input,'requested':B,'ref':'refs/heads/other','payload':json.dumps(payload)},success=False)
+js_case('ci-plugin-invalid-ref',ci,{**plugin_input,'ref':'refs/heads/invalid//ref'},success=False)
+js_case('ci-zero-sha',ci,{**plugin_input,'requested':'0'*40},success=False)
+js_case('ci-manual-main-mismatched-ref',ci,{'requested':'main','source_ref':plugin_ref,'payload':''},success=False)
+
+def source_fixture(name, checkout_sha, success=True):
+    steps=copy.deepcopy(pipeline['steps'][:5])
+    # Stub the host-only checkout and mirror. Run the authored evidence steps.
+    steps[1]={
+        'id':'checkout','depends':['normalize'],'action':'js.run',
+        'with':{'script':f'return {{commit:"{checkout_sha}"}};'},
+        'output':{'source':{'from':'stdout','decode':'json'}},
+    }
+    marker=home/(name+'.mirror')
+    steps[4]={
+        'id':'github_mirror','depends':steps[4]['depends'],'action':'file.write',
+        'with':{'path':str(marker),'content':'mirror started'},
+    }
+    graph={'type':'graph','artifacts':{'enabled':True},'params':pipeline['params'],'steps':steps}
+    run(name,graph,success,run_id=name,params=(f'commit={A}',f'ref={plugin_ref}'))
+    assert marker.exists()==success
+
+source_fixture('ed-exact-source-fixture',A)
+source_fixture('ed-mismatched-source-fixture',B,success=False)
+artifacts=list(home.rglob('source-evidence.json'))
+assert len(artifacts)==1,artifacts
+evidence=json.loads(artifacts[0].read_text())
+assert set(evidence)=={'schemaVersion','dagName','dagRunId','attemptId','startedAt','sha','ref','sourceSHA'}
+assert evidence['schemaVersion']==1 and evidence['dagName']=='robotgo-ovh-ci'
+assert evidence['dagRunId']=='ed-exact-source-fixture' and evidence['ref']==plugin_ref
+assert evidence['sha']==evidence['sourceSHA']==A
+assert re.fullmatch(r'[A-Za-z0-9_-]+',evidence['attemptId']) and evidence['startedAt'].startswith('20')
+
 base=f'{A}\trefs/heads/main\n{B}\trefs/tags/v0.1.0\n{C}\trefs/tags/v0.1.0^{{}}\n{D}\trefs/heads/release-artifacts/v0.1.0\n'
 old={'refs/heads/main':A}
 previous={'found':True,'value':old,'version':1}

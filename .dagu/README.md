@@ -12,7 +12,7 @@ webhook tokens, host display sockets and Podman sockets stay outside containers.
 | `pipeline.yaml` | `robotgo-ovh-ci` |
 | `security.yaml` | `robotgo-ovh-security` |
 | `dependencies.yaml` | `robotgo-ovh-dependencies` |
-| `watch.yaml` | `robotgo-ovh-watch` |
+| `watch.yaml` | `robotgo-ovh-watch` (held after plugin cutover) |
 
 `scripts/ci.sh` owns the test commands. The image recipe and active legacy-state
 retention source/units live under `scripts/ci/`. The former sealed launcher,
@@ -21,14 +21,19 @@ its history remains available in native Git. The recipe records the admitted
 image's inputs; mutable distribution packages make a rebuild a new image requiring
 qualification. Existing immutable image layers are retained.
 
-The five-minute watcher reads native branch refs through the host-only checkout
-adapter. Its first run records a baseline. Later runs deduplicate full source
-SHAs, exclude Entire metadata and release-artifact branches, and save the cursor
-only after every dispatch succeeds or returns the exact duplicate-run response.
-Tags do not trigger builds or releases. A webhook checks repository, branch and
-full SHA; manually selecting `main` remains supported. Weekly dependency reports
-list module updates and run reachable-vulnerability checks without source writes.
-Scanner/network errors fail the job; update inventory is not a security verdict.
+Entire-Dagu starts the pipeline for branch and `main` events with an exact
+commit and full branch ref. The pipeline verifies the checkout and writes
+`source-evidence.json` with the run and attempt identifiers before invoking the
+existing GitHub bridge. Each accepted run can execute independently and has no
+automatic retry.
+
+The legacy five-minute watcher is retained for rollback with its installed
+definition, cursor and run history. Suspend its schedule after plugin cutover.
+It has no release duties. The CI pipeline continues to validate the repository,
+ref and SHA in legacy webhook requests. Weekly dependency reports list module
+updates and run reachable-vulnerability checks without source writes.
+Scanner/network errors fail the job. Update inventory alone cannot establish
+vulnerability reachability.
 
 Entire state under `.entire/` stays local and ignored, including its existing
 local ignore file. Repository Codex hooks no longer invoke Entire automatically.
@@ -40,10 +45,10 @@ KVM/DRM, release evidence and public module distribution retain their existing
 gates. Linux tests and cross-compilation do not replace the 23 retained platform
 checks. Source now prepares `v1.0.4` under `go.izoone.com/robotgo`; the accepted
 imgo version and old releases are unchanged. The
-[module artifact contract](../docs/operations/module-distribution.md) does not add
-a native release publisher. LAB-438 tracks the unqualified native CI writer;
-operators must
-verify exact source, definition/image, run and result before merging.
+[module artifact contract](../docs/operations/module-distribution.md) covers
+release responsibilities. LAB-536 tracks the branch and `main` plugin cutover.
+Operators must verify exact source, definition and image, run, and result before
+merging. LAB-438 tracks the separate GitHub-free evidence and review gates.
 
 ## Headless Sway runtime
 
@@ -63,10 +68,10 @@ tmpfs. Only successfully verified owned report directories are copied to `/w`
 and retained by Dagu's standard exit handler as private run artifacts. Container
 force-removal remains the cleanup boundary after hard cancellation.
 
-Normal branch polling supplies the source ref in its existing event payload.
-Manual `main` works unchanged. A manual exact commit without that payload must
-also provide `source_ref`, the actual full branch ref; conflicting metadata is
-rejected. This prevents a commit-only selection from inventing a branch identity.
+The plugin supplies `commit` and `ref`. Manual `main` resolves
+`refs/heads/main`. An exact manual commit requires a full branch ref using
+`source_ref` or `ref`. Legacy webhooks supply their ref in the event payload.
+When multiple inputs supply a ref, their values must agree.
 
 Definitions and local fixtures alone do not qualify installation. Require actual
 exact-source OVH runs of all six cases plus failure, timeout and cancellation
@@ -130,27 +135,17 @@ journals. The original dirty cleanup worktree is not an installation source.
    Run `DAGU_BIN=/path/to/dagu python3 -B .dagu/test-watch.py` using Python and
    PyYAML, plus `python3 -B scripts/ci/retention/test_pruner.py`. The watcher
    fixtures use only temporary state and credential-free loopback HTTP.
-2. Keep the watcher schedule and CI webhook held. Install reviewed exact bytes
-   under the existing DAG names, retaining the current image. Register the
-   `robotgo/ci-webhook` secret only with the controller; use the existing trusted
-   checkout adapter. Keep retention timer/source unchanged.
-3. Run exact-candidate CI, security and dependency jobs under the recorded caps.
-   Require every guarded runtime test to PASS, source/tree cleanliness, and
-   cleanup after success, induced failure and cancellation. Capture source SHA,
-   definition/helper/image hashes, run IDs, results and cleanup evidence.
-4. Qualify the five-minute watcher: baseline without dispatch, native branch
-   change, duplicate/retry handling and exact accepted SHA. Only then enable its
-   schedule and webhook. Holding execution requires both schedule suspension and
-   webhook disablement because webhooks bypass schedule holds.
-5. Verify all four installed jobs use these definitions and no active job
-   invokes the former sealed `robotgo-ci` launcher. Its watcher/dependency calls
-   have been replaced, and the obsolete driver/admission/provisioning source is
-   retired. Preserve legacy state and the active retention timer, including
-   journals, holds and images. Recover the prior implementation from native
-   Git history only within an explicitly reviewed rollback.
+2. Install the reviewed CI definition under `robotgo-ovh-ci` with the existing
+   images. Pause the polling schedule for the pilot so the same commit arrives
+   via one trigger. Keep its cursor, webhook registration and retention intact.
+3. Qualify both plugin routes against actual OVH runs. Verify the source SHA,
+   run and attempt evidence, retained native platform checks, required Entire
+   merge check and browser log link. The existing GitHub bridge needs explicit
+   authorization to publish a pilot source ref.
+4. Keep the legacy watcher suspended once the plugin paths are qualified.
+   Preserve its definition, cursor and history for a reviewed rollback. Native
+   webhook calls can still trigger the CI DAG while the watcher is suspended.
 
-Until the exact-head capped runs and cleanup checks pass, this remains a
-reviewable replacement proposal. The dated installed-definition backup and
-native Git history preserve the rollback boundary. The dated migration
-JSON under `docs/evidence/2026-10-31-entire-ovh/` is preserved byte-for-byte and is
-historical provenance, not current qualification.
+The dated migration evidence under `docs/evidence/2026-10-31-entire-ovh/`
+records the original rollout. Live plugin qualification uses the current
+installed definition and actual branch and `main` runs.

@@ -79,7 +79,8 @@ class NativeWorkflowTests(unittest.TestCase):
         for name in containers:
             with self.subTest(step=name):
                 self.assertIn('github_mirror', ancestors(name))
-        self.assertEqual(ancestors('github_mirror'), {'checkout', 'normalize'})
+        self.assertEqual(ancestors('github_mirror'),
+                         {'checkout', 'normalize', 'verify_source', 'capture_source_evidence'})
 
     @classmethod
     def setUpClass(cls):
