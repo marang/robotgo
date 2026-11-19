@@ -214,6 +214,23 @@ def wait_native(sha, tree, token):
         time.sleep(30)
     else:
         raise NativeError('GitHub native workflow did not complete within one hour')
+    return collect_native_result(sha, tree, run, env, token)
+
+
+def verify_native_attempt(sha, tree, run_id, attempt, token):
+    require(bool(SHA.fullmatch(tree)) and run_id > 0 and attempt > 0,
+            'invalid exact native attempt identity')
+    env = environment(token)
+    run = api('/repos/' + REPOSITORY + '/actions/runs/%d' % run_id, env)
+    verify_run(run, sha)
+    require(run['id'] == run_id and run['run_attempt'] == attempt,
+            'GitHub attempt changed before collection')
+    require(run.get('status') == 'completed' and run.get('conclusion') == 'success',
+            'exact native attempt has not succeeded')
+    return collect_native_result(sha, tree, run, env, token)
+
+
+def collect_native_result(sha, tree, run, env, token):
     pages = api('/repos/' + REPOSITORY + '/actions/runs/%s/attempts/%s/jobs?per_page=100' %
                 (run['id'], run['run_attempt']), env, pages=True)
     commit = api('/repos/' + REPOSITORY + '/git/commits/' + sha, env)
@@ -248,12 +265,19 @@ def wait_native(sha, tree, token):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('operation', choices=['mirror', 'wait'])
+    parser.add_argument('operation', choices=['mirror', 'wait', 'verify'])
     parser.add_argument('sha')
     parser.add_argument('--tree')
+    parser.add_argument('--run-id', type=int)
+    parser.add_argument('--run-attempt', type=int)
     args = parser.parse_args(); branch(args.sha)
     token = os.environ.get('ROBOTGO_GITHUB_TOKEN', '')
-    result = mirror(args.sha, token) if args.operation == 'mirror' else wait_native(args.sha, args.tree or '', token)
+    if args.operation == 'verify':
+        result = verify_native_attempt(args.sha, args.tree or '', args.run_id or 0,
+                                       args.run_attempt or 0, token)
+    else:
+        require(args.run_id is None and args.run_attempt is None, 'attempt flags require verify')
+        result = mirror(args.sha, token) if args.operation == 'mirror' else wait_native(args.sha, args.tree or '', token)
     print(json.dumps(result), flush=True)
 
 

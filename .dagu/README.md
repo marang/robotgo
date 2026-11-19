@@ -111,6 +111,12 @@ and job links remain available for diagnosis. Terminal controls are escaped;
 raw-log hashes bind the evidence. No additional log archive is kept. Host-adapter
 unit tests run inside the existing Linux source-contract container.
 
+The adapter also supports a one-shot evidence read for an observed successful
+attempt. Run `robotgo-github-native verify SHA --tree TREE --run-id ID
+--run-attempt ATTEMPT` with the existing protected credential. If GitHub has
+already superseded that attempt, it refuses before collecting evidence. The
+existing graph still calls `wait` until the asynchronous check is integrated.
+
 A failed or incomplete native run fails CI. The OVH
 `robotgo-arm64-requeue` schedule checks every 30 minutes for unassigned
 macOS ARM64 jobs on the exact mirrored workflow. A retry can satisfy the

@@ -106,6 +106,23 @@ class IdentityAndEvidenceTests(unittest.TestCase):
                 contextlib.redirect_stdout(io.StringIO()):
             return native.wait_native(SOURCE, TREE, TOKEN)
 
+    def test_verify_reads_only_the_observed_attempt(self):
+        fixture = GitHubFixture()
+        with mock.patch.object(native, 'api', side_effect=fixture.api), \
+                mock.patch.object(native, 'command', side_effect=fixture.command), \
+                contextlib.redirect_stderr(io.StringIO()):
+            result = native.verify_native_attempt(SOURCE, TREE, 801, 2, TOKEN)
+        self.assertEqual((result['run_id'], result['run_attempt']), (801, 2))
+        self.assertFalse(any('/actions/workflows/' in path for path in fixture.paths))
+
+    def test_verify_refuses_an_attempt_changed_before_collection(self):
+        fixture = GitHubFixture()
+        with mock.patch.object(native, 'api', side_effect=fixture.api), \
+                mock.patch.object(native, 'command') as command:
+            with self.assertRaisesRegex(native.NativeError, 'changed before collection'):
+                native.verify_native_attempt(SOURCE, TREE, 801, 1, TOKEN)
+        command.assert_not_called()
+
     def test_success_receipt_binds_actual_run_attempt_and_all_native_jobs(self):
         fixture = GitHubFixture()
         result = self.collect(fixture)
