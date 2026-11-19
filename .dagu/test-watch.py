@@ -24,6 +24,10 @@ assert pipeline['overlap_policy']=='all' and pipeline['retry_policy']['limit']==
 assert [step['id'] for step in pipeline['steps'][:5]]==[
     'normalize','checkout','verify_source','capture_source_evidence','github_mirror']
 assert pipeline['steps'][4]['depends']==['capture_source_evidence']
+pipeline_steps = {step['id']: step for step in pipeline['steps']}
+assert pipeline_steps['verify_github_mirror']['depends'] == ['github_mirror']
+assert pipeline_steps['capture_github_mirror_evidence']['depends'] == ['verify_github_mirror']
+assert pipeline_steps['prepare']['depends'] == ['capture_github_mirror_evidence']
 watch=yaml.safe_load((repo/'.dagu/watch.yaml').read_text())
 planner=next(s for s in watch['steps'] if s['id']=='plan')
 guard=next(s for s in watch['steps'] if s['id']=='ci')['foreach']['steps'][-1]
@@ -84,33 +88,72 @@ js_case('ci-plugin-invalid-ref',ci,{**plugin_input,'ref':'refs/heads/invalid//re
 js_case('ci-zero-sha',ci,{**plugin_input,'requested':'0'*40},success=False)
 js_case('ci-manual-main-mismatched-ref',ci,{'requested':'main','source_ref':plugin_ref,'payload':''},success=False)
 
-def source_fixture(name, checkout_sha, success=True):
-    steps=copy.deepcopy(pipeline['steps'][:5])
-    # Stub the host-only checkout and mirror. Run the authored evidence steps.
-    steps[1]={
-        'id':'checkout','depends':['normalize'],'action':'js.run',
-        'with':{'script':f'return {{commit:"{checkout_sha}"}};'},
-        'output':{'source':{'from':'stdout','decode':'json'}},
+def source_fixture(name, *, mode=None, checkout_sha=A, mirror=None, success=True,
+                   expect_source=True, expect_mirror=False):
+    # Keep the graph, gates and artifact destinations. Stub external execution.
+    if mirror is None:
+        mirror = {'source': A, 'tree': C, 'branch': 'ci/entire/' + A, 'already_mirrored': False}
+    actions = {
+        'checkout': 'return ' + json.dumps({'commit': checkout_sha}),
+        'github_mirror': 'return ' + json.dumps(mirror),
+        'github_native': 'return {status: "fixture"}',
     }
-    marker=home/(name+'.mirror')
-    steps[4]={
-        'id':'github_mirror','depends':steps[4]['depends'],'action':'file.write',
-        'with':{'path':str(marker),'content':'mirror started'},
-    }
-    graph={'type':'graph','artifacts':{'enabled':True},'params':pipeline['params'],'steps':steps}
-    run(name,graph,success,run_id=name,params=(f'commit={A}',f'ref={plugin_ref}'))
-    assert marker.exists()==success
+    marker_dir = home / (name + '.containers')
+    steps = copy.deepcopy(pipeline['steps'])
+    containers = set()
+    for step in steps:
+        if step.get('action') == 'container.run':
+            containers.add(step['id'])
+            step['action'] = 'file.write'
+            step['with'] = {'path': str(marker_dir / step['id']), 'content': 'executed', 'create_dirs': True}
+        elif step['id'] in actions:
+            del step['run']
+            step['action'] = 'js.run'
+            step['with'] = {'script': actions[step['id']]}
+    graph = {key: pipeline[key] for key in ('type', 'shell', 'artifacts', 'params', 'max_active_steps')}
+    graph['steps'] = steps
+    params = [f'commit={A}', f'ref={plugin_ref}']
+    if mode is not None:
+        params.append(f'native_mode={mode}')
+    filenames = ('source-evidence.json', 'github-mirror-evidence.json', 'github-native/summary.json')
+    before = {filename: set(home.rglob(filename)) for filename in filenames}
+    result = run(name, graph, success, run_id=name, params=params)
+    assert {path.name for path in marker_dir.glob('*')} == (containers if success else set())
+    source, github_mirror, github_native = [set(home.rglob(filename)) - before[filename] for filename in filenames]
+    assert len(source) == expect_source, source
+    assert len(github_mirror) == expect_mirror, github_mirror
+    if success and mode != 'async':
+        assert len(github_native) == 1 and json.loads(github_native.pop().read_text()) == {'status': 'fixture'}
+    else:
+        # Dagu can create a stdout destination before skipping the step.
+        assert all(path.stat().st_size == 0 for path in github_native), github_native
+    if success and mode == 'async':
+        assert 'github_native [skipped]' in result.stdout
+    if expect_source:
+        evidence = json.loads(source.pop().read_text())
+        assert set(evidence) == {'schemaVersion', 'dagName', 'dagRunId', 'attemptId', 'startedAt',
+                                 'sha', 'ref', 'sourceSHA'}
+        assert evidence['schemaVersion'] == 1 and evidence['dagName'] == 'robotgo-ovh-ci'
+        assert evidence['dagRunId'] == name and evidence['ref'] == plugin_ref
+        assert evidence['sha'] == evidence['sourceSHA'] == A
+        assert re.fullmatch(r'[A-Za-z0-9_-]+', evidence['attemptId']) and evidence['startedAt'].startswith('20')
+    if expect_mirror:
+        assert json.loads(github_mirror.pop().read_text()) == {
+            'schema_version': 1, 'dag_run_id': name, 'attempt_id': evidence['attemptId'],
+            'sha': A, 'tree': C, 'ref': plugin_ref,
+        }
 
-source_fixture('ed-exact-source-fixture',A)
-source_fixture('ed-mismatched-source-fixture',B,success=False)
-artifacts=list(home.rglob('source-evidence.json'))
-assert len(artifacts)==1,artifacts
-evidence=json.loads(artifacts[0].read_text())
-assert set(evidence)=={'schemaVersion','dagName','dagRunId','attemptId','startedAt','sha','ref','sourceSHA'}
-assert evidence['schemaVersion']==1 and evidence['dagName']=='robotgo-ovh-ci'
-assert evidence['dagRunId']=='ed-exact-source-fixture' and evidence['ref']==plugin_ref
-assert evidence['sha']==evidence['sourceSHA']==A
-assert re.fullmatch(r'[A-Za-z0-9_-]+',evidence['attemptId']) and evidence['startedAt'].startswith('20')
+source_fixture('ed-combined-source-fixture')
+source_fixture('ed-async-source-fixture', mode='async', expect_mirror=True)
+source_fixture('ed-mismatched-source-fixture', mode='async', checkout_sha=B,
+               success=False, expect_source=False)
+source_fixture('ed-mismatched-mirror-fixture', mode='async', success=False,
+               mirror={'source': B, 'tree': C, 'branch': 'ci/entire/' + A})
+source_fixture('ed-invalid-mirror-tree-fixture', mode='async', success=False,
+               mirror={'source': A, 'tree': '0' * 40, 'branch': 'ci/entire/' + A})
+source_fixture('ed-invalid-mirror-branch-fixture', mode='async', success=False,
+               mirror={'source': A, 'tree': C, 'branch': 'ci/entire/' + B})
+source_fixture('ed-invalid-mode-fixture', mode='invalid', success=False, expect_source=False)
 
 base=f'{A}\trefs/heads/main\n{B}\trefs/tags/v0.1.0\n{C}\trefs/tags/v0.1.0^{{}}\n{D}\trefs/heads/release-artifacts/v0.1.0\n'
 old={'refs/heads/main':A}

@@ -46,6 +46,10 @@ params:
       type: string
       pattern: '^(main|[0-9a-f]{40})$'
       default: main
+    native_mode:
+      type: string
+      enum: [combined, async]
+      default: combined
 steps:
   - id: normalize
     action: js.run
@@ -150,10 +154,48 @@ steps:
         from: stdout
         decode: json
 
+  - id: verify_github_mirror
+    depends: [github_mirror]
+    preconditions:
+      - condition: ${params.native_mode}
+        expected: async
+    action: js.run
+    timeout_sec: 10
+    with:
+      input:
+        dag_run_id: ${context.run.id}
+        attempt_id: ${context.attempt.id}
+        sha: ${verify_source.output.evidence.sha}
+        ref: ${verify_source.output.evidence.ref}
+        mirrored_sha: ${github_mirror.output.source.source}
+        branch: ${github_mirror.output.source.branch}
+        tree: ${github_mirror.output.source.tree}
+      script: |
+        const {dag_run_id, attempt_id, sha, ref, mirrored_sha, branch, tree} = input;
+        const id = value => typeof value === 'string' && /^[A-Za-z0-9_-]{1,64}$/.test(value);
+        if (!id(dag_run_id) || !id(attempt_id)) throw new Error('Missing native run identity');
+        if (mirrored_sha !== sha || branch !== 'ci/entire/' + sha ||
+            typeof tree !== 'string' || !/^[0-9a-f]{40}$/.test(tree) || /^0+$/.test(tree)) {
+          throw new Error('GitHub mirror did not confirm the checked-out source');
+        }
+        return {schema_version: 1, dag_run_id, attempt_id, sha, tree, ref};
+    output: GITHUB_MIRROR_EVIDENCE
+
+  - id: capture_github_mirror_evidence
+    depends: [verify_github_mirror]
+    # In combined mode the async verification and this dependent step are skipped.
+    continue_on: skipped
+    action: file.write
+    with:
+      path: ${context.paths.artifacts_dir}/github-mirror-evidence.json
+      create_dirs: true
+      mode: "0600"
+      content: ${env.GITHUB_MIRROR_EVIDENCE}
+
   - &linux_step
     id: prepare
     # Source containers may modify .git; never enter them before credentialed Git.
-    depends: [github_mirror]
+    depends: [capture_github_mirror_evidence]
     action: container.run
     timeout_sec: 180
     with: &linux_container
@@ -499,6 +541,9 @@ steps:
 
   - id: github_native
     depends: [github_mirror, native_input, native_capture, native_window, native_output, native_output_multi, portal_availability]
+    preconditions:
+      - condition: ${params.native_mode}
+        expected: combined
     run: /usr/local/libexec/izoone-ci/robotgo-github-native wait ${checkout.output.source.commit} --tree ${github_mirror.output.source.tree}
     timeout_sec: 3700
     stdout:

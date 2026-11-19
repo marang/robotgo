@@ -24,7 +24,9 @@ qualification. Existing immutable image layers are retained.
 Entire-Dagu starts the pipeline for branch and `main` events with an exact
 commit and full branch ref. The pipeline verifies the checkout and writes
 `source-evidence.json` with the run and attempt identifiers before invoking the
-existing GitHub bridge. Each accepted run can execute independently and has no
+existing GitHub bridge. Plugin routes can opt in with `native_mode=async`. The
+default `native_mode=combined` keeps synchronous GitHub verification for manual
+and legacy webhook runs. Each accepted run can execute independently and has no
 automatic retry.
 
 The legacy five-minute watcher is retained for rollback with its installed
@@ -106,16 +108,23 @@ workflow, push ref/SHA, source tree, actual run and current attempt. All four
 native jobs and their required steps must succeed; protected runtime tests must
 show the required PASS counts, including three Windows window runs. Skips are
 not runtime evidence. Standard Dagu stdout artifacts retain the source-bound JSON
-summary; bounded downloaded job logs go to ordinary Dagu stderr logs. GitHub run
-and job links remain available for diagnosis. Terminal controls are escaped;
-raw-log hashes bind the evidence. No additional log archive is kept. Host-adapter
-unit tests run inside the existing Linux source-contract container.
+summary in combined mode. Bounded downloaded job logs go to ordinary Dagu
+stderr logs. GitHub run and job links remain available for diagnosis. Terminal
+controls are escaped and raw-log hashes bind the evidence. Host-adapter unit
+tests run inside the existing Linux source-contract container.
+
+In async mode, the trusted mirror step reads the checkout tree and confirms the
+create-only GitHub ref before any source container starts. Dagu records that
+confirmation in `github-mirror-evidence.json` with `schema_version: 1`,
+`dag_run_id`, `attempt_id`, `sha`, `tree` and the original branch `ref`. The
+worker returns after Linux/Sway execution. The plugin combines a successful
+Linux/Sway result and the mirror evidence with verification of the exact native
+GitHub attempt before completing the Entire check.
 
 The adapter also supports a one-shot evidence read for an observed successful
 attempt. Run `robotgo-github-native verify SHA --tree TREE --run-id ID
 --run-attempt ATTEMPT` with the existing protected credential. If GitHub has
-already superseded that attempt, it refuses before collecting evidence. The
-existing graph still calls `wait` until the asynchronous check is integrated.
+already superseded that attempt, it refuses before collecting evidence.
 
 A failed or incomplete native run fails CI. The OVH
 `robotgo-arm64-requeue` schedule checks every 30 minutes for unassigned
