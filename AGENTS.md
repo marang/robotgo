@@ -248,3 +248,12 @@ When implementing Linux functionality:
 3. Add explicit fallback only if necessary.
 4. Make fallback observable and testable.
 5. Preserve cross-platform compile behavior.
+
+## Entire code navigation and review
+
+Use Entire Graph for code discovery and relationships. Query the committed tree
+first with `entire graph query --repo . --head --format agent --query "<task>"`.
+Run `entire graph agent-guide` for relationship lookups and result verification.
+
+Use the [Linear and Entire workflow](https://automation.izoone.com/agents/review-workflow.md)
+for ticket branches, Trail links, and review evidence.
